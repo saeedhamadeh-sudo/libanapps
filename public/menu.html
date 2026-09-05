@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;800&family=Lalezar&family=Tajawal:wght@400;700;800&family=Amiri:wght@400;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <link rel="stylesheet" href="/assets/themes.css">
 <style>
 *{box-sizing:border-box}
@@ -320,7 +320,7 @@ body.hasbar footer{padding-bottom:150px}
 
 <script src="/assets/config.js"></script>
 <script src="/assets/i18n.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.0/dist/umd/supabase.min.js"></script>
 <script>
 (function(){
@@ -573,6 +573,7 @@ $('#stepCart').addEventListener('click',function(e){
 /* ---------- drawer ---------- */
 function openCart(o){
   $('#drawer').classList.toggle('on',o); $('#scrim').classList.toggle('on',o);
+  if(o) refreshMap();
   $('#drawer').setAttribute('aria-hidden',!o);
   document.body.style.overflow=o?'hidden':'';
   paintCart();
@@ -655,15 +656,25 @@ function setPin(la,ln,zoom){
   okMsg();
 }
 function okMsg(){ var m=$('#geoMsg'); m.className='ok'; m.textContent=T.locationSet; }
+function refreshMap(){
+  if(!MAP) return;
+  [0,150,400,900].forEach(function(t){ setTimeout(function(){ MAP.invalidateSize(); },t); });
+}
 function initMap(){
-  if(MAP||typeof L==='undefined') return;
+  if(MAP) { refreshMap(); return; }
+  if(typeof L==='undefined'){
+    // ما نزلت المكتبة (نت ضعيف أو محجوب) — نرجع لخانة الرابط
+    var m0=$('#geoMsg'); m0.className='err'; m0.textContent=T.mapFail;
+    $('#linkWrap').classList.remove('hidden');
+    return;
+  }
   $('#map').classList.add('on');
   MAP=L.map('map',{zoomControl:true,attributionControl:true})
        .setView([33.8547,35.8623],8);   // لبنان
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',
     {maxZoom:19,attribution:'© OpenStreetMap'}).addTo(MAP);
   MAP.on('click',function(e){ setPin(e.latlng.lat,e.latlng.lng); });
-  setTimeout(function(){ MAP.invalidateSize(); },250);
+  refreshMap();
   if(geo.lat) setPin(geo.lat,geo.lng,17);
   else { var m=$('#geoMsg'); m.className=''; m.style.color='var(--muted)'; m.textContent=T.mapHint; }
 }
