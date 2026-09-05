@@ -1,0 +1,45 @@
+// ============================================================
+//  LibanApps — نصوص الواجهة (عربي / إنكليزي)
+// ============================================================
+window.I18N = {
+  ar: {
+    dir:'rtl', lang:'ar', other:'English',
+    search:'دوّر عن صحن…', all:'الكل', noResults:'ما في نتائج',
+    add:'أضف', added:'تمت الإضافة', unavailable:'غير متوفر', featured:'الأكثر طلباً',
+    cart:'السلة', cartEmpty:'السلة فاضية', cartEmptyHint:'اضغط على أي صحن ليتضاف',
+    subtotal:'المجموع', delivery:'التوصيل', total:'الإجمالي', continue:'متابعة الطلب',
+    back:'رجوع', orderType:'نوع الطلب', dineIn:'بالمطعم', deliveryType:'توصيل',
+    name:'الاسم', phone:'رقم الهاتف', tableNo:'رقم الطاولة', address:'العنوان',
+    note:'ملاحظات (اختياري)', getLocation:'حدد موقعي', locationSet:'تم تحديد الموقع ✓',
+    locationFail:'ما قدرنا نحدد الموقع — فعّل خدمة الموقع',
+    locating:'عم نحدد موقعك…', payment:'طريقة الدفع', cash:'نقداً عند الاستلام',
+    whish:'الدفع عبر Whish', confirm:'تأكيد الطلب', sending:'عم نبعت الطلب…',
+    minOrder:'الحد الأدنى للتوصيل', required:'عبّي هالحقل',
+    invalidPhone:'رقم الهاتف غير صحيح', needLocation:'لازم تحدد موقعك للتوصيل',
+    success:'تم استلام طلبك', orderNo:'رقم الطلب', openWhatsapp:'أرسل الطلب على واتساب',
+    whatsappHint:'اضغط الزر وبعدين «إرسال» بواتساب ليوصل الطلب للمطعم',
+    invoice:'عرض الفاتورة', newOrder:'طلب جديد', closed:'المطعم مقفل حالياً',
+    error:'صار خطأ، جرّب مرة تانية', demo:'وضع عرض تجريبي — الطلبات ما بتنبعت',
+    items:'أصناف', currency:'$', lbp:'ل.ل.'
+  },
+  en: {
+    dir:'ltr', lang:'en', other:'عربي',
+    search:'Search the menu…', all:'All', noResults:'No results',
+    add:'Add', added:'Added', unavailable:'Unavailable', featured:'Popular',
+    cart:'Cart', cartEmpty:'Your cart is empty', cartEmptyHint:'Tap any dish to add it',
+    subtotal:'Subtotal', delivery:'Delivery', total:'Total', continue:'Checkout',
+    back:'Back', orderType:'Order type', dineIn:'Dine in', deliveryType:'Delivery',
+    name:'Name', phone:'Phone number', tableNo:'Table number', address:'Address',
+    note:'Notes (optional)', getLocation:'Share my location', locationSet:'Location set ✓',
+    locationFail:'Could not get your location — enable location services',
+    locating:'Getting your location…', payment:'Payment method', cash:'Cash on delivery',
+    whish:'Pay with Whish', confirm:'Place order', sending:'Sending your order…',
+    minOrder:'Minimum delivery order', required:'This field is required',
+    invalidPhone:'Invalid phone number', needLocation:'Location is required for delivery',
+    success:'Order received', orderNo:'Order number', openWhatsapp:'Send order on WhatsApp',
+    whatsappHint:'Tap the button, then press Send in WhatsApp',
+    invoice:'View invoice', newOrder:'New order', closed:'This restaurant is closed',
+    error:'Something went wrong, please try again', demo:'Demo mode — orders are not sent',
+    items:'items', currency:'$', lbp:'LBP'
+  }
+};
