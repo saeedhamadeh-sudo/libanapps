@@ -8,6 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;800&family=Lalezar&family=Tajawal:wght@400;700;800&family=Amiri:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <link rel="stylesheet" href="/assets/themes.css">
 <style>
 *{box-sizing:border-box}
@@ -154,6 +155,11 @@ textarea{min-height:60px;resize:vertical}
 .seg button{flex:1;border:1px solid var(--line);border-radius:11px;padding:11px;font-weight:700}
 .seg button[aria-pressed="true"]{background:var(--brand);color:var(--brand-ink);border-color:transparent}
 .err{color:#FF7A7E;font-size:13px;margin-top:6px}
+#map{height:240px;border-radius:14px;margin-top:10px;border:1px solid var(--line);
+  background:var(--bg-2);display:none}
+#map.on{display:block}
+.leaflet-container{background:var(--bg-2)!important;font-family:'Cairo',sans-serif}
+.maptip{font-size:12.5px;color:var(--muted);margin-top:6px;text-align:center}
 .ok{color:#4ADE80;font-size:13px;margin-top:6px}
 .doneicon{width:64px;height:64px;border-radius:50%;background:var(--brand);color:var(--brand-ink);
   display:grid;place-items:center;font-size:32px;margin:20px auto 10px}
@@ -267,6 +273,7 @@ body.hasbar footer{padding-bottom:150px}
     <div id="wrapAddr" class="hidden">
       <label id="lAddr"></label><input type="text" id="cAddr">
       <button class="btn alt" id="geoBtn" style="margin-top:8px"></button>
+      <div id="map"></div>
       <div id="geoMsg"></div>
       <div id="linkWrap" class="hidden" style="margin-top:10px">
         <label id="lPaste" style="margin-top:0"></label>
@@ -313,6 +320,7 @@ body.hasbar footer{padding-bottom:150px}
 
 <script src="/assets/config.js"></script>
 <script src="/assets/i18n.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.0/dist/umd/supabase.min.js"></script>
 <script>
 (function(){
@@ -392,6 +400,8 @@ function setLang(l){
   $('#lAddr').textContent=T.address; $('#lNote').textContent=T.note; $('#lPay').textContent=T.payment;
   $('#geoBtn').textContent=T.getLocation; $('#confirmBtn').textContent=T.confirm;
   $('#lPaste').textContent=T.orPaste; $('#pasteHint').textContent=T.pasteHint;
+  if(MAP&&!geo.lat){ var gm=$('#geoMsg'); gm.className=''; gm.style.color='var(--muted)';
+    gm.textContent=T.mapHint; }
   $('#backBtn').textContent=T.back;
   $('#typeSeg').children[0].textContent=T.dineIn;
   $('#typeSeg').children[1].textContent=T.deliveryType;
@@ -578,7 +588,9 @@ document.addEventListener('keydown',function(e){
 (function(){
   var y0=null, d=$('#drawer');
   d.addEventListener('touchstart',function(e){
-    if(d.querySelector('.dbody:not(.hidden)').scrollTop<=0) y0=e.touches[0].clientY; else y0=null;
+    if(e.target.closest('#map')){ y0=null; return; }
+    var b=d.querySelector('.dbody:not(.hidden)');
+    y0=(b&&b.scrollTop<=0)?e.touches[0].clientY:null;
   },{passive:true});
   d.addEventListener('touchmove',function(e){
     if(y0===null) return;
@@ -604,6 +616,7 @@ function showStep(s){
 function showForm(){
   if(!R.dinein_enabled) setType('delivery');
   showStep('form');
+  if(oType==='delivery'){ setTimeout(function(){ initMap(); if(MAP) MAP.invalidateSize(); },120); }
 }
 $('#backBtn').addEventListener('click',function(){ showStep('cart') });
 
@@ -615,6 +628,7 @@ function setType(t){
   });
   $('#wrapTable').classList.toggle('hidden',t!=='dine_in');
   $('#wrapAddr').classList.toggle('hidden',t!=='delivery');
+  if(t==='delivery'){ setTimeout(initMap,60); }
   paintCart();
 }
 $('#typeSeg').addEventListener('click',function(e){
@@ -627,6 +641,33 @@ $('#paySeg').addEventListener('click',function(e){
     x.setAttribute('aria-pressed', x.dataset.p===pay);
   });
 });
+/* ---------- خريطة تحديد الموقع ---------- */
+var MAP=null, PIN=null;
+function setPin(la,ln,zoom){
+  geo.lat=la; geo.lng=ln;
+  if(!MAP) return;
+  if(PIN) PIN.setLatLng([la,ln]);
+  else{
+    PIN=L.marker([la,ln],{draggable:true}).addTo(MAP);
+    PIN.on('dragend',function(){ var p=PIN.getLatLng(); geo.lat=p.lat; geo.lng=p.lng; okMsg(); });
+  }
+  if(zoom) MAP.setView([la,ln],zoom); else MAP.panTo([la,ln]);
+  okMsg();
+}
+function okMsg(){ var m=$('#geoMsg'); m.className='ok'; m.textContent=T.locationSet; }
+function initMap(){
+  if(MAP||typeof L==='undefined') return;
+  $('#map').classList.add('on');
+  MAP=L.map('map',{zoomControl:true,attributionControl:true})
+       .setView([33.8547,35.8623],8);   // لبنان
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    {maxZoom:19,attribution:'© OpenStreetMap'}).addTo(MAP);
+  MAP.on('click',function(e){ setPin(e.latlng.lat,e.latlng.lng); });
+  setTimeout(function(){ MAP.invalidateSize(); },250);
+  if(geo.lat) setPin(geo.lat,geo.lng,17);
+  else { var m=$('#geoMsg'); m.className=''; m.style.color='var(--muted)'; m.textContent=T.mapHint; }
+}
+
 function geoErrText(err){
   if(!err) return T.locationFail;
   if(err.code===1) return T.locDenied;
@@ -641,33 +682,29 @@ function tryGeo(opts){
 }
 $('#geoBtn').addEventListener('click',async function(){
   var m=$('#geoMsg'), btn=this;
-  m.className='ok'; m.textContent=T.locating;
+  initMap();
+  m.className='ok'; m.style.color=''; m.textContent=T.locating;
   if(!navigator.geolocation){
     m.className='err'; m.textContent=T.locationFail;
     $('#linkWrap').classList.remove('hidden'); return;
   }
   btn.disabled=true;
-  var err=null;
+  var err=null, pos=null;
   try{
-    // محاولة دقيقة
-    var p=await tryGeo({enableHighAccuracy:true,timeout:9000,maximumAge:0});
-    geo.lat=p.coords.latitude; geo.lng=p.coords.longitude;
+    pos=await tryGeo({enableHighAccuracy:true,timeout:9000,maximumAge:0});
   }catch(e1){
     err=e1;
     if(e1.code!==1){
-      try{
-        // محاولة تانية أخف: دقة أقل، ونقبل آخر موقع محفوظ بالجهاز
-        var p2=await tryGeo({enableHighAccuracy:false,timeout:20000,maximumAge:120000});
-        geo.lat=p2.coords.latitude; geo.lng=p2.coords.longitude; err=null;
-      }catch(e2){ err=e2; }
+      try{ pos=await tryGeo({enableHighAccuracy:false,timeout:20000,maximumAge:120000}); err=null; }
+      catch(e2){ err=e2; }
     }
   }
   btn.disabled=false;
-  if(geo.lat&&!err){
-    m.className='ok'; m.textContent=T.locationSet;
+  if(pos&&!err){
+    setPin(pos.coords.latitude,pos.coords.longitude,17);
     $('#linkWrap').classList.add('hidden');
   }else{
-    m.className='err'; m.textContent=geoErrText(err);
+    m.className='err'; m.textContent=geoErrText(err)+' — '+T.mapHint;
     btn.textContent=T.retry;
     $('#linkWrap').classList.remove('hidden');
   }
@@ -690,7 +727,7 @@ function parseMapLink(u){
 $('#mapLink').addEventListener('input',function(){
   var v=this.value.trim(); if(!v) return;
   var c=parseMapLink(v), m=$('#geoMsg');
-  if(c){ geo.lat=c.lat; geo.lng=c.lng; m.className='ok'; m.textContent=T.linkOk; }
+  if(c){ initMap(); setPin(c.lat,c.lng,17); m.className='ok'; m.textContent=T.linkOk; }
   else { m.className='err'; m.textContent=T.linkBad; }
 });
 
