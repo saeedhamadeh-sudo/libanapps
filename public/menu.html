@@ -699,6 +699,20 @@ $('#geoBtn').addEventListener('click',async function(){
     m.className='err'; m.textContent=T.locationFail;
     $('#linkWrap').classList.remove('hidden'); return;
   }
+  if(!window.isSecureContext){
+    m.className='err'; m.textContent=T.needHttps; return;
+  }
+  // إذا الإذن مرفوض من قبل، المتصفح ما بيسأل — منقول للزبون شو يعمل
+  if(navigator.permissions&&navigator.permissions.query){
+    try{
+      var st=await navigator.permissions.query({name:'geolocation'});
+      if(st.state==='denied'){
+        m.className='err'; m.textContent=T.locBlocked;
+        $('#linkWrap').classList.remove('hidden');
+        return;
+      }
+    }catch(e){}
+  }
   btn.disabled=true;
   var err=null, pos=null;
   try{
