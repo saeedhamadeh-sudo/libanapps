@@ -139,6 +139,7 @@ th{color:var(--muted);font-size:12.5px;font-weight:600}
     <button class="tab" data-t="subs" aria-pressed="true">الاشتراكات</button>
     <button class="tab" data-t="clients" aria-pressed="false">الزبائن</button>
     <button class="tab" data-t="new" aria-pressed="false">إصدار ترخيص جديد</button>
+    <button class="tab" data-t="owner" aria-pressed="false">حساب صاحب مطعم</button>
   </div>
 
   <!-- SUBS -->
@@ -181,6 +182,31 @@ th{color:var(--muted);font-size:12.5px;font-weight:600}
     <div class="panel">
       <h3>الزبائن</h3>
       <div style="overflow-x:auto"><table id="clientsTbl"><tbody></tbody></table></div>
+    </div>
+  </section>
+
+  <!-- OWNER ACCOUNT -->
+  <section data-p="owner" class="hidden">
+    <div class="panel">
+      <h3>إنشاء حساب لصاحب مطعم</h3>
+      <p class="muted">بينعمل الحساب وبينربط بالمطعم بضغطة — بدون SQL.</p>
+      <label>المطعم</label>
+      <select id="oRest"></select>
+      <div class="g2">
+        <div><label>إيميل صاحب المطعم</label><input type="email" id="oEmail" placeholder="owner@example.com"></div>
+        <div><label>كلمة المرور</label>
+          <div style="display:flex;gap:8px">
+            <input type="text" id="oPass">
+            <button class="btn alt sm" id="oGen" style="white-space:nowrap">توليد</button>
+          </div>
+        </div>
+      </div>
+      <div class="acts"><button class="btn y" id="oCreate">إنشاء وربط</button></div>
+      <div class="msg" id="oMsg"></div>
+      <div id="oResult" class="hidden">
+        <div class="copyrow"><b id="oCard"></b><button class="btn sm" data-copy="oCard">نسخ</button></div>
+        <div class="muted" style="margin-top:8px">ابعت هالنص لصاحب المطعم متل ما هو.</div>
+      </div>
     </div>
   </section>
 
@@ -318,6 +344,7 @@ async function loadAll(){
   $('#fProd').innerHTML='<option value="">كل البرامج</option>'+opts;
   await loadClients();
   await loadSubs();
+  await loadRests();
   toggleMenuBox();
 }
 async function loadClients(){
@@ -415,6 +442,47 @@ $('#addClient').addEventListener('click',async function(){
   await loadClients();
 });
 
+/* ---------- owner account ---------- */
+async function loadRests(){
+  var r=await sb.from('restaurants').select('id,name_ar,slug').order('created_at',{ascending:false});
+  $('#oRest').innerHTML=(r.data||[]).map(function(x){
+    return '<option value="'+x.id+'">'+esc(x.name_ar)+' — /'+esc(x.slug)+'</option>'}).join('');
+}
+function genPass(){
+  var a='abcdefghijkmnpqrstuvwxyz23456789', p='';
+  for(var i=0;i<10;i++) p+=a[Math.floor(Math.random()*a.length)];
+  return p;
+}
+$('#oGen').addEventListener('click',function(){ $('#oPass').value=genPass(); });
+$('#oCreate').addEventListener('click',async function(){
+  var m=$('#oMsg'); m.className='msg'; m.textContent='…';
+  $('#oResult').classList.add('hidden');
+  var email=$('#oEmail').value.trim(), pass=$('#oPass').value.trim(), rid=$('#oRest').value;
+  if(!email||!pass||!rid){ m.className='msg e'; m.textContent='عبّي كل الحقول'; return; }
+  this.disabled=true;
+  try{
+    var ses=await sb.auth.getSession();
+    var tok=ses.data.session && ses.data.session.access_token;
+    var res=await fetch('/api/create-owner',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok},
+      body:JSON.stringify({restaurant_id:rid,email:email,password:pass})
+    });
+    var j=await res.json();
+    if(!res.ok||!j.ok) throw new Error(j.error||'فشل');
+    m.className='msg s';
+    m.textContent=j.existed?'الحساب كان موجود — تم ربطه بالمطعم':'تم إنشاء الحساب وربطه';
+    $('#oCard').textContent=
+      'لوحة التحكم: '+location.origin+'/admin\n'+
+      'الإيميل: '+j.email+'\n'+
+      'كلمة المرور: '+pass+'\n\n'+
+      'رابط منيوك: '+location.origin+'/'+j.slug;
+    $('#oResult').classList.remove('hidden');
+    $('#oEmail').value=''; $('#oPass').value='';
+  }catch(err){ m.className='msg e'; m.textContent=String(err.message||err); }
+  finally{ this.disabled=false; }
+});
+
 /* ---------- generate ---------- */
 function toggleMenuBox(){
   $('#menuBox').classList.toggle('hidden', $('#nProd').value!=='menu');
@@ -455,7 +523,7 @@ $('#genBtn').addEventListener('click',async function(){
       show(s.data.key, '', s.data.expires_at);
     }
     m.className='msg s'; m.textContent='تم إصدار الترخيص';
-    await loadSubs();
+    await loadSubs(); await loadRests();
   }catch(err){
     m.className='msg e';
     m.textContent = String(err.message||err).indexOf('duplicate')>=0
