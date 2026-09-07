@@ -232,19 +232,27 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
-    // 1) الـAPI — أي مسار تحت /api/ يرجّع JSON دائماً، ما يرجّع صفحة أبداً
+    // 1) الـAPI — أي مسار تحت /api/ يرجّع JSON دائماً، حتى لو صار خطأ داخلي
     if (url.pathname.startsWith('/api/')) {
-      if (url.pathname === '/api/store-invoice') {
-        if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
-        return storeInvoice(request, env);
+      try {
+        if (url.pathname === '/api/store-invoice') {
+          if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
+          return await storeInvoice(request, env);
+        }
+        if (url.pathname === '/api/whish/create') {
+          if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
+          return await whishCreate(request, env);
+        }
+        if (url.pathname === '/api/whish/callback-success') return await whishSuccess(request, env);
+        if (url.pathname === '/api/whish/callback-failure') return await whishFailure(request, env);
+        return json(404, { error: 'unknown endpoint: ' + url.pathname });
+      } catch (e) {
+        console.error('API error on', url.pathname, e);
+        return json(500, {
+          error: (e && (e.message || e.code)) || 'internal error',
+          where: url.pathname
+        });
       }
-      if (url.pathname === '/api/whish/create') {
-        if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
-        return whishCreate(request, env);
-      }
-      if (url.pathname === '/api/whish/callback-success') return whishSuccess(request, env);
-      if (url.pathname === '/api/whish/callback-failure') return whishFailure(request, env);
-      return json(404, { error: 'unknown endpoint: ' + url.pathname });
     }
 
     // 2) ملف موجود؟ نخدمه كما هو
