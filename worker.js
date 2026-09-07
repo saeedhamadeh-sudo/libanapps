@@ -97,7 +97,16 @@ export default {
     const asset = await env.ASSETS.fetch(request);
     if (asset.status !== 404) return asset;
 
-    // 3) غير موجود = مسار صفحة، نعرض الصفحة المناسبة
+    // 3) ملف ناقص (له امتداد) — نرجّع 404 صريح بدل ما نرجّع HTML
+    //    وإلا بيوصل للمتصفح HTML مكان css/js والصفحة بتطلع بيضا بلا سبب واضح
+    if (/\.[a-z0-9]{2,5}$/i.test(url.pathname)) {
+      return new Response('Not found: ' + url.pathname, {
+        status: 404,
+        headers: { 'Content-Type': 'text/plain; charset=utf-8' }
+      });
+    }
+
+    // 4) مسار صفحة، نعرض الصفحة المناسبة
     const page = pageFor(url.pathname);
     const res = await env.ASSETS.fetch(new URL(page, url.origin));
     return new Response(res.body, {
