@@ -807,7 +807,8 @@ function initMap(){
   if(MAP) { refreshMap(); return; }
   if(typeof L==='undefined'){
     // ما نزلت المكتبة (نت ضعيف أو محجوب) — نرجع لخانة الرابط
-    var m0=$('#geoMsg'); m0.className='err'; m0.textContent=T.mapFail;
+    var m0=$('#geoMsg'); m0.className='err'; m0.style.color='';
+    m0.textContent='مكتبة الخريطة (Leaflet) ما نزلت — '+T.mapFail;
     $('#linkWrap').classList.remove('hidden');
     return;
   }
@@ -839,7 +840,14 @@ function geoErrText(err){
 }
 function tryGeo(opts){
   return new Promise(function(res,rej){
-    navigator.geolocation.getCurrentPosition(res,rej,opts);
+    var done=false;
+    var guard=setTimeout(function(){
+      if(!done){ done=true; rej({code:3,message:'timeout'}); }
+    }, (opts.timeout||10000)+2000);
+    navigator.geolocation.getCurrentPosition(
+      function(p){ if(done) return; done=true; clearTimeout(guard); res(p); },
+      function(e){ if(done) return; done=true; clearTimeout(guard); rej(e); },
+      opts);
   });
 }
 $('#geoBtn').addEventListener('click',async function(){
@@ -851,6 +859,7 @@ $('#geoBtn').addEventListener('click',async function(){
 });
 async function runGeo(m,btn){
   initMap();
+  if(!MAP) return;   // initMap كتبت السبب — ما منكتب فوقه
   m.className='ok'; m.style.color=''; m.textContent=T.locating;
   if(!navigator.geolocation){
     m.className='err'; m.textContent=T.locationFail;
