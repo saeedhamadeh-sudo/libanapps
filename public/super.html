@@ -353,12 +353,20 @@ async function loadClients(){
   $('#nClient').innerHTML=CLIENTS.map(function(c){
     return '<option value="'+c.id+'">'+esc(c.name)+(c.business?' — '+esc(c.business):'')+'</option>'}).join('');
   var b=$('#clientsTbl').querySelector('tbody');
-  b.innerHTML='<tr><th>الاسم</th><th>المؤسسة</th><th>الهاتف</th><th>المنطقة</th><th>البرامج</th></tr>'+
+  b.innerHTML='<tr><th>الاسم</th><th>المؤسسة</th><th>الهاتف</th><th>اشتراكات</th><th></th></tr>'+
     CLIENTS.map(function(c){
-      var n=SUBS.filter(function(s){return s.client_id===c.id}).length;
-      return '<tr><td>'+esc(c.name)+'</td><td>'+esc(c.business||'—')+'</td>'+
-        '<td style="direction:ltr">'+esc(c.phone||'—')+'</td><td>'+esc(c.city||'—')+'</td>'+
-        '<td>'+n+'</td></tr>';
+      var mine=SUBS.filter(function(s){return s.client_id===c.id});
+      var act=mine.filter(function(s){return s.status==='active'}).length;
+      return '<tr'+(c.is_active===false?' style="opacity:.5"':'')+'>'+
+        '<td>'+esc(c.name)+(c.is_active===false?' <span class="tag bad">معطّل</span>':'')+'</td>'+
+        '<td>'+esc(c.business||'—')+'</td>'+
+        '<td style="direction:ltr">'+esc(c.phone||'—')+'</td>'+
+        '<td>'+act+' سارية من '+mine.length+'</td>'+
+        '<td style="white-space:nowrap">'+
+          '<button class="btn alt sm" data-stopall="'+c.id+'">إيقاف الكل</button> '+
+          '<button class="btn alt sm" data-onall="'+c.id+'">تفعيل الكل</button> '+
+          '<button class="btn dg sm" data-delc="'+c.id+'">حذف الزبون</button>'+
+        '</td></tr>';
     }).join('');
 }
 async function loadSubs(){
@@ -405,7 +413,8 @@ function paintSubs(){
           '<button class="btn alt sm" data-x="'+s.id+'" data-d="365">+سنة</button> '+
           '<button class="btn alt sm" data-rst="'+s.id+'">فك الجهاز</button> '+
           '<button class="btn dg sm" data-sus="'+s.id+'" data-cur="'+s.status+'">'+
-            (s.status==='active'?'إيقاف':'تفعيل')+'</button>'+
+            (s.status==='active'?'إيقاف':'تفعيل')+'</button> '+
+          '<button class="btn dg sm" data-delsub="'+s.id+'">إلغاء</button>'+
         '</td></tr>';
     }).join('') : '<tr><td colspan="6" class="muted" style="padding:20px">ما في نتائج</td></tr>');
 }
@@ -421,10 +430,52 @@ $('#subsTbl').addEventListener('click',async function(e){
     await sb.rpc('reset_device',{p_id:b.dataset.rst});
   }else if(b.dataset.sus){
     var next=b.dataset.cur==='active'?'suspended':'active';
-    if(next==='suspended'&&!confirm('إيقاف الاشتراك؟ البرنامج رح يتقفل عند الزبون.')) return;
+    if(next==='suspended'&&!confirm('إيقاف الاشتراك؟ البرنامج رح يتقفل عند الزبون فوراً.\n\nفيك ترجّعه بأي وقت.')) return;
     await sb.from('subscriptions').update({status:next}).eq('id',b.dataset.sus);
+  }else if(b.dataset.delsub){
+    var sObj=SUBS.find(function(x){return x.id===b.dataset.delsub});
+    var who=(sObj&&sObj.clients&&sObj.clients.name)||'';
+    if(!confirm('إلغاء نهائي لهذا الاشتراك؟\n\nالزبون: '+who+'\nالمفتاح: '+(sObj?sObj.key:'')+
+                '\n\nهذا الاشتراك بس — باقي اشتراكات الزبون ما بتتأثر.\nما في رجعة.')) return;
+    var r=await sb.from('subscriptions').delete().eq('id',b.dataset.delsub);
+    if(r.error){ alert('ما نجح الحذف: '+r.error.message); return; }
   }
   await loadSubs();
+});
+
+$('#clientsTbl').addEventListener('click',async function(e){
+  var b=e.target.closest('button'); if(!b) return;
+  var id=b.dataset.stopall||b.dataset.onall||b.dataset.delc;
+  var c=CLIENTS.find(function(x){return x.id===id}); if(!c) return;
+  var mine=SUBS.filter(function(s){return s.client_id===id});
+
+  if(b.dataset.stopall){
+    if(!confirm('إيقاف كل اشتراكات "'+c.name+'" ('+mine.length+')؟\n\nكل برامجه رح تتقفل فوراً.\nفيك ترجّعها بأي وقت.')) return;
+    await sb.from('subscriptions').update({status:'suspended'}).eq('client_id',id);
+    await sb.from('clients').update({is_active:false}).eq('id',id);
+
+  }else if(b.dataset.onall){
+    await sb.from('subscriptions').update({status:'active'}).eq('client_id',id);
+    await sb.from('clients').update({is_active:true}).eq('id',id);
+
+  }else if(b.dataset.delc){
+    var slugs=mine.filter(function(s){return s.ref_slug}).map(function(s){return s.ref_slug});
+    var warn='حذف نهائي للزبون "'+c.name+'"\n\n'+
+      'رح ينحذف معه:\n· '+mine.length+' اشتراك ومفاتيحهم\n';
+    if(slugs.length) warn+='· مطاعمه ('+slugs.join(', ')+') بكل أصنافها وطلباتها وفواتيرها\n';
+    warn+='\nما في رجعة. إذا بدك توقفه مؤقتاً استعمل «إيقاف الكل» بدل الحذف.\n\n'+
+          'اكتب اسم الزبون للتأكيد:';
+    var typed=prompt(warn,'');
+    if(typed===null) return;
+    if(typed.trim()!==c.name){ alert('الاسم ما تطابق — ما انحذف شي'); return; }
+    // نحذف المطاعم أولاً ثم الزبون
+    for(var i=0;i<slugs.length;i++){
+      await sb.from('restaurants').delete().eq('slug',slugs[i]);
+    }
+    var r=await sb.from('clients').delete().eq('id',id);
+    if(r.error){ alert('ما نجح الحذف: '+r.error.message); return; }
+  }
+  await loadSubs(); await loadClients(); await loadRests();
 });
 
 /* ---------- add client ---------- */
