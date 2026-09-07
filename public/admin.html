@@ -474,6 +474,7 @@ async function loadCats(){
       '<button class="btn alt sm" data-ren="'+c.id+'">تعديل</button> '+
       '<button class="btn dg sm" data-delcat="'+c.id+'">حذف</button></div>';
   }).join(''):'<p class="muted">ما في أقسام بعد</p>');
+  relang();
 }
 async function saveCatOrder(){
   for(var i=0;i<CATS.length;i++){
@@ -656,6 +657,7 @@ function paintItems(){
     }).join('');
   });
   $('#iList').innerHTML = any ? html : html+'<p class="muted">ما في منتجات</p>';
+  relang();
 }
 
 // منتجات قسم معيّن مرتّبة
@@ -773,6 +775,7 @@ async function loadOrders(){
       '<a class="btn alt sm" style="text-decoration:none" target="_blank" href="/i/'+
       encodeURIComponent(o.token)+'">الفاتورة</a></div>';
   }).join(''):'<p class="muted">ما في طلبات بعد</p>';
+  relang();
 }
 $('#refOrders').addEventListener('click',loadOrders);
 
@@ -796,6 +799,7 @@ async function loadBanners(){
       '<div class="t"><b>'+esc(b.caption_ar||'بدون تعليق')+'</b></div>'+
       '<button class="btn dg sm" data-delb="'+b.id+'">حذف</button></div>';
   }).join('')||'<p class="muted">ما في صور</p>';
+  relang();
 }
 $('#bList').addEventListener('click',async function(e){
   var b=e.target.closest('[data-delb]'); if(!b) return;
@@ -821,6 +825,7 @@ async function loadPromos(){
       '<span>'+(p.ends_at?'حتى '+new Date(p.ends_at).toLocaleDateString('en-GB'):'بدون نهاية')+'</span></div>'+
       '<button class="btn dg sm" data-delp="'+p.id+'">حذف</button></div>';
   }).join('')||'<p class="muted">ما في عروض</p>';
+  relang();
 }
 $('#prList').addEventListener('click',async function(e){
   var b=e.target.closest('[data-delp]'); if(!b) return;
@@ -934,9 +939,11 @@ $('#prQr').addEventListener('click',function(){
 var ADMIN_EN = {"لوحة المطعم": "Restaurant dashboard", "البريد الإلكتروني": "Email", "كلمة المرور": "Password", "دخول": "Sign in", "عرض المنيو": "View menu", "خروج": "Sign out", "المنتجات": "Products", "الأقسام": "Categories", "الطلبات": "Orders", "صور وعروض": "Media & offers", "الإعدادات": "Settings", "الدفع": "Payment", "رمز QR": "QR code", "إضافة منتج": "Add product", "الاسم بالعربي": "Name (Arabic)", "الاسم بالإنكليزي": "Name (English)", "الوصف بالعربي": "Description (Arabic)", "الوصف بالإنكليزي": "Description (English)", "السعر ($)": "Price ($)", "القسم": "Category", "الترتيب": "Order", "الصورة": "Image", "متوفر": "Available", "الأكثر طلباً": "Popular", "حفظ": "Save", "تفريغ": "Clear", "حذف": "Delete", "إضافة": "Add", "الاسم عربي": "Name (Arabic)", "الاسم إنكليزي": "Name (English)", "آخر الطلبات": "Recent orders", "تحديث": "Refresh", "صور السلايدر": "Slider images", "تعليق عربي": "Caption (Arabic)", "تعليق إنكليزي": "Caption (English)", "إضافة صورة": "Add image", "عرض منبثق": "Popup offer", "العنوان عربي": "Title (Arabic)", "العنوان إنكليزي": "Title (English)", "النص عربي": "Body (Arabic)", "النص إنكليزي": "Body (English)", "ينتهي بتاريخ": "Ends on", "صورة": "Image", "نشر العرض": "Publish offer", "معلومات المطعم": "Restaurant info", "الشعار الفرعي عربي": "Tagline (Arabic)", "الشعار الفرعي إنكليزي": "Tagline (English)", "الهاتف": "Phone", "واتساب الطلبات (961…)": "Orders WhatsApp (961…)", "العنوان عربي ": "Address (Arabic)", "شعار المطعم": "Restaurant logo", "الأسعار والتوصيل": "Prices & delivery", "العملة الأساسية للمنيو": "Menu base currency", "دولار — السعر بالدولار والليرة جنبه": "USD — price in dollars, LBP beside it", "ليرة — السعر بالليرة والدولار جنبه": "LBP — price in lira, USD beside it", "الدفع عبر Whish بيضل بالدولار دائماً": "Whish payments are always in USD", "سعر صرف الدولار": "USD exchange rate", "التقريب لأقرب": "Round to nearest", "رسوم التوصيل ($)": "Delivery fee ($)", "الحد الأدنى للتوصيل ($)": "Minimum delivery order ($)", "ملاحظة أسفل المنيو (عربي)": "Note under the menu (Arabic)", "إظهار العملة التانية جنب السعر": "Show the second currency beside the price", "استقبال طلبات داخل المطعم": "Accept dine-in orders", "استقبال طلبات توصيل": "Accept delivery orders", "طلب تحديد الموقع للتوصيل": "Require location for delivery", "الشكل": "Appearance", "الثيم": "Theme", "Flame — أسود وأحمر": "Flame — black & red", "Clean — أبيض هادئ": "Clean — soft white", "Wood — بني دافئ": "Wood — warm brown", "Neon — ألوان صارخة": "Neon — bright colours", "اللغة الافتراضية": "Default menu language", "عربي": "Arabic", "إنكليزي": "English", "الدفع عبر Whish": "Pay with Whish", "بتاخد الـChannel والـSecret من حسابك عند Whish. منخزّنهم مشفّرين وما بيرجعوا يظهروا — إذا نسيتهم بتدخّلهم من جديد.": "Get your Channel and Secret from your Whish merchant account. They are stored encrypted and never shown again — re-enter them if forgotten.", "تفعيل الدفع عبر Whish": "Enable Whish payments", "عملة التحصيل": "Collection currency", "دولار": "USD", "ليرة": "LBP", "عمولة Whish على": "Whish fee paid by", "المطعم": "Restaurant", "الزبون": "Customer", "توليد": "Generate", "تنزيل PNG": "Download PNG", "طباعة ملصق": "Print poster", "بحث…": "Search…", "اتركه فاضي إذا ما بدك تغيّره": "Leave empty to keep the current one"};
 
 // ترجمة اللوحة — بتبدّل النصوص الظاهرة فقط، وبيانات المطعم بتضل متل ما هي
-var ADMIN_LANG='ar', TXTNODES=[], swapping=false;
-function collectNodes(){
-  TXTNODES=[];
+var ADMIN_LANG='ar';
+var ORIG = (typeof WeakMap!=='undefined') ? new WeakMap() : null;
+
+function applyAdminLang(l){
+  ADMIN_LANG = l;
   var w=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT,{
     acceptNode:function(n){
       if(!n.nodeValue||!n.nodeValue.trim()) return NodeFilter.FILTER_REJECT;
@@ -944,42 +951,29 @@ function collectNodes(){
       if(p==='SCRIPT'||p==='STYLE') return NodeFilter.FILTER_REJECT;
       return NodeFilter.FILTER_ACCEPT;
     }});
-  var n; while((n=w.nextNode())) TXTNODES.push({node:n, ar:n.nodeValue});
-}
-function applyAdminLang(l){
-  ADMIN_LANG=l; swapping=true;
-  collectNodes();
-  TXTNODES.forEach(function(it){
-    var key=it.ar.trim();
-    if(l==='en'){
-      if(ADMIN_EN[key]) it.node.nodeValue=it.ar.replace(key,ADMIN_EN[key]);
-    }else{
-      it.node.nodeValue=it.ar;
-    }
-  });
+  var n;
+  while((n=w.nextNode())){
+    // النص العربي الأصلي بينحفظ مرة وحدة لكل عقدة
+    if(ORIG && !ORIG.has(n)) ORIG.set(n, n.nodeValue);
+    var ar = ORIG ? ORIG.get(n) : n.nodeValue;
+    var key = ar.trim();
+    var want = (l==='en' && ADMIN_EN[key]) ? ar.replace(key, ADMIN_EN[key]) : ar;
+    if(n.nodeValue !== want) n.nodeValue = want;   // ما منلمس العقدة إذا مش لازم
+  }
   Array.prototype.forEach.call(document.querySelectorAll('[placeholder]'),function(el){
     if(!el.dataset.phAr) el.dataset.phAr=el.placeholder;
     var k=el.dataset.phAr.trim();
-    el.placeholder = (l==='en' && ADMIN_EN[k]) ? ADMIN_EN[k] : el.dataset.phAr;
+    var want=(l==='en'&&ADMIN_EN[k])?ADMIN_EN[k]:el.dataset.phAr;
+    if(el.placeholder!==want) el.placeholder=want;
   });
   document.documentElement.lang=l;
   document.documentElement.dir=(l==='ar')?'rtl':'ltr';
-  var b=$('#langBtn'); if(b) b.textContent=(l==='ar')?'English':'عربي';
+  var b=document.getElementById('langBtn');
+  if(b) b.textContent=(l==='ar')?'English':'عربي';
   try{ localStorage.setItem('la_admin_lang',l); }catch(e){}
-  swapping=false;
 }
-// إعادة الترجمة بعد أي إعادة رسم
-(function(){
-  var mo=new MutationObserver(function(){
-    if(swapping||ADMIN_LANG!=='en') return;
-    swapping=true;
-    setTimeout(function(){ applyAdminLang('en'); swapping=false; },0);
-  });
-  document.addEventListener('DOMContentLoaded',function(){
-    mo.observe(document.body,{childList:true,subtree:true});
-  });
-  if(document.readyState!=='loading') mo.observe(document.body,{childList:true,subtree:true});
-})();
+// تُستدعى بعد كل إعادة رسم — بدون مراقب وبدون حلقات
+function relang(){ if(ADMIN_LANG==='en') applyAdminLang('en'); }
 
 $('#langBtn').addEventListener('click',function(){
   applyAdminLang(ADMIN_LANG==='ar'?'en':'ar');
