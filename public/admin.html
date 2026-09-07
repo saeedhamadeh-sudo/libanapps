@@ -164,7 +164,9 @@ input[type=checkbox]{width:auto}
         <div><label>الوصف بالإنكليزي</label><textarea id="fDescEn"></textarea></div>
       </div>
       <div class="g3">
-        <div><label>السعر ($)</label><input type="number" id="fPrice" step="0.25" min="0"></div>
+        <div><label id="lPrice">السعر ($)</label>
+          <input type="number" id="fPrice" step="0.25" min="0">
+          <div class="muted" id="priceHint" style="font-size:12px;margin-top:4px"></div></div>
         <div><label>القسم</label><select id="fCat"></select></div>
         <div><label>الترتيب</label><input type="number" id="fSort" value="0"></div>
       </div>
@@ -266,6 +268,15 @@ input[type=checkbox]{width:auto}
 
     <div class="panel">
       <h3>الأسعار والتوصيل</h3>
+      <div class="g2">
+        <div><label>العملة الأساسية للمنيو</label>
+          <select id="sBase">
+            <option value="USD">دولار — السعر بالدولار والليرة جنبه</option>
+            <option value="LBP">ليرة — السعر بالليرة والدولار جنبه</option>
+          </select></div>
+        <div><label>&nbsp;</label>
+          <div class="muted" style="padding-top:10px">الدفع عبر Whish بيضل بالدولار دائماً</div></div>
+      </div>
       <div class="g3">
         <div><label>سعر صرف الدولار</label><input type="number" id="sRate" step="100"></div>
         <div><label>التقريب لأقرب</label><input type="number" id="sRound" step="1000"></div>
@@ -275,7 +286,7 @@ input[type=checkbox]{width:auto}
         <div><label>الحد الأدنى للتوصيل ($)</label><input type="number" id="sMin" step="0.5"></div>
         <div><label>ملاحظة أسفل المنيو (عربي)</label><input type="text" id="sNoteAr"></div>
       </div>
-      <div class="sw"><input type="checkbox" id="sLbp"><label for="sLbp" style="margin:0">إظهار السعر بالليرة</label></div>
+      <div class="sw"><input type="checkbox" id="sLbp"><label for="sLbp" style="margin:0">إظهار العملة التانية جنب السعر</label></div>
       <div class="sw"><input type="checkbox" id="sDine"><label for="sDine" style="margin:0">استقبال طلبات داخل المطعم</label></div>
       <div class="sw"><input type="checkbox" id="sDel"><label for="sDel" style="margin:0">استقبال طلبات توصيل</label></div>
       <div class="sw"><input type="checkbox" id="sLoc"><label for="sLoc" style="margin:0">طلب تحديد الموقع للتوصيل</label></div>
@@ -476,8 +487,29 @@ $('#cList').addEventListener('click',async function(e){
   await loadCats(); await loadItems();
 });
 
+/* ---------- العملة الأساسية ---------- */
+function isLbp(){ return (R.base_currency||'USD')==='LBP'; }
+function rate(){ return Number(R.exchange_rate)||89500; }
+function step(){ return Number(R.lbp_rounding)||1000; }
+function usdToLbp(u){ return Math.round(u*rate()/step())*step(); }
+function priceLabel(){
+  var l=$('#lPrice'); if(!l) return;
+  if(isLbp()){ l.textContent='السعر (ل.ل.)'; $('#fPrice').step=step(); }
+  else { l.textContent='السعر ($)'; $('#fPrice').step=0.25; }
+  priceHint();
+}
+function priceHint(){
+  var h=$('#priceHint'); if(!h) return;
+  var v=Number($('#fPrice').value)||0;
+  if(!v){ h.textContent=''; return; }
+  h.textContent = isLbp()
+    ? '= ' + (v/rate()).toFixed(2) + ' $'
+    : '= ' + usdToLbp(v).toLocaleString('en-US') + ' ل.ل.';
+}
+
 /* ---------- items ---------- */
 var pendImg=null;
+$('#fPrice').addEventListener('input',priceHint);
 $('#fImg').addEventListener('change',function(e){
   var f=e.target.files[0]; if(!f) return;
   pendImg=f; $('#fPrev').src=URL.createObjectURL(f); $('#fPrev').classList.remove('hidden');
@@ -525,7 +557,8 @@ function paintItems(){
   $('#iList').innerHTML=rows.length?rows.map(function(i){
     var c=CATS.find(function(x){return x.id===i.category_id});
     return '<div class="row">'+(i.image_url?'<img src="'+esc(i.image_url)+'" alt="">':'<div class="ph"></div>')+
-      '<div class="t"><b>'+esc(i.name_ar)+'</b><span>'+esc(c?c.name_ar:'—')+' · '+i.price_usd+' $'+
+      '<div class="t"><b>'+esc(i.name_ar)+'</b><span>'+esc(c?c.name_ar:'—')+' · '+
+      (isLbp()? usdToLbp(i.price_usd).toLocaleString('en-US')+' ل.ل.' : i.price_usd+' $')+
       (i.is_available?'':' · غير متوفر')+'</span></div>'+
       '<button class="btn alt sm" data-ed="'+i.id+'">تعديل</button></div>';
   }).join(''):'<p class="muted">ما في منتجات</p>';
@@ -536,7 +569,8 @@ $('#iList').addEventListener('click',function(e){
   var i=ITEMS.find(function(x){return x.id===b.dataset.ed});
   $('#fId').value=i.id;$('#fNameAr').value=i.name_ar;$('#fNameEn').value=i.name_en;
   $('#fDescAr').value=i.desc_ar||'';$('#fDescEn').value=i.desc_en||'';
-  $('#fPrice').value=i.price_usd;$('#fSort').value=i.sort;
+  $('#fPrice').value = isLbp() ? usdToLbp(i.price_usd) : i.price_usd;
+  $('#fSort').value=i.sort; priceHint();
   $('#fCat').value=i.category_id;$('#fAvail').checked=i.is_available;$('#fHot').checked=i.is_featured;
   pendImg=null; $('#fImg').value='';
   if(i.image_url){$('#fPrev').src=i.image_url;$('#fPrev').classList.remove('hidden')}
@@ -629,6 +663,8 @@ function fillSettings(){
   $('#sLbp').checked=R.show_lbp;$('#sDine').checked=R.dinein_enabled;
   $('#sDel').checked=R.delivery_enabled;$('#sLoc').checked=R.require_location;
   $('#sTheme').value=R.theme;$('#sLang').value=R.default_lang;
+  $('#sBase').value=R.base_currency||'USD';
+  priceLabel();
 }
 async function patch(o,el){
   var r=await sb.from('restaurants').update(o).eq('id',R.id).select().maybeSingle();
@@ -652,13 +688,15 @@ $('#saveInfo').addEventListener('click',async function(){
   finally{ this.disabled=false; }
 });
 $('#savePrices').addEventListener('click',function(){
-  patch({exchange_rate:Number($('#sRate').value)||89500,
+  patch({base_currency:$('#sBase').value,
+    exchange_rate:Number($('#sRate').value)||89500,
     lbp_rounding:Number($('#sRound').value)||1000,
     delivery_fee_usd:Number($('#sFee').value)||0,
     min_order_usd:Number($('#sMin').value)||0,
     notes_ar:$('#sNoteAr').value.trim(),
     show_lbp:$('#sLbp').checked,dinein_enabled:$('#sDine').checked,
-    delivery_enabled:$('#sDel').checked,require_location:$('#sLoc').checked},'#pMsg');
+    delivery_enabled:$('#sDel').checked,require_location:$('#sLoc').checked},'#pMsg')
+    .then(function(){ priceLabel(); paintItems(); });
 });
 $('#saveLook').addEventListener('click',async function(){
   if(await patch({theme:$('#sTheme').value,default_lang:$('#sLang').value},'#pMsg'))
