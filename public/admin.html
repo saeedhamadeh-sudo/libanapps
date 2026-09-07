@@ -118,6 +118,10 @@ input[type=checkbox]{width:auto}
 .row.over{border-top:2px solid var(--accent)}
 .grip{color:var(--muted);font-size:17px;padding:0 4px;cursor:grab;user-select:none;flex:none}
 .sortnote{font-size:12.5px;color:var(--muted);margin:6px 0 2px}
+.catbar{display:flex;align-items:center;gap:8px;margin:14px 0 2px;padding:6px 10px;
+  background:var(--bg-2);border:1px solid var(--line);border-radius:9px;
+  font-family:var(--font-display);font-size:16px;color:var(--accent)}
+.catbar span{margin-inline-start:auto;font-family:'Cairo';font-size:12px;color:var(--muted)}
 .login{max-width:360px;margin:12vh auto}
 #qrbox{background:#fff;border-radius:14px;padding:16px;width:max-content;margin:12px auto}
 .chip{display:inline-block;font-size:11.5px;font-weight:800;border-radius:999px;padding:2px 9px}
@@ -459,14 +463,57 @@ async function loadCats(){
   CATS=r.data||[];
   $('#fCat').innerHTML=CATS.map(function(c){
     return '<option value="'+c.id+'">'+esc(c.name_ar)+'</option>'}).join('');
-  $('#cList').innerHTML=CATS.length?CATS.map(function(c,i){
+  $('#cList').innerHTML=(CATS.length?'<div class="sortnote">اسحب القسم لتغيير ترتيبه بالمنيو</div>':'')+
+    (CATS.length?CATS.map(function(c,i){
     var n=ITEMS.filter(function(x){return x.category_id===c.id}).length;
-    return '<div class="row"><div class="t"><b>'+esc(c.name_ar)+'</b><span>'+esc(c.name_en)+' · '+n+' منتج</span></div>'+
-      '<button class="btn alt sm" data-up="'+c.id+'"'+(i===0?' disabled':'')+'>▲</button>'+
-      '<button class="btn alt sm" data-ren="'+c.id+'">تعديل</button>'+
-      '<button class="btn dg sm" data-del="'+c.id+'">حذف</button></div>';
-  }).join(''):'<p class="muted">ما في أقسام بعد</p>';
+    return '<div class="row" draggable="true" data-cid="'+c.id+'">'+
+      '<span class="grip">⋮⋮</span>'+
+      '<div class="t"><b>'+esc(c.name_ar)+'</b><span>'+esc(c.name_en)+' · '+n+' منتج</span></div>'+
+      '<button class="btn alt sm" data-up="'+c.id+'"'+(i===0?' disabled':'')+'>▲</button> '+
+      '<button class="btn alt sm" data-ren="'+c.id+'">تعديل</button> '+
+      '<button class="btn dg sm" data-delcat="'+c.id+'">حذف</button></div>';
+  }).join(''):'<p class="muted">ما في أقسام بعد</p>');
 }
+async function saveCatOrder(){
+  for(var i=0;i<CATS.length;i++){
+    if(CATS[i].sort!==i+1){
+      CATS[i].sort=i+1;
+      await sb.from('categories').update({sort:i+1}).eq('id',CATS[i].id);
+    }
+  }
+}
+(function(){
+  var dragC=null, list=$('#cList');
+  list.addEventListener('dragstart',function(e){
+    var r=e.target.closest('.row[data-cid]'); if(!r) return;
+    dragC=r.dataset.cid; r.classList.add('dragging');
+    e.dataTransfer.effectAllowed='move';
+    try{ e.dataTransfer.setData('text/plain',dragC); }catch(err){}
+  });
+  list.addEventListener('dragend',function(){
+    dragC=null;
+    Array.prototype.forEach.call(list.querySelectorAll('.row'),function(x){
+      x.classList.remove('dragging'); x.classList.remove('over'); });
+  });
+  list.addEventListener('dragover',function(e){
+    var r=e.target.closest('.row[data-cid]'); if(!r||!dragC) return;
+    e.preventDefault();
+    Array.prototype.forEach.call(list.querySelectorAll('.row'),function(x){x.classList.remove('over')});
+    if(r.dataset.cid!==dragC) r.classList.add('over');
+  });
+  list.addEventListener('drop',async function(e){
+    e.preventDefault();
+    var r=e.target.closest('.row[data-cid]'); if(!r||!dragC) return;
+    var from=CATS.findIndex(function(x){return x.id===dragC});
+    var to=CATS.findIndex(function(x){return x.id===r.dataset.cid});
+    if(from<0||to<0||from===to) return;
+    var moved=CATS.splice(from,1)[0];
+    CATS.splice(to,0,moved);
+    await saveCatOrder();
+    await loadCats(); paintItems();
+  });
+})();
+
 $('#addCat').addEventListener('click',async function(){
   var ar=$('#cAr').value.trim(); if(!ar) return;
   await sb.from('categories').insert({restaurant_id:R.id,name_ar:ar,
@@ -476,9 +523,11 @@ $('#addCat').addEventListener('click',async function(){
 });
 $('#cList').addEventListener('click',async function(e){
   var b=e.target.closest('button'); if(!b) return;
-  if(b.dataset.del){
-    if(!confirm('حذف القسم وكل منتجاته؟')) return;
-    await sb.from('categories').delete().eq('id',b.dataset.del);
+  if(b.dataset.delcat){
+    var cc=CATS.find(function(x){return x.id===b.dataset.delcat});
+    var cn=ITEMS.filter(function(x){return x.category_id===b.dataset.delcat}).length;
+    if(!confirm('حذف قسم "'+(cc?cc.name_ar:'')+'"؟\n\nرح ينحذف معه '+cn+' منتج.')) return;
+    await sb.from('categories').delete().eq('id',b.dataset.delcat);
   }else if(b.dataset.ren){
     var c=CATS.find(function(x){return x.id===b.dataset.ren});
     var ar=prompt('الاسم بالعربي:',c.name_ar); if(ar===null) return;
@@ -558,42 +607,66 @@ async function loadItems(){
 }
 function paintItems(){
   var q=$('#iq').value.trim().toLowerCase();
-  var rows=ITEMS.filter(function(i){return !q||(i.name_ar+' '+i.name_en).toLowerCase().indexOf(q)>=0});
-  var canSort = !q;   // الترتيب بالسحب يشتغل بدون بحث فقط
-  var head = canSort
-    ? '<div class="sortnote">اسحب المنتج لتغيير ترتيبه بالمنيو</div>'
+  var canSort=!q;
+  var html = canSort
+    ? '<div class="sortnote">اسحب داخل القسم لتغيير الترتيب · النقل بين الأقسام من زر «تعديل»</div>'
     : '<div class="sortnote">فضّي خانة البحث لتقدر ترتّب بالسحب</div>';
-  $('#iList').innerHTML = head + (rows.length?rows.map(function(i,idx){
-    var c=CATS.find(function(x){return x.id===i.category_id});
-    return '<div class="row" data-id="'+i.id+'"'+(canSort?' draggable="true"':'')+'>'+
-      (canSort?'<span class="grip">⋮⋮</span>':'')+
-      (i.image_url?'<img src="'+esc(i.image_url)+'" alt="">':'<div class="ph"></div>')+
-      '<div class="t"><b>'+esc(i.name_ar)+'</b><span>'+esc(c?c.name_ar:'—')+' · '+
-      (isLbp()? usdToLbp(i.price_usd).toLocaleString('en-US')+' ل.ل.' : i.price_usd+' $')+
-      (i.is_available?'':' · غير متوفر')+'</span></div>'+
-      (canSort?'<button class="btn alt sm" data-up="'+i.id+'"'+(idx===0?' disabled':'')+'>▲</button> ':'')+
-      '<button class="btn alt sm" data-ed="'+i.id+'">تعديل</button> '+
-      '<button class="btn dg sm" data-del="'+i.id+'">حذف</button></div>';
-  }).join(''):'<p class="muted">ما في منتجات</p>');
+
+  var groups = CATS.map(function(c){ return {cat:c, list:itemsOf(c.id)}; });
+  var orphan = ITEMS.filter(function(i){
+    return !CATS.some(function(c){ return c.id===i.category_id }); });
+  if(orphan.length) groups.push({cat:{id:'',name_ar:'بدون قسم'}, list:orphan});
+
+  var any=false;
+  groups.forEach(function(g){
+    var rows=g.list.filter(function(i){
+      return !q||(i.name_ar+' '+i.name_en).toLowerCase().indexOf(q)>=0; });
+    if(!rows.length) return;
+    any=true;
+    html+='<div class="catbar">'+esc(g.cat.name_ar)+' <span>'+rows.length+'</span></div>';
+    html+=rows.map(function(i,idx){
+      return '<div class="row" data-id="'+i.id+'" data-cat="'+(i.category_id||'')+'"'+
+        (canSort?' draggable="true"':'')+'>'+
+        (canSort?'<span class="grip">⋮⋮</span>':'')+
+        (i.image_url?'<img src="'+esc(i.image_url)+'" alt="">':'<div class="ph"></div>')+
+        '<div class="t"><b>'+esc(i.name_ar)+'</b><span>'+
+        (isLbp()? usdToLbp(i.price_usd).toLocaleString('en-US')+' ل.ل.' : i.price_usd+' $')+
+        (i.is_available?'':' · غير متوفر')+(i.is_featured?' · الأكثر طلباً':'')+'</span></div>'+
+        (canSort?'<button class="btn alt sm" data-up="'+i.id+'"'+(idx===0?' disabled':'')+'>▲</button> ':'')+
+        '<button class="btn alt sm" data-ed="'+i.id+'">تعديل</button> '+
+        '<button class="btn dg sm" data-del="'+i.id+'">حذف</button></div>';
+    }).join('');
+  });
+  $('#iList').innerHTML = any ? html : html+'<p class="muted">ما في منتجات</p>';
 }
 
-// حفظ الترتيب الجديد
-async function saveOrder(){
-  var ups=[];
-  ITEMS.forEach(function(it,i){
-    if(it.sort!==i+1){ it.sort=i+1; ups.push({id:it.id,sort:i+1}); }
+// منتجات قسم معيّن مرتّبة
+function itemsOf(catId){
+  return ITEMS.filter(function(i){ return (i.category_id||'')===(catId||''); })
+              .sort(function(a,b){ return (a.sort||0)-(b.sort||0); });
+}
+
+// حفظ ترتيب قسم واحد
+async function saveOrder(catId){
+  var arr=itemsOf(catId), ups=[];
+  arr.forEach(function(it,i){
+    if(it.sort!==i+1){ it.sort=i+1; ups.push(it); }
   });
   for(var k=0;k<ups.length;k++){
     await sb.from('items').update({sort:ups[k].sort}).eq('id',ups[k].id);
   }
-  if(ups.length) msg('#iMsg','تم حفظ الترتيب',true);
+  if(ups.length) msg('#iMsg','تم حفظ ترتيب القسم',true);
 }
-function moveItem(from,to){
-  if(to<0||to>=ITEMS.length||from===to) return;
-  var x=ITEMS.splice(from,1)[0];
-  ITEMS.splice(to,0,x);
-  paintItems(); saveOrder();
+// تحريك داخل القسم فقط
+function moveWithin(catId, fromIdx, toIdx){
+  var arr=itemsOf(catId);
+  if(toIdx<0||toIdx>=arr.length||fromIdx===toIdx) return;
+  var moved=arr.splice(fromIdx,1)[0];
+  arr.splice(toIdx,0,moved);
+  arr.forEach(function(it,i){ it.sort=i+1; });
+  paintItems(); saveOrder(catId);
 }
+
 $('#iq').addEventListener('input',paintItems);
 
 // السحب لإعادة الترتيب
@@ -619,9 +692,16 @@ $('#iq').addEventListener('input',paintItems);
   list.addEventListener('drop',function(e){
     e.preventDefault();
     var r=e.target.closest('.row[data-id]'); if(!r||!dragId) return;
-    var from=ITEMS.findIndex(function(x){return x.id===dragId});
-    var to=ITEMS.findIndex(function(x){return x.id===r.dataset.id});
-    moveItem(from,to);
+    var src=list.querySelector('.row[data-id="'+dragId+'"]');
+    if(!src) return;
+    if(src.dataset.cat!==r.dataset.cat){
+      msg('#iMsg','النقل بين الأقسام من زر «تعديل» مش بالسحب',false);
+      return;
+    }
+    var cid=r.dataset.cat, arr=itemsOf(cid);
+    var from=arr.findIndex(function(x){return x.id===dragId});
+    var to=arr.findIndex(function(x){return x.id===r.dataset.id});
+    moveWithin(cid, from, to);
   });
 })();
 $('#iList').addEventListener('click',async function(e){
@@ -638,8 +718,10 @@ $('#iList').addEventListener('click',async function(e){
   }
   var u=e.target.closest('[data-up]');
   if(u){
-    var from=ITEMS.findIndex(function(x){return x.id===u.dataset.up});
-    moveItem(from,from-1);
+    var it2=ITEMS.find(function(x){return x.id===u.dataset.up});
+    var cid=it2?(it2.category_id||''):'';
+    var idx=itemsOf(cid).findIndex(function(x){return x.id===u.dataset.up});
+    moveWithin(cid, idx, idx-1);
     return;
   }
   var b=e.target.closest('[data-ed]'); if(!b) return;
