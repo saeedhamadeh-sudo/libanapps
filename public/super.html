@@ -138,6 +138,7 @@ th{color:var(--muted);font-size:12.5px;font-weight:600}
   <div class="tabs">
     <button class="tab" data-t="subs" aria-pressed="true">الاشتراكات</button>
     <button class="tab" data-t="clients" aria-pressed="false">الزبائن</button>
+    <button class="tab" data-t="rests" aria-pressed="false">المطاعم</button>
     <button class="tab" data-t="new" aria-pressed="false">إصدار ترخيص جديد</button>
     <button class="tab" data-t="owner" aria-pressed="false">حساب صاحب مطعم</button>
   </div>
@@ -186,6 +187,26 @@ th{color:var(--muted);font-size:12.5px;font-weight:600}
     <div class="panel">
       <h3>الزبائن</h3>
       <div style="overflow-x:auto"><table id="clientsTbl"><tbody></tbody></table></div>
+    </div>
+  </section>
+
+  <!-- RESTAURANTS -->
+  <section data-p="rests" class="hidden">
+    <div class="panel">
+      <h3>المطاعم</h3>
+      <div class="filters">
+        <input type="text" id="rq" placeholder="بحث بالاسم أو الرابط">
+        <select id="rFilter">
+          <option value="">الكل</option>
+          <option value="orphan">بلا زبون</option>
+          <option value="live">المنيو شغّال</option>
+          <option value="off">المنيو متوقف</option>
+        </select>
+      </div>
+      <div style="overflow-x:auto"><table id="restTbl"><tbody></tbody></table></div>
+      <p class="muted" style="margin-top:10px">
+        المطعم بلا زبون بيصير لما ينحذف الزبون — بياناته ما بتنحذف معه.
+        اربطه بزبون أو احذفه.</p>
     </div>
   </section>
 
@@ -349,6 +370,7 @@ async function loadAll(){
   await loadClients();
   await loadSubs();
   await loadRests();
+  await loadRestTable();
   toggleMenuBox();
 }
 async function loadClients(){
@@ -476,23 +498,27 @@ $('#clientsTbl').addEventListener('click',async function(e){
     await sb.from('clients').update({is_active:true}).eq('id',id);
 
   }else if(b.dataset.delc){
-    var slugs=mine.filter(function(s){return s.ref_slug}).map(function(s){return s.ref_slug});
-    var warn='حذف نهائي للزبون "'+c.name+'"\n\n'+
-      'رح ينحذف معه:\n· '+mine.length+' اشتراك ومفاتيحهم\n';
-    if(slugs.length) warn+='· مطاعمه ('+slugs.join(', ')+') بكل أصنافها وطلباتها وفواتيرها\n';
-    warn+='\nما في رجعة. إذا بدك توقفه مؤقتاً استعمل «إيقاف الكل» بدل الحذف.\n\n'+
-          'اكتب اسم الزبون للتأكيد:';
+    var mine2=SUBS.filter(function(x){return x.client_id===id});
+    var hisRests=(typeof RESTS!=='undefined')
+      ? RESTS.filter(function(x){return x.client_id===id}) : [];
+    var warn='حذف نهائي للزبون "'+c.name+'"\n\nرح ينحذف معه:\n'+
+      '· '+mine2.length+' اشتراك ومفاتيحهم\n';
+    if(hisRests.length){
+      warn+='· '+hisRests.length+' مطعم ('+hisRests.map(function(x){return x.slug}).join(', ')+')\n'+
+            '  بكل أصنافها وطلباتها وفواتيرها\n';
+    }
+    warn+='\nما في رجعة. للإيقاف المؤقت استعمل «إيقاف الكل».\n\nاكتب اسم الزبون للتأكيد:';
     var typed=prompt(warn,'');
     if(typed===null) return;
     if(typed.trim()!==c.name){ alert('الاسم ما تطابق — ما انحذف شي'); return; }
-    // نحذف المطاعم أولاً ثم الزبون
-    for(var i=0;i<slugs.length;i++){
-      await sb.from('restaurants').delete().eq('slug',slugs[i]);
-    }
-    var r=await sb.from('clients').delete().eq('id',id);
+    var r=await sb.from('clients').delete().eq('id',id).select();
     if(r.error){ alert('ما نجح الحذف: '+r.error.message); return; }
+    if(!r.data || !r.data.length){
+      alert('ما انحذف ولا صف — تأكد إنك مسجّل دخول كمشرف'); return;
+    }
   }
   await loadSubs(); await loadClients(); await loadRests();
+  if(typeof loadRestTable==='function') await loadRestTable();
 });
 
 /* ---------- add client ---------- */
@@ -517,6 +543,86 @@ $('#addClient').addEventListener('click',async function(){
   m.className='msg s'; m.textContent = id?'تم تعديل الزبون':'تم حفظ الزبون';
   resetClientForm();
   await loadClients(); await loadSubs();
+});
+
+/* ---------- restaurants ---------- */
+var RESTS=[];
+async function loadRestTable(){
+  var r=await sb.from('restaurants')
+    .select('id,slug,name_ar,client_id,is_active,created_at')
+    .order('created_at',{ascending:false});
+  RESTS=r.data||[];
+  // حالة الترخيص لكل مطعم
+  for(var i=0;i<RESTS.length;i++){
+    var lic=await sb.rpc('my_license',{rid:RESTS[i].id});
+    RESTS[i]._lic = (lic && lic.data) || null;
+  }
+  paintRests();
+}
+function paintRests(){
+  var q=$('#rq').value.trim().toLowerCase(), f=$('#rFilter').value;
+  var rows=RESTS.filter(function(r){
+    if(q && (r.name_ar+' '+r.slug).toLowerCase().indexOf(q)<0) return false;
+    if(f==='orphan' && r.client_id) return false;
+    if(f==='live'   && !(r._lic && r._lic.active)) return false;
+    if(f==='off'    &&  (r._lic && r._lic.active)) return false;
+    return true;
+  });
+  var b=$('#restTbl').querySelector('tbody');
+  b.innerHTML='<tr><th>المطعم</th><th>الرابط</th><th>الزبون</th><th>الاشتراك</th><th></th></tr>'+
+    (rows.length?rows.map(function(r){
+      var c=CLIENTS.find(function(x){return x.id===r.client_id});
+      var d=r._lic?r._lic.days_left:0, cls, txt;
+      if(!r._lic || !r._lic.expires_at){ cls='bad'; txt='بلا اشتراك'; }
+      else if(!r._lic.active){ cls='bad'; txt='منتهي'; }
+      else if(d<=15){ cls='warn'; txt='باقي '+d+' يوم'; }
+      else { cls='ok'; txt='باقي '+d+' يوم'; }
+      return '<tr'+(r.is_active===false?' style="opacity:.5"':'')+'>'+
+        '<td>'+esc(r.name_ar)+(r.is_active===false?' <span class="tag bad">موقوف</span>':'')+'</td>'+
+        '<td><a href="/'+esc(r.slug)+'" target="_blank" style="color:var(--accent)">/'+esc(r.slug)+'</a></td>'+
+        '<td>'+(c?esc(c.name):'<span class="tag bad">بلا زبون</span>')+'</td>'+
+        '<td><span class="tag '+cls+'">'+txt+'</span></td>'+
+        '<td style="white-space:nowrap">'+
+          '<button class="btn alt sm" data-link="'+r.id+'">ربط بزبون</button> '+
+          '<button class="btn alt sm" data-toggle="'+r.id+'" data-on="'+(r.is_active!==false)+'">'+
+            (r.is_active===false?'تشغيل':'إيقاف')+'</button> '+
+          '<button class="btn dg sm" data-delrest="'+r.id+'">حذف</button>'+
+        '</td></tr>';
+    }).join('') : '<tr><td colspan="5" class="muted" style="padding:20px">ما في نتائج</td></tr>');
+}
+['#rq','#rFilter'].forEach(function(x){
+  $(x).addEventListener('input',paintRests); $(x).addEventListener('change',paintRests);
+});
+$('#restTbl').addEventListener('click',async function(e){
+  var b=e.target.closest('button'); if(!b) return;
+  var id=b.dataset.link||b.dataset.toggle||b.dataset.delrest;
+  var r=RESTS.find(function(x){return x.id===id}); if(!r) return;
+
+  if(b.dataset.link){
+    if(!CLIENTS.length){ alert('ما في زبائن — ضيف زبون أولاً'); return; }
+    var list=CLIENTS.map(function(c,i){return (i+1)+'. '+c.name}).join('\n');
+    var pick=prompt('اربط "'+r.name_ar+'" بأي زبون؟\n\n'+list+'\n\nاكتب الرقم:','');
+    if(pick===null) return;
+    var idx=parseInt(pick,10)-1;
+    if(!(idx>=0&&idx<CLIENTS.length)){ alert('رقم غير صحيح'); return; }
+    var up=await sb.from('restaurants').update({client_id:CLIENTS[idx].id}).eq('id',id);
+    if(up.error){ alert('ما نجح: '+up.error.message); return; }
+
+  }else if(b.dataset.toggle){
+    var next = b.dataset.on!=='true';
+    if(!next && !confirm('إيقاف "'+r.name_ar+'"؟\nالمنيو رح يتوقف فوراً عن زبائنه.')) return;
+    await sb.from('restaurants').update({is_active:next}).eq('id',id);
+
+  }else if(b.dataset.delrest){
+    var typed=prompt('حذف نهائي لـ"'+r.name_ar+'"\n\n'+
+      'رح ينحذف: كل الأصناف والأقسام والطلبات والفواتير وصور المنيو.\n'+
+      'ما في رجعة.\n\nاكتب رابط المطعم للتأكيد: '+r.slug, '');
+    if(typed===null) return;
+    if(typed.trim()!==r.slug){ alert('الرابط ما تطابق — ما انحذف شي'); return; }
+    var del=await sb.from('restaurants').delete().eq('id',id);
+    if(del.error){ alert('ما نجح الحذف: '+del.error.message); return; }
+  }
+  await loadRestTable(); await loadRests(); await loadSubs();
 });
 
 /* ---------- owner account ---------- */
@@ -600,7 +706,7 @@ $('#genBtn').addEventListener('click',async function(){
       show(s.data.key, '', s.data.expires_at);
     }
     m.className='msg s'; m.textContent='تم إصدار الترخيص';
-    await loadSubs(); await loadRests();
+    await loadSubs(); await loadRests(); await loadRestTable();
   }catch(err){
     m.className='msg e';
     m.textContent = String(err.message||err).indexOf('duplicate')>=0
