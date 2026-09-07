@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>فحص الخريطة</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+body{margin:0;background:#0A0A0A;color:#FFF4DF;font-family:system-ui,sans-serif;padding:16px}
+h1{font-size:20px;margin:0 0 4px}
+p.s{color:#A0968A;font-size:13px;margin:0 0 16px}
+.t{border:1px solid rgba(255,212,0,.2);border-radius:12px;overflow:hidden;margin-bottom:16px}
+.r{display:flex;gap:10px;align-items:flex-start;padding:11px 13px;
+   border-bottom:1px solid rgba(255,255,255,.07);font-size:14px}
+.r:last-child{border:0}
+.r .k{flex:1}
+.r .v{font-weight:800;font-size:13px;white-space:nowrap}
+.ok{color:#4ADE80}.bad{color:#FF7A7E}.wait{color:#FFD400}
+.d{color:#A0968A;font-size:12px;margin-top:3px;word-break:break-all}
+#map{height:260px;border-radius:12px;border:1px solid rgba(255,212,0,.2);background:#141210}
+button{width:100%;margin-top:14px;padding:13px;border:0;border-radius:12px;
+  background:#E4141B;color:#fff;font-weight:800;font-size:15px}
+#img{margin-top:14px;text-align:center}
+#img img{width:128px;height:128px;border:1px solid rgba(255,255,255,.15);border-radius:8px}
+</style>
+</head>
+<body>
+
+<h1>فحص الخريطة وتحديد الموقع</h1>
+<p class="s">افتح هالصفحة على نفس التلفون وابعت صورة للنتيجة</p>
+
+<div class="t" id="tbl"></div>
+
+<div id="map"></div>
+<div id="img"></div>
+
+<button id="geo">جرّب تحديد الموقع</button>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+var rows=[];
+function add(k,v,cls,d){
+  rows.push({k:k,v:v,cls:cls||'',d:d||''});
+  document.getElementById('tbl').innerHTML=rows.map(function(r){
+    return '<div class="r"><div class="k">'+r.k+(r.d?'<div class="d">'+r.d+'</div>':'')+
+           '</div><div class="v '+r.cls+'">'+r.v+'</div></div>';
+  }).join('');
+}
+
+/* 1 — الاتصال الآمن */
+add('١ · https', window.isSecureContext?'نعم':'لا',
+    window.isSecureContext?'ok':'bad', location.protocol+'//'+location.host);
+
+/* 2 — ملف تنسيق Leaflet */
+var probe=document.createElement('div');
+probe.className='leaflet-container'; probe.style.position='absolute';
+document.body.appendChild(probe);
+var cssOk=getComputedStyle(probe).overflow==='hidden';
+probe.remove();
+add('٢ · ملف تنسيق Leaflet', cssOk?'نزل':'ما نزل', cssOk?'ok':'bad',
+    cssOk?'':'المصدر unpkg.com محجوب أو النت قطع');
+
+/* 3 — مكتبة Leaflet */
+var jsOk=(typeof L!=='undefined');
+add('٣ · مكتبة Leaflet', jsOk?'نزلت':'ما نزلت', jsOk?'ok':'bad',
+    jsOk?('نسخة '+L.version):'');
+
+/* 4 — بلاطات الخريطة */
+add('٤ · بلاطات OpenStreetMap','عم نجرّب…','wait');
+(function(){
+  var im=new Image();
+  var done=false;
+  var t=setTimeout(function(){ if(!done){ done=true; upd('ما وصلت (انتهى الوقت)','bad'); } },8000);
+  function upd(v,c){
+    clearTimeout(t);
+    rows[3].v=v; rows[3].cls=c;
+    document.getElementById('tbl').innerHTML=rows.map(function(r){
+      return '<div class="r"><div class="k">'+r.k+(r.d?'<div class="d">'+r.d+'</div>':'')+
+             '</div><div class="v '+r.cls+'">'+r.v+'</div></div>';
+    }).join('');
+  }
+  im.onload=function(){ if(done)return; done=true; upd('وصلت','ok');
+    document.getElementById('img').appendChild(im); };
+  im.onerror=function(){ if(done)return; done=true; upd('ما وصلت','bad'); };
+  im.src='https://tile.openstreetmap.org/8/149/104.png?t='+Date.now();
+})();
+
+/* 5 — حالة إذن الموقع */
+add('٥ · إذن الموقع','عم نشوف…','wait');
+function updRow(i,v,c,d){
+  rows[i].v=v; rows[i].cls=c; if(d!==undefined) rows[i].d=d;
+  document.getElementById('tbl').innerHTML=rows.map(function(r){
+    return '<div class="r"><div class="k">'+r.k+(r.d?'<div class="d">'+r.d+'</div>':'')+
+           '</div><div class="v '+r.cls+'">'+r.v+'</div></div>';
+  }).join('');
+}
+if(navigator.permissions&&navigator.permissions.query){
+  navigator.permissions.query({name:'geolocation'}).then(function(s){
+    var map={granted:['مسموح','ok'],denied:['مرفوض','bad'],prompt:['بيسأل','wait']};
+    var r=map[s.state]||[s.state,''];
+    updRow(4,r[0],r[1]);
+  }).catch(function(){ updRow(4,'غير معروف',''); });
+}else{ updRow(4,'المتصفح ما بيدعم الفحص',''); }
+
+/* 6 — الخريطة نفسها */
+add('٦ · رسم الخريطة','عم نجرّب…','wait');
+setTimeout(function(){
+  if(typeof L==='undefined'){ updRow(5,'ما اشتغلت','bad','المكتبة مش موجودة'); return; }
+  try{
+    var m=L.map('map').setView([33.8547,35.8623],8);
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(m);
+    var loaded=0;
+    m.on('tileload',function(){ loaded++; if(loaded===1) updRow(5,'اشتغلت','ok',loaded+' بلاطة'); });
+    m.on('tileerror',function(){ updRow(5,'البلاطات محجوبة','bad',''); });
+    setTimeout(function(){ m.invalidateSize();
+      if(!loaded) updRow(5,'ما ظهرت بلاطات','bad','');
+    },3000);
+  }catch(e){ updRow(5,'خطأ','bad',String(e.message).slice(0,90)); }
+},400);
+
+/* 7 — تجربة الموقع */
+add('٧ · نتيجة تحديد الموقع','لسا ما جرّبنا','');
+document.getElementById('geo').addEventListener('click',function(){
+  updRow(6,'عم نجرّب…','wait','');
+  if(!navigator.geolocation){ updRow(6,'المتصفح ما بيدعم','bad',''); return; }
+  navigator.geolocation.getCurrentPosition(function(p){
+    updRow(6,'نجحت','ok',p.coords.latitude.toFixed(5)+', '+p.coords.longitude.toFixed(5)+
+      ' · دقة '+Math.round(p.coords.accuracy)+'م');
+  },function(e){
+    var names={1:'الإذن مرفوض',2:'الموقع غير متاح',3:'انتهى الوقت'};
+    updRow(6,(names[e.code]||'خطأ')+' ('+e.code+')','bad',e.message||'');
+  },{enableHighAccuracy:true,timeout:15000,maximumAge:0});
+});
+</script>
+</body>
+</html>
