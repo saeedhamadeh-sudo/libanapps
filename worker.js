@@ -161,8 +161,20 @@ async function whishCreate(request, env) {
 
     return json(200, { collectUrl: result.collectUrl });
   } catch (e) {
-    console.error('whish create failed', e && (e.code || e.message));
-    return json(502, { error: 'تعذّر الاتصال ببوابة الدفع' });
+    console.error('whish create failed', e);
+    var d = (e && e.dialog && e.dialog.message) || '';
+    var parts = [];
+    if (e && e.code) parts.push(e.code);
+    if (e && e.httpStatus) parts.push('HTTP ' + e.httpStatus);
+    if (d) parts.push(d);
+    else if (e && e.message) parts.push(e.message);
+    return json(502, {
+      error: 'بوابة الدفع رفضت العملية: ' + (parts.join(' · ') || 'سبب غير معروف'),
+      env: (env.WHISH_ENV === 'sandbox') ? 'sandbox' : 'production',
+      site: w.cred.website_url || env.WEBSITE_URL,
+      currency: currency,
+      amount: amount
+    });
   }
 }
 
