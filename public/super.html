@@ -166,7 +166,8 @@ th{color:var(--muted);font-size:12.5px;font-weight:600}
   <!-- CLIENTS -->
   <section data-p="clients" class="hidden">
     <div class="panel">
-      <h3>إضافة زبون</h3>
+      <h3 id="cFormTitle">إضافة زبون</h3>
+      <input type="hidden" id="cEditId">
       <div class="g2">
         <div><label>الاسم</label><input type="text" id="cName"></div>
         <div><label>اسم المحل / المؤسسة</label><input type="text" id="cBiz"></div>
@@ -176,7 +177,10 @@ th{color:var(--muted);font-size:12.5px;font-weight:600}
         <div><label>المنطقة</label><input type="text" id="cCity"></div>
       </div>
       <label>ملاحظات</label><input type="text" id="cNotes">
-      <div class="acts"><button class="btn" id="addClient">حفظ الزبون</button></div>
+      <div class="acts">
+        <button class="btn" id="addClient">حفظ الزبون</button>
+        <button class="btn alt hidden" id="cCancel">إلغاء التعديل</button>
+      </div>
       <div class="msg" id="cMsg"></div>
     </div>
     <div class="panel">
@@ -363,6 +367,7 @@ async function loadClients(){
         '<td style="direction:ltr">'+esc(c.phone||'—')+'</td>'+
         '<td>'+act+' سارية من '+mine.length+'</td>'+
         '<td style="white-space:nowrap">'+
+          '<button class="btn alt sm" data-edit="'+c.id+'">تعديل</button> '+
           '<button class="btn alt sm" data-stopall="'+c.id+'">إيقاف الكل</button> '+
           '<button class="btn alt sm" data-onall="'+c.id+'">تفعيل الكل</button> '+
           '<button class="btn dg sm" data-delc="'+c.id+'">حذف الزبون</button>'+
@@ -445,8 +450,20 @@ $('#subsTbl').addEventListener('click',async function(e){
 
 $('#clientsTbl').addEventListener('click',async function(e){
   var b=e.target.closest('button'); if(!b) return;
-  var id=b.dataset.stopall||b.dataset.onall||b.dataset.delc;
+  var id=b.dataset.stopall||b.dataset.onall||b.dataset.delc||b.dataset.edit;
   var c=CLIENTS.find(function(x){return x.id===id}); if(!c) return;
+
+  if(b.dataset.edit){
+    $('#cName').value=c.name; $('#cBiz').value=c.business||'';
+    $('#cPhone').value=c.phone||''; $('#cCity').value=c.city||'';
+    $('#cNotes').value=c.notes||'';
+    $('#cEditId').value=c.id;
+    $('#cFormTitle').textContent='تعديل زبون';
+    $('#addClient').textContent='حفظ التعديل';
+    $('#cCancel').classList.remove('hidden');
+    window.scrollTo({top:0,behavior:'smooth'});
+    return;
+  }
   var mine=SUBS.filter(function(s){return s.client_id===id});
 
   if(b.dataset.stopall){
@@ -479,18 +496,27 @@ $('#clientsTbl').addEventListener('click',async function(e){
 });
 
 /* ---------- add client ---------- */
+function resetClientForm(){
+  ['#cName','#cBiz','#cPhone','#cCity','#cNotes','#cEditId'].forEach(function(x){$(x).value=''});
+  $('#cFormTitle').textContent='إضافة زبون';
+  $('#addClient').textContent='حفظ الزبون';
+  $('#cCancel').classList.add('hidden');
+}
+$('#cCancel').addEventListener('click',function(){ resetClientForm(); $('#cMsg').textContent=''; });
+
 $('#addClient').addEventListener('click',async function(){
   var m=$('#cMsg'); m.className='msg';
   var name=$('#cName').value.trim();
   if(!name){ m.className='msg e'; m.textContent='اكتب اسم الزبون'; return; }
-  var r=await sb.from('clients').insert({
-    name:name, business:$('#cBiz').value.trim(), phone:$('#cPhone').value.trim(),
-    city:$('#cCity').value.trim(), notes:$('#cNotes').value.trim()
-  });
+  var row={ name:name, business:$('#cBiz').value.trim(), phone:$('#cPhone').value.trim(),
+            city:$('#cCity').value.trim(), notes:$('#cNotes').value.trim() };
+  var id=$('#cEditId').value;
+  var r = id ? await sb.from('clients').update(row).eq('id',id)
+             : await sb.from('clients').insert(row);
   if(r.error){ m.className='msg e'; m.textContent='ما انحفظ: '+r.error.message; return; }
-  m.className='msg s'; m.textContent='تم حفظ الزبون';
-  ['#cName','#cBiz','#cPhone','#cCity','#cNotes'].forEach(function(s){$(s).value=''});
-  await loadClients();
+  m.className='msg s'; m.textContent = id?'تم تعديل الزبون':'تم حفظ الزبون';
+  resetClientForm();
+  await loadClients(); await loadSubs();
 });
 
 /* ---------- owner account ---------- */
