@@ -792,7 +792,7 @@ function setPin(la,ln,zoom){
   if(!MAP) return;
   if(PIN) PIN.setLatLng([la,ln]);
   else{
-    PIN=L.marker([la,ln],{draggable:true}).addTo(MAP);
+    PIN=window.L.marker([la,ln],{draggable:true}).addTo(MAP);
     PIN.on('dragend',function(){ var p=PIN.getLatLng(); geo.lat=p.lat; geo.lng=p.lng; okMsg(); });
   }
   if(zoom) MAP.setView([la,ln],zoom); else MAP.panTo([la,ln]);
@@ -805,7 +805,7 @@ function refreshMap(){
 }
 function initMap(){
   if(MAP) { refreshMap(); return; }
-  if(typeof L==='undefined'){
+  if(typeof window.L==='undefined'){
     // ما نزلت المكتبة (نت ضعيف أو محجوب) — نرجع لخانة الرابط
     var m0=$('#geoMsg'); m0.className='err'; m0.style.color='';
     m0.textContent='مكتبة الخريطة (Leaflet) ما نزلت — '+T.mapFail;
@@ -814,9 +814,9 @@ function initMap(){
   }
   $('#map').classList.add('on');
   try{
-    MAP=L.map('map',{zoomControl:true,attributionControl:true})
+    MAP=window.L.map('map',{zoomControl:true,attributionControl:true})
          .setView([33.8547,35.8623],8);   // لبنان
-    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+    window.L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',
       {maxZoom:19,attribution:'© OpenStreetMap'}).addTo(MAP);
     MAP.on('click',function(e){ setPin(e.latlng.lat,e.latlng.lng); });
   }catch(err){
