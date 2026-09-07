@@ -411,6 +411,7 @@ window.I18N = {
     locTimeout:'أخد وقت طويل. جرّب مرة تانية أو الصق رابط موقعك من Google Maps.',
     retry:'جرّب مرة تانية',
     mapHint:'اضغط على الخريطة لتحديد موقعك، أو اسحب الدبوس',
+    accWeak:'الدقة تقريبية (±{m} م) — اسحب الدبوس على باب بيتك بالضبط',
     mapFail:'ما قدرنا نحمّل الخريطة — الصق رابط موقعك تحت',
     locBlocked:'الإذن مقفول من قبل، لهيك المتصفح ما بيسأل. اضغط الأيقونة يسار العنوان فوق ← أذونات ← الموقع ← اسمح. أو ببساطة اضغط على موقعك بالخريطة.',
     needHttps:'الموقع لازم يفتح على https ليشتغل تحديد الموقع',
@@ -443,6 +444,7 @@ window.I18N = {
     locTimeout:'It took too long. Try again or paste your Google Maps link.',
     retry:'Try again',
     mapHint:'Tap the map to set your spot, or drag the pin',
+    accWeak:'Approximate (±{m} m) — drag the pin exactly onto your door',
     mapFail:'Map failed to load — paste your location link below',
     locBlocked:'Location is blocked, so the browser will not ask. Tap the icon left of the address bar → Permissions → Location → Allow. Or just tap your spot on the map.',
     needHttps:'This page must be on https for location to work',
@@ -786,19 +788,30 @@ $('#paySeg').addEventListener('click',function(e){
   });
 });
 /* ---------- خريطة تحديد الموقع ---------- */
-var MAP=null, PIN=null;
+var MAP=null, PIN=null, ACC=null;
+function showAccuracy(la,ln,m){
+  if(!MAP) return;
+  if(ACC){ MAP.removeLayer(ACC); ACC=null; }
+  if(!m || m<=0) return;
+  ACC=window.L.circle([la,ln],{radius:m,color:'#FFD400',weight:1,
+        fillColor:'#FFD400',fillOpacity:.10}).addTo(MAP);
+}
 function setPin(la,ln,zoom){
   geo.lat=la; geo.lng=ln;
   if(!MAP) return;
   if(PIN) PIN.setLatLng([la,ln]);
   else{
     PIN=window.L.marker([la,ln],{draggable:true}).addTo(MAP);
-    PIN.on('dragend',function(){ var p=PIN.getLatLng(); geo.lat=p.lat; geo.lng=p.lng; okMsg(); });
+    PIN.on('dragend',function(){ var p=PIN.getLatLng(); geo.lat=p.lat; geo.lng=p.lng;
+      if(ACC){ MAP.removeLayer(ACC); ACC=null; } okMsg(); });
   }
   if(zoom) MAP.setView([la,ln],zoom); else MAP.panTo([la,ln]);
   okMsg();
 }
-function okMsg(){ var m=$('#geoMsg'); m.className='ok'; m.textContent=T.locationSet; }
+function okMsg(){
+  var m=$('#geoMsg'); m.className='ok'; m.style.color=''; m.textContent=T.locationSet;
+  try{ localStorage.setItem('la_geo',JSON.stringify({lat:geo.lat,lng:geo.lng})); }catch(e){}
+}
 function refreshMap(){
   if(!MAP) return;
   [0,150,400,900].forEach(function(t){ setTimeout(function(){ MAP.invalidateSize(); },t); });
@@ -818,7 +831,10 @@ function initMap(){
          .setView([33.8547,35.8623],8);   // لبنان
     window.L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',
       {maxZoom:19,attribution:'© OpenStreetMap'}).addTo(MAP);
-    MAP.on('click',function(e){ setPin(e.latlng.lat,e.latlng.lng); });
+      MAP.on('click',function(e){
+      if(ACC){ MAP.removeLayer(ACC); ACC=null; }
+      setPin(e.latlng.lat,e.latlng.lng);
+    });
   }catch(err){
     MAP=null;
     var me=$('#geoMsg'); me.className='err'; me.style.color='';
@@ -827,6 +843,10 @@ function initMap(){
     return;
   }
   refreshMap();
+  if(!geo.lat){
+    try{ var sv=JSON.parse(localStorage.getItem('la_geo')||'null');
+      if(sv&&sv.lat){ geo.lat=sv.lat; geo.lng=sv.lng; } }catch(e){}
+  }
   if(geo.lat) setPin(geo.lat,geo.lng,17);
   else { var m=$('#geoMsg'); m.className=''; m.style.color='var(--muted)'; m.textContent=T.mapHint; }
 }
@@ -892,8 +912,14 @@ async function runGeo(m,btn){
   }
   btn.disabled=false;
   if(pos&&!err){
-    setPin(pos.coords.latitude,pos.coords.longitude,17);
+    var acc=Math.round(pos.coords.accuracy||0);
+    setPin(pos.coords.latitude,pos.coords.longitude, acc>300?15:17);
+    showAccuracy(pos.coords.latitude,pos.coords.longitude,acc);
     $('#linkWrap').classList.add('hidden');
+    if(acc>60){
+      m.className=''; m.style.color='var(--accent)';
+      m.textContent=T.accWeak.replace('{m}',acc);
+    }
   }else{
     m.className='err'; m.textContent=geoErrText(err)+' — '+T.mapHint;
     btn.textContent=T.retry;
