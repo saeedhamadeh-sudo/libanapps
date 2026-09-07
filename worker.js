@@ -233,6 +233,94 @@ async function whishFailure(request, env) {
 }
 
 
+
+// ---------- إنشاء حساب لصاحب مطعم ----------
+//  يتحقق أولاً أن الطالب مشرف منصة، ثم ينشئ المستخدم ويربطه بمطعمه.
+async function createOwner(request, env) {
+  const auth = request.headers.get('Authorization') || '';
+  const token = auth.replace(/^Bearer\s+/i, '');
+  if (!token) return json(401, { error: 'not signed in' });
+
+  // 1) من هو صاحب الطلب؟
+  const me = await fetch(`${env.SUPABASE_URL}/auth/v1/user`, {
+    headers: { apikey: env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${token}` }
+  });
+  if (!me.ok) return json(401, { error: 'invalid session' });
+  const meData = await me.json();
+
+  // 2) هل هو مشرف منصة؟
+  const admins = await sbGet(env, `platform_admins?user_id=eq.${meData.id}&select=user_id&limit=1`);
+  if (!admins.length) return json(403, { error: 'not allowed' });
+
+  let body;
+  try { body = await request.json(); } catch { return json(400, { error: 'bad json' }); }
+  const email = String(body.email || '').trim().toLowerCase();
+  const password = String(body.password || '');
+  const restaurantId = body.restaurant_id;
+
+  if (!email || !password || !restaurantId) return json(400, { error: 'missing fields' });
+  if (password.length < 6) return json(400, { error: 'كلمة المرور قصيرة (6 أحرف على الأقل)' });
+
+  const rest = await sbGet(env, `restaurants?id=eq.${restaurantId}&select=id,name_ar,slug&limit=1`);
+  if (!rest.length) return json(404, { error: 'restaurant not found' });
+
+  // 3) إنشاء المستخدم — مؤكّد مباشرة حتى يدخل بدون رسالة تفعيل
+  let userId = null;
+  const created = await fetch(`${env.SUPABASE_URL}/auth/v1/admin/users`, {
+    method: 'POST',
+    headers: {
+      apikey: env.SUPABASE_SERVICE_KEY,
+      Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ email, password, email_confirm: true })
+  });
+
+  if (created.ok) {
+    userId = (await created.json()).id;
+  } else {
+    const txt = await created.text();
+    // موجود مسبقاً؟ نجيبه ونربطه بدل ما نفشل
+    if (/already|exists|registered/i.test(txt)) {
+      const found = await fetch(
+        `${env.SUPABASE_URL}/auth/v1/admin/users?filter=${encodeURIComponent(email)}`,
+        { headers: {
+            apikey: env.SUPABASE_SERVICE_KEY,
+            Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}` } });
+      if (found.ok) {
+        const list = await found.json();
+        const u = (list.users || []).find(x => (x.email || '').toLowerCase() === email);
+        if (u) userId = u.id;
+      }
+      if (!userId) return json(400, { error: 'الإيميل مستعمل ولم نتمكن من جلبه' });
+    } else {
+      console.error('create user failed', txt);
+      return json(400, { error: 'تعذّر إنشاء الحساب: ' + txt.slice(0, 140) });
+    }
+  }
+
+  // 4) الربط بالمطعم
+  const link = await fetch(`${env.SUPABASE_URL}/rest/v1/restaurant_users`, {
+    method: 'POST',
+    headers: {
+      ...sbHeaders(env),
+      'Content-Type': 'application/json',
+      Prefer: 'resolution=merge-duplicates,return=minimal'
+    },
+    body: JSON.stringify({ user_id: userId, restaurant_id: restaurantId, role: 'owner' })
+  });
+  if (!link.ok) {
+    const t = await link.text();
+    return json(400, { error: 'تعذّر الربط بالمطعم: ' + t.slice(0, 140) });
+  }
+
+  return json(200, {
+    ok: true, email, user_id: userId,
+    restaurant: rest[0].name_ar, slug: rest[0].slug,
+    existed: !created.ok
+  });
+}
+
 // ---------- سياسة التخزين المؤقت ----------
 //  HTML: المتصفح يسأل السيرفر كل مرة (no-cache) — التعديلات تصل فوراً
 //  الصور والخطوط: تُخزَّن طويلاً — لا تتغيّر عادةً
@@ -276,6 +364,10 @@ export default {
         }
         if (url.pathname === '/api/whish/callback-success') return await whishSuccess(request, env);
         if (url.pathname === '/api/whish/callback-failure') return await whishFailure(request, env);
+        if (url.pathname === '/api/create-owner') {
+          if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
+          return await createOwner(request, env);
+        }
         return json(404, { error: 'unknown endpoint: ' + url.pathname });
       } catch (e) {
         console.error('API error on', url.pathname, e);
