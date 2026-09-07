@@ -1,3 +1,5 @@
+import { WhishClient, parseCallbackUrl } from 'whish-pay';
+
 // ============================================================
 //  LibanApps — Cloudflare Worker
 //  بيخدم ملفات الموقع + مسارات الـAPI بملف واحد
@@ -75,6 +77,149 @@ async function storeInvoice(request, env) {
   return json(200, { url });
 }
 
+
+// ---------- مساعد Supabase ----------
+function sbHeaders(env) {
+  const k = env.SUPABASE_SERVICE_KEY;
+  return { apikey: k, Authorization: `Bearer ${k}` };
+}
+async function sbGet(env, path) {
+  const r = await fetch(`${env.SUPABASE_URL}/rest/v1/${path}`, { headers: sbHeaders(env) });
+  if (!r.ok) throw new Error('db read failed');
+  return r.json();
+}
+async function sbPatch(env, path, body) {
+  return fetch(`${env.SUPABASE_URL}/rest/v1/${path}`, {
+    method: 'PATCH',
+    headers: { ...sbHeaders(env), 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+    body: JSON.stringify(body)
+  });
+}
+
+// ---------- عميل Whish لمطعم معيّن ----------
+async function whishFor(env, restaurantId) {
+  const rows = await sbGet(env,
+    `payment_credentials?restaurant_id=eq.${restaurantId}&select=*&limit=1`);
+  const c = rows[0];
+  if (!c || !c.whish_enabled || !c.whish_channel || !c.whish_secret) return null;
+  return {
+    cred: c,
+    client: new WhishClient({
+      channel: c.whish_channel,
+      secret: c.whish_secret,
+      websiteUrl: c.website_url || env.WEBSITE_URL,
+      // نمرّرها صراحةً: على Cloudflare ما في NODE_ENV
+      environment: (env.WHISH_ENV === 'sandbox') ? 'sandbox' : 'production'
+    })
+  };
+}
+
+// ---------- إنشاء دفعة ----------
+async function whishCreate(request, env) {
+  let body;
+  try { body = await request.json(); } catch { return json(400, { error: 'bad json' }); }
+  const { order_id, slug } = body || {};
+  if (!order_id || !slug) return json(400, { error: 'missing fields' });
+
+  const orders = await sbGet(env,
+    `orders?id=eq.${Number(order_id)}&select=id,order_no,restaurant_id,total_usd,total_lbp,status,token&limit=1`);
+  const order = orders[0];
+  if (!order) return json(404, { error: 'order not found' });
+  if (order.status === 'paid') return json(400, { error: 'already paid' });
+
+  const rests = await sbGet(env,
+    `restaurants?id=eq.${order.restaurant_id}&select=id,slug,name_en&limit=1`);
+  const rest = rests[0];
+  if (!rest || rest.slug !== slug) return json(400, { error: 'restaurant mismatch' });
+
+  const w = await whishFor(env, order.restaurant_id);
+  if (!w) return json(400, { error: 'الدفع عبر Whish غير مفعّل لهذا المطعم' });
+
+  const currency = w.cred.whish_currency === 'LBP' ? 'LBP' : 'USD';
+  const amount = currency === 'LBP' ? Number(order.total_lbp) : Number(order.total_usd);
+  if (!(amount > 0)) return json(400, { error: 'invalid amount' });
+
+  const site = env.WEBSITE_URL;
+  try {
+    const result = await w.client.createPayment({
+      amount,
+      currency,
+      invoice: `${rest.name_en} — ${order.order_no}`,
+      externalId: Number(order.id),
+      successCallbackUrl: `${site}/api/whish/callback-success`,
+      failureCallbackUrl: `${site}/api/whish/callback-failure`,
+      successRedirectUrl: `${site}/i/${encodeURIComponent(order.token)}`,
+      failureRedirectUrl: `${site}/${rest.slug}?payment=failed`
+    });
+
+    if (!result.success) {
+      return json(400, { error: (result.dialog && result.dialog.message) || 'payment rejected' });
+    }
+
+    await sbPatch(env, `orders?id=eq.${order.id}`,
+      { status: 'awaiting_payment', whish_currency: currency });
+
+    return json(200, { collectUrl: result.collectUrl });
+  } catch (e) {
+    console.error('whish create failed', e && (e.code || e.message));
+    return json(502, { error: 'تعذّر الاتصال ببوابة الدفع' });
+  }
+}
+
+// ---------- تأكيد الدفع ----------
+async function whishSuccess(request, env) {
+  const parsed = parseCallbackUrl(request.url) || {};
+  const { externalId, currency } = parsed;
+  if (!externalId || !currency) return json(400, { error: 'malformed callback' });
+
+  const orders = await sbGet(env,
+    `orders?id=eq.${Number(externalId)}&select=id,restaurant_id,total_usd,total_lbp,status&limit=1`);
+  const order = orders[0];
+  if (!order) return json(404, { error: 'unknown order' });
+  if (order.status === 'paid') return json(200, { ok: true, already: true });
+
+  const w = await whishFor(env, order.restaurant_id);
+  if (!w) return json(400, { error: 'no credentials' });
+
+  let status;
+  try {
+    status = await w.client.getPaymentStatus(currency, Number(externalId));
+  } catch (e) {
+    console.error('status check failed', e && (e.code || e.message));
+    return json(502, { error: 'status check failed' });
+  }
+
+  if (status.collectStatus !== 'success') {
+    return json(400, { error: 'not confirmed', status: status.collectStatus });
+  }
+
+  const expected = currency === 'LBP' ? Number(order.total_lbp) : Number(order.total_usd);
+  if (!w.client.validateAmount(Number(status.amount), expected, currency)) {
+    console.error('amount mismatch', order.id, status.amount, expected);
+    return json(400, { error: 'amount mismatch' });
+  }
+
+  // idempotent: لا نلمس طلباً مدفوعاً مسبقاً
+  await sbPatch(env, `orders?id=eq.${order.id}&status=neq.paid`, {
+    status: 'paid',
+    paid_at: new Date().toISOString(),
+    whish_txn_id: status.transactionId || null,
+    whish_currency: currency
+  });
+
+  return json(200, { ok: true });
+}
+
+// ---------- فشل الدفع ----------
+async function whishFailure(request, env) {
+  const { externalId, errorCode } = parseCallbackUrl(request.url) || {};
+  if (!externalId) return json(400, { error: 'malformed callback' });
+  await sbPatch(env, `orders?id=eq.${Number(externalId)}&status=eq.awaiting_payment`,
+    { status: 'failed' });
+  console.log('payment failed', externalId, errorCode);
+  return json(200, { ok: true });
+}
+
 // ---------- أي صفحة نعرض لأي مسار ----------
 function pageFor(pathname) {
   if (pathname.startsWith('/i/'))     return '/invoice.html';
@@ -87,10 +232,19 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
-    // 1) الـAPI
-    if (url.pathname === '/api/store-invoice') {
-      if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
-      return storeInvoice(request, env);
+    // 1) الـAPI — أي مسار تحت /api/ يرجّع JSON دائماً، ما يرجّع صفحة أبداً
+    if (url.pathname.startsWith('/api/')) {
+      if (url.pathname === '/api/store-invoice') {
+        if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
+        return storeInvoice(request, env);
+      }
+      if (url.pathname === '/api/whish/create') {
+        if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
+        return whishCreate(request, env);
+      }
+      if (url.pathname === '/api/whish/callback-success') return whishSuccess(request, env);
+      if (url.pathname === '/api/whish/callback-failure') return whishFailure(request, env);
+      return json(404, { error: 'unknown endpoint: ' + url.pathname });
     }
 
     // 2) ملف موجود؟ نخدمه كما هو
