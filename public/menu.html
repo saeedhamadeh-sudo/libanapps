@@ -344,6 +344,7 @@ body.hasbar footer{padding-bottom:150px}
       <button data-p="cash" aria-pressed="true"></button>
       <button data-p="whish" aria-pressed="false" class="hidden"></button>
     </div>
+    <div class="muted hidden" id="whishNote" style="font-size:12.5px;margin-top:6px;color:var(--accent)"></div>
     <div class="err hidden" id="formErr"></div>
   </div>
   <div class="dfoot hidden" id="footForm">
@@ -412,6 +413,7 @@ window.I18N = {
     retry:'جرّب مرة تانية',
     mapHint:'اضغط على الخريطة لتحديد موقعك، أو اسحب الدبوس',
     accWeak:'الدقة تقريبية (±{m} م) — اسحب الدبوس على باب بيتك بالضبط',
+    whishUsd:'الدفع عبر Whish بالدولار: {a} $',
     mapFail:'ما قدرنا نحمّل الخريطة — الصق رابط موقعك تحت',
     locBlocked:'الإذن مقفول من قبل، لهيك المتصفح ما بيسأل. اضغط الأيقونة يسار العنوان فوق ← أذونات ← الموقع ← اسمح. أو ببساطة اضغط على موقعك بالخريطة.',
     needHttps:'الموقع لازم يفتح على https ليشتغل تحديد الموقع',
@@ -445,6 +447,7 @@ window.I18N = {
     retry:'Try again',
     mapHint:'Tap the map to set your spot, or drag the pin',
     accWeak:'Approximate (±{m} m) — drag the pin exactly onto your door',
+    whishUsd:'Whish payments are charged in USD: {a} $',
     mapFail:'Map failed to load — paste your location link below',
     locBlocked:'Location is blocked, so the browser will not ask. Tap the icon left of the address bar → Permissions → Location → Allow. Or just tap your spot on the map.',
     needHttps:'This page must be on https for location to work',
@@ -484,12 +487,25 @@ var cart={}, filter='all', query='', oType='dine_in', pay='cash', geo={lat:null,
 /* ---------- helpers ---------- */
 function tx(o,f){ return L==='en' ? (o[f+'_en']||o[f+'_ar']||'') : (o[f+'_ar']||o[f+'_en']||''); }
 function money(n){ n=Number(n)||0; return n%1===0?n:n.toFixed(2); }
-function lbp(usd){
-  if(!R||!R.show_lbp) return '';
+function baseLbp(){ return !!(R && R.base_currency==='LBP'); }
+function toLbp(usd){
   var step=Number(R.lbp_rounding)||1000;
-  var v=Math.round(usd*Number(R.exchange_rate)/step)*step;
-  return v.toLocaleString('en-US')+' '+T.lbp;
+  return Math.round(usd*Number(R.exchange_rate)/step)*step;
 }
+// السعر الأساسي حسب عملة المطعم
+function mainPrice(usd){
+  return baseLbp()
+    ? { n: toLbp(usd).toLocaleString('en-US'), c: T.lbp }
+    : { n: money(usd), c: T.currency };
+}
+function mainTxt(usd){ var p=mainPrice(usd); return p.n+' '+p.c; }
+// السعر الثانوي — العملة التانية
+function subPrice(usd){
+  if(!R || !R.show_lbp) return '';
+  return baseLbp() ? (money(usd)+' '+T.currency)
+                   : (toLbp(usd).toLocaleString('en-US')+' '+T.lbp);
+}
+function lbp(usd){ return subPrice(usd); }
 var toastEl=$('#toast'),tt;
 function toast(m){toastEl.textContent=m;toastEl.classList.add('on');clearTimeout(tt);
   tt=setTimeout(function(){toastEl.classList.remove('on')},2000)}
@@ -610,12 +626,12 @@ function itemHtml(it){
   var img=it.image_url?'<img src="'+esc(it.image_url)+'" alt="" loading="lazy">':'<span>'+esc(tx(R,'name'))+'</span>';
   var ctrl=q?'<div class="step"><button data-m="'+it.id+'">−</button><b>'+q+'</b><button data-a="'+it.id+'">+</button></div>'
            :'<button class="plus" data-a="'+it.id+'" aria-label="'+T.add+'">+</button>';
-  var lb=lbp(it.price_usd);
+  var mp=mainPrice(it.price_usd), lb=subPrice(it.price_usd);
   return '<div class="card'+(it.is_available?'':' off')+'"><div class="thumb">'+img+'</div><div>'+
     '<h3>'+esc(tx(it,'name'))+(it.is_featured?'<span class="badge">'+T.featured+'</span>':'')+
     (it.is_available?'':'<span class="badge">'+T.unavailable+'</span>')+'</h3>'+
     (tx(it,'desc')?'<p>'+esc(tx(it,'desc'))+'</p>':'')+
-    '<div class="prow"><span class="price">'+money(it.price_usd)+' <i>'+T.currency+'</i></span>'+
+    '<div class="prow"><span class="price">'+mp.n+' <i>'+mp.c+'</i></span>'+
     (lb?'<span class="plbp">'+lb+'</span>':'')+ctrl+'</div></div></div>';
 }
 function paintMenu(){
@@ -686,7 +702,7 @@ function paintCart(){
   var open=$('#drawer').classList.contains('on');
   $('#barCnt').textContent=t.count;
   $('#barLbl').textContent=T.cart;
-  $('#barAmt').textContent=money(t.total)+' '+T.currency;
+  $('#barAmt').textContent=mainTxt(t.total);
   $('#cartBar').classList.toggle('on', keys.length>0 && !open);
   document.body.classList.toggle('hasbar', keys.length>0 && !open);
 
@@ -698,14 +714,14 @@ function paintCart(){
   $('#stepCart').innerHTML=keys.map(function(k){
     var c=cart[k], it=c.item;
     return '<div class="line">'+(it.image_url?'<img src="'+esc(it.image_url)+'" alt="">':'<div class="noimg"></div>')+
-      '<div class="t"><b>'+esc(tx(it,'name'))+'</b><span>'+money(it.price_usd*c.qty)+' '+T.currency+'</span></div>'+
+      '<div class="t"><b>'+esc(tx(it,'name'))+'</b><span>'+mainTxt(it.price_usd*c.qty)+'</span></div>'+
       '<div class="step"><button data-m="'+k+'">−</button><b>'+c.qty+'</b><button data-a="'+k+'">+</button></div></div>';
   }).join('');
-  var lb=lbp(t.total);
+  var lb=subPrice(t.total);
   $('#footCart').innerHTML=
-    '<div class="tot"><span>'+T.subtotal+'</span><span>'+money(t.sub)+' '+T.currency+'</span></div>'+
-    (t.del?'<div class="tot"><span>'+T.delivery+'</span><span>'+money(t.del)+' '+T.currency+'</span></div>':'')+
-    '<div class="tot grand"><span>'+T.total+'</span><b>'+money(t.total)+' '+T.currency+'</b></div>'+
+    '<div class="tot"><span>'+T.subtotal+'</span><span>'+mainTxt(t.sub)+'</span></div>'+
+    (t.del?'<div class="tot"><span>'+T.delivery+'</span><span>'+mainTxt(t.del)+'</span></div>':'')+
+    '<div class="tot grand"><span>'+T.total+'</span><b>'+mainTxt(t.total)+'</b></div>'+
     (lb?'<div class="lbpline">'+lb+'</div>':'')+
     '<button class="btn" id="toForm">'+T.continue+'</button>';
   $('#toForm').addEventListener('click',showForm);
@@ -786,6 +802,11 @@ $('#paySeg').addEventListener('click',function(e){
   Array.prototype.forEach.call($('#paySeg').children,function(x){
     x.setAttribute('aria-pressed', x.dataset.p===pay);
   });
+  var note=$('#whishNote');
+  if(pay==='whish' && baseLbp()){
+    note.textContent=T.whishUsd.replace('{a}', money(totals().total));
+    note.classList.remove('hidden');
+  } else note.classList.add('hidden');
 });
 /* ---------- خريطة تحديد الموقع ---------- */
 var MAP=null, PIN=null, ACC=null;
@@ -961,13 +982,13 @@ function waText(o){
   }
   lines.push('———');
   Object.keys(cart).forEach(function(k){
-    lines.push(cart[k].qty+' × '+tx(cart[k].item,'name')+' — '+money(cart[k].item.price_usd*cart[k].qty)+' '+T.currency);
+    lines.push(cart[k].qty+' × '+tx(cart[k].item,'name')+' — '+mainTxt(cart[k].item.price_usd*cart[k].qty));
   });
   lines.push('———');
   var t=totals();
-  if(t.del) lines.push(T.delivery+': '+money(t.del)+' '+T.currency);
-  lines.push('*'+T.total+': '+money(o.total_usd||t.total)+' '+T.currency+'*');
-  var lb=lbp(o.total_usd||t.total); if(lb) lines.push(lb);
+  if(t.del) lines.push(T.delivery+': '+mainTxt(t.del));
+  lines.push('*'+T.total+': '+mainTxt(o.total_usd||t.total)+'*');
+  var lb=subPrice(o.total_usd||t.total); if(lb) lines.push(lb);
   lines.push(T.payment+': '+(pay==='whish'?T.whish:T.cash));
   if($('#cNote').value.trim()) lines.push(T.note+': '+$('#cNote').value.trim());
   if(o.token) lines.push('🧾 '+location.origin+'/i/'+encodeURIComponent(o.token));
@@ -982,7 +1003,7 @@ $('#confirmBtn').addEventListener('click',async function(){
   if(oType==='delivery'&&R.require_location&&!geo.lat){ return fail(T.needLocation); }
   var t=totals();
   if(oType==='delivery'&&t.sub<Number(R.min_order_usd||0)){
-    return fail(T.minOrder+': '+money(R.min_order_usd)+' '+T.currency);
+    return fail(T.minOrder+': '+mainTxt(R.min_order_usd));
   }
   function fail(m){ err.textContent=m; err.classList.remove('hidden'); }
 
