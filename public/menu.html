@@ -812,11 +812,19 @@ function initMap(){
     return;
   }
   $('#map').classList.add('on');
-  MAP=L.map('map',{zoomControl:true,attributionControl:true})
-       .setView([33.8547,35.8623],8);   // لبنان
-  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-    {maxZoom:19,attribution:'© OpenStreetMap'}).addTo(MAP);
-  MAP.on('click',function(e){ setPin(e.latlng.lat,e.latlng.lng); });
+  try{
+    MAP=L.map('map',{zoomControl:true,attributionControl:true})
+         .setView([33.8547,35.8623],8);   // لبنان
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+      {maxZoom:19,attribution:'© OpenStreetMap'}).addTo(MAP);
+    MAP.on('click',function(e){ setPin(e.latlng.lat,e.latlng.lng); });
+  }catch(err){
+    MAP=null;
+    var me=$('#geoMsg'); me.className='err'; me.style.color='';
+    me.textContent='خطأ بالخريطة: '+(err&&err.message||err);
+    $('#linkWrap').classList.remove('hidden');
+    return;
+  }
   refreshMap();
   if(geo.lat) setPin(geo.lat,geo.lng,17);
   else { var m=$('#geoMsg'); m.className=''; m.style.color='var(--muted)'; m.textContent=T.mapHint; }
@@ -836,6 +844,12 @@ function tryGeo(opts){
 }
 $('#geoBtn').addEventListener('click',async function(){
   var m=$('#geoMsg'), btn=this;
+  try{ await runGeo.call(this,m,btn); }
+  catch(err){ m.className='err'; m.style.color='';
+    m.textContent='خطأ: '+(err&&err.message||err);
+    $('#linkWrap').classList.remove('hidden'); btn.disabled=false; }
+});
+async function runGeo(m,btn){
   initMap();
   m.className='ok'; m.style.color=''; m.textContent=T.locating;
   if(!navigator.geolocation){
@@ -876,7 +890,7 @@ $('#geoBtn').addEventListener('click',async function(){
     btn.textContent=T.retry;
     $('#linkWrap').classList.remove('hidden');
   }
-});
+}
 
 // بديل: استخراج الإحداثيات من رابط Google Maps
 function parseMapLink(u){
