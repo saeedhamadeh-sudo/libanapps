@@ -555,10 +555,12 @@ function priceLabel(){
 function priceHint(){
   var h=$('#priceHint'); if(!h) return;
   var v=Number($('#fPrice').value)||0;
-  if(!v){ h.textContent=''; return; }
-  h.textContent = isLbp()
+  if(!v){ h.textContent=''; h.style.color=''; return; }
+  var odd = (!isLbp() && v>1000) || (isLbp() && v<1000);
+  h.style.color = odd ? '#FF7A7E' : '';
+  h.textContent = (odd ? '⚠ ' : '') + (isLbp()
     ? '= ' + (v/rate()).toFixed(2) + ' $'
-    : '= ' + usdToLbp(v).toLocaleString('en-US') + ' ل.ل.';
+    : '= ' + usdToLbp(v).toLocaleString('en-US') + ' ل.ل.');
 }
 
 /* ---------- items ---------- */
@@ -579,13 +581,28 @@ $('#saveItem').addEventListener('click',async function(){
   var ar=$('#fNameAr').value.trim();
   if(!ar) return msg('#iMsg','اكتب اسم المنتج',false);
   if(!CATS.length) return msg('#iMsg','ضيف قسم أولاً',false);
+
+  // تحقق من منطقية السعر مقابل العملة المختارة
+  var raw=Number($('#fPrice').value)||0;
+  if(raw>0){
+    if(!isLbp() && raw>1000){
+      if(!confirm('السعر '+raw.toLocaleString('en-US')+' $ — هيدا رقم كبير للدولار.\n\n'+
+        'إذا قصدك ليرة، بدّل «العملة الأساسية» من الإعدادات أولاً.\n\nبدك تكمّل بالدولار؟')) return;
+    }
+    if(isLbp() && raw<1000){
+      if(!confirm('السعر '+raw.toLocaleString('en-US')+' ل.ل. — هيدا رقم صغير للّيرة.\n\n'+
+        'إذا قصدك دولار، بدّل «العملة الأساسية» من الإعدادات أولاً.\n\nبدك تكمّل بالليرة؟')) return;
+    }
+  }
   this.disabled=true; msg('#iMsg','عم نحفظ…');
   try{
     var url=null;
     if(pendImg) url=await upload('items',pendImg,800);
     var o={restaurant_id:R.id,category_id:$('#fCat').value,name_ar:ar,
       name_en:$('#fNameEn').value.trim()||ar,desc_ar:$('#fDescAr').value.trim(),
-      desc_en:$('#fDescEn').value.trim(),price_usd:Number($('#fPrice').value)||0,
+      desc_en:$('#fDescEn').value.trim(),
+      // إذا العملة الأساسية ليرة، منحوّل للدولار قبل التخزين
+      price_usd: isLbp() ? Number((raw/rate()).toFixed(4)) : raw,
       is_available:$('#fAvail').checked,is_featured:$('#fHot').checked,
       sort:Number($('#fSort').value)||0};
     if(url) o.image_url=url;
