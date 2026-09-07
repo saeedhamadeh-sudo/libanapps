@@ -232,6 +232,25 @@ async function whishFailure(request, env) {
   return json(200, { ok: true });
 }
 
+
+// ---------- سياسة التخزين المؤقت ----------
+//  HTML: المتصفح يسأل السيرفر كل مرة (no-cache) — التعديلات تصل فوراً
+//  الصور والخطوط: تُخزَّن طويلاً — لا تتغيّر عادةً
+//  CSS/JS: تُخزَّن ساعة مع إعادة تحقق
+function withCache(res, pathname) {
+  const h = new Headers(res.headers);
+  let rule;
+  if (/\.(png|jpe?g|gif|webp|svg|ico|woff2?|ttf)$/i.test(pathname)) {
+    rule = 'public, max-age=604800';                       // أسبوع
+  } else if (/\.(css|js)$/i.test(pathname)) {
+    rule = 'public, max-age=3600, must-revalidate';         // ساعة
+  } else {
+    rule = 'no-cache';                                      // HTML وكل ما عداه
+  }
+  h.set('Cache-Control', rule);
+  return new Response(res.body, { status: res.status, headers: h });
+}
+
 // ---------- أي صفحة نعرض لأي مسار ----------
 function pageFor(pathname) {
   if (pathname.startsWith('/i/'))     return '/invoice.html';
@@ -269,7 +288,7 @@ export default {
 
     // 2) ملف موجود؟ نخدمه كما هو
     const asset = await env.ASSETS.fetch(request);
-    if (asset.status !== 404) return asset;
+    if (asset.status !== 404) return withCache(asset, url.pathname);
 
     // 3) ملف ناقص (له امتداد) — نرجّع 404 صريح بدل ما نرجّع HTML
     //    وإلا بيوصل للمتصفح HTML مكان css/js والصفحة بتطلع بيضا بلا سبب واضح
@@ -285,7 +304,10 @@ export default {
     const res = await env.ASSETS.fetch(new URL(page, url.origin));
     return new Response(res.body, {
       status: 200,
-      headers: { 'Content-Type': 'text/html; charset=utf-8' }
+      headers: {
+        'Content-Type': 'text/html; charset=utf-8',
+        'Cache-Control': 'no-cache'
+      }
     });
   }
 };
