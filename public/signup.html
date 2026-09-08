@@ -161,7 +161,7 @@ footer.site .bottom b{color:#fff}
       <a href="/industrial">محاسبة الصناعيين</a>
       <a href="/trade">محاسبة التجارة</a>
     </div>
-    <a class="btn btn-g sm" id="navAcct" href="/account" style="margin-inline-start:auto">حسابي</a>
+    <a class="btn btn-g sm" id="navAcct" href="/login" style="margin-inline-start:auto">حسابي</a>
     <a class="btn btn-o sm" id="navJoin" href="/signup">حساب جديد</a>
   </div>
 </nav>
@@ -174,11 +174,6 @@ footer.site .bottom b{color:#fff}
     </div>
 
     <div class="card">
-      <div style="display:flex;gap:8px;margin-bottom:6px">
-        <button class="btn btn-p sm" style="flex:1" id="tabNew">حساب جديد</button>
-        <button class="btn btn-g sm" style="flex:1" id="tabOld">عندي حساب</button>
-      </div>
-
       <div id="formNew">
         <label>اسمك</label><input type="text" id="sName" autocomplete="name">
         <label>اسم المحل / المؤسسة</label><input type="text" id="sBiz">
@@ -189,13 +184,9 @@ footer.site .bottom b{color:#fff}
         <button class="btn btn-o full" id="doSignup" style="margin-top:18px">إنشاء الحساب</button>
       </div>
 
-      <div id="formOld" class="hidden">
-        <label>البريد الإلكتروني</label><input type="email" id="lMail" autocomplete="email">
-        <label>كلمة المرور</label><input type="password" id="lPass" autocomplete="current-password">
-        <button class="btn btn-p full" id="doLogin" style="margin-top:18px">دخول</button>
-      </div>
-
       <div class="msg" id="sMsg"></div>
+      <p style="text-align:center;font-size:14px;color:var(--muted);margin:16px 0 0">
+        عندك حساب؟ <a href="/login" style="color:var(--sky);font-weight:700">سجّل دخولك</a></p>
     </div>
   </div>
 </section>
@@ -281,7 +272,9 @@ if(sb) sb.rpc('public_settings').then(function(r){
 
 // زر الحساب حسب حالة الدخول
 if(sb) sb.auth.getSession().then(function(r){
-  if(r.data.session){ $('#navJoin').classList.add('hidden'); $('#navAcct').textContent='حسابي'; }
+  if(r.data.session){ $('#navJoin').classList.add('hidden');
+    $('#navAcct').textContent='حسابي'; $('#navAcct').href='/account'; }
+  else { $('#navAcct').textContent='تسجيل الدخول'; $('#navAcct').href='/login'; }
 });
 </script>
 
@@ -289,22 +282,8 @@ if(sb) sb.auth.getSession().then(function(r){
 (function(){
   var planId=new URLSearchParams(location.search).get('plan');
   if(planId){ $('#pgSub').textContent='افتح حسابك ليكتمل الاشتراك بالباقة المختارة.'; }
-  if(new URLSearchParams(location.search).get('next')==='admin'){
-    $('#pgTitle').textContent='تسجيل الدخول'; $('#pgSub').textContent='ادخل لتفتح لوحة مطعمك.';
-    document.addEventListener('DOMContentLoaded',function(){ $('#tabOld').click(); });
-    setTimeout(function(){ $('#tabOld').click(); },0);
-  }
 
-  $('#tabNew').addEventListener('click',function(){
-    $('#formNew').classList.remove('hidden'); $('#formOld').classList.add('hidden');
-    this.className='btn btn-p sm'; $('#tabOld').className='btn btn-g sm';
-    $('#pgTitle').textContent='افتح حسابك';
-  });
-  $('#tabOld').addEventListener('click',function(){
-    $('#formOld').classList.remove('hidden'); $('#formNew').classList.add('hidden');
-    this.className='btn btn-p sm'; $('#tabNew').className='btn btn-g sm';
-    $('#pgTitle').textContent='تسجيل الدخول';
-  });
+
 
   function msg(t,ok){ var m=$('#sMsg'); m.className='msg'+(ok===true?' s':ok===false?' e':''); m.textContent=t; }
   var next=new URLSearchParams(location.search).get('next');
@@ -337,19 +316,8 @@ if(sb) sb.auth.getSession().then(function(r){
     go();
   });
 
-  $('#doLogin').addEventListener('click',async function(){
-    var mail=$('#lMail').value.trim().toLowerCase(), pass=$('#lPass').value;
-    if(!mail||!pass) return msg('عبّي الحقول',false);
-    this.disabled=true; msg('…');
-    var r=await sb.auth.signInWithPassword({email:mail,password:pass});
-    this.disabled=false;
-    if(r.error) return msg('بيانات الدخول غير صحيحة',false);
-    go();
-  });
-  ['#sPass','#lPass'].forEach(function(x){
-    $(x).addEventListener('keydown',function(e){
-      if(e.key==='Enter') $(x==='#sPass'?'#doSignup':'#doLogin').click(); });
-  });
+  $('#sPass').addEventListener('keydown',function(e){
+    if(e.key==='Enter') $('#doSignup').click(); });
 
   if(sb) sb.auth.getSession().then(function(r){ if(r.data.session) go(); });
 })();
