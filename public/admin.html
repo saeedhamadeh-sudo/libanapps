@@ -233,6 +233,10 @@ input[type=checkbox]{width:auto}
   background:var(--bg-2);border:1px solid var(--line);border-radius:9px;
   font-family:var(--font-display);font-size:16px;color:var(--accent)}
 .catbar span{margin-inline-start:auto;font-family:'Cairo';font-size:12px;color:var(--muted)}
+.prow-edit{display:flex;align-items:center;gap:6px;margin-inline-start:auto;flex:none}
+.prow-edit input{width:130px;text-align:center;padding:7px 8px;font-weight:700}
+.prow-edit input.changed{border-color:var(--accent);background:rgba(255,212,0,.08)}
+.prow-edit span{font-size:12px;color:var(--muted)}
 .login{max-width:360px;margin:12vh auto}
 #qrbox{background:#fff;border-radius:14px;padding:16px;width:max-content;margin:12px auto}
 .chip{display:inline-block;font-size:11.5px;font-weight:800;border-radius:999px;padding:2px 9px}
@@ -304,7 +308,15 @@ input[type=checkbox]{width:auto}
     </div>
     <div class="panel">
       <h3>المنتجات</h3>
-      <input type="text" id="iq" placeholder="بحث…">
+      <div style="display:flex;gap:8px;align-items:center">
+        <input type="text" id="iq" placeholder="بحث…" style="flex:1">
+        <button class="btn y sm" id="bulkBtn" style="white-space:nowrap">تعديل الأسعار</button>
+      </div>
+      <div id="bulkBar" class="hidden" style="display:flex;gap:8px;margin-top:10px">
+        <button class="btn" id="bulkSave">حفظ الأسعار</button>
+        <button class="btn alt" id="bulkCancel">إلغاء</button>
+        <span class="muted" id="bulkInfo" style="align-self:center"></span>
+      </div>
       <div id="iList" style="margin-top:10px"></div>
     </div>
   </section>
@@ -759,9 +771,10 @@ async function loadItems(){
   var r=await sb.from('items').select('*').eq('restaurant_id',R.id).order('sort');
   ITEMS=r.data||[]; paintItems();
 }
+var PRICEMODE=false;
 function paintItems(){
   var q=$('#iq').value.trim().toLowerCase();
-  var canSort=!q;
+  var canSort=!q && !PRICEMODE;
   var html = canSort
     ? '<div class="sortnote">اسحب داخل القسم لتغيير الترتيب · النقل بين الأقسام من زر «تعديل»</div>'
     : '<div class="sortnote">فضّي خانة البحث لتقدر ترتّب بالسحب</div>';
@@ -779,12 +792,24 @@ function paintItems(){
     any=true;
     html+='<div class="catbar">'+esc(g.cat.name_ar)+' <span>'+rows.length+'</span></div>';
     html+=rows.map(function(i,idx){
+      var shown = isLbp()? usdToLbp(i.price_usd) : i.price_usd;
+      if(PRICEMODE){
+        return '<div class="row" data-id="'+i.id+'">'+
+          (i.image_url?'<img src="'+esc(i.image_url)+'" alt="">':'<div class="ph"></div>')+
+          '<div class="t"><b>'+esc(i.name_ar)+'</b>'+
+          (i.is_available?'':'<span>غير متوفر</span>')+'</div>'+
+          '<div class="prow-edit">'+
+            '<input type="number" class="pinput" data-pid="'+i.id+'" value="'+shown+'" '+
+              'step="'+(isLbp()?1000:0.25)+'" min="0" data-orig="'+shown+'">'+
+            '<span>'+(isLbp()?'ل.ل.':'$')+'</span>'+
+          '</div></div>';
+      }
       return '<div class="row" data-id="'+i.id+'" data-cat="'+(i.category_id||'')+'"'+
         (canSort?' draggable="true"':'')+'>'+
         (canSort?'<span class="grip">⋮⋮</span>':'')+
         (i.image_url?'<img src="'+esc(i.image_url)+'" alt="">':'<div class="ph"></div>')+
         '<div class="t"><b>'+esc(i.name_ar)+'</b><span>'+
-        (isLbp()? usdToLbp(i.price_usd).toLocaleString('en-US')+' ل.ل.' : i.price_usd+' $')+
+        (isLbp()? shown.toLocaleString('en-US')+' ل.ل.' : shown+' $')+
         (i.is_available?'':' · غير متوفر')+(i.is_featured?' · الأكثر طلباً':'')+'</span></div>'+
         (canSort?'<button class="btn alt sm" data-up="'+i.id+'"'+(idx===0?' disabled':'')+'>▲</button> ':'')+
         '<button class="btn alt sm" data-ed="'+i.id+'">تعديل</button> '+
@@ -823,6 +848,56 @@ function moveWithin(catId, fromIdx, toIdx){
 }
 
 $('#iq').addEventListener('input',paintItems);
+
+/* ---------- تعديل الأسعار السريع ---------- */
+function setPriceMode(on){
+  PRICEMODE=on;
+  $('#bulkBar').classList.toggle('hidden',!on);
+  $('#bulkBtn').textContent = on ? 'رجوع للقائمة' : 'تعديل الأسعار';
+  $('#bulkBtn').className = on ? 'btn alt sm' : 'btn y sm';
+  $('#bulkInfo').textContent='';
+  paintItems();
+  if(on){ var f=document.querySelector('.pinput'); if(f) f.focus(); }
+}
+$('#bulkBtn').addEventListener('click',function(){ setPriceMode(!PRICEMODE); });
+$('#bulkCancel').addEventListener('click',function(){ setPriceMode(false); });
+
+// تمييز المعدّل + الانتقال بـEnter
+$('#iList').addEventListener('input',function(e){
+  var el=e.target.closest('.pinput'); if(!el) return;
+  el.classList.toggle('changed', String(el.value)!==String(el.dataset.orig));
+  var n=document.querySelectorAll('.pinput.changed').length;
+  $('#bulkInfo').textContent = n ? n+' سعر معدّل' : '';
+});
+$('#iList').addEventListener('keydown',function(e){
+  if(e.key!=='Enter') return;
+  var el=e.target.closest('.pinput'); if(!el) return;
+  e.preventDefault();
+  var all=Array.prototype.slice.call(document.querySelectorAll('.pinput'));
+  var i=all.indexOf(el);
+  if(i>-1 && i+1<all.length){ all[i+1].focus(); all[i+1].select(); }
+  else $('#bulkSave').click();
+});
+
+$('#bulkSave').addEventListener('click',async function(){
+  var changed=Array.prototype.slice.call(document.querySelectorAll('.pinput.changed'));
+  if(!changed.length){ msg('#iMsg','ما في سعر تغيّر',false); return; }
+  this.disabled=true; msg('#iMsg','عم نحفظ '+changed.length+' سعر…');
+  var ok=0, bad=0;
+  for(var k=0;k<changed.length;k++){
+    var el=changed[k], raw=Number(el.value)||0;
+    var usd = isLbp() ? Number((raw/rate()).toFixed(4)) : raw;
+    var r=await sb.from('items').update({price_usd:usd}).eq('id',el.dataset.pid);
+    if(r.error){ bad++; } else {
+      ok++;
+      var it=ITEMS.find(function(x){return x.id===el.dataset.pid});
+      if(it) it.price_usd=usd;
+    }
+  }
+  this.disabled=false;
+  msg('#iMsg', bad ? ('انحفظ '+ok+' وفشل '+bad) : ('تم حفظ '+ok+' سعر'), !bad);
+  setPriceMode(false);
+});
 
 // السحب لإعادة الترتيب
 (function(){
