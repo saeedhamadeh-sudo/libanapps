@@ -941,33 +941,48 @@ $('#stLogoDel').addEventListener('click',async function(){
 });
 
 $('#stSave').addEventListener('click',async function(){
-  var logoUrl=null;
-  if($('#stLogo').files[0]){
-    $('#stMsg').className='msg'; $('#stMsg').textContent='عم نرفع الشعار…';
-    try{
-      var o=await shrinkImg($('#stLogo').files[0],420);
-      var path='platform/'+Date.now()+'.'+o.ext;
-      var up=await sb.storage.from('logos').upload(path,o.blob,{contentType:o.mime});
-      if(up.error) throw up.error;
-      logoUrl=sb.storage.from('logos').getPublicUrl(path).data.publicUrl;
-    }catch(err){
-      $('#stMsg').className='msg e'; $('#stMsg').textContent='ما نجح رفع الشعار: '+(err.message||err);
-      return;
-    }
-  }
-  var r=await sb.from('platform_settings').update({
+  var m=$('#stMsg'); m.className='msg'; m.textContent='عم نحفظ…';
+  this.disabled=true;
+  var obj={
     whatsapp:$('#stWa').value.replace(/\D/g,''), phone:$('#stPhone').value.trim(),
     email:$('#stMail').value.trim(), address:$('#stAddr').value.trim(),
     instagram:$('#stIg').value.trim(), facebook:$('#stFb').value.trim(),
     trial_days:Number($('#stTrial').value)||0,
     brand_name:$('#stBrand').value.trim()||'LibanApps',
     updated_at:new Date().toISOString()
-  }).eq('id',1);
-  if(logoUrl) await sb.from('platform_settings').update({logo_url:logoUrl}).eq('id',1);
-  $('#stMsg').className='msg '+(r.error?'e':'s');
-  $('#stMsg').textContent=r.error?r.error.message:'تم الحفظ';
-  if(!r.error){ $('#stLogo').value=''; loadSite(); }
+  };
+
+  // رفع الشعار إن وُجد
+  var f=$('#stLogo').files[0];
+  if(f){
+    m.textContent='عم نرفع الشعار…';
+    try{
+      var o=await shrinkImg(f,420);
+      var path='platform/'+Date.now()+'-'+Math.random().toString(36).slice(2,7)+'.'+o.ext;
+      var up=await sb.storage.from('logos').upload(path,o.blob,{contentType:o.mime});
+      if(up.error) throw up.error;
+      obj.logo_url=sb.storage.from('logos').getPublicUrl(path).data.publicUrl;
+    }catch(err){
+      this.disabled=false;
+      m.className='msg e';
+      m.textContent='ما نجح رفع الشعار: '+(err.message||err.error||JSON.stringify(err));
+      return;
+    }
+  }
+
+  var r=await sb.from('platform_settings').update(obj).eq('id',1).select();
+  this.disabled=false;
+  if(r.error){ m.className='msg e'; m.textContent='ما انحفظ: '+r.error.message; return; }
+  if(!r.data || !r.data.length){
+    m.className='msg e';
+    m.textContent='ما انحفظ ولا صف — تأكد إنك مسجّل دخول كمشرف';
+    return;
+  }
+  m.className='msg s'; m.textContent='تم الحفظ';
+  $('#stLogo').value='';
+  loadSite();
 });
+
 $('#pwSave').addEventListener('click',async function(){
   var r=await sb.rpc('set_platform_whish',{p_enabled:$('#pwEn').checked,
     p_channel:$('#pwCh').value.trim(), p_secret:$('#pwSec').value.trim()});
