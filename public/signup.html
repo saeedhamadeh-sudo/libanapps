@@ -279,6 +279,11 @@ if(sb) sb.auth.getSession().then(function(r){
 (function(){
   var planId=new URLSearchParams(location.search).get('plan');
   if(planId){ $('#pgSub').textContent='افتح حسابك ليكتمل الاشتراك بالباقة المختارة.'; }
+  if(new URLSearchParams(location.search).get('next')==='admin'){
+    $('#pgTitle').textContent='تسجيل الدخول'; $('#pgSub').textContent='ادخل لتفتح لوحة مطعمك.';
+    document.addEventListener('DOMContentLoaded',function(){ $('#tabOld').click(); });
+    setTimeout(function(){ $('#tabOld').click(); },0);
+  }
 
   $('#tabNew').addEventListener('click',function(){
     $('#formNew').classList.remove('hidden'); $('#formOld').classList.add('hidden');
@@ -292,7 +297,11 @@ if(sb) sb.auth.getSession().then(function(r){
   });
 
   function msg(t,ok){ var m=$('#sMsg'); m.className='msg'+(ok===true?' s':ok===false?' e':''); m.textContent=t; }
-  function go(){ location.href='/account'+(planId?('?plan='+encodeURIComponent(planId)):''); }
+  var next=new URLSearchParams(location.search).get('next');
+  function go(){
+    if(next==='admin'){ location.href='/admin'; return; }
+    location.href='/account'+(planId?('?plan='+encodeURIComponent(planId)):'');
+  }
 
   $('#doSignup').addEventListener('click',async function(){
     var name=$('#sName').value.trim(), phone=$('#sPhone').value.trim();
