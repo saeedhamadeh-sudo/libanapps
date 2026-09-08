@@ -117,7 +117,7 @@ footer.site .bottom b{color:#fff}
 
 <nav>
   <div class="row">
-    <a class="brand" href="/">Liban<span>Apps</span></a>
+    <a class="brand" id="brandBox" href="/">Liban<span>Apps</span></a>
     <div class="links">
       <a href="#products">البرامج</a>
       <a href="/menus">منيو المطاعم</a>
@@ -230,7 +230,7 @@ footer.site .bottom b{color:#fff}
 <footer class="site">
   <div class="cols">
     <div>
-      <h4>LibanApps</h4>
+      <h4 id="footBrand">LibanApps</h4>
       <p style="font-size:14.5px;margin:0">برامج جاهزة للمطاعم والصناعيين والتجّار،
         مبنية للسوق اللبناني ومدعومة محلياً.</p>
     </div>
@@ -268,6 +268,12 @@ footer.site .bottom b{color:#fff}
   var sb=window.supabase.createClient(C.SUPABASE_URL,C.SUPABASE_ANON_KEY);
   sb.rpc('public_settings').then(function(r){
     var s=r.data; if(!s) return;
+    if(s.logo_url){
+      var bb=document.getElementById('brandBox');
+      if(bb) bb.innerHTML='<img src="'+s.logo_url+'" alt="" style="height:34px;width:auto">';
+    }
+    if(s.brand_name){ var fb=document.getElementById('footBrand');
+      if(fb) fb.textContent=s.brand_name; }
     if(s.whatsapp){
       var w=document.getElementById('waFloat');
       w.href='https://wa.me/'+String(s.whatsapp).replace(/\D/g,'');
