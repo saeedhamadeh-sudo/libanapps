@@ -331,6 +331,11 @@ if(sb) sb.auth.getSession().then(function(r){
     await loadSubs();
     await loadPlans();
     if(qs.get('plan')) openPlan(qs.get('plan'));
+    if(qs.get('renew')){
+      var lic=(await sb.rpc('my_licenses')).data||[];
+      var f=lic.find(function(x){return x.id===qs.get('renew')});
+      if(f) openRenew(f.id, f.product);
+    }
   }
 
   async function loadSubs(){
@@ -371,12 +376,15 @@ if(sb) sb.auth.getSession().then(function(r){
           '<button class="btn btn-g sm" style="margin-inline-start:8px" data-copy="'+esc(p.key)+'">نسخ</button></div>'+
           '<p class="hint">حطّ هذا المفتاح بشاشة التفعيل داخل البرنامج.</p>';
       }
+      var renew = p.id ? '<button class="btn btn-o sm" data-renew="'+p.id+
+        '" data-prod="'+esc(p.product)+'">تجديد</button>' : '';
       return '<div style="padding:14px 0;border-bottom:1px solid var(--line)">'+
         '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">'+
           '<b style="font-family:Tajawal;font-size:17px">'+esc(p.product_name||p.product)+'</b>'+
           '<span class="chip '+cls+'">'+txt+'</span>'+
-          (p.slug?'<span style="margin-inline-start:auto;color:var(--muted);font-size:13px">/'+
-            esc(p.slug)+'</span>':'')+
+          '<span style="margin-inline-start:auto;display:flex;gap:8px;align-items:center">'+
+            (p.slug?'<span style="color:var(--muted);font-size:13px">/'+esc(p.slug)+'</span>':'')+
+            renew+'</span>'+
         '</div>'+extra+'</div>';
     }).join('');
 
@@ -393,7 +401,10 @@ if(sb) sb.auth.getSession().then(function(r){
     $('#subs').innerHTML=html;
   }
 
+  var RENEW=null;
   $('#subs').addEventListener('click',function(e){
+    var rn=e.target.closest('[data-renew]');
+    if(rn){ openRenew(rn.dataset.renew, rn.dataset.prod); return; }
     var b=e.target.closest('[data-copy]'); if(!b) return;
     navigator.clipboard.writeText(b.dataset.copy).then(function(){
       var o=b.textContent; b.textContent='تم ✓';
@@ -422,7 +433,26 @@ if(sb) sb.auth.getSession().then(function(r){
     var b=e.target.closest('[data-plan]'); if(b) openPlan(b.dataset.plan);
   });
 
+  function openRenew(subId, product){
+    var opts=PLANS.filter(function(x){return x.product_code===product});
+    if(!opts.length){ alert('ما في باقة متاحة لهذا البرنامج — تواصل معنا'); return; }
+    RENEW=subId; PICK=opts[0];
+    if(opts.length>1){
+      var list=opts.map(function(p,i){return (i+1)+'. '+p.name_ar+' — '+p.price_usd+' $'}).join('\n');
+      var pick=prompt('اختار باقة التجديد:\n\n'+list+'\n\nاكتب الرقم:','1');
+      if(pick===null) { RENEW=null; return; }
+      var idx=parseInt(pick,10)-1;
+      if(!(idx>=0&&idx<opts.length)){ RENEW=null; return; }
+      PICK=opts[idx];
+    }
+    $('#mTitle').textContent='تجديد — '+PICK.name_ar;
+    $('#mSub').textContent='المبلغ: '+PICK.price_usd+' $ · بتنضاف '+PICK.days+' يوم على اشتراكك الحالي';
+    $('#mSlug').classList.add('hidden');
+    msg(''); $('#modal').classList.remove('hidden');
+  }
+
   function openPlan(id){
+    RENEW=null;
     PICK=PLANS.find(function(x){return x.id===id});
     if(!PICK) return;
     $('#mTitle').textContent=PICK.name_ar;
@@ -440,13 +470,15 @@ if(sb) sb.auth.getSession().then(function(r){
   $('#payBtn').addEventListener('click',async function(){
     if(!PICK) return;
     var slug='', biz='';
-    if(PICK.product_code==='menu'){
+    if(PICK.product_code==='menu' && !RENEW){
       slug=$('#slug').value.trim(); biz=$('#bizName').value.trim();
       if(slug.length<2) return msg('اكتب رابط مطعمك بالإنكليزي',false);
       if(!biz) return msg('اكتب اسم المطعم',false);
     }
     this.disabled=true; msg('عم نجهّز الدفع…');
-    var st=await sb.rpc('start_purchase',{p_plan:PICK.id,p_slug:slug,p_biz:biz});
+    var st = RENEW
+      ? await sb.rpc('start_renewal',{p_plan:PICK.id,p_sub:RENEW})
+      : await sb.rpc('start_purchase',{p_plan:PICK.id,p_slug:slug,p_biz:biz});
     if(st.error){ this.disabled=false;
       var e=String(st.error.message||'');
       return msg(/slug taken/.test(e) ? 'هذا الرابط محجوز — اختار غيره'
