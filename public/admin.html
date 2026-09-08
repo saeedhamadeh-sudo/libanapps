@@ -282,11 +282,12 @@ body.login-page .credit .credit-tel{color:#E08A2B}
 <body class="login-page">
 
 <div class="wrap login" id="login">
-  <div class="panel">
+  <div class="panel" style="text-align:center">
     <h3>لوحة المطعم</h3>
-    <label>البريد الإلكتروني</label><input type="email" id="em" autocomplete="username">
-    <label>كلمة المرور</label><input type="password" id="pw" autocomplete="current-password">
-    <div class="acts"><button class="btn" id="loginBtn">دخول</button></div>
+    <p class="muted" id="loginNote">عم نتحقق من دخولك…</p>
+    <div class="acts" style="justify-content:center">
+      <a class="btn" id="goLogin" href="/signup?next=admin" style="text-decoration:none">تسجيل الدخول</a>
+    </div>
     <div class="msg" id="loginMsg"></div>
   </div>
 </div>
@@ -600,7 +601,11 @@ function msg(el,t,ok){ var e=$(el); e.className='msg'+(ok===true?' s':ok===false
 var IMPERSONATE=false;
 async function boot(){
   var s=await sb.auth.getSession();
-  if(!s.data.session) return;
+  if(!s.data.session){
+    $('#loginNote').textContent='لازم تسجّل دخولك أولاً — عم نحوّلك…';
+    setTimeout(function(){ location.href='/signup?next=admin'; }, 900);
+    return;
+  }
 
   // مشرف المنصة بيقدر يفتح أي مطعم: /admin?r=slug
   var wantSlug=new URLSearchParams(location.search).get('r');
@@ -620,9 +625,13 @@ async function boot(){
     var any=await sb.from('restaurants').select('id').limit(1).maybeSingle();
     rid=any.data&&any.data.id;
   }
-  if(!rid){ msg('#loginMsg','هذا الحساب غير مربوط بأي مطعم',false); await sb.auth.signOut(); return; }
+  if(!rid){
+    $('#loginNote').textContent='هذا الحساب مش مربوط بأي مطعم.';
+    $('#goLogin').textContent='افتح صفحة حسابي'; $('#goLogin').href='/account';
+    return;
+  }
   var r=await sb.from('restaurants').select('*').eq('id',rid).maybeSingle();
-  if(!r.data){ msg('#loginMsg','ما قدرنا نجيب بيانات المطعم',false); return; }
+  if(!r.data){ $('#loginNote').textContent='ما قدرنا نجيب بيانات المطعم'; return; }
   R=r.data;
   document.body.classList.remove('login-page');
   $('#login').classList.add('hidden'); $('#app').classList.remove('hidden');
@@ -655,14 +664,7 @@ async function licBadge(){
   e.style.cursor='pointer';
   e.onclick=function(){ var t=document.querySelector('.tab[data-t="sub"]'); if(t) t.click(); };
 }
-$('#loginBtn').addEventListener('click',async function(){
-  msg('#loginMsg','…');
-  var r=await sb.auth.signInWithPassword({email:$('#em').value.trim(),password:$('#pw').value});
-  if(r.error){ msg('#loginMsg','بيانات الدخول غير صحيحة',false); return; }
-  msg('#loginMsg',''); boot();
-});
-$('#pw').addEventListener('keydown',function(e){ if(e.key==='Enter') $('#loginBtn').click(); });
-$('#outBtn').addEventListener('click',async function(){ await sb.auth.signOut(); location.reload(); });
+$('#outBtn').addEventListener('click',async function(){ await sb.auth.signOut(); location.href='/'; });
 
 $$('.tab').forEach(function(t){
   t.addEventListener('click',function(){
