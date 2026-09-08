@@ -320,6 +320,8 @@ if(sb) sb.auth.getSession().then(function(r){
     $('#app').classList.remove('hidden');
     $('#mail').textContent=ses.data.session.user.email;
 
+    // ربط تلقائي للزبائن المفعّلين يدوياً
+    await sb.rpc('autolink_my_client');
     var c=await sb.from('clients').select('name').eq('user_id',ses.data.session.user.id).maybeSingle();
     if(c.data&&c.data.name) $('#hi').textContent='أهلاً '+c.data.name;
 
@@ -332,36 +334,72 @@ if(sb) sb.auth.getSession().then(function(r){
   }
 
   async function loadSubs(){
-    var r=await sb.rpc('my_purchases');
-    var rows=r.data||[];
-    var paid=rows.filter(function(x){return x.status==='paid'});
-    if(!paid.length){
+    var lic=await sb.rpc('my_licenses');
+    var rows=(lic.data)||[];
+
+    // مطاعم مربوطة بالحساب بدون اشتراك مسجّل باسمه
+    var rest=await sb.rpc('my_restaurants');
+    var restos=(rest.data)||[];
+    var haveSlugs={}; rows.forEach(function(x){ if(x.slug) haveSlugs[x.slug]=1; });
+    restos.forEach(function(r){
+      if(!haveSlugs[r.slug]) rows.push({product:'menu',product_name:'منيو المطاعم',
+        slug:r.slug, days_left:r.days_left, active:r.active, key:'', plan:''});
+    });
+
+    // مشتريات لسا ما دُفعت
+    var pur=await sb.rpc('my_purchases');
+    var pend=((pur.data)||[]).filter(function(p){
+      return p.status==='pending'||p.status==='awaiting_payment'; });
+
+    if(!rows.length && !pend.length){
       $('#subs').innerHTML='<p style="color:var(--muted)">ما عندك اشتراك بعد — اختار باقة من تحت.</p>';
       return;
     }
-    var NAMES={menu:'منيو المطاعم',alum:'محاسبة الصناعيين',trade:'محاسبة التجارة'};
-    $('#subs').innerHTML=paid.map(function(p){
+
+    var html=rows.map(function(p){
       var d=p.days_left||0;
-      var cls=d<=0?'bad':(d<=15?'warn':'ok');
-      var txt=d<=0?'منتهي':('باقي '+d+' يوم');
+      var cls=(!p.active||d<=0)?'bad':(d<=15?'warn':'ok');
+      var txt=(!p.active||d<=0)?'منتهي':('باقي '+d+' يوم');
       var extra='';
       if(p.product==='menu'&&p.slug){
-        extra='<div style="margin-top:8px;font-size:14px">'+
-          '<a class="btn btn-g sm" href="/'+esc(p.slug)+'" target="_blank">شوف منيوك</a> '+
+        extra='<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">'+
+          '<a class="btn btn-g sm" href="/'+esc(p.slug)+'" target="_blank">شوف منيوك</a>'+
           '<a class="btn btn-g sm" href="/admin" target="_blank">لوحة التحكم</a></div>';
-      }else{
-        extra='<div style="margin-top:8px"><span class="key">'+esc(p.key||'—')+'</span></div>'+
+      }
+      if(p.key){
+        extra+='<div style="margin-top:8px"><span class="key">'+esc(p.key)+'</span>'+
+          '<button class="btn btn-g sm" style="margin-inline-start:8px" data-copy="'+esc(p.key)+'">نسخ</button></div>'+
           '<p class="hint">حطّ هذا المفتاح بشاشة التفعيل داخل البرنامج.</p>';
       }
       return '<div style="padding:14px 0;border-bottom:1px solid var(--line)">'+
         '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">'+
-          '<b style="font-family:Tajawal;font-size:17px">'+esc(NAMES[p.product]||p.product)+'</b>'+
+          '<b style="font-family:Tajawal;font-size:17px">'+esc(p.product_name||p.product)+'</b>'+
           '<span class="chip '+cls+'">'+txt+'</span>'+
-          '<span style="margin-inline-start:auto;color:var(--muted);font-size:13px">'+
-            esc(p.plan_name||'')+'</span>'+
+          (p.slug?'<span style="margin-inline-start:auto;color:var(--muted);font-size:13px">/'+
+            esc(p.slug)+'</span>':'')+
         '</div>'+extra+'</div>';
     }).join('');
+
+    html+=pend.map(function(p){
+      return '<div style="padding:14px 0;border-bottom:1px solid var(--line)">'+
+        '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">'+
+          '<b style="font-family:Tajawal;font-size:17px">'+esc(p.plan_name||p.product)+'</b>'+
+          '<span class="chip warn">بانتظار الدفع</span>'+
+          '<span style="margin-inline-start:auto;color:var(--muted);font-size:13px">'+
+            p.amount+' $</span></div>'+
+        '<p class="hint">إذا دفعت وما ظهر الترخيص، حدّث الصفحة أو تواصل معنا.</p></div>';
+    }).join('');
+
+    $('#subs').innerHTML=html;
   }
+
+  $('#subs').addEventListener('click',function(e){
+    var b=e.target.closest('[data-copy]'); if(!b) return;
+    navigator.clipboard.writeText(b.dataset.copy).then(function(){
+      var o=b.textContent; b.textContent='تم ✓';
+      setTimeout(function(){b.textContent=o},1400);
+    });
+  });
 
   async function loadPlans(){
     var r=await sb.from('plans').select('*').eq('is_active',true).order('product_code').order('sort');
