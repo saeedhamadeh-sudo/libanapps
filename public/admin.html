@@ -308,6 +308,7 @@ body.login-page .credit .credit-tel{color:#E08A2B}
     <button class="tab" data-t="set" aria-pressed="false">الإعدادات</button>
     <button class="tab" data-t="pay" aria-pressed="false">الدفع</button>
     <button class="tab" data-t="qr" aria-pressed="false">رمز QR</button>
+    <button class="tab" data-t="sub" aria-pressed="false">الاشتراك</button>
   </div>
 
   <!-- ITEMS -->
@@ -527,6 +528,22 @@ body.login-page .credit .credit-tel{color:#E08A2B}
     </div>
   </section>
 
+  <!-- SUBSCRIPTION -->
+  <section data-p="sub" class="hidden">
+    <div class="panel">
+      <h3>اشتراكك</h3>
+      <div id="subBox"><p class="muted">عم نحمّل…</p></div>
+    </div>
+    <div class="panel">
+      <h3>حسابك على LibanApps</h3>
+      <p class="muted">من صفحة حسابك بتشوف كل اشتراكاتك وفواتيرك وبتشتري برامج تانية.</p>
+      <div class="acts">
+        <a class="btn alt" href="/account" target="_blank" style="text-decoration:none">افتح صفحة حسابي</a>
+        <a class="btn alt" id="waHelp" href="#" target="_blank" style="text-decoration:none">تواصل معنا</a>
+      </div>
+    </div>
+  </section>
+
   <!-- QR -->
   <section data-p="qr" class="hidden">
     <div class="panel">
@@ -620,9 +637,14 @@ async function boot(){
   document.documentElement.dataset.theme=R.theme||'flame';
   $('#rName').textContent=R.name_ar;
   $('#viewLink').href='/'+R.slug;
-  await licBadge();
+  await licBadge(); siteHelp();
   paintLock();
-  await loadCats(); await loadItems(); fillSettings(); loadPay(); loadBanners(); loadPromos();
+  await loadCats(); await loadItems(); fillSettings(); loadSub(); loadPay(); loadBanners(); loadPromos();
+}
+async function siteHelp(){
+  var r=await sb.rpc('public_settings');
+  var s2=r.data;
+  if(s2&&s2.whatsapp) $('#waHelp').href='https://wa.me/'+String(s2.whatsapp).replace(/\D/g,'');
 }
 async function licBadge(){
   var l=await sb.rpc('my_license',{rid:R.id});
@@ -630,6 +652,8 @@ async function licBadge(){
   var d=l.data.days_left, e=$('#lic');
   e.className='lic '+(d<=0?'bad':d<=15?'warn':'ok');
   e.textContent=d<=0?'الاشتراك منتهي':'باقي '+d+' يوم';
+  e.style.cursor='pointer';
+  e.onclick=function(){ var t=document.querySelector('.tab[data-t="sub"]'); if(t) t.click(); };
 }
 $('#loginBtn').addEventListener('click',async function(){
   msg('#loginMsg','…');
@@ -1277,6 +1301,33 @@ $('#savePay').addEventListener('click',async function(){
   if(r.error) return msg('#wMsg','ما نجح: '+r.error.message,false);
   $('#wSec').value=''; msg('#wMsg','تم الحفظ',true); loadPay();
 });
+
+/* ---------- الاشتراك ---------- */
+async function loadSub(){
+  var r=await sb.rpc('restaurant_subscription',{rid:R.id});
+  var d=r.data;
+  if(!d){ $('#subBox').innerHTML='<p class="muted">ما قدرنا نجيب بيانات الاشتراك</p>'; return; }
+  var days=d.days_left||0;
+  var col = (!d.active||days<=0) ? '#FF7A7E' : (days<=15 ? 'var(--accent)' : '#4ADE80');
+  var txt = (!d.active||days<=0) ? 'اشتراكك منتهي' : ('باقي '+days+' يوم');
+  var exp = d.expires_at ? new Date(d.expires_at).toLocaleDateString('en-GB') : '—';
+  $('#subBox').innerHTML =
+    '<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">'+
+      '<div style="font-family:var(--font-display);font-size:34px;color:'+col+'">'+txt+'</div>'+
+      '<div class="muted">ينتهي بتاريخ '+exp+'</div>'+
+      (d.can_renew
+        ? '<a class="btn y" style="margin-inline-start:auto;text-decoration:none" '+
+          'href="/account?renew='+encodeURIComponent(d.subscription_id)+'" target="_blank">تجديد الاشتراك</a>'
+        : '<a class="btn y" style="margin-inline-start:auto;text-decoration:none" '+
+          'href="/account" target="_blank">تجديد الاشتراك</a>')+
+    '</div>'+
+    (days<=15 && d.active
+      ? '<p class="hint" style="color:var(--accent)">قرّب اشتراكك يخلص — جدّده قبل ما يتوقف المنيو.</p>'
+      : '') +
+    (!d.active
+      ? '<p class="hint" style="color:#FF7A7E">المنيو بيوقف عن زبائنك بعد ٣ أيام من الانتهاء.</p>'
+      : '');
+}
 
 /* ---------- QR ---------- */
 function menuUrl(){ return location.origin+'/'+R.slug; }
