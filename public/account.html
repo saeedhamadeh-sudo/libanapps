@@ -188,6 +188,19 @@ footer.site .bottom b{color:#fff}
 
       <div id="alert"></div>
 
+      <div class="card hidden" id="profileBox" style="margin-bottom:18px;border-color:var(--orange)">
+        <h3 style="font-size:19px">أكمل بياناتك</h3>
+        <p style="color:var(--muted);font-size:14px;margin:4px 0 0">
+          بنحتاجها مرة وحدة قبل أول اشتراك.</p>
+        <div class="grid2" style="gap:12px">
+          <div><label>اسمك</label><input type="text" id="pfName"></div>
+          <div><label>رقم الهاتف</label><input type="tel" id="pfPhone" placeholder="03 000 000"></div>
+        </div>
+        <label>اسم المحل / المؤسسة</label><input type="text" id="pfBiz">
+        <button class="btn btn-o" id="pfSave" style="margin-top:14px">حفظ البيانات</button>
+        <div class="msg" id="pfMsg"></div>
+      </div>
+
       <div class="card" style="margin-bottom:18px">
         <h3 style="font-size:19px">اشتراكاتي</h3>
         <div id="subs" style="margin-top:12px">
@@ -322,8 +335,10 @@ if(sb) sb.auth.getSession().then(function(r){
 
     // ربط تلقائي للزبائن المفعّلين يدوياً
     await sb.rpc('autolink_my_client');
-    var c=await sb.from('clients').select('name').eq('user_id',ses.data.session.user.id).maybeSingle();
-    if(c.data&&c.data.name) $('#hi').textContent='أهلاً '+c.data.name;
+    var c=await sb.from('clients').select('name,phone,business')
+            .eq('user_id',ses.data.session.user.id).maybeSingle();
+    if(c.data&&c.data.name){ $('#hi').textContent='أهلاً '+c.data.name; }
+    else { $('#profileBox').classList.remove('hidden'); }
 
     if(qs.get('paid'))   alertBox('تم الدفع بنجاح — ترخيصك تحت. إذا ما ظهر فوراً، حدّث الصفحة بعد ثوانٍ.','ok');
     if(qs.get('failed')) alertBox('ما تمت عملية الدفع. فيك تجرّب مرة تانية أو تتواصل معنا على واتساب.','warn');
@@ -337,6 +352,22 @@ if(sb) sb.auth.getSession().then(function(r){
       if(f) openRenew(f.id, f.product);
     }
   }
+
+  $('#pfSave').addEventListener('click',async function(){
+    var n=$('#pfName').value.trim(), p=$('#pfPhone').value.trim();
+    var m=$('#pfMsg');
+    if(n.length<2){ m.className='msg e'; m.textContent='اكتب اسمك'; return; }
+    if(p.replace(/\D/g,'').length<7){ m.className='msg e'; m.textContent='رقم الهاتف غير صحيح'; return; }
+    this.disabled=true; m.className='msg'; m.textContent='عم نحفظ…';
+    var r=await sb.rpc('register_customer',
+      {p_name:n,p_phone:p,p_business:$('#pfBiz').value.trim()});
+    this.disabled=false;
+    if(r.error){ m.className='msg e'; m.textContent=r.error.message; return; }
+    m.className='msg s'; m.textContent='تم الحفظ';
+    $('#hi').textContent='أهلاً '+n;
+    $('#profileBox').classList.add('hidden');
+    await loadSubs();
+  });
 
   async function loadSubs(){
     var lic=await sb.rpc('my_licenses');
@@ -510,9 +541,16 @@ if(sb) sb.auth.getSession().then(function(r){
       : await sb.rpc('start_purchase',{p_plan:PICK.id,p_slug:slug,p_biz:biz});
     if(st.error){ this.disabled=false;
       var e=String(st.error.message||'');
+      if(/profile|no client/.test(e)){
+        $('#modal').classList.add('hidden');
+        $('#profileBox').classList.remove('hidden');
+        $('#profileBox').scrollIntoView({behavior:'smooth'});
+        $('#pfMsg').className='msg e';
+        $('#pfMsg').textContent='عبّي بياناتك وبعدها كمّل الاشتراك';
+        return;
+      }
       return msg(/slug taken/.test(e) ? 'هذا الرابط محجوز — اختار غيره'
              : /invalid slug/.test(e) ? 'الرابط غير صالح (أحرف إنكليزية وأرقام فقط)'
-             : /profile/.test(e) ? 'أكمل بياناتك أولاً من صفحة التسجيل'
              : e, false); }
 
     var ses=await sb.auth.getSession();
