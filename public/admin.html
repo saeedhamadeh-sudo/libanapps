@@ -310,6 +310,7 @@ input[type=checkbox]{width:auto}
       <h3>المنتجات</h3>
       <div style="display:flex;gap:8px;align-items:center">
         <input type="text" id="iq" placeholder="بحث…" style="flex:1">
+        <button class="btn alt sm" id="lockBtn" style="white-space:nowrap">🔓 الترتيب مفتوح</button>
         <button class="btn y sm" id="bulkBtn" style="white-space:nowrap">تعديل الأسعار</button>
       </div>
       <div id="bulkBar" class="hidden" style="display:flex;gap:8px;margin-top:10px">
@@ -543,6 +544,7 @@ async function boot(){
   $('#rName').textContent=R.name_ar;
   $('#viewLink').href='/'+R.slug;
   await licBadge();
+  paintLock();
   await loadCats(); await loadItems(); fillSettings(); loadPay(); loadBanners(); loadPromos();
 }
 async function licBadge(){
@@ -611,13 +613,15 @@ async function loadCats(){
   CATS=r.data||[];
   $('#fCat').innerHTML=CATS.map(function(c){
     return '<option value="'+c.id+'">'+esc(c.name_ar)+'</option>'}).join('');
-  $('#cList').innerHTML=(CATS.length?'<div class="sortnote">اسحب القسم لتغيير ترتيبه بالمنيو</div>':'')+
+  $('#cList').innerHTML=(CATS.length?('<div class="sortnote">'+
+      (SORTLOCK?'🔒 الترتيب مقفول — افتحه من تبويب المنتجات':'اسحب القسم لتغيير ترتيبه بالمنيو')+
+    '</div>'):'')+
     (CATS.length?CATS.map(function(c,i){
     var n=ITEMS.filter(function(x){return x.category_id===c.id}).length;
-    return '<div class="row" draggable="true" data-cid="'+c.id+'">'+
-      '<span class="grip">⋮⋮</span>'+
+    return '<div class="row"'+(SORTLOCK?'':' draggable="true"')+' data-cid="'+c.id+'">'+
+      (SORTLOCK?'':'<span class="grip">⋮⋮</span>')+
       '<div class="t"><b>'+esc(c.name_ar)+'</b><span>'+esc(c.name_en)+' · '+n+' منتج</span></div>'+
-      '<button class="btn alt sm" data-up="'+c.id+'"'+(i===0?' disabled':'')+'>▲</button> '+
+      (SORTLOCK?'':'<button class="btn alt sm" data-up="'+c.id+'"'+(i===0?' disabled':'')+'>▲</button> ')+
       '<button class="btn alt sm" data-ren="'+c.id+'">تعديل</button> '+
       '<button class="btn dg sm" data-delcat="'+c.id+'">حذف</button></div>';
   }).join(''):'<p class="muted">ما في أقسام بعد</p>');
@@ -634,6 +638,7 @@ async function saveCatOrder(){
 (function(){
   var dragC=null, list=$('#cList');
   list.addEventListener('dragstart',function(e){
+    if(SORTLOCK){ e.preventDefault(); return; }
     var r=e.target.closest('.row[data-cid]'); if(!r) return;
     dragC=r.dataset.cid; r.classList.add('dragging');
     e.dataTransfer.effectAllowed='move';
@@ -772,12 +777,16 @@ async function loadItems(){
   ITEMS=r.data||[]; paintItems();
 }
 var PRICEMODE=false;
+var SORTLOCK=false;
+try{ SORTLOCK = localStorage.getItem('la_sortlock')==='1'; }catch(e){}
 function paintItems(){
   var q=$('#iq').value.trim().toLowerCase();
-  var canSort=!q && !PRICEMODE;
-  var html = canSort
-    ? '<div class="sortnote">اسحب داخل القسم لتغيير الترتيب · النقل بين الأقسام من زر «تعديل»</div>'
-    : '<div class="sortnote">فضّي خانة البحث لتقدر ترتّب بالسحب</div>';
+  var canSort=!q && !PRICEMODE && !SORTLOCK;
+  var html;
+  if(canSort) html='<div class="sortnote">اسحب داخل القسم لتغيير الترتيب · النقل بين الأقسام من زر «تعديل»</div>';
+  else if(SORTLOCK) html='<div class="sortnote">🔒 الترتيب مقفول — افتحه من الزر فوق لتقدر تسحب</div>';
+  else if(PRICEMODE) html='<div class="sortnote">وضع تعديل الأسعار</div>';
+  else html='<div class="sortnote">فضّي خانة البحث لتقدر ترتّب بالسحب</div>';
 
   var groups = CATS.map(function(c){ return {cat:c, list:itemsOf(c.id)}; });
   var orphan = ITEMS.filter(function(i){
@@ -849,6 +858,19 @@ function moveWithin(catId, fromIdx, toIdx){
 
 $('#iq').addEventListener('input',paintItems);
 
+/* ---------- قفل الترتيب ---------- */
+function paintLock(){
+  var b=$('#lockBtn');
+  b.textContent = SORTLOCK ? '🔒 الترتيب مقفول' : '🔓 الترتيب مفتوح';
+  b.className = SORTLOCK ? 'btn dg sm' : 'btn alt sm';
+  b.style.whiteSpace='nowrap';
+}
+$('#lockBtn').addEventListener('click',function(){
+  SORTLOCK=!SORTLOCK;
+  try{ localStorage.setItem('la_sortlock', SORTLOCK?'1':'0'); }catch(e){}
+  paintLock(); paintItems(); paintCatList();
+});
+
 /* ---------- تعديل الأسعار السريع ---------- */
 function setPriceMode(on){
   PRICEMODE=on;
@@ -903,6 +925,7 @@ $('#bulkSave').addEventListener('click',async function(){
 (function(){
   var dragId=null, list=$('#iList');
   list.addEventListener('dragstart',function(e){
+    if(SORTLOCK){ e.preventDefault(); return; }
     var r=e.target.closest('.row[data-id]'); if(!r) return;
     dragId=r.dataset.id; r.classList.add('dragging');
     e.dataTransfer.effectAllowed='move';
