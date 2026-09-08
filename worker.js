@@ -415,7 +415,14 @@ async function createOwner(request, env) {
     }
   }
 
-  // 4) الربط بالمطعم
+  // 4) ربط الزبون بحساب الدخول (ليشوف اشتراكه بصفحة حسابه)
+  try {
+    const rr = await sbGet(env, `restaurants?id=eq.${restaurantId}&select=client_id&limit=1`);
+    const cid = rr[0] && rr[0].client_id;
+    if (cid) await sbPatch(env, `clients?id=eq.${cid}&user_id=is.null`, { user_id: userId });
+  } catch (e) { console.error('client link skipped', e && e.message); }
+
+  // 5) الربط بالمطعم
   const link = await fetch(`${env.SUPABASE_URL}/rest/v1/restaurant_users`, {
     method: 'POST',
     headers: {
