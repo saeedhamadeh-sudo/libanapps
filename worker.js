@@ -234,6 +234,122 @@ async function whishFailure(request, env) {
 
 
 
+
+// ---------- شراء باقة من الموقع ----------
+async function platformWhish(env) {
+  const rows = await sbGet(env, 'platform_settings?id=eq.1&select=*&limit=1');
+  const s = rows[0];
+  if (!s || !s.whish_enabled || !s.whish_channel || !s.whish_secret) return null;
+  return {
+    row: s,
+    client: new WhishClient({
+      channel: s.whish_channel,
+      secret: s.whish_secret,
+      websiteUrl: s.website_url || env.WEBSITE_URL,
+      environment: (env.WHISH_ENV === 'sandbox') ? 'sandbox' : 'production'
+    })
+  };
+}
+
+// من هو صاحب الطلب؟
+async function currentUser(request, env) {
+  const auth = request.headers.get('Authorization') || '';
+  const token = auth.replace(/^Bearer\s+/i, '');
+  if (!token) return null;
+  const r = await fetch(`${env.SUPABASE_URL}/auth/v1/user`, {
+    headers: { apikey: env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${token}` }
+  });
+  if (!r.ok) return null;
+  return r.json();
+}
+
+async function buyCreate(request, env) {
+  const me = await currentUser(request, env);
+  if (!me) return json(401, { error: 'سجّل دخولك أولاً' });
+
+  let body;
+  try { body = await request.json(); } catch { return json(400, { error: 'bad json' }); }
+  const pid = Number(body.purchase_id);
+  if (!pid) return json(400, { error: 'missing purchase_id' });
+
+  const rows = await sbGet(env,
+    `purchases?id=eq.${pid}&select=id,user_id,amount_usd,product_code,status&limit=1`);
+  const p = rows[0];
+  if (!p) return json(404, { error: 'purchase not found' });
+  if (p.user_id !== me.id) return json(403, { error: 'not allowed' });
+  if (p.status === 'paid') return json(400, { error: 'مدفوعة مسبقاً' });
+
+  const w = await platformWhish(env);
+  if (!w) return json(400, { error: 'الدفع الإلكتروني غير مفعّل حالياً — تواصل معنا' });
+
+  const site = env.WEBSITE_URL;
+  try {
+    const res = await w.client.createPayment({
+      amount: Number(p.amount_usd),
+      currency: 'USD',
+      invoice: `LibanApps — ${p.product_code} #${p.id}`,
+      externalId: Number(p.id),
+      successCallbackUrl: `${site}/api/buy/callback-success`,
+      failureCallbackUrl: `${site}/api/buy/callback-failure`,
+      successRedirectUrl:  `${site}/account?paid=${p.id}`,
+      failureRedirectUrl:  `${site}/account?failed=${p.id}`
+    });
+    if (!res.success) {
+      return json(400, { error: (res.dialog && res.dialog.message) || 'رفضت بوابة الدفع العملية' });
+    }
+    await sbPatch(env, `purchases?id=eq.${p.id}`, { status: 'awaiting_payment' });
+    return json(200, { collectUrl: res.collectUrl });
+  } catch (e) {
+    console.error('buy create failed', e);
+    const d = (e && e.dialog && e.dialog.message) || (e && (e.code || e.message)) || '';
+    return json(502, { error: 'بوابة الدفع: ' + d });
+  }
+}
+
+async function buySuccess(request, env) {
+  const { externalId, currency } = parseCallbackUrl(request.url) || {};
+  if (!externalId) return json(400, { error: 'malformed callback' });
+
+  const rows = await sbGet(env,
+    `purchases?id=eq.${Number(externalId)}&select=id,amount_usd,status&limit=1`);
+  const p = rows[0];
+  if (!p) return json(404, { error: 'unknown purchase' });
+  if (p.status === 'paid') return json(200, { ok: true, already: true });
+
+  const w = await platformWhish(env);
+  if (!w) return json(400, { error: 'no platform credentials' });
+
+  let st;
+  try { st = await w.client.getPaymentStatus(currency || 'USD', Number(externalId)); }
+  catch (e) { console.error('buy status failed', e); return json(502, { error: 'status check failed' }); }
+
+  if (st.collectStatus !== 'success') return json(400, { error: 'not confirmed' });
+  if (!w.client.validateAmount(Number(st.amount), Number(p.amount_usd), currency || 'USD')) {
+    console.error('buy amount mismatch', p.id, st.amount, p.amount_usd);
+    return json(400, { error: 'amount mismatch' });
+  }
+
+  // التفعيل: ترخيص + مطعم إذا كانت باقة منيو
+  const r = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/provision_purchase`, {
+    method: 'POST',
+    headers: { ...sbHeaders(env), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ p_id: Number(externalId), p_txn: st.transactionId || null })
+  });
+  if (!r.ok) {
+    console.error('provision failed', await r.text());
+    return json(500, { error: 'provision failed' });
+  }
+  return json(200, { ok: true });
+}
+
+async function buyFailure(request, env) {
+  const { externalId } = parseCallbackUrl(request.url) || {};
+  if (!externalId) return json(400, { error: 'malformed callback' });
+  await sbPatch(env, `purchases?id=eq.${Number(externalId)}&status=eq.awaiting_payment`,
+    { status: 'failed' });
+  return json(200, { ok: true });
+}
+
 // ---------- إنشاء حساب لصاحب مطعم ----------
 //  يتحقق أولاً أن الطالب مشرف منصة، ثم ينشئ المستخدم ويربطه بمطعمه.
 async function createOwner(request, env) {
@@ -341,9 +457,16 @@ function withCache(res, pathname) {
 
 // ---------- أي صفحة نعرض لأي مسار ----------
 function pageFor(pathname) {
-  if (pathname.startsWith('/i/'))     return '/invoice.html';
-  if (pathname.startsWith('/admin'))  return '/admin.html';
-  if (pathname.startsWith('/super'))  return '/super.html';
+  var p = pathname.replace(/\/+$/, '') || '/';
+  if (p === '/')              return '/index.html';
+  if (p === '/menus')         return '/product-menus.html';
+  if (p === '/industrial')    return '/product-industrial.html';
+  if (p === '/trade')         return '/product-trade.html';
+  if (p === '/signup')        return '/signup.html';
+  if (p === '/account')       return '/account.html';
+  if (p.startsWith('/i/'))    return '/invoice.html';
+  if (p.startsWith('/admin')) return '/admin.html';
+  if (p.startsWith('/super')) return '/super.html';
   return '/menu.html';   // أي مسار آخر = رابط مطعم
 }
 
@@ -364,6 +487,12 @@ export default {
         }
         if (url.pathname === '/api/whish/callback-success') return await whishSuccess(request, env);
         if (url.pathname === '/api/whish/callback-failure') return await whishFailure(request, env);
+        if (url.pathname === '/api/buy/create') {
+          if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
+          return await buyCreate(request, env);
+        }
+        if (url.pathname === '/api/buy/callback-success') return await buySuccess(request, env);
+        if (url.pathname === '/api/buy/callback-failure') return await buyFailure(request, env);
         if (url.pathname === '/api/create-owner') {
           if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
           return await createOwner(request, env);
