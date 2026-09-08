@@ -393,8 +393,11 @@ if(sb) sb.auth.getSession().then(function(r){
         '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">'+
           '<b style="font-family:Tajawal;font-size:17px">'+esc(p.plan_name||p.product)+'</b>'+
           '<span class="chip warn">بانتظار الدفع</span>'+
-          '<span style="margin-inline-start:auto;color:var(--muted);font-size:13px">'+
-            p.amount+' $</span></div>'+
+          '<span style="margin-inline-start:auto;display:flex;gap:8px;align-items:center">'+
+            '<span style="color:var(--muted);font-size:13px">'+p.amount+' $</span>'+
+            '<button class="btn btn-o sm" data-pay="'+p.id+'">أكمل الدفع</button>'+
+            '<button class="btn btn-g sm" data-cancel="'+p.id+'">إلغاء</button>'+
+          '</span></div>'+
         '<p class="hint">إذا دفعت وما ظهر الترخيص، حدّث الصفحة أو تواصل معنا.</p></div>';
     }).join('');
 
@@ -402,7 +405,33 @@ if(sb) sb.auth.getSession().then(function(r){
   }
 
   var RENEW=null;
-  $('#subs').addEventListener('click',function(e){
+  $('#subs').addEventListener('click',async function(e){
+    var cn=e.target.closest('[data-cancel]');
+    if(cn){
+      if(!confirm('إلغاء هذه العملية؟')) return;
+      cn.disabled=true;
+      var r=await sb.rpc('cancel_purchase',{p_id:Number(cn.dataset.cancel)});
+      if(r.error){ alert('ما نجح: '+r.error.message); cn.disabled=false; return; }
+      if(r.data && r.data.ok===false){ alert(r.data.reason||'ما فينا نلغيها'); cn.disabled=false; return; }
+      await loadSubs();
+      return;
+    }
+    var py=e.target.closest('[data-pay]');
+    if(py){
+      py.disabled=true;
+      var ses2=await sb.auth.getSession();
+      try{
+        var res2=await fetch('/api/buy/create',{method:'POST',
+          headers:{'Content-Type':'application/json',
+                   'Authorization':'Bearer '+ses2.data.session.access_token},
+          body:JSON.stringify({purchase_id:Number(py.dataset.pay)})});
+        var j2=await res2.json();
+        if(j2.collectUrl){ location.href=j2.collectUrl; return; }
+        alert(j2.error||'تعذّر بدء الدفع');
+      }catch(err){ alert(String(err.message||err)); }
+      py.disabled=false;
+      return;
+    }
     var rn=e.target.closest('[data-renew]');
     if(rn){ openRenew(rn.dataset.renew, rn.dataset.prod); return; }
     var b=e.target.closest('[data-copy]'); if(!b) return;
