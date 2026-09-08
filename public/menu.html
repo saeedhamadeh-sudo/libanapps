@@ -610,6 +610,13 @@ var CFG=window.LIBANAPPS||{}, DEMO=!(CFG.SUPABASE_URL&&CFG.SUPABASE_ANON_KEY);
 var sb=DEMO?null:window.supabase.createClient(CFG.SUPABASE_URL,CFG.SUPABASE_ANON_KEY);
 
 var slug=(location.pathname.split('/').filter(Boolean)[0]||'').toLowerCase()||'hotzone';
+
+// الصور بتنخدم عبر وسيط الكاش — أسرع للزبون وأوفر بالنقل
+function img(u){
+  if(!u) return '';
+  var m=String(u).match(/\/storage\/v1\/object\/public\/(.+)$/);
+  return m ? ('/img/'+m[1]) : u;
+}
 var L='ar', T=window.I18N.ar;
 var R=null, CATS=[], ITEMS=[], BANNERS=[], PROMOS=[];
 var cart={}, filter='all', query='', oType='dine_in', pay='cash', geo={lat:null,lng:null};
@@ -711,8 +718,9 @@ function paintHeader(){
   document.title=nm+(tg?' — '+tg:'');
   $('#tName').textContent=nm; $('#tTag').textContent=tg;
   $('#hName').textContent=nm; $('#hTag').textContent=tg;
-  if(R.logo_url){ $('#tLogo').src=R.logo_url; $('#tLogo').classList.remove('hidden');
-                  $('#hLogo').src=R.logo_url; $('#hLogo').classList.remove('hidden'); }
+  if(R.logo_url){ var lg=img(R.logo_url);
+                  $('#tLogo').src=lg; $('#tLogo').classList.remove('hidden');
+                  $('#hLogo').src=lg; $('#hLogo').classList.remove('hidden'); }
   if(R.phone){ var p=$('#hPhone'); p.href='tel:'+R.phone; p.innerHTML='<b>'+esc(R.phone)+'</b>';
                p.classList.remove('hidden'); $('#fPhone').textContent=R.phone; }
   var ad=tx(R,'address');
@@ -762,7 +770,7 @@ function paintSlider(){
   $('#slider').classList.remove('hidden');
   $('#slides').innerHTML=BANNERS.map(function(b){
     var c=tx(b,'caption');
-    return '<div><img src="'+esc(b.image_url)+'" alt="">'+(c?'<div class="cap">'+esc(c)+'</div>':'')+'</div>';
+    return '<div><img src="'+esc(img(b.image_url))+'" alt="">'+(c?'<div class="cap">'+esc(c)+'</div>':'')+'</div>';
   }).join('');
   $('#dots').innerHTML=BANNERS.map(function(_,i){return '<i class="'+(i?'':'on')+'"></i>'}).join('');
   if(BANNERS.length>1){ clearInterval(stm); stm=setInterval(next,4500); }
@@ -784,7 +792,7 @@ function paintChips(){
 }
 function itemHtml(it){
   var q=cart[it.id]?cart[it.id].qty:0;
-  var img=it.image_url?'<img src="'+esc(it.image_url)+'" alt="" loading="lazy">':'<span>'+esc(tx(R,'name'))+'</span>';
+  var imgHtml=it.image_url?'<img src="'+esc(img(it.image_url))+'" alt="" loading="lazy">':'<span>'+esc(tx(R,'name'))+'</span>';
   var ctrl=q?'<div class="step"><button data-m="'+it.id+'">−</button><b>'+q+'</b><button data-a="'+it.id+'">+</button></div>'
            :'<button class="plus" data-a="'+it.id+'" aria-label="'+T.add+'">+</button>';
   var mp=mainPrice(it.price_usd), lb=subPrice(it.price_usd);
@@ -874,7 +882,7 @@ function paintCart(){
   }
   $('#stepCart').innerHTML=keys.map(function(k){
     var c=cart[k], it=c.item;
-    return '<div class="line">'+(it.image_url?'<img src="'+esc(it.image_url)+'" alt="">':'<div class="noimg"></div>')+
+    return '<div class="line">'+(it.image_url?'<img src="'+esc(img(it.image_url))+'" alt="">':'<div class="noimg"></div>')+
       '<div class="t"><b>'+esc(tx(it,'name'))+'</b><span>'+mainTxt(it.price_usd*c.qty)+'</span></div>'+
       '<div class="step"><button data-m="'+k+'">−</button><b>'+c.qty+'</b><button data-a="'+k+'">+</button></div></div>';
   }).join('');
@@ -1232,7 +1240,7 @@ function showPromo(){
   if(!PROMOS.length) return;
   var p=PROMOS[0];
   try{ if(p.show_once&&sessionStorage.getItem('la_promo_'+p.id)) return; }catch(e){}
-  if(p.image_url){ $('#pImg').src=p.image_url; $('#pImg').classList.remove('hidden'); }
+  if(p.image_url){ $('#pImg').src=img(p.image_url); $('#pImg').classList.remove('hidden'); }
   $('#pTitle').textContent=tx(p,'title'); $('#pBody').textContent=tx(p,'body');
   $('#promo').classList.remove('hidden');
   $('#pClose').addEventListener('click',function(){
