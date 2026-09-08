@@ -155,7 +155,7 @@ footer.site .bottom b{color:#fff}
 
 <nav>
   <div class="row">
-    <a class="brand" href="/">Liban<span>Apps</span></a>
+    <a class="brand" id="brandBox" href="/">Liban<span>Apps</span></a>
     <div class="links">
       <a href="/menus">منيو المطاعم</a>
       <a href="/industrial">محاسبة الصناعيين</a>
@@ -203,7 +203,7 @@ footer.site .bottom b{color:#fff}
 <footer class="site">
   <div class="cols">
     <div>
-      <h4>LibanApps</h4>
+      <h4 id="footBrand">LibanApps</h4>
       <p style="font-size:14.5px;margin:0">برامج جاهزة للمطاعم والصناعيين والتجّار،
         مبنية للسوق اللبناني ومدعومة محلياً.</p>
     </div>
@@ -258,6 +258,16 @@ document.getElementById('yy').textContent=new Date().getFullYear();
 // معلومات التواصل بالتذييل وزر الواتساب
 if(sb) sb.rpc('public_settings').then(function(r){
   var s=r.data; if(!s) return;
+  if(s.logo_url){
+    var bb=document.getElementById('brandBox');
+    if(bb) bb.innerHTML='<img src="'+s.logo_url+'" alt="'+(s.brand_name||'LibanApps')+
+      '" style="height:34px;width:auto">';
+  } else if(s.brand_name && s.brand_name!=='LibanApps'){
+    var bb2=document.getElementById('brandBox');
+    if(bb2) bb2.textContent=s.brand_name;
+  }
+  if(s.brand_name){ var fb=document.getElementById('footBrand');
+    if(fb) fb.textContent=s.brand_name; }
   if(s.whatsapp){ var w=$('#waFloat');
     w.href='https://wa.me/'+String(s.whatsapp).replace(/\D/g,''); w.classList.remove('hidden'); }
   if(s.phone){ var p=$('#fPhone'); p.textContent=s.phone; p.href='tel:'+s.phone; }
