@@ -310,6 +310,8 @@ body.login-page .credit .credit-tel{color:#E08A2B}
     <button class="tab" data-t="rests" aria-pressed="false">المطاعم</button>
     <button class="tab" data-t="new" aria-pressed="false">إصدار ترخيص جديد</button>
     <button class="tab" data-t="owner" aria-pressed="false">حساب صاحب مطعم</button>
+    <button class="tab" data-t="plans" aria-pressed="false">الباقات</button>
+    <button class="tab" data-t="site" aria-pressed="false">إعدادات الموقع</button>
   </div>
 
   <!-- SUBS -->
@@ -356,6 +358,78 @@ body.login-page .credit .credit-tel{color:#E08A2B}
     <div class="panel">
       <h3>الزبائن</h3>
       <div style="overflow-x:auto"><table id="clientsTbl"><tbody></tbody></table></div>
+    </div>
+  </section>
+
+  <!-- PLANS -->
+  <section data-p="plans" class="hidden">
+    <div class="panel">
+      <h3 id="planTitle">باقة جديدة</h3>
+      <input type="hidden" id="plId">
+      <div class="g3">
+        <div><label>البرنامج</label><select id="plProd"></select></div>
+        <div><label>اسم الباقة</label><input type="text" id="plName" placeholder="منيو المطاعم — سنة"></div>
+        <div><label>المدة (يوم)</label><input type="number" id="plDays" value="365"></div>
+      </div>
+      <div class="g3">
+        <div><label>السعر ($)</label><input type="number" id="plPrice" step="1"></div>
+        <div><label>سعر مشطوب (اختياري)</label><input type="number" id="plOld" step="1"></div>
+        <div><label>شارة (اختياري)</label><input type="text" id="plBadge" placeholder="الأكثر طلباً"></div>
+      </div>
+      <label>الميزات — سطر لكل ميزة</label>
+      <textarea id="plFeat" style="min-height:120px" placeholder="منيو رقمي بلغتين&#10;رمز QR جاهز&#10;طلبات على الواتساب"></textarea>
+      <div class="sw"><input type="checkbox" id="plActive" checked><label for="plActive" style="margin:0">ظاهرة بالموقع</label></div>
+      <div class="acts">
+        <button class="btn" id="plSave">حفظ الباقة</button>
+        <button class="btn alt" id="plClear">تفريغ</button>
+        <button class="btn dg hidden" id="plDel">حذف</button>
+      </div>
+      <div class="msg" id="plMsg"></div>
+    </div>
+    <div class="panel">
+      <h3>الباقات الحالية</h3>
+      <div id="plList"></div>
+    </div>
+  </section>
+
+  <!-- SITE SETTINGS -->
+  <section data-p="site" class="hidden">
+    <div class="panel">
+      <h3>معلومات التواصل بالموقع</h3>
+      <p class="muted">بتظهر بتذييل الموقع وبزر الواتساب العائم.</p>
+      <div class="g2">
+        <div><label>رقم واتساب (961…)</label><input type="text" id="stWa"></div>
+        <div><label>رقم الهاتف</label><input type="text" id="stPhone"></div>
+      </div>
+      <div class="g2">
+        <div><label>البريد الإلكتروني</label><input type="text" id="stMail"></div>
+        <div><label>العنوان</label><input type="text" id="stAddr"></div>
+      </div>
+      <div class="g2">
+        <div><label>إنستغرام</label><input type="text" id="stIg"></div>
+        <div><label>فيسبوك</label><input type="text" id="stFb"></div>
+      </div>
+      <div class="acts"><button class="btn" id="stSave">حفظ</button></div>
+      <div class="msg" id="stMsg"></div>
+    </div>
+
+    <div class="panel">
+      <h3>الدفع الإلكتروني للاشتراكات</h3>
+      <p class="muted">حساب Whish تبع المنصة — منه بتنقبض اشتراكات الزبائن.
+        (غير حسابات المطاعم اللي بتقبض طلباتها.)</p>
+      <div class="sw"><input type="checkbox" id="pwEn"><label for="pwEn" style="margin:0">تفعيل الدفع على الموقع</label></div>
+      <div class="g2">
+        <div><label>Whish Channel</label><input type="text" id="pwCh"></div>
+        <div><label>Whish Secret</label><input type="password" id="pwSec" placeholder="اتركه فاضي إذا ما بدك تغيّره"></div>
+      </div>
+      <div class="acts"><button class="btn" id="pwSave">حفظ</button></div>
+      <div class="msg" id="pwMsg"></div>
+    </div>
+
+    <div class="panel">
+      <h3>المشتريات</h3>
+      <div class="acts" style="margin:0 0 10px"><button class="btn alt sm" id="buyRef">تحديث</button></div>
+      <div style="overflow-x:auto"><table id="buyTbl"><tbody></tbody></table></div>
     </div>
   </section>
 
@@ -557,6 +631,7 @@ async function loadAll(){
   await loadSubs();
   await loadRests();
   await loadRestTable();
+  await loadPlans(); await loadSite(); await loadBuys();
   toggleMenuBox();
 }
 async function loadClients(){
@@ -730,6 +805,117 @@ $('#addClient').addEventListener('click',async function(){
   resetClientForm();
   await loadClients(); await loadSubs();
 });
+
+/* ---------- الباقات ---------- */
+var PLANS=[];
+async function loadPlans(){
+  var r=await sb.from('plans').select('*').order('product_code').order('sort');
+  PLANS=r.data||[];
+  $('#plProd').innerHTML=PRODUCTS.map(function(p){
+    return '<option value="'+p.code+'">'+esc(p.name_ar)+'</option>'}).join('');
+  var pn={}; PRODUCTS.forEach(function(p){pn[p.code]=p.name_ar});
+  $('#plList').innerHTML=PLANS.length?PLANS.map(function(p){
+    return '<div class="row-item"><div class="t"><b>'+esc(p.name_ar)+
+      (p.is_active?'':' <span class="tag bad">مخفية</span>')+'</b>'+
+      '<span>'+esc(pn[p.product_code]||p.product_code)+' · '+p.price_usd+' $ · '+p.days+' يوم · '+
+      (p.features_ar||[]).length+' ميزة</span></div>'+
+      '<button class="btn alt sm" data-pled="'+p.id+'">تعديل</button></div>';
+  }).join(''):'<p class="muted">ما في باقات</p>';
+}
+function plClear(){
+  ['#plId','#plName','#plPrice','#plOld','#plBadge','#plFeat'].forEach(function(x){$(x).value=''});
+  $('#plDays').value=365; $('#plActive').checked=true;
+  $('#planTitle').textContent='باقة جديدة'; $('#plDel').classList.add('hidden');
+  $('#plMsg').textContent='';
+}
+$('#plClear').addEventListener('click',plClear);
+$('#plList').addEventListener('click',function(e){
+  var b=e.target.closest('[data-pled]'); if(!b) return;
+  var p=PLANS.find(function(x){return x.id===b.dataset.pled}); if(!p) return;
+  $('#plId').value=p.id; $('#plProd').value=p.product_code; $('#plName').value=p.name_ar;
+  $('#plDays').value=p.days; $('#plPrice').value=p.price_usd;
+  $('#plOld').value=p.old_price_usd||''; $('#plBadge').value=p.badge_ar||'';
+  $('#plFeat').value=(p.features_ar||[]).join('\n');
+  $('#plActive').checked=p.is_active;
+  $('#planTitle').textContent='تعديل باقة'; $('#plDel').classList.remove('hidden');
+  window.scrollTo({top:0,behavior:'smooth'});
+});
+$('#plSave').addEventListener('click',async function(){
+  var name=$('#plName').value.trim();
+  if(!name){ $('#plMsg').className='msg e'; $('#plMsg').textContent='اكتب اسم الباقة'; return; }
+  var o={product_code:$('#plProd').value, name_ar:name,
+    days:Number($('#plDays').value)||365, price_usd:Number($('#plPrice').value)||0,
+    old_price_usd:$('#plOld').value?Number($('#plOld').value):null,
+    badge_ar:$('#plBadge').value.trim(),
+    features_ar:$('#plFeat').value.split('\n').map(function(x){return x.trim()}).filter(Boolean),
+    is_active:$('#plActive').checked};
+  var id=$('#plId').value;
+  var r=id?await sb.from('plans').update(o).eq('id',id):await sb.from('plans').insert(o);
+  if(r.error){ $('#plMsg').className='msg e'; $('#plMsg').textContent=r.error.message; return; }
+  $('#plMsg').className='msg s'; $('#plMsg').textContent='تم الحفظ';
+  plClear(); await loadPlans();
+});
+$('#plDel').addEventListener('click',async function(){
+  if(!confirm('حذف الباقة؟ المشتريات القديمة ما بتتأثر.')) return;
+  var r=await sb.from('plans').delete().eq('id',$('#plId').value);
+  if(r.error){ alert(r.error.message); return; }
+  plClear(); await loadPlans();
+});
+
+/* ---------- إعدادات الموقع ---------- */
+async function loadSite(){
+  var r=await sb.from('platform_settings').select('*').eq('id',1).maybeSingle();
+  var s2=r.data;
+  if(s2){
+    $('#stWa').value=s2.whatsapp||''; $('#stPhone').value=s2.phone||'';
+    $('#stMail').value=s2.email||''; $('#stAddr').value=s2.address||'';
+    $('#stIg').value=s2.instagram||''; $('#stFb').value=s2.facebook||'';
+  }
+  var w=await sb.rpc('platform_whish_status');
+  if(w.data){
+    $('#pwEn').checked=w.data.enabled;
+    $('#pwCh').placeholder=w.data.channel_hint||'—';
+    if(w.data.has_secret) $('#pwSec').placeholder='محفوظ — اتركه فاضي إذا ما بدك تغيّره';
+  }
+}
+$('#stSave').addEventListener('click',async function(){
+  var r=await sb.from('platform_settings').update({
+    whatsapp:$('#stWa').value.replace(/\D/g,''), phone:$('#stPhone').value.trim(),
+    email:$('#stMail').value.trim(), address:$('#stAddr').value.trim(),
+    instagram:$('#stIg').value.trim(), facebook:$('#stFb').value.trim(),
+    updated_at:new Date().toISOString()
+  }).eq('id',1);
+  $('#stMsg').className='msg '+(r.error?'e':'s');
+  $('#stMsg').textContent=r.error?r.error.message:'تم الحفظ';
+});
+$('#pwSave').addEventListener('click',async function(){
+  var r=await sb.rpc('set_platform_whish',{p_enabled:$('#pwEn').checked,
+    p_channel:$('#pwCh').value.trim(), p_secret:$('#pwSec').value.trim()});
+  $('#pwMsg').className='msg '+(r.error?'e':'s');
+  $('#pwMsg').textContent=r.error?r.error.message:'تم الحفظ';
+  $('#pwSec').value=''; if(!r.error) loadSite();
+});
+
+async function loadBuys(){
+  var r=await sb.from('purchases')
+    .select('id,product_code,amount_usd,status,slug,created_at,clients(name,phone)')
+    .order('created_at',{ascending:false}).limit(50);
+  var rows=r.data||[];
+  var S={pending:['معلّق','warn'],awaiting_payment:['بانتظار الدفع','warn'],
+         paid:['مدفوع','ok'],failed:['فشل','bad'],cancelled:['ملغى','bad']};
+  var b=$('#buyTbl').querySelector('tbody');
+  b.innerHTML='<tr><th>#</th><th>الزبون</th><th>البرنامج</th><th>المبلغ</th><th>الحالة</th><th>التاريخ</th></tr>'+
+    (rows.length?rows.map(function(p){
+      var st=S[p.status]||[p.status,''];
+      return '<tr><td>'+p.id+'</td>'+
+        '<td>'+esc((p.clients&&p.clients.name)||'—')+'</td>'+
+        '<td>'+esc(p.product_code)+(p.slug?' /'+esc(p.slug):'')+'</td>'+
+        '<td>'+p.amount_usd+' $</td>'+
+        '<td><span class="tag '+st[1]+'">'+st[0]+'</span></td>'+
+        '<td class="muted">'+new Date(p.created_at).toLocaleDateString('en-GB')+'</td></tr>';
+    }).join(''):'<tr><td colspan="6" class="muted" style="padding:18px">ما في مشتريات</td></tr>');
+}
+$('#buyRef').addEventListener('click',loadBuys);
 
 /* ---------- restaurants ---------- */
 var RESTS=[];
