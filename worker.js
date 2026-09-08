@@ -235,6 +235,31 @@ async function whishFailure(request, env) {
 
 
 
+
+// ---------- وسيط الصور: بتنخدم من كاش Cloudflare بدل Supabase ----------
+//  /img/items/xxx.jpg  →  Supabase Storage
+//  أول طلب بيجيبها من Supabase، وبعدها بتنخدم من الكاش مجاناً
+async function imageProxy(request, env, ctx, url) {
+  const path = url.pathname.replace(/^\/img\//, '');
+  if (!path || path.indexOf('..') >= 0) return new Response('bad path', { status: 400 });
+
+  const cache = caches.default;
+  const key = new Request(url.toString(), { method: 'GET' });
+  const hit = await cache.match(key);
+  if (hit) return hit;
+
+  const target = `${env.SUPABASE_URL}/storage/v1/object/public/${path}`;
+  const res = await fetch(target, { cf: { cacheEverything: true, cacheTtl: 604800 } });
+  if (!res.ok) return new Response('not found', { status: 404 });
+
+  const out = new Response(res.body, res);
+  out.headers.set('Cache-Control', 'public, max-age=604800, immutable');  // أسبوع
+  out.headers.set('X-LibanApps-Cache', 'MISS');
+  out.headers.delete('set-cookie');
+  if (ctx && ctx.waitUntil) ctx.waitUntil(cache.put(key, out.clone()));
+  return out;
+}
+
 // ---------- شراء باقة من الموقع ----------
 async function platformWhish(env) {
   const rows = await sbGet(env, 'platform_settings?id=eq.1&select=*&limit=1');
@@ -478,8 +503,11 @@ function pageFor(pathname) {
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
+
+    // 0) الصور — قبل أي شي، لتنخدم من الكاش
+    if (url.pathname.startsWith('/img/')) return imageProxy(request, env, ctx, url);
 
     // 1) الـAPI — أي مسار تحت /api/ يرجّع JSON دائماً، حتى لو صار خطأ داخلي
     if (url.pathname.startsWith('/api/')) {
