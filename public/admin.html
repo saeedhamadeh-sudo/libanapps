@@ -310,6 +310,7 @@ input[type=checkbox]{width:auto}
       <h3>المنتجات</h3>
       <div style="display:flex;gap:8px;align-items:center">
         <input type="text" id="iq" placeholder="بحث…" style="flex:1">
+        <button class="btn alt sm" id="fixSortBtn" style="white-space:nowrap">ترقيم تلقائي</button>
         <button class="btn alt sm" id="lockBtn" style="white-space:nowrap">🔓 الترتيب مفتوح</button>
         <button class="btn y sm" id="bulkBtn" style="white-space:nowrap">تعديل الأسعار</button>
       </div>
@@ -840,14 +841,18 @@ function paintItems(){
 
 // أول رقم ترتيب فاضي بآخر القسم
 function nextSort(catId){
-  var arr=itemsOf(catId);
-  return arr.length ? (Number(arr[arr.length-1].sort)||arr.length)+1 : 1;
+  var arr=itemsOf(catId), mx=0;
+  arr.forEach(function(x){ mx=Math.max(mx, Number(x.sort)||0); });
+  return mx+1;
 }
 
 // منتجات قسم معيّن مرتّبة
 function itemsOf(catId){
   return ITEMS.filter(function(i){ return (i.category_id||'')===(catId||''); })
-              .sort(function(a,b){ return (a.sort||0)-(b.sort||0); });
+              .sort(function(a,b){
+                var d=(Number(a.sort)||0)-(Number(b.sort)||0);
+                return d!==0 ? d : String(a.name_ar).localeCompare(String(b.name_ar),'ar');
+              });
 }
 
 // حفظ ترتيب قسم واحد
@@ -872,6 +877,34 @@ function moveWithin(catId, fromIdx, toIdx){
 }
 
 $('#iq').addEventListener('input',paintItems);
+
+/* ---------- ترقيم تلقائي: كل قسم 1،2،3… ---------- */
+$('#fixSortBtn').addEventListener('click',async function(){
+  if(!confirm('ترقيم كل المنتجات داخل أقسامها (1، 2، 3…)؟\n\n'+
+              'بيثبّت الترتيب الحالي وبيمنع الخربطة. ما بيغيّر أي شي تاني.')) return;
+  this.disabled=true; msg('#iMsg','عم نرقّم…');
+  var cats=CATS.map(function(c){return c.id}).concat(['']);
+  var n=0;
+  for(var ci=0; ci<cats.length; ci++){
+    var arr=itemsOf(cats[ci]);
+    for(var k=0;k<arr.length;k++){
+      if(arr[k].sort!==k+1){
+        arr[k].sort=k+1;
+        await sb.from('items').update({sort:k+1}).eq('id',arr[k].id);
+        n++;
+      }
+    }
+  }
+  for(var j=0;j<CATS.length;j++){
+    if(CATS[j].sort!==j+1){
+      CATS[j].sort=j+1;
+      await sb.from('categories').update({sort:j+1}).eq('id',CATS[j].id);
+    }
+  }
+  this.disabled=false;
+  await loadCats(); await loadItems();
+  msg('#iMsg', n? ('تم ترقيم '+n+' منتج') : 'الترتيب أصلاً مرتّب', true);
+});
 
 /* ---------- قفل الترتيب ---------- */
 function paintLock(){
