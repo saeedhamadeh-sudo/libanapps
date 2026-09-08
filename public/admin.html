@@ -470,6 +470,17 @@ body.login-page .credit .credit-tel{color:#E08A2B}
     </div>
 
     <div class="panel">
+      <h3>كلمة المرور</h3>
+      <p class="muted" style="margin-top:0">غيّرها متى ما بدك — ٦ أحرف على الأقل.</p>
+      <div class="g2">
+        <div><label>كلمة المرور الجديدة</label><input type="password" id="pw1" autocomplete="new-password"></div>
+        <div><label>تأكيد كلمة المرور</label><input type="password" id="pw2" autocomplete="new-password"></div>
+      </div>
+      <div class="acts"><button class="btn" id="savePw">تغيير كلمة المرور</button></div>
+      <div class="msg" id="pwMsg"></div>
+    </div>
+
+    <div class="panel">
       <h3>الشكل</h3>
       <div class="g2">
         <div><label>الثيم</label>
@@ -569,11 +580,25 @@ var R=null, CATS=[], ITEMS=[];
 function msg(el,t,ok){ var e=$(el); e.className='msg'+(ok===true?' s':ok===false?' e':''); e.textContent=t; }
 
 /* ---------- auth ---------- */
+var IMPERSONATE=false;
 async function boot(){
   var s=await sb.auth.getSession();
   if(!s.data.session) return;
-  var m=await sb.from('restaurant_users').select('restaurant_id').limit(1).maybeSingle();
-  var rid=m.data&&m.data.restaurant_id;
+
+  // مشرف المنصة بيقدر يفتح أي مطعم: /admin?r=slug
+  var wantSlug=new URLSearchParams(location.search).get('r');
+  var rid=null;
+  if(wantSlug){
+    var adm=await sb.rpc('is_admin');
+    if(adm.data){
+      var rr=await sb.from('restaurants').select('id').eq('slug',wantSlug).maybeSingle();
+      if(rr.data){ rid=rr.data.id; IMPERSONATE=true; }
+    }
+  }
+  if(!rid){
+    var m=await sb.from('restaurant_users').select('restaurant_id').limit(1).maybeSingle();
+    rid=m.data&&m.data.restaurant_id;
+  }
   if(!rid){
     var any=await sb.from('restaurants').select('id').limit(1).maybeSingle();
     rid=any.data&&any.data.id;
@@ -584,6 +609,14 @@ async function boot(){
   R=r.data;
   document.body.classList.remove('login-page');
   $('#login').classList.add('hidden'); $('#app').classList.remove('hidden');
+  if(IMPERSONATE){
+    var bar=document.createElement('div');
+    bar.style.cssText='background:#E08A2B;color:#fff;text-align:center;padding:8px 12px;'+
+      'font-size:13.5px;font-weight:700;border-radius:10px;margin-bottom:10px';
+    bar.innerHTML='أنت داخل كمشرف منصة · التعديلات بتنطبق على هذا المطعم '+
+      '<a href="/super" style="color:#fff;text-decoration:underline">رجوع للوحتك</a>';
+    $('#app').insertBefore(bar, $('#app').firstChild);
+  }
   document.documentElement.dataset.theme=R.theme||'flame';
   $('#rName').textContent=R.name_ar;
   $('#viewLink').href='/'+R.slug;
@@ -1210,6 +1243,20 @@ $('#savePrices').addEventListener('click',function(){
 $('#saveLook').addEventListener('click',async function(){
   if(await patch({theme:$('#sTheme').value,default_lang:$('#sLang').value},'#pMsg'))
     document.documentElement.dataset.theme=R.theme;
+});
+
+/* ---------- تغيير كلمة المرور ---------- */
+$('#savePw').addEventListener('click',async function(){
+  var a=$('#pw1').value, b=$('#pw2').value;
+  if(a.length<6) return msg('#pwMsg','كلمة المرور قصيرة — ٦ أحرف على الأقل',false);
+  if(a!==b)      return msg('#pwMsg','الكلمتان غير متطابقتين',false);
+  if(IMPERSONATE) return msg('#pwMsg','ما فيك تغيّر كلمة مرور صاحب المطعم من هون',false);
+  this.disabled=true; msg('#pwMsg','عم نغيّر…');
+  var r=await sb.auth.updateUser({password:a});
+  this.disabled=false;
+  if(r.error) return msg('#pwMsg','ما نجح: '+r.error.message,false);
+  $('#pw1').value=''; $('#pw2').value='';
+  msg('#pwMsg','تم تغيير كلمة المرور',true);
 });
 
 /* ---------- payment ---------- */
