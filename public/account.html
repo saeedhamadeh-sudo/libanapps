@@ -208,6 +208,14 @@ footer.site .bottom b{color:#fff}
         </div>
       </div>
 
+      <div class="card hidden" id="trialBox" style="margin-bottom:18px;
+           background:linear-gradient(150deg,#FFF8EF,#FDF1E0);border-color:var(--orange)">
+        <h3 style="font-size:19px">جرّب مجاناً</h3>
+        <p style="color:var(--muted);font-size:14px;margin:4px 0 14px" id="trialSub">
+          فعّل البرنامج <b id="trialDays">٣</b> أيام بدون دفع، وادفع خلال التجربة أو بعدها.</p>
+        <div class="grid3" id="trialList" style="gap:12px"></div>
+      </div>
+
       <div class="card" id="buyBox">
         <h3 style="font-size:19px">اشترك ببرنامج جديد</h3>
         <p style="color:var(--muted);font-size:14px;margin:4px 0 14px">اختار الباقة وادفع أونلاين — التفعيل فوري.</p>
@@ -345,6 +353,7 @@ if(sb) sb.auth.getSession().then(function(r){
 
     await loadSubs();
     await loadPlans();
+    await loadTrials();
     if(qs.get('plan')) openPlan(qs.get('plan'));
     if(qs.get('renew')){
       var lic=(await sb.rpc('my_licenses')).data||[];
@@ -366,7 +375,7 @@ if(sb) sb.auth.getSession().then(function(r){
     m.className='msg s'; m.textContent='تم الحفظ';
     $('#hi').textContent='أهلاً '+n;
     $('#profileBox').classList.add('hidden');
-    await loadSubs();
+    await loadSubs(); await loadTrials();
   });
 
   async function loadSubs(){
@@ -407,11 +416,13 @@ if(sb) sb.auth.getSession().then(function(r){
           '<button class="btn btn-g sm" style="margin-inline-start:8px" data-copy="'+esc(p.key)+'">نسخ</button></div>'+
           '<p class="hint">حطّ هذا المفتاح بشاشة التفعيل داخل البرنامج.</p>';
       }
+      var isTrial = (p.plan==='trial');
       var renew = p.id ? '<button class="btn btn-o sm" data-renew="'+p.id+
-        '" data-prod="'+esc(p.product)+'">تجديد</button>' : '';
+        '" data-prod="'+esc(p.product)+'">'+(isTrial?'اشترك الآن':'تجديد')+'</button>' : '';
       return '<div style="padding:14px 0;border-bottom:1px solid var(--line)">'+
         '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">'+
           '<b style="font-family:Tajawal;font-size:17px">'+esc(p.product_name||p.product)+'</b>'+
+          (isTrial?'<span class="chip warn">تجربة مجانية</span>':'')+
           '<span class="chip '+cls+'">'+txt+'</span>'+
           '<span style="margin-inline-start:auto;display:flex;gap:8px;align-items:center">'+
             (p.slug?'<span style="color:var(--muted);font-size:13px">/'+esc(p.slug)+'</span>':'')+
@@ -472,6 +483,55 @@ if(sb) sb.auth.getSession().then(function(r){
     });
   });
 
+  var TRIAL_DAYS=3;
+  async function loadTrials(){
+    var st=await sb.rpc('public_settings');
+    if(st.data && st.data.trial_days) TRIAL_DAYS=st.data.trial_days;
+    $('#trialDays').textContent=TRIAL_DAYS;
+
+    var lic=(await sb.rpc('my_licenses')).data||[];
+    var have={}; lic.forEach(function(x){ have[x.product]=1; });
+
+    var PROD=[['menu','منيو المطاعم'],['alum','محاسبة الصناعيين'],['trade','محاسبة التجارة']];
+    var open=PROD.filter(function(p){ return !have[p[0]] });
+    if(!open.length){ $('#trialBox').classList.add('hidden'); return; }
+
+    $('#trialBox').classList.remove('hidden');
+    $('#trialList').innerHTML=open.map(function(p){
+      return '<div style="background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px">'+
+        '<b style="font-family:Tajawal;font-size:16px;display:block;margin-bottom:8px">'+p[1]+'</b>'+
+        '<button class="btn btn-o sm full" data-trial="'+p[0]+'">ابدأ التجربة</button></div>';
+    }).join('');
+  }
+
+  $('#trialList').addEventListener('click',async function(e){
+    var b=e.target.closest('[data-trial]'); if(!b) return;
+    var prod=b.dataset.trial, slug='', biz='';
+    if(prod==='menu'){
+      slug=prompt('اختار رابط مطعمك (إنكليزي بدون مسافات)\n\nمثال: myrestaurant\n'+
+                  'رح يصير: libanapps.com/myrestaurant','');
+      if(slug===null) return;
+      slug=slug.toLowerCase().replace(/[^a-z0-9-]/g,'');
+      if(slug.length<2){ alert('الرابط قصير'); return; }
+      biz=prompt('اسم المطعم بالعربي:','')||slug;
+    }
+    b.disabled=true; b.textContent='عم نفعّل…';
+    var r=await sb.rpc('start_trial',{p_product:prod,p_slug:slug,p_biz:biz});
+    if(r.error){
+      alert(/profile/.test(String(r.error.message))
+        ? 'عبّي بياناتك أولاً' : r.error.message);
+      b.disabled=false; b.textContent='ابدأ التجربة'; return;
+    }
+    if(r.data && r.data.ok===false){
+      alert(r.data.reason||'ما نجحت التجربة');
+      b.disabled=false; b.textContent='ابدأ التجربة'; return;
+    }
+    alertBox('انفعّلت تجربتك المجانية لمدة '+TRIAL_DAYS+' أيام ✓ '+
+      (prod==='menu' ? 'منيوك جاهز على libanapps.com/'+esc(r.data.slug)
+                     : 'مفتاح التفعيل تحت.'),'ok');
+    await loadSubs(); await loadTrials();
+  });
+
   async function loadPlans(){
     var r=await sb.from('plans').select('*').eq('is_active',true).order('product_code').order('sort');
     PLANS=r.data||[];
@@ -505,8 +565,9 @@ if(sb) sb.auth.getSession().then(function(r){
       if(!(idx>=0&&idx<opts.length)){ RENEW=null; return; }
       PICK=opts[idx];
     }
-    $('#mTitle').textContent='تجديد — '+PICK.name_ar;
-    $('#mSub').textContent='المبلغ: '+PICK.price_usd+' $ · بتنضاف '+PICK.days+' يوم على اشتراكك الحالي';
+    $('#mTitle').textContent=PICK.name_ar;
+    $('#mSub').textContent='المبلغ: '+PICK.price_usd+' $ · بتنضاف '+PICK.days+
+      ' يوم على اشتراكك الحالي';
     $('#mSlug').classList.add('hidden');
     msg(''); $('#modal').classList.remove('hidden');
   }
