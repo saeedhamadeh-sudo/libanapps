@@ -411,7 +411,14 @@ body.login-page .credit .credit-tel{color:#E08A2B}
       </div>
       <div class="g2">
         <div><label>مدة التجربة المجانية (يوم)</label><input type="number" id="stTrial" min="0"></div>
-        <div></div>
+        <div><label>اسم الموقع (يظهر إذا ما في شعار)</label><input type="text" id="stBrand"></div>
+      </div>
+      <label>شعار الموقع (PNG بخلفية شفافة أفضل)</label>
+      <input type="file" id="stLogo" accept="image/*">
+      <div style="display:flex;align-items:center;gap:10px;margin-top:8px">
+        <img id="stLogoPrev" class="hidden" style="height:44px;background:#fff;border:1px solid var(--line);
+             border-radius:8px;padding:4px">
+        <button class="btn dg sm hidden" id="stLogoDel">حذف الشعار</button>
       </div>
       <div class="acts"><button class="btn" id="stSave">حفظ</button></div>
       <div class="msg" id="stMsg"></div>
@@ -887,6 +894,10 @@ async function loadSite(){
     $('#stMail').value=s2.email||''; $('#stAddr').value=s2.address||'';
     $('#stIg').value=s2.instagram||''; $('#stFb').value=s2.facebook||'';
     $('#stTrial').value=s2.trial_days!=null?s2.trial_days:3;
+    $('#stBrand').value=s2.brand_name||'LibanApps';
+    if(s2.logo_url){ $('#stLogoPrev').src=s2.logo_url;
+      $('#stLogoPrev').classList.remove('hidden'); $('#stLogoDel').classList.remove('hidden'); }
+    else { $('#stLogoPrev').classList.add('hidden'); $('#stLogoDel').classList.add('hidden'); }
   }
   var w=await sb.rpc('platform_whish_status');
   if(w.data){
@@ -895,16 +906,67 @@ async function loadSite(){
     if(w.data.has_secret) $('#pwSec').placeholder='محفوظ — اتركه فاضي إذا ما بدك تغيّره';
   }
 }
+function shrinkImg(file,max){
+  var t=(file.type||''), out=/png|webp|gif|svg/i.test(t)
+    ? {mime:'image/png',ext:'png'} : {mime:'image/jpeg',ext:'jpg'};
+  return new Promise(function(res,rej){
+    var fr=new FileReader();
+    fr.onload=function(){
+      var im=new Image();
+      im.onload=function(){
+        var sc=Math.min(1,max/Math.max(im.width,im.height));
+        var cv=document.createElement('canvas');
+        cv.width=Math.round(im.width*sc); cv.height=Math.round(im.height*sc);
+        var cx=cv.getContext('2d'); cx.clearRect(0,0,cv.width,cv.height);
+        cx.drawImage(im,0,0,cv.width,cv.height);
+        cv.toBlob(function(b){ b?res({blob:b,ext:out.ext,mime:out.mime}):rej(new Error('fail')) },
+          out.mime,0.9);
+      };
+      im.onerror=rej; im.src=fr.result;
+    };
+    fr.onerror=rej; fr.readAsDataURL(file);
+  });
+}
+$('#stLogo').addEventListener('change',function(e){
+  var f=e.target.files[0]; if(!f) return;
+  $('#stLogoPrev').src=URL.createObjectURL(f);
+  $('#stLogoPrev').classList.remove('hidden');
+});
+$('#stLogoDel').addEventListener('click',async function(){
+  if(!confirm('حذف الشعار؟ رح يرجع اسم الموقع نصاً.')) return;
+  await sb.from('platform_settings').update({logo_url:''}).eq('id',1);
+  $('#stLogo').value=''; $('#stLogoPrev').classList.add('hidden');
+  this.classList.add('hidden');
+  $('#stMsg').className='msg s'; $('#stMsg').textContent='انحذف الشعار';
+});
+
 $('#stSave').addEventListener('click',async function(){
+  var logoUrl=null;
+  if($('#stLogo').files[0]){
+    $('#stMsg').className='msg'; $('#stMsg').textContent='عم نرفع الشعار…';
+    try{
+      var o=await shrinkImg($('#stLogo').files[0],420);
+      var path='platform/'+Date.now()+'.'+o.ext;
+      var up=await sb.storage.from('logos').upload(path,o.blob,{contentType:o.mime});
+      if(up.error) throw up.error;
+      logoUrl=sb.storage.from('logos').getPublicUrl(path).data.publicUrl;
+    }catch(err){
+      $('#stMsg').className='msg e'; $('#stMsg').textContent='ما نجح رفع الشعار: '+(err.message||err);
+      return;
+    }
+  }
   var r=await sb.from('platform_settings').update({
     whatsapp:$('#stWa').value.replace(/\D/g,''), phone:$('#stPhone').value.trim(),
     email:$('#stMail').value.trim(), address:$('#stAddr').value.trim(),
     instagram:$('#stIg').value.trim(), facebook:$('#stFb').value.trim(),
     trial_days:Number($('#stTrial').value)||0,
+    brand_name:$('#stBrand').value.trim()||'LibanApps',
     updated_at:new Date().toISOString()
   }).eq('id',1);
+  if(logoUrl) await sb.from('platform_settings').update({logo_url:logoUrl}).eq('id',1);
   $('#stMsg').className='msg '+(r.error?'e':'s');
   $('#stMsg').textContent=r.error?r.error.message:'تم الحفظ';
+  if(!r.error){ $('#stLogo').value=''; loadSite(); }
 });
 $('#pwSave').addEventListener('click',async function(){
   var r=await sb.rpc('set_platform_whish',{p_enabled:$('#pwEn').checked,
