@@ -495,6 +495,7 @@ function pageFor(pathname) {
   if (p === '/industrial')    return '/product-industrial.html';
   if (p === '/trade')         return '/product-trade.html';
   if (p === '/signup')        return '/signup.html';
+  if (p === '/login')         return '/login.html';
   if (p === '/account')       return '/account.html';
   if (p.startsWith('/i/'))    return '/invoice.html';
   if (p.startsWith('/admin')) return '/admin.html';
