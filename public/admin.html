@@ -381,6 +381,11 @@ input[type=checkbox]{width:auto}
         <div><label>العنوان عربي</label><input type="text" id="sAddrAr"></div>
         <div><label>العنوان إنكليزي</label><input type="text" id="sAddrEn"></div>
       </div>
+      <div class="g3">
+        <div><label>إنستغرام</label><input type="text" id="sIg" placeholder="username أو رابط"></div>
+        <div><label>فيسبوك</label><input type="text" id="sFb" placeholder="username أو رابط"></div>
+        <div><label>تيك توك</label><input type="text" id="sTt" placeholder="username أو رابط"></div>
+      </div>
       <label>شعار المطعم</label><input type="file" id="sLogo" accept="image/*">
       <img class="prev hidden" id="sLogoPrev" alt="">
       <div class="acts"><button class="btn" id="saveInfo">حفظ</button></div>
@@ -553,7 +558,14 @@ $$('.tab').forEach(function(t){
 });
 
 /* ---------- image upload ---------- */
+// الصور الشفافة (PNG/WebP/GIF) بتضل PNG — تحويلها لـJPEG بيخلي الخلفية سودا
+function outType(file){
+  var t=(file&&file.type)||'';
+  return /png|webp|gif|svg/i.test(t) ? {mime:'image/png', ext:'png'}
+                                     : {mime:'image/jpeg', ext:'jpg'};
+}
 function shrink(file,max){
+  var out=outType(file);
   return new Promise(function(res,rej){
     var fr=new FileReader();
     fr.onload=function(){
@@ -562,8 +574,10 @@ function shrink(file,max){
         var s=Math.min(1,max/Math.max(im.width,im.height));
         var cv=document.createElement('canvas');
         cv.width=Math.round(im.width*s); cv.height=Math.round(im.height*s);
-        cv.getContext('2d').drawImage(im,0,0,cv.width,cv.height);
-        cv.toBlob(function(b){ b?res(b):rej(new Error('convert failed')) },'image/jpeg',0.82);
+        var ctx=cv.getContext('2d');
+        ctx.clearRect(0,0,cv.width,cv.height);   // منبقي الشفافية
+        ctx.drawImage(im,0,0,cv.width,cv.height);
+        cv.toBlob(function(b){ b?res(b):rej(new Error('convert failed')) }, out.mime, 0.86);
       };
       im.onerror=rej; im.src=fr.result;
     };
@@ -571,9 +585,10 @@ function shrink(file,max){
   });
 }
 async function upload(bucket,file,max){
+  var out=outType(file);
   var blob=await shrink(file,max||900);
-  var path=R.id+'/'+Date.now()+'-'+Math.random().toString(36).slice(2,7)+'.jpg';
-  var up=await sb.storage.from(bucket).upload(path,blob,{contentType:'image/jpeg'});
+  var path=R.id+'/'+Date.now()+'-'+Math.random().toString(36).slice(2,7)+'.'+out.ext;
+  var up=await sb.storage.from(bucket).upload(path,blob,{contentType:out.mime});
   if(up.error) throw up.error;
   return sb.storage.from(bucket).getPublicUrl(path).data.publicUrl;
 }
@@ -958,6 +973,7 @@ function fillSettings(){
   $('#sTagAr').value=R.tagline_ar||'';$('#sTagEn').value=R.tagline_en||'';
   $('#sPhone').value=R.phone||'';$('#sWa').value=R.whatsapp||'';
   $('#sAddrAr').value=R.address_ar||'';$('#sAddrEn').value=R.address_en||'';
+  $('#sIg').value=R.instagram||''; $('#sFb').value=R.facebook||''; $('#sTt').value=R.tiktok||'';
   if(R.logo_url){$('#sLogoPrev').src=R.logo_url;$('#sLogoPrev').classList.remove('hidden')}
   $('#sRate').value=R.exchange_rate;$('#sRound').value=R.lbp_rounding;
   $('#sFee').value=R.delivery_fee_usd;$('#sMin').value=R.min_order_usd;
@@ -983,7 +999,9 @@ $('#saveInfo').addEventListener('click',async function(){
     var o={name_ar:$('#sNameAr').value.trim(),name_en:$('#sNameEn').value.trim(),
       tagline_ar:$('#sTagAr').value.trim(),tagline_en:$('#sTagEn').value.trim(),
       phone:$('#sPhone').value.trim(),whatsapp:$('#sWa').value.replace(/\D/g,''),
-      address_ar:$('#sAddrAr').value.trim(),address_en:$('#sAddrEn').value.trim()};
+      address_ar:$('#sAddrAr').value.trim(),address_en:$('#sAddrEn').value.trim(),
+      instagram:$('#sIg').value.trim(), facebook:$('#sFb').value.trim(),
+      tiktok:$('#sTt').value.trim()};
     if($('#sLogo').files[0]) o.logo_url=await upload('logos',$('#sLogo').files[0],500);
     if(await patch(o,'#sMsg')) $('#rName').textContent=R.name_ar;
   }catch(e){ msg('#sMsg','ما نجح رفع الشعار',false); }
