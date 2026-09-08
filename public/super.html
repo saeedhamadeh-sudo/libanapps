@@ -651,6 +651,7 @@ async function loadClients(){
         '<td>'+act+' سارية من '+mine.length+'</td>'+
         '<td style="white-space:nowrap">'+
           '<button class="btn alt sm" data-edit="'+c.id+'">تعديل</button> '+
+          '<button class="btn alt sm" data-linkacct="'+c.id+'">ربط حساب</button> '+
           '<button class="btn alt sm" data-stopall="'+c.id+'">إيقاف الكل</button> '+
           '<button class="btn alt sm" data-onall="'+c.id+'">تفعيل الكل</button> '+
           '<button class="btn dg sm" data-delc="'+c.id+'">حذف الزبون</button>'+
@@ -733,8 +734,19 @@ $('#subsTbl').addEventListener('click',async function(e){
 
 $('#clientsTbl').addEventListener('click',async function(e){
   var b=e.target.closest('button'); if(!b) return;
-  var id=b.dataset.stopall||b.dataset.onall||b.dataset.delc||b.dataset.edit;
+  var id=b.dataset.stopall||b.dataset.onall||b.dataset.delc||b.dataset.edit||b.dataset.linkacct;
   var c=CLIENTS.find(function(x){return x.id===id}); if(!c) return;
+
+  if(b.dataset.linkacct){
+    var em=prompt('إيميل حساب الدخول تبع "'+c.name+'"\n\n'+
+      'لازم يكون عنده حساب أصلاً — بعد الربط بيشوف اشتراكاته بصفحة حسابه.','');
+    if(em===null||!em.trim()) return;
+    var lr=await sb.rpc('link_client_user',{p_client:c.id,p_email:em.trim()});
+    if(lr.error) alert('ما نجح: '+lr.error.message);
+    else if(lr.data&&lr.data.ok) alert('تم الربط ✓');
+    else alert(lr.data&&lr.data.reason||'ما لقينا الحساب');
+    return;
+  }
 
   if(b.dataset.edit){
     $('#cName').value=c.name; $('#cBiz').value=c.business||'';
