@@ -288,12 +288,12 @@ input[type=checkbox]{width:auto}
         <div><label>الوصف بالعربي</label><textarea id="fDescAr"></textarea></div>
         <div><label>الوصف بالإنكليزي</label><textarea id="fDescEn"></textarea></div>
       </div>
-      <div class="g3">
+      <div class="g2">
         <div><label id="lPrice">السعر ($)</label>
           <input type="number" id="fPrice" step="0.25" min="0">
           <div class="muted" id="priceHint" style="font-size:12px;margin-top:4px"></div></div>
         <div><label>القسم</label><select id="fCat"></select></div>
-        <div><label>الترتيب</label><input type="number" id="fSort" value="0"></div>
+
       </div>
       <label>الصورة</label><input type="file" id="fImg" accept="image/*">
       <img class="prev hidden" id="fPrev" alt="">
@@ -726,7 +726,7 @@ $('#fImg').addEventListener('change',function(e){
 });
 function clearItem(){
   ['#fId','#fNameAr','#fNameEn','#fDescAr','#fDescEn','#fPrice'].forEach(function(s){$(s).value=''});
-  $('#fSort').value=0; $('#fAvail').checked=true; $('#fHot').checked=false;
+  $('#fAvail').checked=true; $('#fHot').checked=false;
   $('#fImg').value=''; $('#fPrev').classList.add('hidden'); pendImg=null;
   $('#fTitle').textContent='إضافة منتج'; $('#delItem').classList.add('hidden'); msg('#iMsg','');
 }
@@ -752,15 +752,24 @@ $('#saveItem').addEventListener('click',async function(){
   try{
     var url=null;
     if(pendImg) url=await upload('items',pendImg,800);
-    var o={restaurant_id:R.id,category_id:$('#fCat').value,name_ar:ar,
+    var cat=$('#fCat').value;
+    var o={restaurant_id:R.id,category_id:cat,name_ar:ar,
       name_en:$('#fNameEn').value.trim()||ar,desc_ar:$('#fDescAr').value.trim(),
       desc_en:$('#fDescEn').value.trim(),
       // إذا العملة الأساسية ليرة، منحوّل للدولار قبل التخزين
       price_usd: isLbp() ? Number((raw/rate()).toFixed(4)) : raw,
-      is_available:$('#fAvail').checked,is_featured:$('#fHot').checked,
-      sort:Number($('#fSort').value)||0};
+      is_available:$('#fAvail').checked,is_featured:$('#fHot').checked};
     if(url) o.image_url=url;
     var id=$('#fId').value;
+
+    if(id){
+      // تعديل: ما منلمس الترتيب إطلاقاً — الصنف بيضل مكانه
+      var cur=ITEMS.find(function(x){return x.id===id});
+      // إلا إذا انتقل لقسم تاني، عندها بيروح لآخر القسم الجديد
+      if(cur && (cur.category_id||'')!==(cat||'')) o.sort=nextSort(cat);
+    }else{
+      o.sort=nextSort(cat);   // منتج جديد → آخر القسم
+    }
     var r=id?await sb.from('items').update(o).eq('id',id):await sb.from('items').insert(o);
     if(r.error) throw r.error;
     clearItem(); await loadItems(); msg('#iMsg','تم الحفظ',true);
@@ -827,6 +836,12 @@ function paintItems(){
   });
   $('#iList').innerHTML = any ? html : html+'<p class="muted">ما في منتجات</p>';
   relang();
+}
+
+// أول رقم ترتيب فاضي بآخر القسم
+function nextSort(catId){
+  var arr=itemsOf(catId);
+  return arr.length ? (Number(arr[arr.length-1].sort)||arr.length)+1 : 1;
 }
 
 // منتجات قسم معيّن مرتّبة
@@ -982,7 +997,7 @@ $('#iList').addEventListener('click',async function(e){
   $('#fId').value=i.id;$('#fNameAr').value=i.name_ar;$('#fNameEn').value=i.name_en;
   $('#fDescAr').value=i.desc_ar||'';$('#fDescEn').value=i.desc_en||'';
   $('#fPrice').value = isLbp() ? usdToLbp(i.price_usd) : i.price_usd;
-  $('#fSort').value=i.sort; priceHint();
+  priceHint();
   $('#fCat').value=i.category_id;$('#fAvail').checked=i.is_available;$('#fHot').checked=i.is_featured;
   pendImg=null; $('#fImg').value='';
   if(i.image_url){$('#fPrev').src=i.image_url;$('#fPrev').classList.remove('hidden')}
