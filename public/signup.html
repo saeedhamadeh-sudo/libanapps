@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>حساب جديد — LibanApps</title>
+<meta name="description" content="افتح حساب على LibanApps واشترك ببرامج المطاعم والمحاسبة.">
+<meta name="theme-color" content="#0E2438">
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&family=Tajawal:wght@400;700;800&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   LibanApps — نظام تصميم الموقع
+   ============================================================ */
+:root{
+  --navy:#0E2438; --navy-2:#16324B; --ink:#12324F;
+  --sky:#2C7A9E; --teal:#3E9BB5; --orange:#E08A2B;
+  --bg:#F4F8FB; --card:#FFFFFF; --muted:#6A7C8C; --line:rgba(14,36,56,.10);
+  --ok:#1F7A5A; --bad:#C0392B; --r:16px;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font-family:'Cairo',system-ui,sans-serif;line-height:1.65}
+h1,h2,h3,h4{font-family:'Tajawal',sans-serif;margin:0;line-height:1.25}
+a{color:inherit;text-decoration:none}
+img{max-width:100%;display:block}
+button{font:inherit;cursor:pointer;border:0}
+input,select,textarea{font:inherit;color:inherit}
+.wrap{max-width:1080px;margin:0 auto;padding:0 18px}
+.hidden{display:none!important}
+
+/* ---------- شريط علوي ---------- */
+nav{position:sticky;top:0;z-index:50;background:rgba(244,248,251,.93);
+  backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+nav .row{display:flex;align-items:center;gap:16px;padding:12px 18px;max-width:1080px;margin:0 auto}
+nav .brand{display:flex;align-items:center;gap:8px;font-family:'Tajawal';font-weight:800;font-size:20px}
+nav .brand span{color:var(--sky)}
+nav .links{display:flex;gap:18px;margin-inline-start:auto;font-size:15px;font-weight:600}
+nav .links a:hover{color:var(--sky)}
+@media(max-width:860px){nav .links{display:none}}
+
+/* ---------- أزرار ---------- */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;
+  padding:11px 22px;border-radius:12px;font-weight:800;font-size:15px;transition:.18s}
+.btn-p{background:var(--ink);color:#fff}
+.btn-p:hover{background:var(--navy-2);transform:translateY(-1px)}
+.btn-o{background:var(--orange);color:#fff}
+.btn-o:hover{filter:brightness(1.06);transform:translateY(-1px)}
+.btn-g{border:1.5px solid var(--line);color:var(--ink);background:#fff}
+.btn-g:hover{border-color:var(--sky);color:var(--sky)}
+.btn.sm{padding:8px 16px;font-size:14px;border-radius:10px}
+.btn.full{width:100%}
+.btn:disabled{opacity:.55;cursor:default;transform:none}
+
+/* ---------- أقسام ---------- */
+section{padding:58px 0}
+.head{text-align:center;max-width:640px;margin:0 auto 36px}
+.head h2{font-size:clamp(24px,3.6vw,34px)}
+.head p{color:var(--muted);margin-top:10px}
+
+/* ---------- بطل الصفحة ---------- */
+header.hero{position:relative;overflow:hidden;
+  background:linear-gradient(160deg,#0E2438 0%,#16324B 60%,#1D4260 100%);color:#EAF2F8}
+header.hero::after{content:'';position:absolute;inset:0;pointer-events:none;
+  background:
+    radial-gradient(40% 45% at 85% 10%, rgba(224,138,43,.22) 0%, transparent 70%),
+    radial-gradient(45% 45% at 8% 88%, rgba(62,155,181,.22) 0%, transparent 70%)}
+header.hero .inner{position:relative;z-index:1;padding:62px 18px 70px;max-width:1080px;
+  margin:0 auto;text-align:center}
+header.hero h1{font-size:clamp(28px,5vw,44px);color:#fff}
+header.hero h1 b{color:var(--orange)}
+header.hero p.lead{max-width:640px;margin:14px auto 0;font-size:16.5px;color:#B9CCDC}
+header.hero .tag{display:inline-block;background:rgba(255,255,255,.10);
+  border:1px solid rgba(255,255,255,.2);border-radius:999px;padding:5px 15px;
+  font-size:13px;font-weight:700;margin-bottom:14px}
+header.hero .cta{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:26px}
+header.hero .btn-ghost{background:transparent;color:#fff;border:1.5px solid rgba(255,255,255,.35)}
+
+/* ---------- بطاقات ---------- */
+.grid3{display:grid;gap:18px;grid-template-columns:repeat(3,1fr)}
+.grid2{display:grid;gap:18px;grid-template-columns:1fr 1fr}
+@media(max-width:900px){.grid3,.grid2{grid-template-columns:1fr}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:24px}
+.feat{display:grid;gap:18px;grid-template-columns:repeat(3,1fr)}
+@media(max-width:900px){.feat{grid-template-columns:1fr 1fr}}
+@media(max-width:560px){.feat{grid-template-columns:1fr}}
+.feat .f{background:#fff;border:1px solid var(--line);border-radius:14px;padding:20px}
+.feat .f .ic{width:42px;height:42px;border-radius:11px;display:grid;place-items:center;
+  margin-bottom:12px;background:linear-gradient(135deg,var(--sky),var(--teal))}
+.feat .f .ic svg{width:21px;height:21px;stroke:#fff;fill:none;stroke-width:2}
+.feat .f b{display:block;font-family:'Tajawal';font-size:17px;margin-bottom:5px}
+.feat .f p{margin:0;color:var(--muted);font-size:14px}
+
+/* ---------- الباقات ---------- */
+.plans{display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));
+  max-width:900px;margin:0 auto}
+.plan{background:#fff;border:1.5px solid var(--line);border-radius:18px;padding:26px 22px;
+  display:flex;flex-direction:column;position:relative;transition:.2s}
+.plan:hover{transform:translateY(-3px);box-shadow:0 16px 36px rgba(14,36,56,.10)}
+.plan.hot{border-color:var(--orange)}
+.plan .badge{position:absolute;top:-12px;inset-inline-start:22px;background:var(--orange);
+  color:#fff;font-size:12px;font-weight:800;border-radius:999px;padding:4px 14px}
+.plan h3{font-size:20px}
+.plan .price{font-family:'Tajawal';font-size:40px;font-weight:800;color:var(--ink);margin:10px 0 2px}
+.plan .price small{font-size:15px;color:var(--muted);font-weight:700}
+.plan .old{color:var(--muted);text-decoration:line-through;font-size:15px}
+.plan ul{list-style:none;padding:0;margin:16px 0 20px;flex:1;font-size:14.5px}
+.plan li{padding:6px 0;display:flex;gap:8px;color:#40566B}
+.plan li::before{content:'✓';color:var(--sky);font-weight:800}
+
+/* ---------- نماذج ---------- */
+.form{max-width:440px;margin:0 auto}
+.form .card{padding:28px 24px;box-shadow:0 16px 40px rgba(14,36,56,.10)}
+label{display:block;font-size:13.5px;color:var(--muted);margin:14px 0 5px;font-weight:600}
+input[type=text],input[type=email],input[type=tel],input[type=password],select,textarea{
+  width:100%;background:#F8FAFC;border:1px solid var(--line);border-radius:11px;
+  padding:11px 13px;outline:0;transition:.15s}
+input:focus,select:focus,textarea:focus{border-color:var(--sky);background:#fff}
+.msg{margin-top:12px;font-size:13.5px;text-align:center;min-height:20px}
+.msg.e{color:var(--bad)} .msg.s{color:var(--ok)}
+.hint{font-size:12.5px;color:var(--muted);margin-top:5px}
+
+/* ---------- شارات ---------- */
+.chip{display:inline-block;font-size:12px;font-weight:800;border-radius:999px;padding:3px 11px}
+.chip.ok{background:rgba(31,122,90,.12);color:var(--ok)}
+.chip.warn{background:rgba(224,138,43,.15);color:#B26E19}
+.chip.bad{background:rgba(192,57,43,.12);color:var(--bad)}
+.key{font-family:ui-monospace,Menlo,monospace;background:#F1F5F9;border:1px dashed var(--line);
+  border-radius:9px;padding:5px 11px;display:inline-block;direction:ltr;font-size:14px;
+  letter-spacing:.5px;color:var(--ink)}
+
+/* ---------- شريط سفلي ---------- */
+footer.site{background:var(--ink);color:#9FB6C8;padding:44px 18px 26px;margin-top:56px}
+footer.site .cols{max-width:1080px;margin:0 auto;display:grid;gap:26px;
+  grid-template-columns:1.4fr 1fr 1fr}
+@media(max-width:760px){footer.site .cols{grid-template-columns:1fr}}
+footer.site h4{color:#fff;margin:0 0 12px;font-size:16px}
+footer.site a{display:block;padding:4px 0;font-size:14.5px}
+footer.site a:hover{color:var(--orange)}
+footer.site .bottom{max-width:1080px;margin:26px auto 0;padding-top:18px;
+  border-top:1px solid rgba(255,255,255,.12);display:flex;justify-content:space-between;
+  gap:12px;flex-wrap:wrap;font-size:13px}
+footer.site .bottom b{color:#fff}
+
+/* ---------- زر واتساب ---------- */
+.wa-float{position:fixed;inset-inline-start:18px;bottom:18px;z-index:60;width:56px;height:56px;
+  border-radius:50%;background:#25D366;display:grid;place-items:center;
+  box-shadow:0 10px 26px rgba(37,211,102,.4);transition:.2s}
+.wa-float:hover{transform:scale(1.07)}
+.wa-float svg{width:28px;height:28px;fill:#fff}
+
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="row">
+    <a class="brand" href="/">Liban<span>Apps</span></a>
+    <div class="links">
+      <a href="/menus">منيو المطاعم</a>
+      <a href="/industrial">محاسبة الصناعيين</a>
+      <a href="/trade">محاسبة التجارة</a>
+    </div>
+    <a class="btn btn-g sm" id="navAcct" href="/account" style="margin-inline-start:auto">حسابي</a>
+    <a class="btn btn-o sm" id="navJoin" href="/signup">حساب جديد</a>
+  </div>
+</nav>
+
+<section style="padding:44px 0 20px">
+  <div class="wrap form">
+    <div class="head" style="margin-bottom:20px">
+      <h2 id="pgTitle">افتح حسابك</h2>
+      <p id="pgSub">دقيقة وحدة وبتصير جاهز تشترك بأي برنامج.</p>
+    </div>
+
+    <div class="card">
+      <div style="display:flex;gap:8px;margin-bottom:6px">
+        <button class="btn btn-p sm" style="flex:1" id="tabNew">حساب جديد</button>
+        <button class="btn btn-g sm" style="flex:1" id="tabOld">عندي حساب</button>
+      </div>
+
+      <div id="formNew">
+        <label>اسمك</label><input type="text" id="sName" autocomplete="name">
+        <label>اسم المحل / المؤسسة</label><input type="text" id="sBiz">
+        <label>رقم الهاتف</label><input type="tel" id="sPhone" inputmode="tel" placeholder="03 000 000">
+        <label>البريد الإلكتروني</label><input type="email" id="sMail" autocomplete="email">
+        <label>كلمة المرور</label><input type="password" id="sPass" autocomplete="new-password">
+        <p class="hint">٦ أحرف على الأقل — هي نفسها اللي بتدخل فيها على برنامجك.</p>
+        <button class="btn btn-o full" id="doSignup" style="margin-top:18px">إنشاء الحساب</button>
+      </div>
+
+      <div id="formOld" class="hidden">
+        <label>البريد الإلكتروني</label><input type="email" id="lMail" autocomplete="email">
+        <label>كلمة المرور</label><input type="password" id="lPass" autocomplete="current-password">
+        <button class="btn btn-p full" id="doLogin" style="margin-top:18px">دخول</button>
+      </div>
+
+      <div class="msg" id="sMsg"></div>
+    </div>
+  </div>
+</section>
+
+<footer class="site">
+  <div class="cols">
+    <div>
+      <h4>LibanApps</h4>
+      <p style="font-size:14.5px;margin:0">برامج جاهزة للمطاعم والصناعيين والتجّار،
+        مبنية للسوق اللبناني ومدعومة محلياً.</p>
+    </div>
+    <div>
+      <h4>البرامج</h4>
+      <a href="/menus">منيو المطاعم</a>
+      <a href="/industrial">محاسبة الصناعيين</a>
+      <a href="/trade">محاسبة التجارة</a>
+    </div>
+    <div>
+      <h4>تواصل</h4>
+      <a id="fPhone" href="#">—</a>
+      <a id="fMail" href="#" class="hidden">—</a>
+      <a id="fIg" href="#" target="_blank" class="hidden">إنستغرام</a>
+      <a id="fFb" href="#" target="_blank" class="hidden">فيسبوك</a>
+    </div>
+  </div>
+  <div class="bottom">
+    <span>LibanApps &copy; <span id="yy"></span> — كل الحقوق محفوظة</span>
+    <span>Powered By <b>Saeed Hmadeh</b> · itechlikes</span>
+  </div>
+</footer>
+
+<a class="wa-float hidden" id="waFloat" target="_blank" rel="noopener" aria-label="واتساب">
+  <svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 00-8.6 15L2 22l5.2-1.4A10 10 0 1012 2zm5.1 14.1c-.2.6-1.2 1.2-1.7 1.2-.5.1-1 .1-1.7-.1-.4-.1-.9-.3-1.6-.6-2.8-1.2-4.6-4-4.7-4.2-.1-.2-1.1-1.4-1.1-2.7 0-1.3.7-1.9.9-2.2.2-.3.5-.3.7-.3h.5c.2 0 .4-.1.6.5l.8 2c.1.2.1.3 0 .5l-.4.5c-.1.1-.3.3-.1.6.1.3.6 1.1 1.4 1.8 1 .8 1.7 1.1 2 1.2.2.1.4.1.6-.1l.7-.9c.2-.2.4-.2.6-.1l1.9.9c.2.1.4.2.4.3.1.2.1.7-.1 1.2z"/></svg>
+</a>
+
+<script>
+// ============================================================
+//  LibanApps — إعدادات الاتصال
+//  عبّي القيمتين من: Supabase > Settings > API
+//  هدول مفاتيح عامة وآمنة (محمية بالـRLS).
+//  لا تحط هون service_role key أبداً.
+// ============================================================
+window.LIBANAPPS = {
+  SUPABASE_URL: 'https://moriwmhlgugmjzddwfgv.supabase.co',
+
+  SUPABASE_ANON_KEY: 'sb_publishable_ypfm_aulpcqBpeFpyD_7iw_mA4DNlR5',
+};
+
+</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.0/dist/umd/supabase.min.js"></script>
+<script>
+var C=window.LIBANAPPS||{};
+var sb=(C.SUPABASE_URL&&C.SUPABASE_ANON_KEY)
+  ? window.supabase.createClient(C.SUPABASE_URL,C.SUPABASE_ANON_KEY) : null;
+var $=function(s){return document.querySelector(s)};
+var esc=function(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){
+  return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})};
+document.getElementById('yy').textContent=new Date().getFullYear();
+
+// معلومات التواصل بالتذييل وزر الواتساب
+if(sb) sb.rpc('public_settings').then(function(r){
+  var s=r.data; if(!s) return;
+  if(s.whatsapp){ var w=$('#waFloat');
+    w.href='https://wa.me/'+String(s.whatsapp).replace(/\D/g,''); w.classList.remove('hidden'); }
+  if(s.phone){ var p=$('#fPhone'); p.textContent=s.phone; p.href='tel:'+s.phone; }
+  if(s.email){ var m=$('#fMail'); m.textContent=s.email; m.href='mailto:'+s.email;
+    m.classList.remove('hidden'); }
+  function link(id,val,base){ if(!val) return; var e=$(id);
+    e.href=/^https?:/i.test(val)?val:base+String(val).replace(/^@/,''); e.classList.remove('hidden'); }
+  link('#fIg',s.instagram,'https://instagram.com/');
+  link('#fFb',s.facebook,'https://facebook.com/');
+});
+
+// زر الحساب حسب حالة الدخول
+if(sb) sb.auth.getSession().then(function(r){
+  if(r.data.session){ $('#navJoin').classList.add('hidden'); $('#navAcct').textContent='حسابي'; }
+});
+</script>
+
+<script>
+(function(){
+  var planId=new URLSearchParams(location.search).get('plan');
+  if(planId){ $('#pgSub').textContent='افتح حسابك ليكتمل الاشتراك بالباقة المختارة.'; }
+
+  $('#tabNew').addEventListener('click',function(){
+    $('#formNew').classList.remove('hidden'); $('#formOld').classList.add('hidden');
+    this.className='btn btn-p sm'; $('#tabOld').className='btn btn-g sm';
+    $('#pgTitle').textContent='افتح حسابك';
+  });
+  $('#tabOld').addEventListener('click',function(){
+    $('#formOld').classList.remove('hidden'); $('#formNew').classList.add('hidden');
+    this.className='btn btn-p sm'; $('#tabNew').className='btn btn-g sm';
+    $('#pgTitle').textContent='تسجيل الدخول';
+  });
+
+  function msg(t,ok){ var m=$('#sMsg'); m.className='msg'+(ok===true?' s':ok===false?' e':''); m.textContent=t; }
+  function go(){ location.href='/account'+(planId?('?plan='+encodeURIComponent(planId)):''); }
+
+  $('#doSignup').addEventListener('click',async function(){
+    var name=$('#sName').value.trim(), phone=$('#sPhone').value.trim();
+    var mail=$('#sMail').value.trim().toLowerCase(), pass=$('#sPass').value;
+    if(name.length<2)  return msg('اكتب اسمك',false);
+    if(phone.replace(/\D/g,'').length<7) return msg('رقم الهاتف غير صحيح',false);
+    if(!/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(mail)) return msg('البريد غير صحيح',false);
+    if(pass.length<6)  return msg('كلمة المرور قصيرة — ٦ أحرف على الأقل',false);
+    this.disabled=true; msg('عم نفتح الحساب…');
+    var r=await sb.auth.signUp({email:mail,password:pass});
+    if(r.error){ this.disabled=false;
+      return msg(/registered|exists/i.test(r.error.message)
+        ? 'هذا البريد مستعمل — سجّل دخولك من «عندي حساب»' : r.error.message, false); }
+    if(!r.data.session){
+      var l=await sb.auth.signInWithPassword({email:mail,password:pass});
+      if(l.error){ this.disabled=false;
+        return msg('تم إنشاء الحساب — افتح بريدك للتأكيد ثم سجّل دخولك',true); }
+    }
+    var reg=await sb.rpc('register_customer',
+      {p_name:name,p_phone:phone,p_business:$('#sBiz').value.trim()});
+    this.disabled=false;
+    if(reg.error) return msg('انفتح الحساب بس ما انحفظت البيانات: '+reg.error.message,false);
+    go();
+  });
+
+  $('#doLogin').addEventListener('click',async function(){
+    var mail=$('#lMail').value.trim().toLowerCase(), pass=$('#lPass').value;
+    if(!mail||!pass) return msg('عبّي الحقول',false);
+    this.disabled=true; msg('…');
+    var r=await sb.auth.signInWithPassword({email:mail,password:pass});
+    this.disabled=false;
+    if(r.error) return msg('بيانات الدخول غير صحيحة',false);
+    go();
+  });
+  ['#sPass','#lPass'].forEach(function(x){
+    $(x).addEventListener('keydown',function(e){
+      if(e.key==='Enter') $(x==='#sPass'?'#doSignup':'#doLogin').click(); });
+  });
+
+  if(sb) sb.auth.getSession().then(function(r){ if(r.data.session) go(); });
+})();
+</script>
+</body>
+</html>
