@@ -409,6 +409,10 @@ body.login-page .credit .credit-tel{color:#E08A2B}
         <div><label>إنستغرام</label><input type="text" id="stIg"></div>
         <div><label>فيسبوك</label><input type="text" id="stFb"></div>
       </div>
+      <div class="g2">
+        <div><label>مدة التجربة المجانية (يوم)</label><input type="number" id="stTrial" min="0"></div>
+        <div></div>
+      </div>
       <div class="acts"><button class="btn" id="stSave">حفظ</button></div>
       <div class="msg" id="stMsg"></div>
     </div>
@@ -882,6 +886,7 @@ async function loadSite(){
     $('#stWa').value=s2.whatsapp||''; $('#stPhone').value=s2.phone||'';
     $('#stMail').value=s2.email||''; $('#stAddr').value=s2.address||'';
     $('#stIg').value=s2.instagram||''; $('#stFb').value=s2.facebook||'';
+    $('#stTrial').value=s2.trial_days!=null?s2.trial_days:3;
   }
   var w=await sb.rpc('platform_whish_status');
   if(w.data){
@@ -895,6 +900,7 @@ $('#stSave').addEventListener('click',async function(){
     whatsapp:$('#stWa').value.replace(/\D/g,''), phone:$('#stPhone').value.trim(),
     email:$('#stMail').value.trim(), address:$('#stAddr').value.trim(),
     instagram:$('#stIg').value.trim(), facebook:$('#stFb').value.trim(),
+    trial_days:Number($('#stTrial').value)||0,
     updated_at:new Date().toISOString()
   }).eq('id',1);
   $('#stMsg').className='msg '+(r.error?'e':'s');
