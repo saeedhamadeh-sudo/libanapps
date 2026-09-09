@@ -656,7 +656,7 @@ async function syncUsersToSupabase(users){
   try{
     if(users.length){
       const rows = users.map(userToDb).map(withClient);
-      const { error } = await supabaseClient.from(T('app_users')).upsert(rows.map(withClient), {onConflict:'client_id,username'});
+      const { error } = await supabaseClient.from(T('app_users')).upsert(rows.map(withClient), {onConflict:'client_id,id'});
       if(error){
         lastSupabaseError = describeSupabaseError(error);
         console.error('app_users upsert error:', lastSupabaseError);
