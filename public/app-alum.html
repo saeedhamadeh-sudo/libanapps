@@ -379,6 +379,8 @@ try{
 /* ===== سياق الزبون: كل الجداول بسابقة alum_ ومربوطة بـclient_id ===== */
 let CLIENT_ID = null;          // هوية المؤسسة المشتركة
 let ACCESS = null;             // حالة الاشتراك
+let PLATFORM_ADMIN = false;    // داخل كمشرف منصة (من لوحة /super)
+let PLATFORM_CLIENT_NAME = '';
 function T(name){ return 'alum_' + name; }            // اسم الجدول بالسحابة
 function withClient(row){ return Object.assign({}, row, { client_id: CLIENT_ID }); }
 function scoped(q){ return CLIENT_ID ? q.eq('client_id', CLIENT_ID) : q; }
@@ -1398,9 +1400,9 @@ const SUPERADMIN_DEFAULT_PASSWORD = 'itech@2027';
 function migrateUsers(){
   if(DB.settings.users && DB.settings.users.length) return;
   const oldAuth = DB.settings.auth || {username:'admin', password:'0000'};
+  // مستخدم واحد فقط للمؤسسة — الدخول الإداري صار من منصة LibanApps
   DB.settings.users = [
-    {id:uid(), username:oldAuth.username||'ADMIN', password:oldAuth.password||'0000', role:'admin'},
-    {id:uid(), username:'SUPERADMIN', password:SUPERADMIN_DEFAULT_PASSWORD, role:'superuser'}
+    {id:uid(), username:oldAuth.username||'ADMIN', password:oldAuth.password||'0000', role:'admin'}
   ];
 }
 const BUDGET_BUILTIN_DEFS = [
@@ -1728,11 +1730,42 @@ async function bootPlatform(){
     location.href = '/login?next=alum';
     return { ok:false, reason:'no_session' };
   }
+
+  // دخول مشرف المنصة على مؤسسة زبون: /alum?c=<client_id>
+  const wantClient = new URLSearchParams(location.search).get('c');
+  if(wantClient){
+    const adm = await supabaseClient.rpc('is_admin');
+    if(adm.data === true){
+      const cl = await supabaseClient.from('clients')
+        .select('id,name,business').eq('id', wantClient).maybeSingle();
+      if(cl.data){
+        CLIENT_ID = cl.data.id;
+        PLATFORM_ADMIN = true;
+        PLATFORM_CLIENT_NAME = cl.data.business || cl.data.name || '';
+        ACCESS = { ok:true, admin:true, client_id: CLIENT_ID, days_left: 9999 };
+        return ACCESS;
+      }
+    }
+    return { ok:false, reason:'error', message:'ما فيك تفتح مؤسسة هذا الزبون' };
+  }
+
   const acc = await supabaseClient.rpc('app_access', { p_product: 'alum' });
   if(acc.error) return { ok:false, reason:'error', message: acc.error.message };
   ACCESS = acc.data || {};
   CLIENT_ID = ACCESS.client_id || null;
   return ACCESS;
+}
+
+// شريط تنبيه بوضع المشرف
+function platformAdminBar(){
+  const bar = document.createElement('div');
+  bar.style.cssText = 'position:fixed;inset-inline:0;top:0;z-index:99999;padding:7px 12px;'+
+    'text-align:center;font-family:system-ui;font-size:13px;font-weight:700;'+
+    'color:#fff;background:#E08A2B';
+  bar.innerHTML = 'أنت داخل كمشرف المنصة — مؤسسة: ' + (PLATFORM_CLIENT_NAME||'—') +
+    ' &nbsp;<a href="/super" style="color:#fff;text-decoration:underline">رجوع للوحتك</a>';
+  document.body.appendChild(bar);
+  document.body.style.paddingTop = '32px';
 }
 
 function platformBlockScreen(a){
@@ -6244,6 +6277,18 @@ if('serviceWorker' in navigator && (location.protocol==='https:' || location.hos
     platformBlockScreen(a || {reason:'error'});
     return;
   }
+  // مشرف المنصة: دخول مباشر بلا حساب داخلي ولا 2FA
+  if(PLATFORM_ADMIN){
+    authenticated = true;
+    currentUser = { id:'platform-admin', username:'PLATFORM', role:'superuser', permissions:[] };
+    currentCustomerSession = null; currentWorkerSession = null;
+    init();
+    if(document.readyState === 'loading')
+      document.addEventListener('DOMContentLoaded', platformAdminBar);
+    else platformAdminBar();
+    return;
+  }
+
   // تنبيه قرب الانتهاء
   if(a.days_left <= 15){
     const bar = document.createElement('div');
