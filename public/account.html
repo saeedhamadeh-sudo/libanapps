@@ -418,7 +418,13 @@ if(sb) sb.auth.getSession().then(function(r){
         body:JSON.stringify({purchase_id:Number(pid)})});
       const j=await res.json();
       if(j.ok){ await loadSubs(); await loadTrials(); return true; }
-      if(!silent) alert(j.message || j.error || 'ما تأكد الدفع بعد');
+      if(!silent){
+        var msg = j.message || j.error || 'ما تأكد الدفع بعد';
+        if(j.whish_amount!==undefined)
+          msg += '\n\nالمبلغ عند Whish: ' + j.whish_amount +
+                 '\nالمتوقّع: ' + j.expected + ' ' + (j.currency||'USD');
+        alert(msg);
+      }
       return false;
     }catch(e){ if(!silent) alert(String(e.message||e)); return false; }
   }
@@ -529,7 +535,10 @@ if(sb) sb.auth.getSession().then(function(r){
           body:JSON.stringify({purchase_id:Number(py.dataset.pay)})});
         var j2=await res2.json();
         if(j2.collectUrl){ location.href=j2.collectUrl; return; }
-        alert(j2.error||'تعذّر بدء الدفع');
+        var msg2=j2.error||'تعذّر بدء الدفع';
+        if(j2.code) msg2 += '\n\nكود: '+j2.code;
+        if(j2.sent_amount!==undefined) msg2 += '\nالمبلغ المُرسَل: '+j2.sent_amount+' '+(j2.sent_currency||'USD');
+        alert(msg2);
       }catch(err){ alert(String(err.message||err)); }
       py.disabled=false;
       return;
