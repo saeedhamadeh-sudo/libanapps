@@ -408,14 +408,27 @@ async function buyCreate(request, env) {
       failureRedirectUrl:  `${site}/account?failed=${p.id}`
     });
     if (!res.success) {
-      return json(400, { error: (res.dialog && res.dialog.message) || 'رفضت بوابة الدفع العملية' });
+      // منسجّل الرد كامل حتى نشوفه بلوغز Cloudflare (wrangler tail)
+      console.error('whish create rejected', JSON.stringify(res));
+      return json(400, {
+        error: (res.dialog && res.dialog.message) || 'رفضت بوابة الدفع العملية',
+        code: res.code || null,
+        sent_amount: Number(p.amount_usd),
+        sent_currency: 'USD'
+      });
     }
     await sbPatch(env, `purchases?id=eq.${p.id}`, { status: 'awaiting_payment' });
     return json(200, { collectUrl: res.collectUrl });
   } catch (e) {
-    console.error('buy create failed', e);
+    console.error('buy create failed', JSON.stringify(e, Object.getOwnPropertyNames(e)));
     const d = (e && e.dialog && e.dialog.message) || (e && (e.code || e.message)) || '';
-    return json(502, { error: 'بوابة الدفع: ' + d });
+    return json(502, {
+      error: 'بوابة الدفع: ' + d,
+      code: e && e.code,
+      httpStatus: e && e.httpStatus,
+      sent_amount: Number(p.amount_usd),
+      sent_currency: 'USD'
+    });
   }
 }
 
