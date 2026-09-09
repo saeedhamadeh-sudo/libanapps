@@ -373,7 +373,13 @@ if(sb) sb.auth.getSession().then(function(r){
     if(c.data&&c.data.name){ $('#hi').textContent='أهلاً '+c.data.name; }
     else { $('#profileBox').classList.remove('hidden'); }
 
-    if(qs.get('paid'))   alertBox('تم الدفع بنجاح — ترخيصك تحت. إذا ما ظهر فوراً، حدّث الصفحة بعد ثوانٍ.','ok');
+    if(qs.get('paid')){
+      alertBox('عم نتحقق من الدفع…','ok');
+      const done = await verifyPurchase(qs.get('paid'), true);
+      alertBox(done ? 'تم الدفع والتفعيل ✓ — اشتراكك تحت.'
+                    : 'استلمنا رجوعك من صفحة الدفع، بس ما تأكد الدفع بعد. جرّب «تحقق من الدفع» تحت أو تواصل معنا.',
+               done ? 'ok' : 'warn');
+    }
     if(qs.get('failed')) alertBox('ما تمت عملية الدفع. فيك تجرّب مرة تانية أو تتواصل معنا على واتساب.','warn');
 
     await loadSubs();
@@ -402,6 +408,20 @@ if(sb) sb.auth.getSession().then(function(r){
     $('#profileBox').classList.add('hidden');
     await loadSubs(); await loadTrials();
   });
+
+  async function verifyPurchase(pid, silent){
+    try{
+      const ses=await sb.auth.getSession();
+      const res=await fetch('/api/buy/verify',{method:'POST',
+        headers:{'Content-Type':'application/json',
+                 'Authorization':'Bearer '+ses.data.session.access_token},
+        body:JSON.stringify({purchase_id:Number(pid)})});
+      const j=await res.json();
+      if(j.ok){ await loadSubs(); await loadTrials(); return true; }
+      if(!silent) alert(j.message || j.error || 'ما تأكد الدفع بعد');
+      return false;
+    }catch(e){ if(!silent) alert(String(e.message||e)); return false; }
+  }
 
   async function loadSubs(){
     var lic=await sb.rpc('my_licenses');
@@ -469,6 +489,7 @@ if(sb) sb.auth.getSession().then(function(r){
           '<span style="margin-inline-start:auto;display:flex;gap:8px;align-items:center">'+
             '<span style="color:var(--muted);font-size:13px">'+p.amount+' $</span>'+
             '<button class="btn btn-o sm" data-pay="'+p.id+'">أكمل الدفع</button>'+
+            '<button class="btn btn-g sm" data-verify="'+p.id+'">تحقق من الدفع</button>'+
             '<button class="btn btn-g sm" data-cancel="'+p.id+'">إلغاء</button>'+
           '</span></div>'+
         '<p class="hint">إذا دفعت وما ظهر الترخيص، حدّث الصفحة أو تواصل معنا.</p></div>';
@@ -488,6 +509,13 @@ if(sb) sb.auth.getSession().then(function(r){
       if(r.error){ alert('ما نجح: '+r.error.message); cn.disabled=false; return; }
       if(r.data && r.data.ok===false){ alert(r.data.reason||'ما فينا نلغيها'); cn.disabled=false; return; }
       await loadSubs();
+      return;
+    }
+    var vf=e.target.closest('[data-verify]');
+    if(vf){
+      vf.disabled=true; var old=vf.textContent; vf.textContent='عم نتحقق…';
+      var okv=await verifyPurchase(vf.dataset.verify,false);
+      if(!okv){ vf.disabled=false; vf.textContent=old; }
       return;
     }
     var py=e.target.closest('[data-pay]');
