@@ -205,10 +205,14 @@ async function whishSuccess(request, env) {
     return json(400, { error: 'not confirmed', status: status.collectStatus });
   }
 
-  const expected = currency === 'LBP' ? Number(order.total_lbp) : Number(order.total_usd);
-  if (!w.client.validateAmount(Number(status.amount), expected, currency)) {
-    console.error('amount mismatch', order.id, status.amount, expected);
-    return json(400, { error: 'amount mismatch' });
+  // getPaymentStatus من Whish ما بيرجّع حقل amount (شفناها فعلياً برد حقيقي: فيه
+  // بس collectStatus و payerPhoneNumber) — فمنتحقق من المبلغ فقط إذا كان موجوداً
+  if (status.amount !== undefined && status.amount !== null) {
+    const expected = currency === 'LBP' ? Number(order.total_lbp) : Number(order.total_usd);
+    if (!w.client.validateAmount(Number(status.amount), expected, currency)) {
+      console.error('amount mismatch', order.id, status.amount, expected);
+      return json(400, { error: 'amount mismatch' });
+    }
   }
 
   // idempotent: لا نلمس طلباً مدفوعاً مسبقاً
@@ -300,19 +304,23 @@ async function buyVerify(request, env) {
     return json(200, { ok: false, status: st.collectStatus || 'pending',
                        message: 'ما تأكد الدفع بعد' });
   }
-  // بعض البوابات بترجّع المبلغ بعد العمولة — منقبل فرق بسيط، ومنرفض الأقل بوضوح
-  const got = Number(st.amount);
-  const want = Number(p.amount_usd);
-  const okAmount = w.client.validateAmount(got, want, 'USD')
-                   || (isFinite(got) && got >= want - 0.01)          // مطابق أو أكثر
-                   || (isFinite(got) && got >= want * 0.99 - 0.005); // ناقص عمولة Whish (١٪) مع هامش تقريب بسيط
-  if (!okAmount) {
-    return json(400, {
-      error: 'المبلغ غير مطابق',
-      whish_amount: got, expected: want, currency: st.currency || 'USD',
-      status: st.collectStatus,
-      raw_status: st   // مؤقت للتشخيص — منشيله بعد ما نلاقي اسم الحقل الصحيح
-    });
+  // ملاحظة: رد getPaymentStatus من Whish ما بيرجّع حقل amount أصلاً
+  // (رجّع فقط collectStatus و payerPhoneNumber) — فالمبلغ انحدد فعلياً
+  // وقت إنشاء الدفعة (createPayment) وربطناه بـ externalId، فلا داعي
+  // ولا طريقة نتحقق منه مرة ثانية هون.
+  if (st.amount !== undefined && st.amount !== null) {
+    const got = Number(st.amount);
+    const want = Number(p.amount_usd);
+    const okAmount = w.client.validateAmount(got, want, 'USD')
+                     || (isFinite(got) && got >= want - 0.01)
+                     || (isFinite(got) && got >= want * 0.99 - 0.005);
+    if (!okAmount) {
+      return json(400, {
+        error: 'المبلغ غير مطابق',
+        whish_amount: got, expected: want, currency: st.currency || 'USD',
+        status: st.collectStatus
+      });
+    }
   }
 
   const r = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/provision_purchase`, {
