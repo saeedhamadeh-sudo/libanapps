@@ -260,6 +260,64 @@ async function imageProxy(request, env, ctx, url) {
   return out;
 }
 
+
+// ---------- تحقّق مباشر من الدفع وتفعيل فوري ----------
+//  ما بيعتمد على نداء Whish للسيرفر — منسأل Whish مباشرة
+//  بيناديها الزبون لما يرجع من صفحة الدفع، وبتناديها لوحتك كمان
+async function buyVerify(request, env) {
+  const me = await currentUser(request, env);
+  if (!me) return json(401, { error: 'سجّل دخولك أولاً' });
+
+  let body;
+  try { body = await request.json(); } catch { return json(400, { error: 'bad json' }); }
+  const pid = Number(body.purchase_id);
+  if (!pid) return json(400, { error: 'missing purchase_id' });
+
+  const rows = await sbGet(env,
+    `purchases?id=eq.${pid}&select=id,user_id,amount_usd,status,product_code&limit=1`);
+  const p = rows[0];
+  if (!p) return json(404, { error: 'purchase not found' });
+
+  // صاحب العملية أو مشرف المنصة
+  if (p.user_id !== me.id) {
+    const adm = await sbGet(env, `platform_admins?user_id=eq.${me.id}&select=user_id&limit=1`);
+    if (!adm.length) return json(403, { error: 'not allowed' });
+  }
+
+  if (p.status === 'paid') return json(200, { ok: true, already: true });
+
+  const w = await platformWhish(env);
+  if (!w) return json(400, { error: 'الدفع الإلكتروني غير مفعّل' });
+
+  let st;
+  try { st = await w.client.getPaymentStatus('USD', Number(p.id)); }
+  catch (e) {
+    console.error('verify status failed', e);
+    return json(502, { error: 'ما قدرنا نتحقق من الدفعة عند Whish' });
+  }
+
+  if (st.collectStatus !== 'success') {
+    return json(200, { ok: false, status: st.collectStatus || 'pending',
+                       message: 'ما تأكد الدفع بعد' });
+  }
+  if (!w.client.validateAmount(Number(st.amount), Number(p.amount_usd), 'USD')) {
+    return json(400, { error: 'المبلغ غير مطابق' });
+  }
+
+  const r = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/provision_purchase`, {
+    method: 'POST',
+    headers: { ...sbHeaders(env), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ p_id: Number(p.id), p_txn: st.transactionId || null })
+  });
+  if (!r.ok) {
+    const t = await r.text();
+    console.error('provision failed', t);
+    return json(500, { error: 'تعذّر التفعيل: ' + t.slice(0, 120) });
+  }
+  const out = await r.json();
+  return json(200, { ok: true, activated: true, result: out });
+}
+
 // ---------- شراء باقة من الموقع ----------
 async function platformWhish(env) {
   const rows = await sbGet(env, 'platform_settings?id=eq.1&select=*&limit=1');
@@ -297,12 +355,32 @@ async function buyCreate(request, env) {
   const pid = Number(body.purchase_id);
   if (!pid) return json(400, { error: 'missing purchase_id' });
 
-  const rows = await sbGet(env,
-    `purchases?id=eq.${pid}&select=id,user_id,amount_usd,product_code,status&limit=1`);
-  const p = rows[0];
+  let rows = await sbGet(env,
+    `purchases?id=eq.${pid}&select=*&limit=1`);
+  let p = rows[0];
   if (!p) return json(404, { error: 'purchase not found' });
   if (p.user_id !== me.id) return json(403, { error: 'not allowed' });
   if (p.status === 'paid') return json(400, { error: 'مدفوعة مسبقاً' });
+
+  // رابط Whish صالح لمرة وحدة — إعادة المحاولة بدها عملية جديدة
+  if (p.status === 'awaiting_payment') {
+    const clone = await fetch(`${env.SUPABASE_URL}/rest/v1/purchases`, {
+      method: 'POST',
+      headers: { ...sbHeaders(env), 'Content-Type': 'application/json', Prefer: 'return=representation' },
+      body: JSON.stringify({
+        user_id: p.user_id, client_id: p.client_id, plan_id: p.plan_id,
+        product_code: p.product_code, amount_usd: p.amount_usd, days: p.days,
+        slug: p.slug, biz_name: p.biz_name, renew_of: p.renew_of
+      })
+    });
+    if (clone.ok) {
+      const made = await clone.json();
+      if (made && made[0]) {
+        await sbPatch(env, `purchases?id=eq.${p.id}`, { status: 'cancelled' });
+        p = made[0];
+      }
+    }
+  }
 
   const w = await platformWhish(env);
   if (!w) return json(400, { error: 'الدفع الإلكتروني غير مفعّل حالياً — تواصل معنا' });
@@ -529,6 +607,10 @@ export default {
         if (url.pathname === '/api/buy/create') {
           if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
           return await buyCreate(request, env);
+        }
+        if (url.pathname === '/api/buy/verify') {
+          if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
+          return await buyVerify(request, env);
         }
         if (url.pathname === '/api/buy/callback-success') return await buySuccess(request, env);
         if (url.pathname === '/api/buy/callback-failure') return await buyFailure(request, env);
