@@ -310,7 +310,8 @@ async function buyVerify(request, env) {
     return json(400, {
       error: 'المبلغ غير مطابق',
       whish_amount: got, expected: want, currency: st.currency || 'USD',
-      status: st.collectStatus
+      status: st.collectStatus,
+      raw_status: st   // مؤقت للتشخيص — منشيله بعد ما نلاقي اسم الحقل الصحيح
     });
   }
 
