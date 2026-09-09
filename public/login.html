@@ -264,7 +264,12 @@ if(sb) sb.rpc('public_settings').then(function(r){
     if(fb) fb.textContent=s.brand_name; }
   if(s.whatsapp){ var w=$('#waFloat');
     w.href='https://wa.me/'+String(s.whatsapp).replace(/\D/g,''); w.classList.remove('hidden'); }
-  if(s.phone){ var p=$('#fPhone'); p.textContent=s.phone; p.href='tel:'+s.phone; }
+  if(s.phone){
+    var p=$('#fPhone'); p.textContent=s.phone;
+    var wa=String(s.whatsapp||'').replace(/\D/g,'');
+    p.href = wa ? 'https://wa.me/'+wa : 'tel:'+s.phone;
+    if(wa){ p.target='_blank'; p.rel='noopener'; }
+  }
   if(s.email){ var m=$('#fMail'); m.textContent=s.email; m.href='mailto:'+s.email;
     m.classList.remove('hidden'); }
   function link(id,val,base){ if(!val) return; var e=$(id);
