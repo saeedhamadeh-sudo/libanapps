@@ -702,14 +702,11 @@ window.SITE_I18N = { en: {"البرامج": "Products", "منيو المطاعم
   document.addEventListener('DOMContentLoaded',function(){
     var sel=document.getElementById('langSel');
     if(sel) sel.addEventListener('change',function(){ window.setSiteLang(this.value); });
+    // اللغة الافتراضية عربي دائماً — ما منتبع لغة المتصفح
     var saved=null;
     try{ saved=localStorage.getItem('la_site_lang'); }catch(e){}
-    if(!saved){
-      var nav=(navigator.language||'').slice(0,2).toLowerCase();
-      saved = (nav==='fr') ? 'fr' : (nav==='ar' ? 'ar' : 'en');
-    }
-    if(saved && saved!=='ar') window.setSiteLang(saved);
-    else if(sel) sel.value='ar';
+    if(saved==='en'||saved==='fr') window.setSiteLang(saved);
+    else { window.setSiteLang('ar'); if(sel) sel.value='ar'; }
   });
 })();
 </script>
