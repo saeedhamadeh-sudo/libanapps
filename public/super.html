@@ -1005,7 +1005,7 @@ async function loadBuys(){
   var S={pending:['معلّق','warn'],awaiting_payment:['بانتظار الدفع','warn'],
          paid:['مدفوع','ok'],failed:['فشل','bad'],cancelled:['ملغى','bad']};
   var b=$('#buyTbl').querySelector('tbody');
-  b.innerHTML='<tr><th>#</th><th>الزبون</th><th>البرنامج</th><th>المبلغ</th><th>الحالة</th><th>التاريخ</th></tr>'+
+  b.innerHTML='<tr><th>#</th><th>الزبون</th><th>البرنامج</th><th>المبلغ</th><th>الحالة</th><th>التاريخ</th><th></th></tr>'+
     (rows.length?rows.map(function(p){
       var st=S[p.status]||[p.status,''];
       return '<tr><td>'+p.id+'</td>'+
@@ -1013,10 +1013,27 @@ async function loadBuys(){
         '<td>'+esc(p.product_code)+(p.slug?' /'+esc(p.slug):'')+'</td>'+
         '<td>'+p.amount_usd+' $</td>'+
         '<td><span class="tag '+st[1]+'">'+st[0]+'</span></td>'+
-        '<td class="muted">'+new Date(p.created_at).toLocaleDateString('en-GB')+'</td></tr>';
+        '<td class="muted">'+new Date(p.created_at).toLocaleDateString('en-GB')+'</td>'+
+        '<td>'+(p.status!=='paid'
+          ? '<button class="btn alt sm" data-vrf="'+p.id+'">تحقق وفعّل</button>' : '')+'</td></tr>';
     }).join(''):'<tr><td colspan="6" class="muted" style="padding:18px">ما في مشتريات</td></tr>');
 }
 $('#buyRef').addEventListener('click',loadBuys);
+$('#buyTbl').addEventListener('click',async function(e){
+  var b=e.target.closest('[data-vrf]'); if(!b) return;
+  b.disabled=true; var old=b.textContent; b.textContent='…';
+  try{
+    var ses=await sb.auth.getSession();
+    var res=await fetch('/api/buy/verify',{method:'POST',
+      headers:{'Content-Type':'application/json',
+               'Authorization':'Bearer '+ses.data.session.access_token},
+      body:JSON.stringify({purchase_id:Number(b.dataset.vrf)})});
+    var j=await res.json();
+    alert(j.ok ? 'تم التفعيل ✓' : (j.message||j.error||'ما تأكد الدفع'));
+    await loadBuys(); await loadSubs();
+  }catch(err){ alert(String(err.message||err)); }
+  b.disabled=false; b.textContent=old;
+});
 
 /* ---------- restaurants ---------- */
 var RESTS=[];
