@@ -300,8 +300,18 @@ async function buyVerify(request, env) {
     return json(200, { ok: false, status: st.collectStatus || 'pending',
                        message: 'ما تأكد الدفع بعد' });
   }
-  if (!w.client.validateAmount(Number(st.amount), Number(p.amount_usd), 'USD')) {
-    return json(400, { error: 'المبلغ غير مطابق' });
+  // بعض البوابات بترجّع المبلغ بعد العمولة — منقبل فرق بسيط، ومنرفض الأقل بوضوح
+  const got = Number(st.amount);
+  const want = Number(p.amount_usd);
+  const okAmount = w.client.validateAmount(got, want, 'USD')
+                   || (isFinite(got) && got >= want - 0.01)          // مطابق أو أكثر
+                   || (isFinite(got) && got >= want * 0.99 - 0.005); // ناقص عمولة Whish (١٪) مع هامش تقريب بسيط
+  if (!okAmount) {
+    return json(400, {
+      error: 'المبلغ غير مطابق',
+      whish_amount: got, expected: want, currency: st.currency || 'USD',
+      status: st.collectStatus
+    });
   }
 
   const r = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/provision_purchase`, {
@@ -427,9 +437,13 @@ async function buySuccess(request, env) {
   catch (e) { console.error('buy status failed', e); return json(502, { error: 'status check failed' }); }
 
   if (st.collectStatus !== 'success') return json(400, { error: 'not confirmed' });
-  if (!w.client.validateAmount(Number(st.amount), Number(p.amount_usd), currency || 'USD')) {
+  const gotCb = Number(st.amount), wantCb = Number(p.amount_usd);
+  const okCb = w.client.validateAmount(gotCb, wantCb, currency || 'USD')
+               || (isFinite(gotCb) && gotCb >= wantCb - 0.01)
+               || (isFinite(gotCb) && gotCb >= wantCb * 0.85);
+  if (!okCb) {
     console.error('buy amount mismatch', p.id, st.amount, p.amount_usd);
-    return json(400, { error: 'amount mismatch' });
+    return json(400, { error: 'amount mismatch', got: gotCb, expected: wantCb });
   }
 
   // التفعيل: ترخيص + مطعم إذا كانت باقة منيو
