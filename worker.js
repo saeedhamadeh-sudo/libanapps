@@ -493,10 +493,13 @@ function pageFor(pathname) {
   if (p === '/')              return '/index.html';
   if (p === '/menus')         return '/product-menus.html';
   if (p === '/industrial')    return '/product-industrial.html';
-  if (p === '/trade')         return '/product-trade.html';
+  if (p === '/menus-info')    return '/product-menus.html';
+  if (p === '/trade-info')    return '/product-trade.html';
   if (p === '/signup')        return '/signup.html';
   if (p === '/login')         return '/login.html';
   if (p === '/account')       return '/account.html';
+  if (p === '/alum')          return '/app-alum.html';
+  if (p === '/trade')         return '/app-trade.html';
   if (p.startsWith('/i/'))    return '/invoice.html';
   if (p.startsWith('/admin')) return '/admin.html';
   if (p.startsWith('/super')) return '/super.html';
