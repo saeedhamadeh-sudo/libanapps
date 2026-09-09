@@ -867,7 +867,7 @@ function downloadBackupFile(){
 async function handleBackupImportFile(inputEl){
   const file = inputEl.files[0];
   if(!file) return;
-  if(!confirm('استيراد النسخة الاحتياطية رح يستبدل كل البيانات الحالية بالكامل. متأكد؟')) { inputEl.value=''; return; }
+  if(!confirm('استيراد النسخة الاحتياطية رح يستبدل كل بيانات مؤسستك بالكامل — محلياً وبالسحابة.\n\nمتأكد؟')) { inputEl.value=''; return; }
   try{
     const text = await file.text();
     const data = JSON.parse(text);
@@ -879,8 +879,15 @@ async function handleBackupImportFile(inputEl){
     DB.warehouseItems = data.warehouseItems||[]; DB.stockIns = data.stockIns||[]; DB.stockOuts = data.stockOuts||[];
     DB.cuttingOrders = data.cuttingOrders||[];
     DB.customerAccounts = data.customerAccounts||[];
+    DB.workerAccounts = data.workerAccounts||[];
     DB.budgetCategories = data.budgetCategories||[]; DB.budgetEntries = data.budgetEntries||[];
-    if(data.settings) DB.settings = {...DB.settings, ...data.settings};
+    if(data.settings){
+      const incoming = {...data.settings};
+      // الترخيص صار من منصة LibanApps — ما منستورد ترخيص النسخة القديمة
+      delete incoming.trialStartedAt; delete incoming.licenseSerial;
+      delete incoming.licenseExpiresAt; delete incoming.licenseLabel;
+      DB.settings = {...DB.settings, ...incoming};
+    }
     migrateUsers();
     migrateBudgetCategories();
     await Promise.all([
@@ -890,6 +897,7 @@ async function handleBackupImportFile(inputEl){
       save(KEYS.deductions, DB.deductions), save(KEYS.quotes, DB.quotes),
       save(KEYS.warehouseItems, DB.warehouseItems), save(KEYS.stockIns, DB.stockIns), save(KEYS.stockOuts, DB.stockOuts),
       save(KEYS.cuttingOrders, DB.cuttingOrders), save(KEYS.customerAccounts, DB.customerAccounts),
+      save(KEYS.workerAccounts, DB.workerAccounts),
       save(KEYS.budgetCategories, DB.budgetCategories), save(KEYS.budgetEntries, DB.budgetEntries)
     ]);
     if(supabaseClient && DB.customers.length){
