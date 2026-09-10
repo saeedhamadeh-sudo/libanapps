@@ -397,6 +397,7 @@ try{
 
 /* ===== سياق الزبون: كل الجداول بسابقة alum_ ومربوطة بـclient_id ===== */
 let CLIENT_ID = null;          // هوية المؤسسة المشتركة
+let CURRENT_SESSION_EMAIL = null;   // تشخيص مؤقت
 let ACCESS = null;             // حالة الاشتراك
 let PLATFORM_ADMIN = false;    // داخل كمشرف منصة (من لوحة /super)
 let PLATFORM_CLIENT_NAME = '';
@@ -1692,6 +1693,14 @@ function loginView(){
       <div id="login_err" style="color:var(--debit); font-size:12.5px; min-height:16px; margin-bottom:6px;"></div>
       <button class="btn btn-primary" id="loginBtn" style="width:100%; justify-content:center;">دخول</button>
     </div>
+    <div style="max-width:340px; width:100%; margin-top:10px; padding:10px; background:#fff3; border:1px dashed #c00;
+         border-radius:8px; font-size:11px; direction:ltr; text-align:left; color:#900;">
+      [تشخيص مؤقت]<br>
+      session email = ${CURRENT_SESSION_EMAIL || '?'}<br>
+      client_id = ${CLIENT_ID || '?'}<br>
+      company = ${DB.settings.companyName || '(فاضي)'}<br>
+      path = ${location.pathname}
+    </div>
     ${appFooter()}
   </div>`;
 }
@@ -1775,6 +1784,7 @@ async function bootPlatform(){
       return { ok:false, reason:'no_session' };
     }
   }
+  CURRENT_SESSION_EMAIL = ses.data.session.user.email;
 
   // دخول مشرف المنصة على مؤسسة زبون: /alum?c=<client_id>
   const wantClient = new URLSearchParams(location.search).get('c');
