@@ -240,10 +240,10 @@ footer.site .bottom b{color:#fff}
     <h3 style="font-size:20px" id="mTitle">تأكيد الاشتراك</h3>
     <p style="color:var(--muted);font-size:14px;margin:6px 0 0" id="mSub"></p>
     <div id="mSlug" class="hidden">
-      <label>رابط مطعمك</label>
+      <label id="mSlugLbl">رابط مطعمك</label>
       <input type="text" id="slug" placeholder="myrestaurant">
       <p class="hint" id="slugPrev">libanapps.com/…</p>
-      <label>اسم المطعم</label>
+      <label id="mBizLbl">اسم المطعم</label>
       <input type="text" id="bizName">
     </div>
     <div class="msg" id="mMsg"></div>
@@ -461,7 +461,9 @@ if(sb) sb.auth.getSession().then(function(r){
           '<a class="btn btn-g sm" href="/'+esc(p.slug)+'" target="_blank">شوف منيوك</a>'+
           '<a class="btn btn-g sm" href="/'+esc(p.slug)+'/admin" target="_blank">لوحة التحكم</a></div>';
       } else if(p.product==='alum' || p.product==='trade'){
-        var appUrl = (p.product==='alum') ? '/alum' : '/trade';
+        var appUrl = (p.product==='alum')
+          ? (p.slug ? '/'+esc(p.slug)+'/alum' : '/alum')
+          : '/trade';
         extra='<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">'+
           '<a class="btn btn-p sm" href="'+appUrl+'" target="_blank">افتح البرنامج</a></div>'+
           '<p class="hint">اسم المستخدم الأول: <b>ADMIN</b> — غيّر كلمة مروره من داخل البرنامج.</p>';
@@ -575,13 +577,17 @@ if(sb) sb.auth.getSession().then(function(r){
   $('#trialList').addEventListener('click',async function(e){
     var b=e.target.closest('[data-trial]'); if(!b) return;
     var prod=b.dataset.trial, slug='', biz='';
-    if(prod==='menu'){
-      slug=prompt('اختار رابط مطعمك (إنكليزي بدون مسافات)\n\nمثال: myrestaurant\n'+
-                  'رح يصير: libanapps.com/myrestaurant','');
+    if(prod==='menu' || prod==='alum'){
+      var isAlum=(prod==='alum');
+      slug=prompt(isAlum
+        ? 'اختار رابط محلك/مصنعك (إنكليزي بدون مسافات)\n\nمثال: hmadeh\n'+
+          'رح يصير: libanapps.com/hmadeh/alum'
+        : 'اختار رابط مطعمك (إنكليزي بدون مسافات)\n\nمثال: myrestaurant\n'+
+          'رح يصير: libanapps.com/myrestaurant','');
       if(slug===null) return;
       slug=slug.toLowerCase().replace(/[^a-z0-9-]/g,'');
       if(slug.length<2){ alert('الرابط قصير'); return; }
-      biz=prompt('اسم المطعم بالعربي:','')||slug;
+      biz=prompt(isAlum?'اسم المحل/المصنع بالعربي:':'اسم المطعم بالعربي:','')||slug;
     }
     b.disabled=true; b.textContent='عم نفعّل…';
     var r=await sb.rpc('start_trial',{p_product:prod,p_slug:slug,p_biz:biz});
@@ -596,7 +602,8 @@ if(sb) sb.auth.getSession().then(function(r){
     }
     alertBox('انفعّلت تجربتك المجانية لمدة '+TRIAL_DAYS+' أيام ✓ '+
       (prod==='menu' ? 'منيوك جاهز على libanapps.com/'+esc(r.data.slug)
-                     : 'مفتاح التفعيل تحت.'),'ok');
+       : prod==='alum' && r.data.slug ? 'برنامجك جاهز على libanapps.com/'+esc(r.data.slug)+'/alum'
+       : 'مفتاح التفعيل تحت.'),'ok');
     await loadSubs(); await loadTrials();
   });
 
@@ -647,7 +654,17 @@ if(sb) sb.auth.getSession().then(function(r){
     if(!PICK) return;
     $('#mTitle').textContent=PICK.name_ar;
     $('#mSub').textContent='المبلغ: '+PICK.price_usd+' $ · المدة: '+PICK.days+' يوم';
-    $('#mSlug').classList.toggle('hidden', PICK.product_code!=='menu');
+    var needsSlug=(PICK.product_code==='menu'||PICK.product_code==='alum');
+    $('#mSlug').classList.toggle('hidden', !needsSlug);
+    if(PICK.product_code==='alum'){
+      $('#mSlugLbl').textContent='رابط محلك/مصنعك';
+      $('#slug').placeholder='hmadeh';
+      $('#mBizLbl').textContent='اسم المحل/المصنع';
+    }else{
+      $('#mSlugLbl').textContent='رابط مطعمك';
+      $('#slug').placeholder='myrestaurant';
+      $('#mBizLbl').textContent='اسم المطعم';
+    }
     msg('');
     $('#modal').classList.remove('hidden');
   }
@@ -660,10 +677,10 @@ if(sb) sb.auth.getSession().then(function(r){
   $('#payBtn').addEventListener('click',async function(){
     if(!PICK) return;
     var slug='', biz='';
-    if(PICK.product_code==='menu' && !RENEW){
+    if((PICK.product_code==='menu'||PICK.product_code==='alum') && !RENEW){
       slug=$('#slug').value.trim(); biz=$('#bizName').value.trim();
-      if(slug.length<2) return msg('اكتب رابط مطعمك بالإنكليزي',false);
-      if(!biz) return msg('اكتب اسم المطعم',false);
+      if(slug.length<2) return msg('اكتب الرابط بالإنكليزي',false);
+      if(!biz) return msg('اكتب الاسم',false);
     }
     this.disabled=true; msg('عم نجهّز الدفع…');
     var st = RENEW
