@@ -285,7 +285,7 @@ async function loadAll(){
     loadCustomers(),
     loadSyncedArray(KEYS.invoices, []),
     loadSyncedArray(KEYS.receipts, []),
-    loadSettings({defaultExchangeRate:90000, invoiceStart:0, receiptStart:1000, companyName:'Hmadeh Industry', companyTag:'Aluminum | Glass | PVC & Jepsinboard — Wood | Kitchens | Iron Works', companyPhone:'Baaqline: 71 50 48 14 – 03 237717', logo:'', auth:{username:'admin', password:'0000'}, autoBackupOnClose:false, quoteDescOptions:['شباك ألمنيوم','واجهة ألمنيوم','شباك حمام','باب مفصلات','شباك ثابت','زجاج'], customDeductionProfiles:[],
+    loadSettings({defaultExchangeRate:90000, invoiceStart:0, receiptStart:1000, companyName:'', companyTag:'', companyPhone:'', logo:'', auth:{username:'admin', password:'0000'}, autoBackupOnClose:false, quoteDescOptions:['شباك ألمنيوم','واجهة ألمنيوم','شباك حمام','باب مفصلات','شباك ثابت','زجاج'], customDeductionProfiles:[],
       specOptions:{
         systemName:['Sidem System','Technal System'],
         profile:['Sidem 2000','Technal GX'],
@@ -823,8 +823,8 @@ async function verifyTotp(secretBase32, token){
   return false;
 }
 function totpAuthUri(username, secret){
-  const issuer = encodeURIComponent(DB.settings.companyName || 'Hmadeh Industry');
-  const label = encodeURIComponent(`${DB.settings.companyName||'Hmadeh Industry'}:${username}`);
+  const issuer = encodeURIComponent(DB.settings.companyName || 'LibanApps');
+  const label = encodeURIComponent(`${DB.settings.companyName||'دفتر الحسابات'}:${username}`);
   return `otpauth://totp/${label}?secret=${secret}&issuer=${issuer}&digits=6&period=30`;
 }
 
@@ -1535,7 +1535,7 @@ function customerPortalTopbar(cust){
     <div class="brand" style="flex-direction:row; align-items:center; gap:10px;">
       ${DB.settings.logo? `<img src="${DB.settings.logo}" alt="logo" style="height:36px; width:auto; object-fit:contain; border-radius:4px;">` : ''}
       <div>
-        <div class="name">${escapeHtml(DB.settings.companyName||'Hmadeh Industry')} — بوابة الزبون</div>
+        <div class="name">${DB.settings.companyName? escapeHtml(DB.settings.companyName)+' — بوابة الزبون' : 'بوابة الزبون'}</div>
         <div class="tag">${escapeHtml(cust.name)}</div>
       </div>
     </div>
@@ -1597,7 +1597,7 @@ function workerPortalTopbar(wk){
     <div class="brand" style="flex-direction:row; align-items:center; gap:10px;">
       ${DB.settings.logo? `<img src="${DB.settings.logo}" alt="logo" style="height:36px; width:auto; object-fit:contain; border-radius:4px;">` : ''}
       <div>
-        <div class="name">${escapeHtml(DB.settings.companyName||'Hmadeh Industry')} — بوابة العامل</div>
+        <div class="name">${DB.settings.companyName? escapeHtml(DB.settings.companyName)+' — بوابة العامل' : 'بوابة العامل'}</div>
         <div class="tag">${escapeHtml(wk.name)}</div>
       </div>
     </div>
@@ -2219,7 +2219,7 @@ function topbar(){
     <div class="brand" style="flex-direction:row; align-items:center; gap:10px;">
       ${DB.settings.logo? `<img src="${DB.settings.logo}" alt="logo" style="height:36px; width:auto; object-fit:contain; border-radius:4px;">` : ''}
       <div>
-        <div class="name">${escapeHtml(DB.settings.companyName||'Hmadeh Industry')} — دفتر الحسابات</div>
+        <div class="name">${DB.settings.companyName? escapeHtml(DB.settings.companyName)+' — دفتر الحسابات' : 'دفتر الحسابات'}</div>
         <div class="tag">${escapeHtml(DB.settings.companyTag||'')}</div>
       </div>
     </div>
