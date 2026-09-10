@@ -462,7 +462,7 @@ if(sb) sb.auth.getSession().then(function(r){
           '<a class="btn btn-g sm" href="/'+esc(p.slug)+'/admin" target="_blank">لوحة التحكم</a></div>';
       } else if(p.product==='alum' || p.product==='trade'){
         var appUrl = (p.product==='alum')
-          ? (p.slug ? '/'+esc(p.slug)+'/alum' : '/alum')
+          ? (p.slug ? '/portal/'+esc(p.slug) : '/alum')
           : '/trade';
         extra='<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">'+
           '<a class="btn btn-p sm" href="'+appUrl+'" target="_blank">افتح البرنامج</a></div>'+
@@ -580,8 +580,8 @@ if(sb) sb.auth.getSession().then(function(r){
     if(prod==='menu' || prod==='alum'){
       var isAlum=(prod==='alum');
       slug=prompt(isAlum
-        ? 'اختار رابط محلك/مصنعك (إنكليزي بدون مسافات)\n\nمثال: hmadeh\n'+
-          'رح يصير: libanapps.com/hmadeh/alum'
+        ? 'اختار رابط محلك/مصنعك (إنكليزي بدون مسافات)\n\nمثال: myfactory\n'+
+          'رح يصير: libanapps.com/portal/myfactory'
         : 'اختار رابط مطعمك (إنكليزي بدون مسافات)\n\nمثال: myrestaurant\n'+
           'رح يصير: libanapps.com/myrestaurant','');
       if(slug===null) return;
@@ -602,7 +602,7 @@ if(sb) sb.auth.getSession().then(function(r){
     }
     alertBox('انفعّلت تجربتك المجانية لمدة '+TRIAL_DAYS+' أيام ✓ '+
       (prod==='menu' ? 'منيوك جاهز على libanapps.com/'+esc(r.data.slug)
-       : prod==='alum' && r.data.slug ? 'برنامجك جاهز على libanapps.com/'+esc(r.data.slug)+'/alum'
+       : prod==='alum' && r.data.slug ? 'برنامجك جاهز على libanapps.com/portal/'+esc(r.data.slug)
        : 'مفتاح التفعيل تحت.'),'ok');
     await loadSubs(); await loadTrials();
   });
@@ -658,12 +658,14 @@ if(sb) sb.auth.getSession().then(function(r){
     $('#mSlug').classList.toggle('hidden', !needsSlug);
     if(PICK.product_code==='alum'){
       $('#mSlugLbl').textContent='رابط محلك/مصنعك';
-      $('#slug').placeholder='hmadeh';
+      $('#slug').placeholder='myfactory';
       $('#mBizLbl').textContent='اسم المحل/المصنع';
+      $('#slugPrev').textContent='libanapps.com/portal/…';
     }else{
       $('#mSlugLbl').textContent='رابط مطعمك';
       $('#slug').placeholder='myrestaurant';
       $('#mBizLbl').textContent='اسم المطعم';
+      $('#slugPrev').textContent='libanapps.com/…';
     }
     msg('');
     $('#modal').classList.remove('hidden');
@@ -671,7 +673,8 @@ if(sb) sb.auth.getSession().then(function(r){
   $('#mClose').addEventListener('click',function(){ $('#modal').classList.add('hidden') });
   $('#slug').addEventListener('input',function(){
     this.value=this.value.toLowerCase().replace(/[^a-z0-9-]/g,'');
-    $('#slugPrev').textContent='libanapps.com/'+(this.value||'…');
+    var prefix=(PICK && PICK.product_code==='alum') ? 'libanapps.com/portal/' : 'libanapps.com/';
+    $('#slugPrev').textContent=prefix+(this.value||'…');
   });
 
   $('#payBtn').addEventListener('click',async function(){
