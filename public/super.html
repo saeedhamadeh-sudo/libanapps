@@ -564,6 +564,19 @@ body.login-page .credit .credit-tel{color:#E08A2B}
         </div>
       </div>
 
+      <!-- alum only -->
+      <div id="alumBox" class="hidden">
+        <div class="panel" style="background:var(--bg-2);margin-top:14px">
+          <h3 style="font-size:17px">بيانات المصنع (اختياري)</h3>
+          <div class="g2">
+            <div><label>الرابط (بالإنكليزي، بدون مسافات)</label>
+              <input type="text" id="aSlug" placeholder="myfactory">
+              <div class="muted" id="aSlugPrev">libanapps.com/portal/…</div></div>
+            <div><label>اسم المحل/المصنع</label><input type="text" id="aBiz"></div>
+          </div>
+        </div>
+      </div>
+
       <div class="acts"><button class="btn y" id="genBtn">توليد الترخيص</button></div>
       <div class="msg" id="nMsg"></div>
       <div id="result" class="hidden">
@@ -746,7 +759,20 @@ function paintSubs(){
 $('#subsTbl').addEventListener('click',async function(e){
   var b=e.target.closest('button'); if(!b) return;
   if(b.dataset.x){
-    await sb.rpc('extend_subscription',{p_id:b.dataset.x,p_days:Number(b.dataset.d)});
+    var sObj0=SUBS.find(function(x){return x.id===b.dataset.x});
+    if(sObj0 && (sObj0.product_code==='alum' || sObj0.product_code==='trade')){
+      var ses0=await sb.auth.getSession();
+      var tok0=ses0.data.session && ses0.data.session.access_token;
+      var r0=await fetch('/api/admin/extend-license',{
+        method:'POST',
+        headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok0},
+        body:JSON.stringify({id:b.dataset.x, days:Number(b.dataset.d)})
+      });
+      var j0=await r0.json();
+      if(!r0.ok||!j0.ok){ alert('ما نجح التمديد: '+(j0.error||'')); return; }
+    }else{
+      await sb.rpc('extend_subscription',{p_id:b.dataset.x,p_days:Number(b.dataset.d)});
+    }
   }else if(b.dataset.rst){
     if(!confirm('فك ربط الجهاز؟ الزبون رح يقدر يفعّل على كمبيوتر جديد.')) return;
     await sb.rpc('reset_device',{p_id:b.dataset.rst});
@@ -1197,11 +1223,11 @@ function paintAlum(){
         else if(d<=15){ cls='warn'; txt='باقي '+d+' يوم'; }
         else{ cls='ok'; txt='باقي '+d+' يوم'; }
       }
-      var openHref='/'+encodeURIComponent(x.slug||'')+'/alum?c='+encodeURIComponent(x.client_id);
+      var openHref='/portal/'+encodeURIComponent(x.slug||'')+'?c='+encodeURIComponent(x.client_id);
       if(!x.slug) openHref='/alum?c='+encodeURIComponent(x.client_id);
       return '<tr>'+
         '<td>'+esc(x.biz_name||'—')+'</td>'+
-        '<td>'+(x.slug?('<a href="/'+esc(x.slug)+'/alum" target="_blank" style="color:var(--accent)">/'+esc(x.slug)+'</a>')
+        '<td>'+(x.slug?('<a href="/portal/'+esc(x.slug)+'" target="_blank" style="color:var(--accent)">/portal/'+esc(x.slug)+'</a>')
                        :'<span class="tag bad">بلا رابط</span>')+'</td>'+
         '<td>'+(x.client_name?esc(x.client_name):'<span class="tag bad">بلا زبون</span>')+'</td>'+
         '<td><span class="tag '+cls+'">'+txt+'</span></td>'+
@@ -1287,11 +1313,16 @@ $('#oCreate').addEventListener('click',async function(){
 /* ---------- generate ---------- */
 function toggleMenuBox(){
   $('#menuBox').classList.toggle('hidden', $('#nProd').value!=='menu');
+  $('#alumBox').classList.toggle('hidden', $('#nProd').value!=='alum');
 }
 $('#nProd').addEventListener('change',toggleMenuBox);
 $('#rSlug').addEventListener('input',function(){
   var v=this.value.toLowerCase().replace(/[^a-z0-9-]/g,'');
   this.value=v; $('#slugPrev').textContent='libanapps.com/'+(v||'…');
+});
+$('#aSlug').addEventListener('input',function(){
+  var v=this.value.toLowerCase().replace(/[^a-z0-9-]/g,'');
+  this.value=v; $('#aSlugPrev').textContent='libanapps.com/portal/'+(v||'…');
 });
 
 $('#genBtn').addEventListener('click',async function(){
@@ -1313,6 +1344,23 @@ $('#genBtn').addEventListener('click',async function(){
       });
       if(r.error) throw r.error;
       show(r.data.key, 'https://libanapps.com/'+r.data.slug, r.data.expires_at);
+    }else if(prod==='alum'){
+      var aSlug=$('#aSlug').value.trim();
+      var aBiz=$('#aBiz').value.trim();
+      var ses=await sb.auth.getSession();
+      var tok=ses.data.session && ses.data.session.access_token;
+      var res=await fetch('/api/admin/new-license',{
+        method:'POST',
+        headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok},
+        body:JSON.stringify({
+          client_id:client, product_code:prod, days:days,
+          price:Number($('#nPrice').value)||0, notes:$('#nNote').value.trim(),
+          slug:aSlug, biz_name:aBiz
+        })
+      });
+      var jr=await res.json();
+      if(!res.ok||!jr.ok) throw new Error(jr.error||'فشل التوليد');
+      show(jr.key, jr.slug?('https://libanapps.com/portal/'+jr.slug):'', jr.expires_at);
     }else{
       var s=await sb.rpc('new_subscription',{
         p_client:client, p_product:prod,
