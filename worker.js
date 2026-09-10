@@ -632,6 +632,56 @@ async function createOwner(request, env) {
   });
 }
 
+// ---------- حذف زبون بالكامل — بياناته + حساب دخوله (auth) ----------
+async function adminDeleteClient(request, env) {
+  const auth = request.headers.get('Authorization') || '';
+  const token = auth.replace(/^Bearer\s+/i, '');
+  if (!token) return json(401, { error: 'not signed in' });
+
+  const me = await fetch(`${env.SUPABASE_URL}/auth/v1/user`, {
+    headers: { apikey: env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${token}` }
+  });
+  if (!me.ok) return json(401, { error: 'invalid session' });
+  const meData = await me.json();
+
+  const admins = await sbGet(env, `platform_admins?user_id=eq.${meData.id}&select=user_id&limit=1`);
+  if (!admins.length) return json(403, { error: 'not allowed' });
+
+  let body;
+  try { body = await request.json(); } catch { return json(400, { error: 'bad json' }); }
+  const clientId = body.client_id;
+  if (!clientId) return json(400, { error: 'missing client_id' });
+
+  const rows = await sbGet(env, `clients?id=eq.${clientId}&select=id,name,user_id&limit=1`);
+  if (!rows.length) return json(404, { error: 'client not found' });
+  const client = rows[0];
+
+  // 1) امسح سجل الزبون — وهاد بيسحب معه (CASCADE) كل الاشتراكات والمطاعم وبيانات البرامج
+  const del = await fetch(`${env.SUPABASE_URL}/rest/v1/clients?id=eq.${clientId}`, {
+    method: 'DELETE',
+    headers: { ...sbHeaders(env), Prefer: 'return=representation' }
+  });
+  if (!del.ok) {
+    const t = await del.text();
+    return json(500, { error: 'تعذّر حذف سجل الزبون: ' + t.slice(0, 150) });
+  }
+  const deleted = await del.json();
+  if (!deleted.length) return json(500, { error: 'ما انحذف ولا صف' });
+
+  // 2) امسح حساب الدخول (auth) — بدون هذا، الزبون المحذوف بيضل يقدر يسجّل دخول
+  let authDeleted = false, authError = null;
+  if (client.user_id) {
+    const delAuth = await fetch(`${env.SUPABASE_URL}/auth/v1/admin/users/${client.user_id}`, {
+      method: 'DELETE',
+      headers: { apikey: env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}` }
+    });
+    if (delAuth.ok) authDeleted = true;
+    else authError = (await delAuth.text()).slice(0, 150);
+  }
+
+  return json(200, { ok: true, name: client.name, auth_deleted: authDeleted, auth_error: authError });
+}
+
 // ---------- إصدار ترخيص يدوي من لوحة المشرف — مع توليد رمز موقّع للألمنيوم/التجارة ----------
 async function adminNewLicense(request, env) {
   const auth = request.headers.get('Authorization') || '';
@@ -849,6 +899,10 @@ export default {
         if (url.pathname === '/api/admin/extend-license') {
           if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
           return await adminExtendLicense(request, env);
+        }
+        if (url.pathname === '/api/admin/delete-client') {
+          if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
+          return await adminDeleteClient(request, env);
         }
         return json(404, { error: 'unknown endpoint: ' + url.pathname });
       } catch (e) {
