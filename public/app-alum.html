@@ -362,6 +362,18 @@ async function save(key, value){
 let DB = {customers:[], invoices:[], receipts:[], settings:{}, suppliers:[], purchaseInvoices:[], paymentVouchers:[], workers:[], workEntries:[], workerPayments:[], deductions:[], quotes:[], warehouseItems:[], stockIns:[], stockOuts:[], cuttingOrders:[], customerAccounts:[], workerAccounts:[], budgetCategories:[], budgetEntries:[]};
 let authenticated = false;
 
+// خروج من البرنامج لازم يلغي جلسة المنصة كمان (يلي فتحناها تلقائياً عبر رابط
+// /portal/<slug>) وإلا الجهاز/المتصفح بيضل يذكر آخر زبون فتح البرنامج فيه،
+// وأي رابط portal تاني بينفتح على حسابه بالغلط
+async function signOutEverywhere(){
+  try{ if(supabaseClient) await supabaseClient.auth.signOut(); }catch(e){}
+  authenticated = false;
+  currentUser = null;
+  currentCustomerSession = null;
+  currentWorkerSession = null;
+  location.reload();
+}
+
 function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
 
 /* ============================= SUPABASE (CLOUD SYNC — CUSTOMERS PILOT) ============================= */
@@ -1577,7 +1589,7 @@ function renderCustomerPortal(){
   if(!cust){
     root().innerHTML = `<div class="topbar"><div class="brand"><div class="name">حسابك</div></div><div class="topbar-actions"><button class="btn btn-ghost btn-sm" id="customerLogoutBtn">🔒 خروج</button></div></div>` + emptyState('صار خطأ بحسابك، تواصل مع الإدارة');
     const btn = document.getElementById('customerLogoutBtn');
-    if(btn) btn.addEventListener('click', ()=>{ authenticated=false; currentCustomerSession=null; go('#/'); render(); });
+    if(btn) btn.addEventListener('click', signOutEverywhere);
     return;
   }
   let inner = '';
@@ -1597,7 +1609,7 @@ function renderCustomerPortal(){
     el.addEventListener('click', (e)=>{ e.stopPropagation(); go(el.getAttribute('data-nav')); });
   });
   const btn = document.getElementById('customerLogoutBtn');
-  if(btn) btn.addEventListener('click', ()=>{ authenticated=false; currentCustomerSession=null; go('#/'); render(); });
+  if(btn) btn.addEventListener('click', signOutEverywhere);
 }
 function workerPortalTopbar(wk){
   return `
@@ -1639,7 +1651,7 @@ function renderWorkerPortal(){
   if(!wk){
     root().innerHTML = `<div class="topbar"><div class="brand"><div class="name">حسابك</div></div><div class="topbar-actions"><button class="btn btn-ghost btn-sm" id="workerLogoutBtn">🔒 خروج</button></div></div>` + emptyState('صار خطأ بحسابك، تواصل مع الإدارة');
     const btn = document.getElementById('workerLogoutBtn');
-    if(btn) btn.addEventListener('click', ()=>{ authenticated=false; currentWorkerSession=null; go('#/'); render(); });
+    if(btn) btn.addEventListener('click', signOutEverywhere);
     return;
   }
   let inner = '';
@@ -1659,7 +1671,7 @@ function renderWorkerPortal(){
     el.addEventListener('click', (e)=>{ e.stopPropagation(); go(el.getAttribute('data-nav')); });
   });
   const btn = document.getElementById('workerLogoutBtn');
-  if(btn) btn.addEventListener('click', ()=>{ authenticated=false; currentWorkerSession=null; go('#/'); render(); });
+  if(btn) btn.addEventListener('click', signOutEverywhere);
 }
 function loginView(){
   const logo = DB.settings.logo;
@@ -5753,13 +5765,10 @@ function openLogoutModal(){
   document.body.appendChild(wrap);
   wrap.querySelector('#logout_cancel').addEventListener('click', ()=>wrap.remove());
   wrap.addEventListener('click', (e)=>{ if(e.target===wrap) wrap.remove(); });
-  wrap.querySelector('#logout_backup_confirm').addEventListener('click', ()=>{
+  wrap.querySelector('#logout_backup_confirm').addEventListener('click', async ()=>{
     downloadBackupFile();
     wrap.remove();
-    authenticated = false;
-    currentUser = null;
-    go('#/');
-    render();
+    await signOutEverywhere();
   });
 }
 function openDeleteCustomerModal(cust){
