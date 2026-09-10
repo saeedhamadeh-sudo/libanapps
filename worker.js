@@ -666,8 +666,8 @@ function pageFor(pathname) {
   if (p.startsWith('/i/'))    return '/invoice.html';
   // رابط لوحة تحكم مطعم محدد: /اسم-المحل/admin
   if (/^\/[^/]+\/admin\/?$/.test(p)) return '/admin.html';
-  // رابط برنامج ألمنيوم مخصص لزبون معيّن: /اسم-محله/alum
-  if (/^\/[^/]+\/alum\/?$/.test(p))  return '/app-alum.html';
+  // رابط برنامج ألمنيوم مخصص لزبون معيّن: /portal/اسم-محله
+  if (/^\/portal\/[^/]+\/?$/.test(p))  return '/app-alum.html';
   if (p.startsWith('/admin')) return '/admin.html';
   if (p.startsWith('/super')) return '/super.html';
   return '/menu.html';   // أي مسار آخر = رابط مطعم
