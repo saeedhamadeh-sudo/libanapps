@@ -332,7 +332,7 @@ async function loadCustomers(){
   if(supabaseClient){
     const remote = await supabaseListCustomers();
     if(remote !== null){
-      try{ localStorage.setItem('hmadeh_'+KEYS.customers, JSON.stringify(remote)); }catch(e){}
+      try{ localStorage.setItem(skey(KEYS.customers), JSON.stringify(remote)); }catch(e){}
       return remote;
     }
     toast('ما قدرنا نوصل لقاعدة البيانات السحابية — عم نستخدم آخر نسخة محفوظة عالجهاز');
@@ -341,14 +341,14 @@ async function loadCustomers(){
 }
 async function safeGet(key, fallback){
   try{
-    const raw = localStorage.getItem('hmadeh_'+key);
+    const raw = localStorage.getItem(skey(key));
     if(raw !== null) return JSON.parse(raw);
     return fallback;
   }catch(e){ return fallback; }
 }
 async function save(key, value){
   try{
-    localStorage.setItem('hmadeh_'+key, JSON.stringify(value));
+    localStorage.setItem(skey(key), JSON.stringify(value));
   }catch(e){ console.error('storage error', key, e); return false; }
   if(key===KEYS.settings){
     syncSettingsToSupabase(value);
@@ -384,6 +384,10 @@ let PLATFORM_CLIENT_NAME = '';
 function T(name){ return 'alum_' + name; }            // اسم الجدول بالسحابة
 function withClient(row){ return Object.assign({}, row, { client_id: CLIENT_ID }); }
 function scoped(q){ return CLIENT_ID ? q.eq('client_id', CLIENT_ID) : q; }
+// مفتاح التخزين المحلي — لازم يكون مربوط بهوية الزبون (CLIENT_ID)، وإلا
+// بيانات زبون (الشعار، الإعدادات، رمز التفعيل) ممكن تظهر لزبون تاني استخدم
+// نفس الجهاز/المتصفح قبلو
+function skey(key){ return 'la_' + (CLIENT_ID || 'anon') + '_' + key; }
 
 function customerFromDb(row){
   return {
@@ -438,7 +442,7 @@ async function supabaseDeleteCustomer(id){
   }
 }
 async function saveCustomerRemote(customer){
-  try{ localStorage.setItem('hmadeh_'+KEYS.customers, JSON.stringify(DB.customers)); }catch(e){}
+  try{ localStorage.setItem(skey(KEYS.customers), JSON.stringify(DB.customers)); }catch(e){}
   if(supabaseClient){
     const ok = await supabaseUpsertCustomer(customer);
     if(!ok){
@@ -450,7 +454,7 @@ async function saveCustomerRemote(customer){
   return true;
 }
 async function deleteCustomerRemote(id){
-  try{ localStorage.setItem('hmadeh_'+KEYS.customers, JSON.stringify(DB.customers)); }catch(e){}
+  try{ localStorage.setItem(skey(KEYS.customers), JSON.stringify(DB.customers)); }catch(e){}
   if(supabaseClient){
     const ok = await supabaseDeleteCustomer(id);
     if(!ok) toast('تم الحذف محليًا بس صار خطأ بالمزامنة مع السحابة');
@@ -679,7 +683,7 @@ async function syncUsersToSupabase(users){
     const { data: freshRows, error: fetchErr } = await scoped(supabaseClient.from(T('app_users')).select('*'));
     if(!fetchErr && freshRows && freshRows.length){
       DB.settings.users = freshRows.map(userFromDb);
-      try{ localStorage.setItem('hmadeh_'+KEYS.settings, JSON.stringify(DB.settings)); }catch(e){}
+      try{ localStorage.setItem(skey(KEYS.settings), JSON.stringify(DB.settings)); }catch(e){}
     }
   }catch(e){
     lastSupabaseError = 'threw: '+(e && e.message);
@@ -702,7 +706,7 @@ async function loadSettings(defaults){
     if(!error && data && data.length) merged.users = data.map(userFromDb);
     else if(error){ lastSupabaseError = describeSupabaseError(error); console.error('app_users load error:', lastSupabaseError); }
   }catch(e){ lastSupabaseError = 'threw: '+(e && e.message); console.error('app_users load threw:', e && e.message); }
-  try{ localStorage.setItem('hmadeh_'+KEYS.settings, JSON.stringify(merged)); }catch(e){}
+  try{ localStorage.setItem(skey(KEYS.settings), JSON.stringify(merged)); }catch(e){}
   return merged;
 }
 const SUPABASE_TABLES = {
@@ -761,7 +765,7 @@ async function loadSyncedArray(localKey, fallback){
       const { data, error } = await scoped(supabaseClient.from(T(cfg.table)).select('*'));
       if(!error){
         const arr = data.map(cfg.fromDb);
-        try{ localStorage.setItem('hmadeh_'+localKey, JSON.stringify(arr)); }catch(e){}
+        try{ localStorage.setItem(skey(localKey), JSON.stringify(arr)); }catch(e){}
         return arr;
       }
       lastSupabaseError = describeSupabaseError(error);
@@ -1459,7 +1463,7 @@ async function verifyLicenseSerial(serial){
 function ensureTrialStarted(){
   if(!DB.settings.trialStartedAt){
     DB.settings.trialStartedAt = Date.now();
-    try{ localStorage.setItem('hmadeh_'+KEYS.settings, JSON.stringify(DB.settings)); }catch(e){}
+    try{ localStorage.setItem(skey(KEYS.settings), JSON.stringify(DB.settings)); }catch(e){}
   }
 }
 function licenseStatus(){
@@ -5711,7 +5715,7 @@ function openFactoryResetCountdown(){
 }
 async function performFactoryReset(){
   Object.values(KEYS).forEach(k=>{
-    try{ localStorage.removeItem('hmadeh_'+k); }catch(e){}
+    try{ localStorage.removeItem(skey(k)); }catch(e){}
   });
   location.reload();
 }
