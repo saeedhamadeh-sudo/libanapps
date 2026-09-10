@@ -914,20 +914,20 @@ export default {
       }
     }
 
-    // 2) ملف موجود؟ نخدمه كما هو
-    const asset = await env.ASSETS.fetch(request);
-    if (asset.status !== 404) return withCache(asset, url.pathname);
-
-    // 3) ملف ناقص (له امتداد) — نرجّع 404 صريح بدل ما نرجّع HTML
-    //    وإلا بيوصل للمتصفح HTML مكان css/js والصفحة بتطلع بيضا بلا سبب واضح
+    // 2) طلب لملف حقيقي (فيه امتداد صريح متل .css / .js / .png) — نخدمه متل ما هو
     if (/\.[a-z0-9]{2,5}$/i.test(url.pathname)) {
+      const asset = await env.ASSETS.fetch(request);
+      if (asset.status !== 404) return withCache(asset, url.pathname);
+      // ملف ناقص — نرجّع 404 صريح بدل ما نرجّع HTML
+      // وإلا بيوصل للمتصفح HTML مكان css/js والصفحة بتطلع بيضا بلا سبب واضح
       return new Response('Not found: ' + url.pathname, {
         status: 404,
         headers: { 'Content-Type': 'text/plain; charset=utf-8' }
       });
     }
 
-    // 4) مسار صفحة، نعرض الصفحة المناسبة
+    // 3) مسار صفحة (بدون امتداد) — نحدد الصفحة الصحيحة بأنفسنا دايماً،
+    //    بدون ما نسأل Cloudflare مباشرة (تفادياً لأي تخمين افتراضي غير متوقع منه)
     const page = pageFor(url.pathname);
     const res = await env.ASSETS.fetch(new URL(page, url.origin));
     return new Response(res.body, {
