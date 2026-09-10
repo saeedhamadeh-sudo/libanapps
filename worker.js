@@ -265,6 +265,31 @@ async function imageProxy(request, env, ctx, url) {
 }
 
 
+// ---------- توليد رمز تفعيل موقّع (لبرامج المحاسبة أوفلاين: ALUM / TRADE) ----------
+//  نفس خوارزمية أداة client-setup — بس المفتاح الخاص هون بيجي من Secret،
+//  مش مكتوب بالكود (هاد الملف على GitHub).
+function b64urlBytes(bytes) {
+  let bin = '';
+  const arr = new Uint8Array(bytes);
+  for (let i = 0; i < arr.length; i++) bin += String.fromCharCode(arr[i]);
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+const PRODUCT_SIGNING_ENV = { alum: 'ALUM_PRIVATE_KEY_JWK', trade: 'TRADE_PRIVATE_KEY_JWK' };
+async function generateActivationSerial(env, productCode, label, expMs) {
+  const envVar = PRODUCT_SIGNING_ENV[productCode];
+  if (!envVar || !env[envVar]) return null;   // المنتج ما إلو توقيع (متل menu) أو السر مش مضاف
+  let privJwk;
+  try { privJwk = JSON.parse(env[envVar]); }
+  catch { console.error('bad signing key JSON for', productCode); return null; }
+  const key = await crypto.subtle.importKey(
+    'jwk', privJwk, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign']);
+  const payload = { label: label || '', exp: expMs };
+  const payloadB64 = b64urlBytes(new TextEncoder().encode(JSON.stringify(payload)));
+  const sig = await crypto.subtle.sign(
+    { name: 'ECDSA', hash: 'SHA-256' }, key, new TextEncoder().encode(payloadB64));
+  return 'HMDH1.' + payloadB64 + '.' + b64urlBytes(sig);
+}
+
 // ---------- تحقّق مباشر من الدفع وتفعيل فوري ----------
 //  ما بيعتمد على نداء Whish للسيرفر — منسأل Whish مباشرة
 //  بيناديها الزبون لما يرجع من صفحة الدفع، وبتناديها لوحتك كمان
@@ -278,7 +303,7 @@ async function buyVerify(request, env) {
   if (!pid) return json(400, { error: 'missing purchase_id' });
 
   const rows = await sbGet(env,
-    `purchases?id=eq.${pid}&select=id,user_id,amount_usd,status,product_code&limit=1`);
+    `purchases?id=eq.${pid}&select=id,user_id,amount_usd,status,product_code,biz_name&limit=1`);
   const p = rows[0];
   if (!p) return json(404, { error: 'purchase not found' });
 
@@ -334,6 +359,30 @@ async function buyVerify(request, env) {
     return json(500, { error: 'تعذّر التفعيل: ' + t.slice(0, 120) });
   }
   const out = await r.json();
+
+  // لبرامج المحاسبة الأوفلاين (ALUM/TRADE) — نولّد رمز التفعيل الموقّع ونحفظه
+  // بالاشتراك حتى يظهر للزبون بصفحة "اشتراكاتي"
+  if ((p.product_code === 'alum' || p.product_code === 'trade') && out.expires_at) {
+    try {
+      const subRows = await sbGet(env, `purchases?id=eq.${p.id}&select=subscription_id&limit=1`);
+      const subId = subRows[0] && subRows[0].subscription_id;
+      if (subId) {
+        const label = p.biz_name || '';
+        const expMs = new Date(out.expires_at).getTime();
+        const serial = await generateActivationSerial(env, p.product_code, label, expMs);
+        if (serial) {
+          await sbPatch(env, `subscriptions?id=eq.${subId}`, { key: serial });
+          out.key = serial;
+        } else {
+          console.error('activation serial not generated — missing signing secret for', p.product_code);
+        }
+      }
+    } catch (e) {
+      console.error('activation serial generation failed', e);
+      // ما منفشّل كل عملية التفعيل بسبب هيدا — الاشتراك تفعّل، بس المفتاح ممكن يضل القديم
+    }
+  }
+
   return json(200, { ok: true, activated: true, result: out });
 }
 
