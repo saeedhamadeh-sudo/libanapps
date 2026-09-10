@@ -632,6 +632,129 @@ async function createOwner(request, env) {
   });
 }
 
+// ---------- إصدار ترخيص يدوي من لوحة المشرف — مع توليد رمز موقّع للألمنيوم/التجارة ----------
+async function adminNewLicense(request, env) {
+  const auth = request.headers.get('Authorization') || '';
+  const token = auth.replace(/^Bearer\s+/i, '');
+  if (!token) return json(401, { error: 'not signed in' });
+
+  const me = await fetch(`${env.SUPABASE_URL}/auth/v1/user`, {
+    headers: { apikey: env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${token}` }
+  });
+  if (!me.ok) return json(401, { error: 'invalid session' });
+  const meData = await me.json();
+
+  const admins = await sbGet(env, `platform_admins?user_id=eq.${meData.id}&select=user_id&limit=1`);
+  if (!admins.length) return json(403, { error: 'not allowed' });
+
+  let body;
+  try { body = await request.json(); } catch { return json(400, { error: 'bad json' }); }
+  const clientId = body.client_id, productCode = body.product_code;
+  const days = Number(body.days), price = Number(body.price) || 0;
+  const notes = String(body.notes || '');
+  if (!clientId || !productCode || !days) return json(400, { error: 'missing fields' });
+
+  const plan = days <= 7 ? 'trial' : (days <= 31 ? 'monthly' : 'yearly');
+
+  const r = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/new_subscription`, {
+    method: 'POST',
+    headers: { ...sbHeaders(env), 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      p_client: clientId, p_product: productCode, p_plan: plan,
+      p_days: days, p_price: price, p_slug: '', p_notes: notes
+    })
+  });
+  if (!r.ok) {
+    const t = await r.text();
+    return json(500, { error: 'تعذّر إنشاء الاشتراك: ' + t.slice(0, 150) });
+  }
+  const sub = await r.json();
+
+  let finalKey = sub.key;
+  let finalSlug = '';
+
+  if (productCode === 'alum' || productCode === 'trade') {
+    const bizName = String(body.biz_name || '').trim();
+    const vSlug = String(body.slug || '').trim().toLowerCase().replace(/[^a-z0-9-]/g, '');
+    const expMs = new Date(sub.expires_at).getTime();
+
+    const serial = await generateActivationSerial(env, productCode, bizName || vSlug, expMs);
+    if (serial) {
+      await sbPatch(env, `subscriptions?id=eq.${sub.id}`, { key: serial });
+      finalKey = serial;
+    }
+
+    if (vSlug) {
+      const av = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/slug_available`, {
+        method: 'POST',
+        headers: { ...sbHeaders(env), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ p_slug: vSlug })
+      });
+      const isFree = av.ok ? await av.json() : false;
+      if (isFree) {
+        await fetch(`${env.SUPABASE_URL}/rest/v1/app_settings`, {
+          method: 'POST',
+          headers: { ...sbHeaders(env), 'Content-Type': 'application/json',
+                     Prefer: 'resolution=merge-duplicates,return=minimal' },
+          body: JSON.stringify({ client_id: clientId, product_code: productCode,
+                                  slug: vSlug, biz_name: bizName || vSlug })
+        });
+        finalSlug = vSlug;
+      }
+      // إذا الرابط محجوز، منتابع بدون ما نوقف — الترخيص انعمل، بس بلا رابط مخصص
+    }
+  }
+
+  return json(200, { ok: true, key: finalKey, expires_at: sub.expires_at, slug: finalSlug });
+}
+
+// ---------- تمديد ترخيص — بتولّد رمز موقّع جديد بالتاريخ الجديد للألمنيوم/التجارة ----------
+async function adminExtendLicense(request, env) {
+  const auth = request.headers.get('Authorization') || '';
+  const token = auth.replace(/^Bearer\s+/i, '');
+  if (!token) return json(401, { error: 'not signed in' });
+
+  const me = await fetch(`${env.SUPABASE_URL}/auth/v1/user`, {
+    headers: { apikey: env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${token}` }
+  });
+  if (!me.ok) return json(401, { error: 'invalid session' });
+  const meData = await me.json();
+
+  const admins = await sbGet(env, `platform_admins?user_id=eq.${meData.id}&select=user_id&limit=1`);
+  if (!admins.length) return json(403, { error: 'not allowed' });
+
+  let body;
+  try { body = await request.json(); } catch { return json(400, { error: 'bad json' }); }
+  const subId = body.id, days = Number(body.days);
+  if (!subId || !days) return json(400, { error: 'missing fields' });
+
+  const r = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/extend_subscription`, {
+    method: 'POST',
+    headers: { ...sbHeaders(env), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ p_id: subId, p_days: days })
+  });
+  if (!r.ok) {
+    const t = await r.text();
+    return json(500, { error: 'تعذّر التمديد: ' + t.slice(0, 150) });
+  }
+  const sub = await r.json();
+  let finalKey = sub.key;
+
+  if (sub.product_code === 'alum' || sub.product_code === 'trade') {
+    const st = await sbGet(env,
+      `app_settings?client_id=eq.${sub.client_id}&product_code=eq.${sub.product_code}&select=biz_name,slug&limit=1`);
+    const label = (st[0] && (st[0].biz_name || st[0].slug)) || '';
+    const expMs = new Date(sub.expires_at).getTime();
+    const serial = await generateActivationSerial(env, sub.product_code, label, expMs);
+    if (serial) {
+      await sbPatch(env, `subscriptions?id=eq.${sub.id}`, { key: serial });
+      finalKey = serial;
+    }
+  }
+
+  return json(200, { ok: true, key: finalKey, expires_at: sub.expires_at });
+}
+
 // ---------- سياسة التخزين المؤقت ----------
 //  HTML: المتصفح يسأل السيرفر كل مرة (no-cache) — التعديلات تصل فوراً
 //  الصور والخطوط: تُخزَّن طويلاً — لا تتغيّر عادةً
@@ -680,6 +803,18 @@ export default {
     // 0) الصور — قبل أي شي، لتنخدم من الكاش
     if (url.pathname.startsWith('/img/')) return imageProxy(request, env, ctx, url);
 
+    // 0.5) أي طلب لـ sw.js تحت أي مسار (كان ممكن ينسجّل من مكان مختلف قبل هيك)
+    //      لازم ياخد نفس ملف الإلغاء الحقيقي، مش يروح غلط لصفحة تانية
+    if (url.pathname.endsWith('/sw.js') || url.pathname === '/sw.js') {
+      const swAsset = await env.ASSETS.fetch(new Request(new URL('/sw.js', url), request));
+      if (swAsset.status !== 404) {
+        const h = new Headers(swAsset.headers);
+        h.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+        h.set('Content-Type', 'application/javascript; charset=utf-8');
+        return new Response(swAsset.body, { status: swAsset.status, headers: h });
+      }
+    }
+
     // 1) الـAPI — أي مسار تحت /api/ يرجّع JSON دائماً، حتى لو صار خطأ داخلي
     if (url.pathname.startsWith('/api/')) {
       try {
@@ -706,6 +841,14 @@ export default {
         if (url.pathname === '/api/create-owner') {
           if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
           return await createOwner(request, env);
+        }
+        if (url.pathname === '/api/admin/new-license') {
+          if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
+          return await adminNewLicense(request, env);
+        }
+        if (url.pathname === '/api/admin/extend-license') {
+          if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
+          return await adminExtendLicense(request, env);
         }
         return json(404, { error: 'unknown endpoint: ' + url.pathname });
       } catch (e) {
