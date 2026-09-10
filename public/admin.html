@@ -618,13 +618,12 @@ async function boot(){
     }
   }
   if(!rid){
-    var m=await sb.from('restaurant_users').select('restaurant_id').limit(1).maybeSingle();
+    var uid=s.data.session.user.id;
+    var m=await sb.from('restaurant_users').select('restaurant_id').eq('user_id',uid).limit(1).maybeSingle();
     rid=m.data&&m.data.restaurant_id;
   }
-  if(!rid){
-    var any=await sb.from('restaurants').select('id').limit(1).maybeSingle();
-    rid=any.data&&any.data.id;
-  }
+  // ملاحظة أمان: ما في "احتياطي" لأي مطعم عشوائي هون عن قصد.
+  // مستخدم بدون مطعم خاص فيه ما إلو داعي يشوف لوحة تحكم أي حدا.
   if(!rid){
     $('#loginNote').textContent='هذا الحساب مش مربوط بأي مطعم.';
     $('#goLogin').textContent='افتح صفحة حسابي'; $('#goLogin').href='/account';
