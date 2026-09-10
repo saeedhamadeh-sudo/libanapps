@@ -1752,6 +1752,13 @@ async function bootPlatform(){
   const acc = await supabaseClient.rpc('app_access', { p_product: 'alum' });
   if(acc.error) return { ok:false, reason:'error', message: acc.error.message };
   ACCESS = acc.data || {};
+  // إذا حسابك ما ربط تلقائياً بسجل زبونك (نفس اللي بتعمله صفحة حسابي) —
+  // منجرب نربطه مرة، وبعدين منعيد التحقق
+  if(ACCESS.reason === 'no_client'){
+    try{ await supabaseClient.rpc('autolink_my_client'); }catch(e){}
+    const acc2 = await supabaseClient.rpc('app_access', { p_product: 'alum' });
+    if(!acc2.error) ACCESS = acc2.data || {};
+  }
   CLIENT_ID = ACCESS.client_id || null;
   return ACCESS;
 }
