@@ -540,6 +540,52 @@ async function buyFailure(request, env) {
 
 // ---------- إنشاء حساب لصاحب مطعم ----------
 //  يتحقق أولاً أن الطالب مشرف منصة، ثم ينشئ المستخدم ويربطه بمطعمه.
+// ---------- دخول تلقائي مأمون لرابط /portal/<slug> — بدون شاشة دخول المنصة ----------
+async function portalToken(request, env) {
+  const url = new URL(request.url);
+  const slug = (url.searchParams.get('slug') || '').trim().toLowerCase();
+  if (!slug) return json(400, { error: 'missing slug' });
+
+  const settingsRows = await sbGet(env,
+    `app_settings?product_code=eq.alum&slug=eq.${encodeURIComponent(slug)}&select=client_id&limit=1`);
+  if (!settingsRows.length) return json(200, { ok: false, reason: 'no_client' });
+  const clientId = settingsRows[0].client_id;
+
+  const subs = await sbGet(env,
+    `subscriptions?client_id=eq.${clientId}&product_code=eq.alum&select=status,expires_at&order=expires_at.desc&limit=1`);
+  if (!subs.length) return json(200, { ok: false, reason: 'no_subscription' });
+  const sub = subs[0];
+  if (sub.status === 'suspended') return json(200, { ok: false, reason: 'suspended' });
+  if (new Date(sub.expires_at).getTime() < Date.now()) return json(200, { ok: false, reason: 'expired' });
+
+  const clientRows = await sbGet(env, `clients?id=eq.${clientId}&select=user_id&limit=1`);
+  if (!clientRows.length || !clientRows[0].user_id) return json(200, { ok: false, reason: 'no_client' });
+  const userId = clientRows[0].user_id;
+
+  const userRes = await fetch(`${env.SUPABASE_URL}/auth/v1/admin/users/${userId}`, {
+    headers: { apikey: env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}` }
+  });
+  if (!userRes.ok) return json(500, { error: 'user lookup failed' });
+  const userData = await userRes.json();
+  const email = userData.email;
+  if (!email) return json(500, { error: 'الحساب المرتبط بلا إيميل' });
+
+  const linkRes = await fetch(`${env.SUPABASE_URL}/auth/v1/admin/generate_link`, {
+    method: 'POST',
+    headers: { apikey: env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ type: 'magiclink', email })
+  });
+  if (!linkRes.ok) {
+    const t = await linkRes.text();
+    return json(500, { error: 'تعذّر توليد رمز الدخول: ' + t.slice(0, 150) });
+  }
+  const linkData = await linkRes.json();
+  const hashedToken = linkData.hashed_token || (linkData.properties && linkData.properties.hashed_token);
+  if (!hashedToken) return json(500, { error: 'ما طلع رمز دخول من Supabase' });
+
+  return json(200, { ok: true, hashed_token: hashedToken });
+}
+
 async function createOwner(request, env) {
   const auth = request.headers.get('Authorization') || '';
   const token = auth.replace(/^Bearer\s+/i, '');
@@ -903,6 +949,10 @@ export default {
         if (url.pathname === '/api/admin/delete-client') {
           if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
           return await adminDeleteClient(request, env);
+        }
+        if (url.pathname === '/api/portal-token') {
+          if (request.method !== 'GET') return json(405, { error: 'method not allowed' });
+          return await portalToken(request, env);
         }
         return json(404, { error: 'unknown endpoint: ' + url.pathname });
       } catch (e) {
