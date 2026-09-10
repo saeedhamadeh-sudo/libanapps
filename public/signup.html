@@ -299,7 +299,9 @@ if(sb) sb.auth.getSession().then(function(r){
   function msg(t,ok){ var m=$('#sMsg'); m.className='msg'+(ok===true?' s':ok===false?' e':''); m.textContent=t; }
   var next=new URLSearchParams(location.search).get('next');
   function go(){
-    if(next==='admin'){ location.href='/admin'; return; }
+    if(next && next.indexOf('/')===0 && next.indexOf('//')!==0){  // مسار داخلي آمن بس
+      location.href=next; return;
+    }
     location.href='/account'+(planId?('?plan='+encodeURIComponent(planId)):'');
   }
 
