@@ -1,1 +1,1551 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>itech Accounting — دفتر الحسابات</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#1E2A38">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="itech Accounting">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&family=Tajawal:wght@400;500;700&family=Roboto+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#F6F3EC;
+    --paper-2:#EFEAE0;
+    --ink:#1E2A38;
+    --ink-soft:#4B5A68;
+    --line:#D8D0BF;
+    --bronze:#B08D57;
+    --bronze-deep:#8C6D3F;
+    --steel:#4A6670;
+    --debit:#B54834;   /* فاتورة / قيد */
+    --credit:#3F7D58;  /* قبض / دفعة */
+    --white:#FFFFFF;
+    --radius:10px;
+    --shadow: 0 1px 2px rgba(30,42,56,.06), 0 6px 20px rgba(30,42,56,.06);
+    --font-display:'Cairo', sans-serif;
+    --font-body:'Tajawal', sans-serif;
+    --font-num:'Roboto Mono', monospace;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0; overscroll-behavior-y:contain;}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:var(--font-body);
+    font-size:15px;
+    line-height:1.5;
+    background-image:
+      linear-gradient(var(--paper) 0%, var(--paper) 100%),
+      repeating-linear-gradient(0deg, rgba(30,42,56,0.025) 0px, rgba(30,42,56,0.025) 1px, transparent 1px, transparent 28px);
+  }
+  ::selection{background:var(--bronze); color:#fff;}
 
+  /* ---------- App shell ---------- */
+  #app{max-width:1180px; margin:0 auto; padding:18px 16px 60px;}
+
+  .topbar{
+    display:flex; align-items:center; justify-content:space-between;
+    gap:12px; padding:14px 18px; margin-bottom:18px;
+    background:var(--ink); color:var(--paper);
+    border-radius:var(--radius); box-shadow:var(--shadow);
+    position:relative; overflow:hidden;
+  }
+  .topbar::before{
+    content:""; position:absolute; inset:0;
+    background: repeating-linear-gradient(135deg, rgba(176,141,87,.10) 0 10px, transparent 10px 20px);
+    pointer-events:none;
+  }
+  .brand{display:flex; flex-direction:column; gap:2px; position:relative;}
+  .brand .name{font-family:var(--font-display); font-weight:800; font-size:20px; letter-spacing:.3px;}
+  .brand .tag{font-size:11.5px; color:#C9D2D9; letter-spacing:.4px;}
+  .brand .name b{color:var(--bronze);}
+  .topbar-actions{display:flex; gap:8px; position:relative;}
+
+  .btn{
+    appearance:none; border:1px solid var(--line); background:var(--white);
+    color:var(--ink); font-family:var(--font-body); font-weight:700; font-size:13.5px;
+    padding:9px 14px; border-radius:8px; cursor:pointer; display:inline-flex; align-items:center; gap:6px;
+    transition:transform .08s ease, box-shadow .15s ease, background .15s ease;
+    white-space:nowrap;
+  }
+  .btn:hover{box-shadow:0 2px 10px rgba(30,42,56,.12); transform:translateY(-1px);}
+  .btn:active{transform:translateY(0);}
+  .btn-primary{background:var(--bronze); border-color:var(--bronze-deep); color:#fff;}
+  .btn-primary:hover{background:var(--bronze-deep);}
+  .btn-ghost{background:transparent; border-color:rgba(255,255,255,.25); color:var(--paper);}
+  .btn-ghost:hover{background:rgba(255,255,255,.08);}
+  .btn-danger{color:var(--debit); border-color:#e3c3ba;}
+  .btn-sm{padding:6px 10px; font-size:12.5px;}
+  .btn-credit{background:var(--credit); border-color:#2f6144; color:#fff;}
+  .btn-credit:hover{background:#33573c;}
+  .btn-debit{background:var(--debit); border-color:#8f3a29; color:#fff;}
+  .btn-debit:hover{background:#8f3a29;}
+
+  .crumbs{display:flex; align-items:center; gap:8px; margin-bottom:14px; font-size:13px; color:var(--ink-soft);}
+  .crumbs a{color:var(--steel); text-decoration:none; font-weight:700; cursor:pointer;}
+  .crumbs a:hover{text-decoration:underline;}
+
+  .card{
+    background:var(--white); border:1px solid var(--line); border-radius:var(--radius);
+    box-shadow:var(--shadow); padding:18px; margin-bottom:16px;
+  }
+  .card h2{font-family:var(--font-display); font-size:17px; margin:0 0 14px; display:flex; align-items:center; gap:8px;}
+  .card h2 .dot{width:8px; height:8px; border-radius:50%; background:var(--bronze); display:inline-block;}
+
+  .grid{display:grid; gap:12px;}
+  .grid-2{grid-template-columns:1fr 1fr;}
+  .grid-3{grid-template-columns:1fr 1fr 1fr;}
+  @media(max-width:640px){.grid-2,.grid-3{grid-template-columns:1fr;}}
+
+  label{display:block; font-size:12.5px; color:var(--ink-soft); margin-bottom:5px; font-weight:700;}
+  input[type=text], input[type=number], input[type=date], input[type=tel], input[type=password], select, textarea{
+    width:100%; padding:9px 11px; border:1px solid var(--line); border-radius:7px;
+    font-family:var(--font-body); font-size:14.5px; background:var(--paper); color:var(--ink);
+    outline:none; transition:border-color .12s ease, background .12s ease;
+    -webkit-appearance:none; -moz-appearance:none; appearance:none;
+    margin:0; line-height:1.4; min-height:40px;
+  }
+  input:focus, select:focus, textarea:focus{border-color:var(--bronze); background:#fff;}
+  .field{margin-bottom:12px;}
+  .num{font-family:var(--font-num); direction:ltr; text-align:right;}
+
+  /* ---------- Dashboard ---------- */
+  .stats{display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-bottom:16px;}
+  @media(max-width:640px){.stats{grid-template-columns:1fr;}}
+  .stat{background:var(--white); border:1px solid var(--line); border-radius:var(--radius); padding:16px; box-shadow:var(--shadow);}
+  .stat .k{font-size:12px; color:var(--ink-soft); font-weight:700; margin-bottom:6px;}
+  .stat .v{font-family:var(--font-num); font-size:23px; font-weight:700;}
+  .stat.owe .v{color:var(--debit);}
+  .stat.credit .v{color:var(--credit);}
+
+  .search-row{display:flex; gap:10px; margin-bottom:14px;}
+  .search-row input{flex:1;}
+
+  table{width:100%; border-collapse:collapse; font-size:13.5px;}
+  thead th{
+    background:var(--ink); color:var(--paper); font-family:var(--font-display); font-weight:700;
+    padding:9px 10px; text-align:right; font-size:12.5px; letter-spacing:.2px;
+  }
+  thead th:first-child{border-radius:6px 0 0 0;}
+  thead th:last-child{border-radius:0 6px 0 0;}
+  tbody td{padding:10px; border-bottom:1px solid var(--paper-2);}
+  tbody tr{cursor:pointer; transition:background .1s ease;}
+  tbody tr:hover{background:var(--paper);}
+  tbody tr:last-child td{border-bottom:none;}
+  .bal-pos{color:var(--debit); font-weight:700; font-family:var(--font-num);}
+  .bal-neg{color:var(--credit); font-weight:700; font-family:var(--font-num);}
+  .bal-zero{color:var(--ink-soft); font-weight:700; font-family:var(--font-num);}
+  .empty{text-align:center; padding:40px 20px; color:var(--ink-soft);}
+  .empty .big{font-family:var(--font-display); font-size:16px; color:var(--ink); margin-bottom:6px; font-weight:700;}
+
+  .pill{display:inline-block; padding:3px 10px; border-radius:20px; font-size:11.5px; font-weight:700;}
+  .pill-debit{background:#F6E4DE; color:var(--debit);}
+  .pill-credit{background:#E1EFE6; color:var(--credit);}
+
+  /* ---------- customer page ---------- */
+  .cust-head{display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px;}
+  .cust-name{font-family:var(--font-display); font-size:21px; font-weight:800;}
+  .cust-meta{color:var(--ink-soft); font-size:13px; margin-top:3px;}
+  .action-row{display:flex; gap:8px; flex-wrap:wrap;}
+
+  .item-card{border:1px solid var(--line); border-radius:9px; padding:12px; margin-bottom:10px; background:var(--paper);}
+  .item-card-head{display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; font-family:var(--font-display); font-weight:700; font-size:13px; color:var(--bronze-deep);}
+  .add-item-row{margin-top:8px;}
+  .rm-btn{background:none; border:none; color:var(--debit); cursor:pointer; font-size:12.5px; font-weight:700; padding:2px 4px;}
+
+  .totals-box{margin-top:14px; padding:14px; background:var(--paper); border-radius:8px; border:1px dashed var(--line);}
+  .totals-box .row{display:flex; justify-content:space-between; padding:4px 0; font-size:14px;}
+  .totals-box .row.big{font-weight:800; font-size:17px; border-top:1px solid var(--line); margin-top:6px; padding-top:10px;}
+  .totals-box .row .v{font-family:var(--font-num);}
+
+  /* ---------- printable documents ---------- */
+  .doc{background:#fff; border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow); padding:26px; max-width:900px; margin:0 auto 16px;}
+  .doc-head{display:flex; justify-content:space-between; align-items:flex-start; border-bottom:3px solid var(--ink); padding-bottom:14px; margin-bottom:16px;}
+  .doc-head .co-name{font-family:var(--font-display); font-weight:800; font-size:19px;}
+  .doc-head .co-tag{font-size:11.5px; color:var(--ink-soft); margin-top:3px; line-height:1.6;}
+  .doc-head .doc-title{font-family:var(--font-display); font-size:22px; font-weight:800; color:var(--bronze-deep); text-align:left;}
+  .doc-info{display:grid; grid-template-columns:1fr 1fr; gap:8px 24px; margin-bottom:16px; font-size:13.5px;}
+  .doc-info .r{display:flex; justify-content:flex-start; align-items:baseline; gap:8px; border-bottom:1px dotted var(--line); padding:5px 0;}
+  .doc-info .r b{font-family:var(--font-num);}
+  .doc table{margin-top:6px;}
+  .doc thead th{background:var(--paper-2); color:var(--ink); border-bottom:2px solid var(--ink); white-space:nowrap; font-size:11px;}
+  .doc table th, .doc table td{border-left:1px solid var(--line);}
+  .doc table th:last-child, .doc table td:last-child{border-left:none;}
+  .invoice-items-table tbody td{border-bottom:none;}
+  .invoice-items-table{border-bottom:2px solid var(--ink);}
+  .ded-table th, .ded-table td{padding:8px 10px; font-size:13px;}
+  .ded-table thead th{white-space:nowrap; font-size:12px;}
+  .table-scroll{max-width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch;}
+  .doc{overflow-x:hidden;}
+  .page-break-after{page-break-after:always; break-after:page;}
+  @media print{ .page-break-after{margin-bottom:0;} }
+  .ltr-doc{direction:ltr; text-align:left;}
+  .ltr-doc .doc-info .r{justify-content:flex-start;}
+  .ltr-doc .num{text-align:left; direction:ltr;}
+  .ltr-doc table{direction:ltr;}
+  .ltr-doc table th, .ltr-doc table td{border-left:none; border-right:1px solid var(--line);}
+  .ltr-doc table th:last-child, .ltr-doc table td:last-child{border-right:none;}
+  .ltr-doc .sig{text-align:right;}
+  .ltr-doc .sig-line{margin-left:0; margin-right:auto;}
+  .doc-foot{margin-top:16px; display:flex; justify-content:space-between; align-items:flex-end; gap:16px; flex-wrap:wrap;}
+  .words-box{flex:1; min-width:220px; font-size:13px; background:var(--paper); padding:10px 12px; border-radius:7px; border:1px dashed var(--line);}
+  .amount-box{text-align:left;}
+  .amount-box .line{font-family:var(--font-num); font-size:18px; font-weight:800;}
+  .amount-box .line.lbp{font-size:13px; color:var(--ink-soft); font-weight:600;}
+  .sig{margin-top:8px; text-align:left; font-size:13px; color:var(--ink-soft);}
+  .sig-line{margin-top:26px; width:180px; border-top:1px solid var(--ink-soft); margin-right:0; margin-left:auto;}
+
+  .doc-actions{display:flex; flex-wrap:wrap; gap:8px; justify-content:flex-end; max-width:900px; margin:0 auto 10px;}
+
+  @page{ size:A4; margin:10mm; }
+  @media print{
+    body{background:#fff;}
+    .topbar, .crumbs, .doc-actions, .no-print{display:none !important;}
+    #app{max-width:100%; padding:0;}
+    .doc{box-shadow:none; border:none; margin:0; padding:0; transform-origin:top center;}
+    .doc table th, .doc table td{padding:8px 14px;}
+  }
+
+  .modal-bg{position:fixed; inset:0; background:rgba(30,42,56,.5); display:flex; align-items:center; justify-content:center; z-index:50; padding:16px;}
+  .modal{background:#fff; border-radius:var(--radius); padding:20px; max-width:420px; width:100%; box-shadow:var(--shadow); max-height:calc(100vh - 32px); overflow-y:auto;}
+  .modal h3{font-family:var(--font-display); margin:0 0 12px;}
+  .modal .row{display:flex; gap:8px; justify-content:flex-end; margin-top:16px;}
+
+  .toast{position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:var(--ink); color:#fff; padding:10px 18px; border-radius:8px; font-size:13.5px; z-index:100; box-shadow:var(--shadow); opacity:0; transition:opacity .25s ease;}
+  .toast.show{opacity:1;}
+
+  .type-toggle{display:flex; gap:6px;}
+  .type-toggle button{flex:1;}
+
+  .settings-link{cursor:pointer; opacity:.85;}
+  .settings-link:hover{opacity:1;}
+  .app-footer{text-align:center; font-size:11.5px; color:var(--ink-soft); padding:18px 10px 6px; opacity:.75; letter-spacing:.2px;}
+  .hub-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-bottom:18px;}
+  @media(max-width:900px){.hub-grid{grid-template-columns:repeat(2,1fr);}}
+  @media(max-width:640px){.hub-grid{grid-template-columns:1fr;}}
+  .hub-card{background:var(--white); border:1px solid var(--line); border-radius:14px; padding:22px 18px; text-align:center; box-shadow:var(--shadow); cursor:pointer; transition:transform .1s ease, box-shadow .15s ease;}
+  .hub-card:hover{transform:translateY(-2px); box-shadow:0 6px 20px rgba(30,42,56,.14);}
+  .hub-icon{font-size:32px; margin-bottom:8px;}
+  .hub-title{font-family:var(--font-display); font-weight:800; font-size:18px; margin-bottom:4px;}
+  .hub-sub{color:var(--ink-soft); font-size:12.5px; margin-bottom:8px;}
+  .hub-amt{font-family:var(--font-num); font-weight:700; font-size:14px;}
+  .hub-amt.owe{color:var(--debit);}
+
+  @media(max-width:480px){
+    #app{padding:10px 8px 40px;}
+    .topbar{padding:10px 12px; flex-wrap:wrap; gap:8px; margin-bottom:12px;}
+    .brand{gap:0;}
+    .brand img{height:26px !important;}
+    .brand .name{font-size:14px; line-height:1.3;}
+    .brand .tag{display:none;}
+    .topbar-actions{width:100%; justify-content:flex-start; flex-wrap:wrap; gap:6px;}
+    .topbar-actions .btn{padding:6px 10px; font-size:11.5px;}
+    .card{padding:12px; margin-bottom:10px;}
+    .card h2{font-size:14.5px; margin-bottom:10px;}
+    .stats{gap:8px; margin-bottom:10px;}
+    .stat{padding:10px 12px;}
+    .stat .k{font-size:10.5px; margin-bottom:3px;}
+    .stat .v{font-size:17px;}
+    .cust-name{font-size:17px;}
+    table{font-size:12px;}
+    thead th{padding:7px 6px; font-size:10.5px;}
+    tbody td{padding:7px 6px;}
+    .action-row .btn{font-size:12px; padding:7px 10px;}
+    .doc{padding:14px;}
+    .doc-head .co-name{font-size:15px;}
+    .doc-head .doc-title{font-size:16px;}
+  }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="toast" class="toast"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+/* ============================= STORAGE ============================= */
+const KEYS = {customers:'customers', invoices:'invoices', receipts:'receipts', settings:'settings',
+  suppliers:'suppliers', purchaseInvoices:'purchaseInvoices', paymentVouchers:'paymentVouchers',
+  workers:'workers', workEntries:'workEntries', workerPayments:'workerPayments',
+  deductions:'deductions', quotes:'quotes',
+  warehouseItems:'warehouseItems', stockIns:'stockIns', stockOuts:'stockOuts',
+  cuttingOrders:'cuttingOrders', customerAccounts:'customerAccounts', workerAccounts:'workerAccounts',
+  budgetCategories:'budgetCategories', budgetEntries:'budgetEntries'};
+
+async function loadAll(){
+  const [c,i,r,s,sup,pi,pv,wk,we,wp,ded,q,wi,si,so,co,ca,wa,bc,be] = await Promise.all([
+    loadCustomers(),
+    loadSyncedArray(KEYS.invoices, []),
+    loadSyncedArray(KEYS.receipts, []),
+    loadSettings({defaultExchangeRate:90000, invoiceStart:0, receiptStart:1000, companyName:'', companyTag:'', companyPhone:'', logo:'', auth:{username:'admin', password:'0000'}, autoBackupOnClose:false, quoteDescOptions:['شباك ألمنيوم','واجهة ألمنيوم','شباك حمام','باب مفصلات','شباك ثابت','زجاج'], customDeductionProfiles:[],
+      specOptions:{
+        systemName:['Sidem System','Technal System'],
+        profile:['Sidem 2000','Technal GX'],
+        aluType:['Qalex Qatar','Technal GX™'],
+        color:['Dark Diamond Gray','Walnut Oak','Dark Marroun'],
+        description:['Fixed Panels & Aluminum Sliding Doors.','Aluminum Sliding Windows.'],
+        glazing:['6mm Annealed Clear / 6mm Space / 6mm Annealed Clear','6mm Annealed Clear / 9mm Space / 6mm Annealed Clear'],
+        accessories:['Technal™','Burgh™','Folda™'],
+        handles:['Technal™','Burgh™','Folda™'],
+        gaskets:['Wrap Around Flush Gaskets EPDM'],
+        fixings:['Concealed with matching endcaps, plugs and seals'],
+        silicone:['Den Braven N+'],
+        screws:['Stainless Steel SUS 316','Stainless Steel SUS 304'],
+        flyScreen:['American Sliding Screen For Sliding Items'],
+        note:['The Aluminum Doors & Windows will be sealed inside with PU and outside with Silicone Selant Den Braven No Acid.']
+      }
+    }),
+    loadSyncedArray(KEYS.suppliers, []),
+    loadSyncedArray(KEYS.purchaseInvoices, []),
+    loadSyncedArray(KEYS.paymentVouchers, []),
+    loadSyncedArray(KEYS.workers, []),
+    loadSyncedArray(KEYS.workEntries, []),
+    loadSyncedArray(KEYS.workerPayments, []),
+    loadSyncedArray(KEYS.deductions, []),
+    loadSyncedArray(KEYS.quotes, []),
+    loadSyncedArray(KEYS.warehouseItems, []),
+    loadSyncedArray(KEYS.stockIns, []),
+    loadSyncedArray(KEYS.stockOuts, []),
+    loadSyncedArray(KEYS.cuttingOrders, []),
+    loadSyncedArray(KEYS.customerAccounts, []),
+    loadSyncedArray(KEYS.workerAccounts, []),
+    loadSyncedArray(KEYS.budgetCategories, []),
+    loadSyncedArray(KEYS.budgetEntries, [])
+  ]);
+  return {customers:c, invoices:i, receipts:r, settings:s,
+    suppliers:sup, purchaseInvoices:pi, paymentVouchers:pv,
+    workers:wk, workEntries:we, workerPayments:wp,
+    deductions:ded, quotes:q,
+    warehouseItems:wi, stockIns:si, stockOuts:so,
+    cuttingOrders:co, customerAccounts:ca, workerAccounts:wa,
+    budgetCategories:bc, budgetEntries:be};
+}
+async function loadCustomers(){
+  if(supabaseClient){
+    const remote = await supabaseListCustomers();
+    if(remote !== null){
+      try{ localStorage.setItem(skey(KEYS.customers), JSON.stringify(remote)); }catch(e){}
+      return remote;
+    }
+    toast('ما قدرنا نوصل لقاعدة البيانات السحابية — عم نستخدم آخر نسخة محفوظة عالجهاز');
+  }
+  return safeGet(KEYS.customers, []);
+}
+async function safeGet(key, fallback){
+  try{
+    const raw = localStorage.getItem(skey(key));
+    if(raw !== null) return JSON.parse(raw);
+    return fallback;
+  }catch(e){ return fallback; }
+}
+async function save(key, value){
+  try{
+    localStorage.setItem(skey(key), JSON.stringify(value));
+  }catch(e){ console.error('storage error', key, e); return false; }
+  if(key===KEYS.settings){
+    syncSettingsToSupabase(value);
+    syncUsersToSupabase(value.users||[]);
+  } else {
+    syncArrayToSupabase(key, value);
+  }
+  return true;
+}
+
+let DB = {customers:[], invoices:[], receipts:[], settings:{}, suppliers:[], purchaseInvoices:[], paymentVouchers:[], workers:[], workEntries:[], workerPayments:[], deductions:[], quotes:[], warehouseItems:[], stockIns:[], stockOuts:[], cuttingOrders:[], customerAccounts:[], workerAccounts:[], budgetCategories:[], budgetEntries:[]};
+let authenticated = false;
+
+// خروج من البرنامج لازم يلغي جلسة المنصة كمان (يلي فتحناها تلقائياً عبر رابط
+// /portal/<slug>) وإلا الجهاز/المتصفح بيضل يذكر آخر زبون فتح البرنامج فيه،
+// وأي رابط portal تاني بينفتح على حسابه بالغلط
+async function signOutEverywhere(){
+  try{ if(supabaseClient) await supabaseClient.auth.signOut(); }catch(e){}
+  // حذف إجباري مباشر لأي أثر لجلسة Supabase بالتخزين المحلي — بغض النظر
+  // عن نجاح/فشل الاتصال بالسيرفر فوق، حتى نضمن الجلسة انمسحت فعلياً
+  try{
+    Object.keys(localStorage).forEach(k=>{
+      if(k.startsWith('sb-') || k.includes('supabase')) localStorage.removeItem(k);
+    });
+  }catch(e){}
+  authenticated = false;
+  currentUser = null;
+  currentCustomerSession = null;
+  currentWorkerSession = null;
+  location.href = location.pathname;
+}
+
+function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
+
+/* ============================= SUPABASE (CLOUD SYNC — CUSTOMERS PILOT) ============================= */
+/* ===== الاتصال بمنصة LibanApps ===== */
+const SUPABASE_URL = 'https://moriwmhlgugmjzddwfgv.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_ypfm_aulpcqBpeFpyD_7iw_mA4DNlR5';
+let supabaseClient = null;
+let lastSupabaseError = null;
+try{
+  if(window.supabase && window.supabase.createClient){
+    supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  }
+}catch(e){ console.error('Supabase init failed', e); }
+
+/* ===== سياق الزبون: كل الجداول بسابقة alum_ ومربوطة بـclient_id ===== */
+let CLIENT_ID = null;          // هوية المؤسسة المشتركة
+let ACCESS = null;             // حالة الاشتراك
+let PLATFORM_ADMIN = false;    // داخل كمشرف منصة (من لوحة /super)
+let PLATFORM_CLIENT_NAME = '';
+function T(name){ return 'alum_' + name; }            // اسم الجدول بالسحابة
+function withClient(row){ return Object.assign({}, row, { client_id: CLIENT_ID }); }
+function scoped(q){ return CLIENT_ID ? q.eq('client_id', CLIENT_ID) : q; }
+// مفتاح التخزين المحلي — لازم يكون مربوط بهوية الزبون (CLIENT_ID)، وإلا
+// بيانات زبون (الشعار، الإعدادات، رمز التفعيل) ممكن تظهر لزبون تاني استخدم
+// نفس الجهاز/المتصفح قبلو
+function skey(key){ return 'la_' + (CLIENT_ID || 'anon') + '_' + key; }
+
+function customerFromDb(row){
+  return {
+    id: row.id, name: row.name, accountNumber: row.account_number || '', phone: row.phone || '',
+    createdAt: row.created_at || 0, deleted: !!row.deleted, deletedAt: row.deleted_at || null
+  };
+}
+function customerToDb(c){
+  return {
+    id: c.id, name: c.name, account_number: c.accountNumber || null, phone: c.phone || null,
+    created_at: c.createdAt || Date.now(), deleted: !!c.deleted, deleted_at: c.deletedAt || null
+  };
+}
+function describeSupabaseError(error){
+  if(!error) return 'unknown error';
+  return `message: ${error.message||'?'} | code: ${error.code||'?'} | details: ${error.details||'?'} | hint: ${error.hint||'?'}`;
+}
+async function supabaseListCustomers(){
+  if(!supabaseClient) return null;
+  try{
+    const { data, error } = await scoped(supabaseClient.from(T('customers')).select('*')).order('name');
+    if(error){ lastSupabaseError = describeSupabaseError(error); console.error('supabaseListCustomers error:', lastSupabaseError); return null; }
+    return data.map(customerFromDb);
+  }catch(e){
+    lastSupabaseError = 'threw: '+(e && e.message);
+    console.error('supabaseListCustomers threw:', e && e.message);
+    return null;
+  }
+}
+async function supabaseUpsertCustomer(customer){
+  if(!supabaseClient) return false;
+  try{
+    const { error } = await supabaseClient.from(T('customers')).upsert(withClient(customerToDb(customer)));
+    if(error){ lastSupabaseError = describeSupabaseError(error); console.error('supabaseUpsertCustomer error:', lastSupabaseError); return false; }
+    return true;
+  }catch(e){
+    lastSupabaseError = 'threw: '+(e && e.message);
+    console.error('supabaseUpsertCustomer threw:', e && e.message);
+    return false;
+  }
+}
+async function supabaseDeleteCustomer(id){
+  if(!supabaseClient) return false;
+  try{
+    const { error } = await scoped(supabaseClient.from(T('customers')).delete()).eq('id', id);
+    if(error){ lastSupabaseError = describeSupabaseError(error); console.error('supabaseDeleteCustomer error:', lastSupabaseError); return false; }
+    return true;
+  }catch(e){
+    lastSupabaseError = 'threw: '+(e && e.message);
+    console.error('supabaseDeleteCustomer threw:', e && e.message);
+    return false;
+  }
+}
+async function saveCustomerRemote(customer){
+  try{ localStorage.setItem(skey(KEYS.customers), JSON.stringify(DB.customers)); }catch(e){}
+  if(supabaseClient){
+    const ok = await supabaseUpsertCustomer(customer);
+    if(!ok){
+      toast('تم الحفظ محليًا بس صار خطأ بالمزامنة مع السحابة');
+      setTimeout(()=>{ if(lastSupabaseError) alert('تفاصيل خطأ المزامنة (خذ لقطة شاشة وابعتها):\n\n'+lastSupabaseError); }, 400);
+    }
+    return ok;
+  }
+  return true;
+}
+async function deleteCustomerRemote(id){
+  try{ localStorage.setItem(skey(KEYS.customers), JSON.stringify(DB.customers)); }catch(e){}
+  if(supabaseClient){
+    const ok = await supabaseDeleteCustomer(id);
+    if(!ok) toast('تم الحذف محليًا بس صار خطأ بالمزامنة مع السحابة');
+    return ok;
+  }
+  return true;
+}
+
+/* ============================= SUPABASE (GENERIC SYNC — INVOICES + RECEIPTS) ============================= */
+function invoiceFromDb(row){
+  return {
+    id: row.id, customerId: row.customer_id, number: row.number, date: row.date,
+    docType: row.doc_type, exchangeRate: row.exchange_rate, items: row.items || [],
+    discount: row.discount || 0, createdAt: row.created_at || 0,
+    deleted: !!row.deleted, deletedAt: row.deleted_at || null, adminPurged: !!row.admin_purged
+  };
+}
+function invoiceToDb(inv){
+  return {
+    id: inv.id, customer_id: inv.customerId || null, number: inv.number || null, date: inv.date || null,
+    doc_type: inv.docType || null, exchange_rate: inv.exchangeRate || null, items: inv.items || [],
+    discount: inv.discount || 0, created_at: inv.createdAt || Date.now(),
+    deleted: !!inv.deleted, deleted_at: inv.deletedAt || null, admin_purged: !!inv.adminPurged
+  };
+}
+function receiptFromDb(row){
+  return {
+    id: row.id, customerId: row.customer_id, number: row.number, date: row.date,
+    amount: row.amount || 0, method: row.method || '', details: row.details || '',
+    createdAt: row.created_at || 0, deleted: !!row.deleted, deletedAt: row.deleted_at || null, adminPurged: !!row.admin_purged
+  };
+}
+function receiptToDb(r){
+  return {
+    id: r.id, customer_id: r.customerId || null, number: r.number || null, date: r.date || null,
+    amount: Number(r.amount)||0, method: r.method || null, details: r.details || null,
+    created_at: r.createdAt || Date.now(), deleted: !!r.deleted, deleted_at: r.deletedAt || null, admin_purged: !!r.adminPurged
+  };
+}
+function supplierFromDb(row){
+  return { id:row.id, name:row.name, accountNumber:row.account_number||'', phone:row.phone||'', createdAt:row.created_at||0, deleted:!!row.deleted, deletedAt:row.deleted_at||null };
+}
+function supplierToDb(s){
+  return { id:s.id, name:s.name, account_number:s.accountNumber||null, phone:s.phone||null, created_at:s.createdAt||Date.now(), deleted:!!s.deleted, deleted_at:s.deletedAt||null };
+}
+function workerFromDb(row){
+  return { id:row.id, name:row.name, accountNumber:row.account_number||'', phone:row.phone||'', createdAt:row.created_at||0, deleted:!!row.deleted, deletedAt:row.deleted_at||null };
+}
+function workerToDb(w){
+  return { id:w.id, name:w.name, account_number:w.accountNumber||null, phone:w.phone||null, created_at:w.createdAt||Date.now(), deleted:!!w.deleted, deleted_at:w.deletedAt||null };
+}
+function purchaseInvoiceFromDb(row){
+  return { id:row.id, supplierId:row.supplier_id, number:row.number, date:row.date, docType:row.doc_type, exchangeRate:row.exchange_rate, items:row.items||[], discount:row.discount||0, createdAt:row.created_at||0, deleted:!!row.deleted, deletedAt:row.deleted_at||null, adminPurged:!!row.admin_purged };
+}
+function purchaseInvoiceToDb(inv){
+  return { id:inv.id, supplier_id:inv.supplierId||null, number:inv.number||null, date:inv.date||null, doc_type:inv.docType||null, exchange_rate:inv.exchangeRate||null, items:inv.items||[], discount:inv.discount||0, created_at:inv.createdAt||Date.now(), deleted:!!inv.deleted, deleted_at:inv.deletedAt||null, admin_purged:!!inv.adminPurged };
+}
+function paymentVoucherFromDb(row){
+  return { id:row.id, supplierId:row.supplier_id, number:row.number, date:row.date, amount:row.amount||0, method:row.method||'', details:row.details||'', createdAt:row.created_at||0, deleted:!!row.deleted, deletedAt:row.deleted_at||null, adminPurged:!!row.admin_purged };
+}
+function paymentVoucherToDb(v){
+  return { id:v.id, supplier_id:v.supplierId||null, number:v.number||null, date:v.date||null, amount:Number(v.amount)||0, method:v.method||null, details:v.details||null, created_at:v.createdAt||Date.now(), deleted:!!v.deleted, deleted_at:v.deletedAt||null, admin_purged:!!v.adminPurged };
+}
+function workEntryFromDb(row){
+  return { id:row.id, workerId:row.worker_id, number:row.number, date:row.date, dailyWage:row.daily_wage||0, overtimeHours:row.overtime_hours||0, overtimeRate:row.overtime_rate||0, weightKg:row.weight_kg||0, kgRate:row.kg_rate||0, details:row.details||'', createdAt:row.created_at||0, deleted:!!row.deleted, deletedAt:row.deleted_at||null, adminPurged:!!row.admin_purged };
+}
+function workEntryToDb(w){
+  return { id:w.id, worker_id:w.workerId||null, number:w.number||null, date:w.date||null, daily_wage:w.dailyWage||0, overtime_hours:w.overtimeHours||0, overtime_rate:w.overtimeRate||0, weight_kg:w.weightKg||0, kg_rate:w.kgRate||0, details:w.details||null, created_at:w.createdAt||Date.now(), deleted:!!w.deleted, deleted_at:w.deletedAt||null, admin_purged:!!w.adminPurged };
+}
+function workerPaymentFromDb(row){
+  return { id:row.id, workerId:row.worker_id, number:row.number, date:row.date, amount:row.amount||0, method:row.method||'', details:row.details||'', createdAt:row.created_at||0, deleted:!!row.deleted, deletedAt:row.deleted_at||null, adminPurged:!!row.admin_purged };
+}
+function workerPaymentToDb(p){
+  return { id:p.id, worker_id:p.workerId||null, number:p.number||null, date:p.date||null, amount:Number(p.amount)||0, method:p.method||null, details:p.details||null, created_at:p.createdAt||Date.now(), deleted:!!p.deleted, deleted_at:p.deletedAt||null, admin_purged:!!p.adminPurged };
+}
+function deductionFromDb(row){
+  return { id:row.id, customerId:row.customer_id, type:row.type, number:row.number, date:row.date, rows:row.rows||[], createdAt:row.created_at||0, deleted:!!row.deleted, deletedAt:row.deleted_at||null, adminPurged:!!row.admin_purged };
+}
+function deductionToDb(d){
+  return { id:d.id, customer_id:d.customerId||null, type:d.type||null, number:d.number||null, date:d.date||null, rows:d.rows||[], created_at:d.createdAt||Date.now(), deleted:!!d.deleted, deleted_at:d.deletedAt||null, admin_purged:!!d.adminPurged };
+}
+function quoteFromDb(row){
+  return {
+    id:row.id, customerId:row.customer_id, number:row.number, date:row.date, docType:row.doc_type,
+    specs: row.specs || undefined, isPdf: !!row.is_pdf, pdfData: row.pdf_data || undefined, pdfFileName: row.pdf_file_name || undefined,
+    isCustomText: !!row.is_custom_text, customerName: row.customer_name || undefined, scope: row.scope || undefined,
+    location: row.location || undefined, content: row.content || undefined, direction: row.direction || undefined,
+    createdAt: row.created_at||0, deleted: !!row.deleted, deletedAt: row.deleted_at||null, adminPurged: !!row.admin_purged
+  };
+}
+function quoteToDb(q){
+  return {
+    id:q.id, customer_id:q.customerId||null, number:q.number||null, date:q.date||null, doc_type:q.docType||null,
+    specs: q.specs || null, is_pdf: !!q.isPdf, pdf_data: q.pdfData || null, pdf_file_name: q.pdfFileName || null,
+    is_custom_text: !!q.isCustomText, customer_name: q.customerName || null, scope: q.scope || null,
+    location: q.location || null, content: q.content || null, direction: q.direction || null,
+    created_at: q.createdAt||Date.now(), deleted: !!q.deleted, deleted_at: q.deletedAt||null, admin_purged: !!q.adminPurged
+  };
+}
+function warehouseItemFromDb(row){
+  return { id:row.id, name:row.name, brand:row.brand||'', type:row.type||'', customerId:row.customer_id||'', note:row.note||'', purchaseDate:row.purchase_date||'', createdAt:row.created_at||0 };
+}
+function warehouseItemToDb(it){
+  return { id:it.id, name:it.name, brand:it.brand||null, type:it.type||null, customer_id:it.customerId||null, note:it.note||null, purchase_date:it.purchaseDate||null, created_at:it.createdAt||Date.now() };
+}
+function stockInFromDb(row){
+  return { id:row.id, itemId:row.item_id, qty:row.qty||0, date:row.date, number:row.number, note:row.note||'', createdAt:row.created_at||0, deleted: !!row.deleted };
+}
+function stockInToDb(s){
+  return { id:s.id, item_id:s.itemId||null, qty:Number(s.qty)||0, date:s.date||null, number:s.number||null, note:s.note||null, created_at:s.createdAt||Date.now(), deleted: !!s.deleted };
+}
+function stockOutFromDb(row){
+  return { id:row.id, itemId:row.item_id, workerId:row.worker_id, qty:row.qty||0, date:row.date, number:row.number, note:row.note||'', createdAt:row.created_at||0, deleted:!!row.deleted, deletedAt:row.deleted_at||null, adminPurged:!!row.admin_purged };
+}
+function stockOutToDb(s){
+  return { id:s.id, item_id:s.itemId||null, worker_id:s.workerId||null, qty:Number(s.qty)||0, date:s.date||null, number:s.number||null, note:s.note||null, created_at:s.createdAt||Date.now(), deleted:!!s.deleted, deleted_at:s.deletedAt||null, admin_purged:!!s.adminPurged };
+}
+function cuttingOrderFromDb(row){
+  return { id:row.id, customerId:row.customer_id, deductionId:row.deduction_id, number:row.number, date:row.date, barLength:row.bar_length, results:row.results||{}, createdAt:row.created_at||0, deleted:!!row.deleted, deletedAt:row.deleted_at||null, adminPurged:!!row.admin_purged };
+}
+function cuttingOrderToDb(o){
+  return { id:o.id, customer_id:o.customerId||null, deduction_id:o.deductionId||null, number:o.number||null, date:o.date||null, bar_length:o.barLength||null, results:o.results||{}, created_at:o.createdAt||Date.now(), deleted:!!o.deleted, deleted_at:o.deletedAt||null, admin_purged:!!o.adminPurged };
+}
+function customerAccountFromDb(row){
+  return { id:row.id, customerId:row.customer_id, username:row.username, password:row.password, createdAt:row.created_at||0 };
+}
+function customerAccountToDb(a){
+  return { id:a.id, customer_id:a.customerId||null, username:a.username, password:a.password, created_at:a.createdAt||Date.now() };
+}
+function workerAccountFromDb(row){
+  return { id:row.id, workerId:row.worker_id, username:row.username, password:row.password, createdAt:row.created_at||0 };
+}
+function workerAccountToDb(a){
+  return { id:a.id, worker_id:a.workerId||null, username:a.username, password:a.password, created_at:a.createdAt||Date.now() };
+}
+function budgetCategoryFromDb(row){
+  return { id:row.id, key:row.key||undefined, name:row.name, type:row.type, auto:!!row.auto, builtin:!!row.builtin };
+}
+function budgetCategoryToDb(c){
+  return { id:c.id, key:c.key||null, name:c.name, type:c.type, auto:!!c.auto, builtin:!!c.builtin };
+}
+function budgetEntryFromDb(row){
+  return { id:row.id, categoryId:row.category_id, amount:row.amount||0, date:row.date, note:row.note||'', number:row.number, createdAt:row.created_at||0, deleted:!!row.deleted, deletedAt:row.deleted_at||null };
+}
+function budgetEntryToDb(e){
+  return { id:e.id, category_id:e.categoryId||null, amount:Number(e.amount)||0, date:e.date||null, note:e.note||null, number:e.number||null, created_at:e.createdAt||Date.now(), deleted:!!e.deleted, deleted_at:e.deletedAt||null };
+}
+function userFromDb(row){
+  return { id:row.id, username:row.username, password:row.password, role:row.role, permissions: row.permissions||[], totpSecret: row.totp_secret||undefined, totpEnabled: !!row.totp_enabled };
+}
+function userToDb(u){
+  return { id:u.id, username:u.username, password:u.password, role:u.role, permissions: u.permissions||[], totp_secret: u.totpSecret||null, totp_enabled: !!u.totpEnabled };
+}
+function settingsToDb(s){
+  return {
+    id: 1,
+    company_name: s.companyName||null, company_tag: s.companyTag||null, company_phone: s.companyPhone||null,
+    logo: s.logo||null, default_exchange_rate: s.defaultExchangeRate||90000,
+    invoice_start: s.invoiceStart||0, receipt_start: s.receiptStart||1000,
+    auto_backup_on_close: !!s.autoBackupOnClose, quote_desc_options: s.quoteDescOptions||[], spec_options: s.specOptions||{},
+    custom_deduction_profiles: s.customDeductionProfiles||[],
+    trial_started_at: s.trialStartedAt||null, license_serial: s.licenseSerial||null,
+    license_expires_at: s.licenseExpiresAt||null, license_label: s.licenseLabel||null
+  };
+}
+function applySettingsFromDb(row, base){
+  return {
+    ...base,
+    companyName: row.company_name!=null? row.company_name : base.companyName,
+    companyTag: row.company_tag!=null? row.company_tag : base.companyTag,
+    companyPhone: row.company_phone!=null? row.company_phone : base.companyPhone,
+    logo: row.logo!=null? row.logo : base.logo,
+    defaultExchangeRate: row.default_exchange_rate!=null? row.default_exchange_rate : base.defaultExchangeRate,
+    invoiceStart: row.invoice_start!=null? row.invoice_start : base.invoiceStart,
+    receiptStart: row.receipt_start!=null? row.receipt_start : base.receiptStart,
+    autoBackupOnClose: !!row.auto_backup_on_close,
+    quoteDescOptions: (row.quote_desc_options && row.quote_desc_options.length)? row.quote_desc_options : base.quoteDescOptions,
+    specOptions: (row.spec_options && Object.keys(row.spec_options).length)? row.spec_options : base.specOptions,
+    customDeductionProfiles: (row.custom_deduction_profiles && row.custom_deduction_profiles.length)? row.custom_deduction_profiles : (base.customDeductionProfiles||[]),
+    trialStartedAt: row.trial_started_at!=null? row.trial_started_at : base.trialStartedAt,
+    licenseSerial: row.license_serial!=null? row.license_serial : base.licenseSerial,
+    licenseExpiresAt: row.license_expires_at!=null? row.license_expires_at : base.licenseExpiresAt,
+    licenseLabel: row.license_label!=null? row.license_label : base.licenseLabel
+  };
+}
+async function syncSettingsToSupabase(settings){
+  if(!supabaseClient) return;
+  try{
+    const { error } = await supabaseClient.from(T('app_settings')).upsert(withClient(settingsToDb(settings)));
+    if(error){
+      lastSupabaseError = describeSupabaseError(error);
+      console.error('app_settings upsert error:', lastSupabaseError);
+      toast('تم الحفظ محليًا بس صار خطأ بمزامنة الإعدادات مع السحابة');
+      setTimeout(()=>{ if(lastSupabaseError) alert('تفاصيل خطأ مزامنة الإعدادات (خذ لقطة شاشة وابعتها):\n\n'+lastSupabaseError); }, 400);
+    }
+  }catch(e){
+    lastSupabaseError = 'threw: '+(e && e.message);
+    console.error('app_settings sync threw:', e && e.message);
+    toast('تم الحفظ محليًا بس صار خطأ بمزامنة الإعدادات مع السحابة');
+    setTimeout(()=>{ if(lastSupabaseError) alert('تفاصيل خطأ مزامنة الإعدادات (خذ لقطة شاشة وابعتها):\n\n'+lastSupabaseError); }, 400);
+  }
+}
+async function syncUsersToSupabase(users){
+  if(!supabaseClient) return;
+  try{
+    if(users.length){
+      const rows = users.map(userToDb).map(withClient);
+      const { error } = await supabaseClient.from(T('app_users')).upsert(rows.map(withClient), {onConflict:'client_id,id'});
+      if(error){
+        lastSupabaseError = describeSupabaseError(error);
+        console.error('app_users upsert error:', lastSupabaseError);
+        toast('تم الحفظ محليًا بس صار خطأ بمزامنة المستخدمين مع السحابة');
+        setTimeout(()=>{ if(lastSupabaseError) alert('تفاصيل خطأ مزامنة المستخدمين (خذ لقطة شاشة وابعتها):\n\n'+lastSupabaseError); }, 400);
+        return;
+      }
+    }
+    const usernames = users.map(u=>u.username);
+    const delQuery = scoped(supabaseClient.from(T('app_users')).delete());
+    const { error: delErr } = usernames.length
+      ? await delQuery.not('username','in', `(${usernames.map(u=>`"${String(u).replace(/"/g,'""')}"`).join(',')})`)
+      : await delQuery.neq('username','__none__');
+    if(delErr){
+      lastSupabaseError = describeSupabaseError(delErr);
+      console.error('app_users cleanup error:', lastSupabaseError);
+    }
+    const { data: freshRows, error: fetchErr } = await scoped(supabaseClient.from(T('app_users')).select('*'));
+    if(!fetchErr && freshRows && freshRows.length){
+      DB.settings.users = freshRows.map(userFromDb);
+      try{ localStorage.setItem(skey(KEYS.settings), JSON.stringify(DB.settings)); }catch(e){}
+    }
+  }catch(e){
+    lastSupabaseError = 'threw: '+(e && e.message);
+    console.error('app_users sync threw:', e && e.message);
+    toast('تم الحفظ محليًا بس صار خطأ بمزامنة المستخدمين مع السحابة');
+    setTimeout(()=>{ if(lastSupabaseError) alert('تفاصيل خطأ مزامنة المستخدمين (خذ لقطة شاشة وابعتها):\n\n'+lastSupabaseError); }, 400);
+  }
+}
+async function loadSettings(defaults){
+  const local = await safeGet(KEYS.settings, defaults);
+  if(!supabaseClient) return local;
+  let merged = local;
+  try{
+    const { data, error } = await scoped(supabaseClient.from(T('app_settings')).select('*')).maybeSingle();
+    if(!error && data) merged = applySettingsFromDb(data, merged);
+    else if(error){ lastSupabaseError = describeSupabaseError(error); console.error('app_settings load error:', lastSupabaseError); }
+  }catch(e){ lastSupabaseError = 'threw: '+(e && e.message); console.error('app_settings load threw:', e && e.message); }
+  try{
+    const { data, error } = await scoped(supabaseClient.from(T('app_users')).select('*'));
+    if(!error && data && data.length) merged.users = data.map(userFromDb);
+    else if(error){ lastSupabaseError = describeSupabaseError(error); console.error('app_users load error:', lastSupabaseError); }
+  }catch(e){ lastSupabaseError = 'threw: '+(e && e.message); console.error('app_users load threw:', e && e.message); }
+  try{ localStorage.setItem(skey(KEYS.settings), JSON.stringify(merged)); }catch(e){}
+  return merged;
+}
+const SUPABASE_TABLES = {
+  invoices: {table:'invoices', toDb:invoiceToDb, fromDb:invoiceFromDb, label:'الفواتير'},
+  receipts: {table:'receipts', toDb:receiptToDb, fromDb:receiptFromDb, label:'الإيصالات'},
+  suppliers: {table:'suppliers', toDb:supplierToDb, fromDb:supplierFromDb, label:'الموردين'},
+  purchaseInvoices: {table:'purchase_invoices', toDb:purchaseInvoiceToDb, fromDb:purchaseInvoiceFromDb, label:'فواتير المشتريات'},
+  paymentVouchers: {table:'payment_vouchers', toDb:paymentVoucherToDb, fromDb:paymentVoucherFromDb, label:'سندات الصرف'},
+  workers: {table:'workers', toDb:workerToDb, fromDb:workerFromDb, label:'العمال'},
+  workEntries: {table:'work_entries', toDb:workEntryToDb, fromDb:workEntryFromDb, label:'يوميات العمال'},
+  workerPayments: {table:'worker_payments', toDb:workerPaymentToDb, fromDb:workerPaymentFromDb, label:'دفعات العمال'},
+  deductions: {table:'deductions', toDb:deductionToDb, fromDb:deductionFromDb, label:'أوراق الخصميات'},
+  quotes: {table:'quotes', toDb:quoteToDb, fromDb:quoteFromDb, label:'عروض الأسعار'},
+  warehouseItems: {table:'warehouse_items', toDb:warehouseItemToDb, fromDb:warehouseItemFromDb, label:'أصناف المستودع'},
+  stockIns: {table:'stock_ins', toDb:stockInToDb, fromDb:stockInFromDb, label:'سجلات الإضافة'},
+  stockOuts: {table:'stock_outs', toDb:stockOutToDb, fromDb:stockOutFromDb, label:'أوامر السحب'},
+  cuttingOrders: {table:'cutting_orders', toDb:cuttingOrderToDb, fromDb:cuttingOrderFromDb, label:'طلبيات التقطيع'},
+  customerAccounts: {table:'customer_accounts', toDb:customerAccountToDb, fromDb:customerAccountFromDb, label:'حسابات دخول الزبائن'},
+  workerAccounts: {table:'worker_accounts', toDb:workerAccountToDb, fromDb:workerAccountFromDb, label:'حسابات دخول العمال'},
+  budgetCategories: {table:'budget_categories', toDb:budgetCategoryToDb, fromDb:budgetCategoryFromDb, label:'حقول الميزانية'},
+  budgetEntries: {table:'budget_entries', toDb:budgetEntryToDb, fromDb:budgetEntryFromDb, label:'سندات الميزانية'}
+};
+async function syncArrayToSupabase(localKey, arr){
+  const cfg = SUPABASE_TABLES[localKey];
+  if(!cfg || !supabaseClient) return;
+  try{
+    if(arr.length){
+      const rows = arr.map(cfg.toDb);
+      const { error } = await supabaseClient.from(T(cfg.table)).upsert(rows.map(withClient));
+      if(error){
+        lastSupabaseError = describeSupabaseError(error);
+        console.error(cfg.table+' upsert error:', lastSupabaseError);
+        toast('تم الحفظ محليًا بس صار خطأ بمزامنة '+cfg.label+' مع السحابة');
+        setTimeout(()=>{ if(lastSupabaseError) alert('تفاصيل خطأ مزامنة '+cfg.label+' (خذ لقطة شاشة وابعتها):\n\n'+lastSupabaseError); }, 400);
+        return;
+      }
+    }
+    const ids = arr.map(r=>r.id);
+    const delQuery = scoped(supabaseClient.from(T(cfg.table)).delete());
+    const { error: delErr } = ids.length ? await delQuery.not('id','in', `(${ids.join(',')})`) : await delQuery.neq('id','__none__');
+    if(delErr){
+      lastSupabaseError = describeSupabaseError(delErr);
+      console.error(cfg.table+' cleanup delete error:', lastSupabaseError);
+    }
+  }catch(e){
+    lastSupabaseError = 'threw: '+(e && e.message);
+    console.error(cfg.table+' sync threw:', e && e.message);
+    toast('تم الحفظ محليًا بس صار خطأ بمزامنة '+cfg.label+' مع السحابة');
+    setTimeout(()=>{ if(lastSupabaseError) alert('تفاصيل خطأ مزامنة '+cfg.label+' (خذ لقطة شاشة وابعتها):\n\n'+lastSupabaseError); }, 400);
+  }
+}
+async function loadSyncedArray(localKey, fallback){
+  const cfg = SUPABASE_TABLES[localKey];
+  if(supabaseClient && cfg){
+    try{
+      const { data, error } = await scoped(supabaseClient.from(T(cfg.table)).select('*'));
+      if(!error){
+        const arr = data.map(cfg.fromDb);
+        try{ localStorage.setItem(skey(localKey), JSON.stringify(arr)); }catch(e){}
+        return arr;
+      }
+      lastSupabaseError = describeSupabaseError(error);
+      console.error(cfg.table+' list error:', lastSupabaseError);
+    }catch(e){
+      lastSupabaseError = 'threw: '+(e && e.message);
+      console.error(cfg.table+' list threw:', e && e.message);
+    }
+    toast('ما قدرنا نوصل لقاعدة بيانات '+cfg.label+' — عم نستخدم آخر نسخة محفوظة عالجهاز');
+  }
+  return safeGet(localKey, fallback);
+}
+
+
+/* ============================= TOTP (2FA) — RFC 6238 ============================= */
+const TOTP_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+function base32Encode(bytes){
+  let bits = '', output = '';
+  for(const byte of bytes) bits += byte.toString(2).padStart(8,'0');
+  for(let i=0;i+5<=bits.length;i+=5) output += TOTP_ALPHABET[parseInt(bits.substr(i,5),2)];
+  if(bits.length % 5 !== 0){
+    const remainder = bits.slice(bits.length - (bits.length%5));
+    output += TOTP_ALPHABET[parseInt(remainder.padEnd(5,'0'),2)];
+  }
+  return output;
+}
+function base32Decode(str){
+  str = String(str||'').replace(/=+$/,'').toUpperCase().replace(/[^A-Z2-7]/g,'');
+  let bits = '';
+  for(const c of str){ const idx = TOTP_ALPHABET.indexOf(c); if(idx===-1) continue; bits += idx.toString(2).padStart(5,'0'); }
+  const bytes = [];
+  for(let i=0;i+8<=bits.length;i+=8) bytes.push(parseInt(bits.substr(i,8),2));
+  return new Uint8Array(bytes);
+}
+function generateTotpSecret(){
+  const bytes = new Uint8Array(20);
+  crypto.getRandomValues(bytes);
+  return base32Encode(bytes);
+}
+async function computeTotp(secretBase32, forTime){
+  const key = base32Decode(secretBase32);
+  const counter = Math.floor((forTime===undefined? Date.now() : forTime)/1000/30);
+  const buf = new ArrayBuffer(8);
+  new DataView(buf).setBigUint64(0, BigInt(counter), false);
+  const cryptoKey = await crypto.subtle.importKey('raw', key, {name:'HMAC', hash:'SHA-1'}, false, ['sign']);
+  const hmac = new Uint8Array(await crypto.subtle.sign('HMAC', cryptoKey, buf));
+  const offset = hmac[hmac.length-1] & 0xf;
+  const binCode = ((hmac[offset]&0x7f)<<24) | ((hmac[offset+1]&0xff)<<16) | ((hmac[offset+2]&0xff)<<8) | (hmac[offset+3]&0xff);
+  return (binCode % 1000000).toString().padStart(6,'0');
+}
+async function verifyTotp(secretBase32, token){
+  token = String(token||'').trim();
+  if(!/^\d{6}$/.test(token)) return false;
+  const now = Date.now();
+  for(let w=-1; w<=1; w++){
+    const code = await computeTotp(secretBase32, now + w*30000);
+    if(code === token) return true;
+  }
+  return false;
+}
+function totpAuthUri(username, secret){
+  const issuer = encodeURIComponent(DB.settings.companyName || 'LibanApps');
+  const label = encodeURIComponent(`${DB.settings.companyName||'دفتر الحسابات'}:${username}`);
+  return `otpauth://totp/${label}?secret=${secret}&issuer=${issuer}&digits=6&period=30`;
+}
+
+function fmtMoney(n){
+  n = Number(n)||0;
+  const neg = n<0; n=Math.abs(n);
+  const s = n.toLocaleString('en-US',{minimumFractionDigits:2, maximumFractionDigits:2});
+  return (neg?'-':'')+'$'+s;
+}
+function fmtLBP(n){
+  n = Math.round(Number(n)||0);
+  return n.toLocaleString('en-US')+' ل.ل';
+}
+function fmtDate(d){
+  if(!d) return '';
+  const dt = new Date(d+'T00:00:00');
+  if(isNaN(dt)) return d;
+  const dd=String(dt.getDate()).padStart(2,'0'), mm=String(dt.getMonth()+1).padStart(2,'0'), yy=dt.getFullYear();
+  return `${dd}/${mm}/${yy}`;
+}
+function todayISO(){ return new Date().toISOString().slice(0,10); }
+function timestampForFilename(){
+  const d = new Date();
+  const pad = n=>String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}_${pad(d.getHours())}-${pad(d.getMinutes())}`;
+}
+function downloadBackupFile(){
+  const payload = {exportedAt:new Date().toISOString(), customers:DB.customers, invoices:DB.invoices, receipts:DB.receipts, settings:DB.settings,
+    suppliers:DB.suppliers, purchaseInvoices:DB.purchaseInvoices, paymentVouchers:DB.paymentVouchers,
+    workers:DB.workers, workEntries:DB.workEntries, workerPayments:DB.workerPayments,
+    deductions:DB.deductions, quotes:DB.quotes,
+    warehouseItems:DB.warehouseItems, stockIns:DB.stockIns, stockOuts:DB.stockOuts,
+    cuttingOrders:DB.cuttingOrders, customerAccounts:DB.customerAccounts,
+    budgetCategories:DB.budgetCategories, budgetEntries:DB.budgetEntries};
+  const blob = new Blob([JSON.stringify(payload,null,2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `hmadeh-backup-${timestampForFilename()}.json`;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+async function handleBackupImportFile(inputEl){
+  const file = inputEl.files[0];
+  if(!file) return;
+  if(!confirm('استيراد النسخة الاحتياطية رح يستبدل كل بيانات مؤسستك بالكامل (الزبائن، الفواتير، الإيصالات...) — محلياً وبالسحابة.\n\nملاحظة: اسم شركتك، شعارها، رقم هاتفها، وحسابات الدخول المحلية ما رح يتغيّروا — بيضلّوا متل ما هنّي حالياً.\n\nمتأكد؟')) { inputEl.value=''; return; }
+  try{
+    const text = await file.text();
+    const data = JSON.parse(text);
+    if(!data.customers || !data.invoices || !data.receipts) throw new Error('ملف غير صالح');
+    DB.customers = data.customers; DB.invoices = data.invoices; DB.receipts = data.receipts;
+    DB.suppliers = data.suppliers||[]; DB.purchaseInvoices = data.purchaseInvoices||[]; DB.paymentVouchers = data.paymentVouchers||[];
+    DB.workers = data.workers||[]; DB.workEntries = data.workEntries||[]; DB.workerPayments = data.workerPayments||[];
+    DB.deductions = data.deductions||[]; DB.quotes = data.quotes||[];
+    DB.warehouseItems = data.warehouseItems||[]; DB.stockIns = data.stockIns||[]; DB.stockOuts = data.stockOuts||[];
+    DB.cuttingOrders = data.cuttingOrders||[];
+    DB.customerAccounts = data.customerAccounts||[];
+    DB.workerAccounts = data.workerAccounts||[];
+    DB.budgetCategories = data.budgetCategories||[]; DB.budgetEntries = data.budgetEntries||[];
+    if(data.settings){
+      const incoming = {...data.settings};
+      // الترخيص صار من منصة LibanApps — ما منستورد ترخيص النسخة القديمة
+      delete incoming.trialStartedAt; delete incoming.licenseSerial;
+      delete incoming.licenseExpiresAt; delete incoming.licenseLabel;
+      // هوية المؤسسة وحسابات الدخول المحلية بتبقى متل ما هيي — ما بتتغيّر
+      // بمجرد استرداد نسخة احتياطية (ممكن تكون من مؤسسة/جهاز تاني بالغلط)
+      delete incoming.companyName; delete incoming.companyTag; delete incoming.companyPhone;
+      delete incoming.logo; delete incoming.auth; delete incoming.users;
+      DB.settings = {...DB.settings, ...incoming};
+    }
+    migrateUsers();
+    migrateBudgetCategories();
+    await Promise.all([
+      save(KEYS.customers, DB.customers), save(KEYS.invoices, DB.invoices), save(KEYS.receipts, DB.receipts), save(KEYS.settings, DB.settings),
+      save(KEYS.suppliers, DB.suppliers), save(KEYS.purchaseInvoices, DB.purchaseInvoices), save(KEYS.paymentVouchers, DB.paymentVouchers),
+      save(KEYS.workers, DB.workers), save(KEYS.workEntries, DB.workEntries), save(KEYS.workerPayments, DB.workerPayments),
+      save(KEYS.deductions, DB.deductions), save(KEYS.quotes, DB.quotes),
+      save(KEYS.warehouseItems, DB.warehouseItems), save(KEYS.stockIns, DB.stockIns), save(KEYS.stockOuts, DB.stockOuts),
+      save(KEYS.cuttingOrders, DB.cuttingOrders), save(KEYS.customerAccounts, DB.customerAccounts),
+      save(KEYS.workerAccounts, DB.workerAccounts),
+      save(KEYS.budgetCategories, DB.budgetCategories), save(KEYS.budgetEntries, DB.budgetEntries)
+    ]);
+    if(supabaseClient && DB.customers.length){
+      const rows = DB.customers.map(customerToDb);
+      const { error } = await supabaseClient.from(T('customers')).upsert(rows.map(withClient));
+      if(error) toast('استُرجعت النسخة محليًا بس صار خطأ بمزامنة الزبائن للسحابة');
+    }
+    toast('تم استرجاع النسخة الاحتياطية بنجاح');
+    go('#/');
+  }catch(e){
+    toast('صار خطأ: الملف مش نسخة احتياطية صالحة');
+  }
+  inputEl.value='';
+}
+window.addEventListener('beforeunload', ()=>{
+  if(DB.settings && DB.settings.autoBackupOnClose){
+    try{ downloadBackupFile(); }catch(e){ /* best-effort */ }
+  }
+});
+function toast(msg){
+  const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show');
+  clearTimeout(toast._t); toast._t=setTimeout(()=>t.classList.remove('show'), 2200);
+}
+
+/* ---------- Fit any invoice/statement onto a single A4 page when printing ---------- */
+function fitDocsToPage(){
+  const isLandscape = !!document.getElementById('print-orientation-style');
+  const PAGE_H_PX = (isLandscape ? (210-20) : (297-20)) * 3.7795; // A4 height minus 10mm top+bottom margins, at 96dpi
+  document.querySelectorAll('.doc:not(.no-autofit)').forEach(doc=>{
+    doc.style.transform=''; doc.style.width=''; doc.style.transformOrigin='top center';
+    const h = doc.scrollHeight;
+    if(h > PAGE_H_PX){
+      const scale = Math.max(PAGE_H_PX / h, 0.45);
+      doc.style.transform = `scale(${scale})`;
+      doc.style.width = `${100/scale}%`;
+    }
+  });
+}
+window.addEventListener('beforeprint', fitDocsToPage);
+window.addEventListener('afterprint', ()=>{
+  document.querySelectorAll('.doc').forEach(doc=>{ doc.style.transform=''; doc.style.width=''; });
+});
+
+/* ---------- Arabic number to words (for currency lines) ---------- */
+const ONES=['','واحد','اثنان','ثلاثة','أربعة','خمسة','ستة','سبعة','ثمانية','تسعة'];
+const TEENS=['عشرة','أحد عشر','اثنا عشر','ثلاثة عشر','أربعة عشر','خمسة عشر','ستة عشر','سبعة عشر','ثمانية عشر','تسعة عشر'];
+const TENS=['','','عشرون','ثلاثون','أربعون','خمسون','ستون','سبعون','ثمانون','تسعون'];
+const HUNDREDS=['','مئة','مئتان','ثلاثمئة','أربعمئة','خمسمئة','ستمئة','سبعمئة','ثمانمئة','تسعمئة'];
+function threeDigits(n){
+  n=Math.floor(n);
+  let parts=[];
+  const h=Math.floor(n/100), r=n%100;
+  if(h) parts.push(HUNDREDS[h]);
+  if(r>=10 && r<20) parts.push(TEENS[r-10]);
+  else{
+    const t=Math.floor(r/10), o=r%10;
+    let sub=[];
+    if(o) sub.push(ONES[o]);
+    if(t) sub.push(TENS[t]);
+    if(sub.length) parts.push(sub.join(' و'));
+  }
+  return parts.join(' و');
+}
+function scaleWord(n, singular, dual, plural){
+  if(n===1) return singular;
+  if(n===2) return dual;
+  if(n>=3 && n<=10) return threeDigits(n)+' '+plural;
+  return threeDigits(n)+' '+singular;
+}
+function numberToArabicWords(num){
+  num = Math.round(Number(num)||0);
+  if(num===0) return 'صفر';
+  const million=Math.floor(num/1000000);
+  const thousand=Math.floor((num%1000000)/1000);
+  const rest=num%1000;
+  let parts=[];
+  if(million) parts.push(scaleWord(million,'مليون','مليونان','ملايين'));
+  if(thousand) parts.push(scaleWord(thousand,'ألف','ألفان','آلاف'));
+  if(rest) parts.push(threeDigits(rest));
+  return parts.join(' و');
+}
+function amountWords(usd){
+  const whole = Math.floor(usd);
+  const cents = Math.round((usd-whole)*100);
+  let s = 'فقط ' + numberToArabicWords(whole) + ' دولار أمريكي';
+  if(cents>0) s += ' و' + numberToArabicWords(cents) + ' سنت';
+  s += ' لا غير';
+  return s;
+}
+
+/* ============================= LEDGER LOGIC ============================= */
+// Build combined, sorted ledger entries for a customer, with running balance.
+function buildLedger(customerId){
+  const cust = DB.customers.find(c=>c.id===customerId);
+  const inv = DB.invoices.filter(i=>i.customerId===customerId && !i.deleted).map(i=>({
+    date:i.date, type:'قيد', label:'فاتورة بالحساب', number:i.number,
+    from:0, to:computeInvoiceTotal(i).totalUSD, ref:'invoice', id:i.id, sortKey:i.createdAt||0
+  }));
+  const rec = DB.receipts.filter(r=>r.customerId===customerId && !r.deleted).map(r=>({
+    date:r.date, type:'قبض', label:r.details? r.details : 'دفعة بالحساب', number:r.number,
+    from:Number(r.amount)||0, to:0, ref:'receipt', id:r.id, sortKey:r.createdAt||0
+  }));
+  let rows=[...inv,...rec];
+  rows.sort((a,b)=>{
+    if(a.date!==b.date) return a.date<b.date?-1:1;
+    if(a.ref!==b.ref) return a.ref==='receipt' ? -1 : 1;
+    return (a.sortKey||0)-(b.sortKey||0);
+  });
+  let bal = 0;
+  const out = rows.map(r=>{
+    bal = bal - r.from + r.to;
+    return {...r, balance:bal};
+  });
+  const totFrom = rows.reduce((s,r)=>s+r.from,0);
+  const totTo = rows.reduce((s,r)=>s+r.to,0);
+  return {rows:out, totFrom, totTo, finalBalance:bal};
+}
+function customerBalance(customerId){
+  return buildLedger(customerId).finalBalance;
+}
+function computeInvoiceTotal(inv){
+  const subtotal = (inv.items||[]).reduce((s,it)=>s+(Number(it.total)||0),0);
+  const discount = Number(inv.discount)||0;
+  const totalUSD = Math.max(subtotal - discount, 0);
+  const totalLBP = totalUSD * (Number(inv.exchangeRate)||DB.settings.defaultExchangeRate||90000);
+  return {subtotal, discount, totalUSD, totalLBP};
+}
+function nextInvoiceNumber(){
+  const start = Number.isFinite(DB.settings.invoiceStart) ? DB.settings.invoiceStart : 0;
+  const nums = DB.invoices.map(i=>parseInt(i.number)||0);
+  const max = nums.length? Math.max(...nums): (start-1);
+  return String(Math.max(max+1, start));
+}
+function nextReceiptNumber(){
+  const start = Number.isFinite(DB.settings.receiptStart) ? DB.settings.receiptStart : 1000;
+  const nums = DB.receipts.map(r=>parseInt(r.number)||0);
+  const max = nums.length? Math.max(...nums): (start-1);
+  return String(Math.max(max+1, start));
+}
+
+/* ============================= SUPPLIERS (موردون) ============================= */
+function buildSupplierLedger(supplierId){
+  const inv = DB.purchaseInvoices.filter(i=>i.supplierId===supplierId && !i.deleted).map(i=>({
+    date:i.date, type:'قيد', label:'فاتورة مشتريات', number:i.number,
+    from:0, to:computeInvoiceTotal(i).totalUSD, ref:'purchase', id:i.id, sortKey:i.createdAt||0
+  }));
+  const pay = DB.paymentVouchers.filter(v=>v.supplierId===supplierId && !v.deleted).map(v=>({
+    date:v.date, type:'صرف', label:v.details? v.details : 'سند صرف', number:v.number,
+    from:Number(v.amount)||0, to:0, ref:'voucher', id:v.id, sortKey:v.createdAt||0
+  }));
+  let rows=[...inv,...pay];
+  rows.sort((a,b)=>{
+    if(a.date!==b.date) return a.date<b.date?-1:1;
+    if(a.ref!==b.ref) return a.ref==='voucher' ? -1 : 1;
+    return (a.sortKey||0)-(b.sortKey||0);
+  });
+  let bal = 0;
+  const out = rows.map(r=>{
+    bal = bal - r.from + r.to;
+    return {...r, balance:bal};
+  });
+  const totFrom = rows.reduce((s,r)=>s+r.from,0);
+  const totTo = rows.reduce((s,r)=>s+r.to,0);
+  return {rows:out, totFrom, totTo, finalBalance:bal};
+}
+function supplierBalance(supplierId){ return buildSupplierLedger(supplierId).finalBalance; }
+function nextSupplierAcctNumber(){
+  const prefix = '4011';
+  let maxSuffix = 0;
+  DB.suppliers.forEach(s=>{
+    const acc = String(s.accountNumber||'');
+    if(acc.startsWith(prefix)){
+      const suf = parseInt(acc.slice(prefix.length))||0;
+      if(suf>maxSuffix) maxSuffix = suf;
+    }
+  });
+  return prefix + String(maxSuffix+1).padStart(3,'0');
+}
+function nextVoucherNumber(){
+  const start = Number.isFinite(DB.settings.voucherStart) ? DB.settings.voucherStart : 1000;
+  const nums = DB.paymentVouchers.map(v=>parseInt(v.number)||0);
+  const max = nums.length? Math.max(...nums): (start-1);
+  return String(Math.max(max+1, start));
+}
+
+/* ============================= WORKERS (عمال) ============================= */
+function computeWorkEntryTotal(e){
+  const daily = Number(e.dailyWage)||0;
+  const ot = (Number(e.overtimeHours)||0) * (Number(e.overtimeRate)||0);
+  const kg = (Number(e.weightKg)||0) * (Number(e.kgRate)||0);
+  return Math.round((daily+ot+kg)*100)/100;
+}
+function buildWorkerLedger(workerId){
+  const entries = DB.workEntries.filter(e=>e.workerId===workerId && !e.deleted).map(e=>({
+    date:e.date, type:'يومية', label:e.details? e.details : 'يومية عمل', number:e.number,
+    from:0, to:computeWorkEntryTotal(e), ref:'workentry', id:e.id, sortKey:e.createdAt||0
+  }));
+  const pay = DB.workerPayments.filter(p=>p.workerId===workerId && !p.deleted).map(p=>({
+    date:p.date, type:'دفعة', label:p.details? p.details : 'دفعة أجرة', number:p.number,
+    from:Number(p.amount)||0, to:0, ref:'workerpay', id:p.id, sortKey:p.createdAt||0
+  }));
+  let rows=[...entries,...pay];
+  rows.sort((a,b)=>{
+    if(a.date!==b.date) return a.date<b.date?-1:1;
+    if(a.ref!==b.ref) return a.ref==='workerpay' ? -1 : 1;
+    return (a.sortKey||0)-(b.sortKey||0);
+  });
+  let bal = 0;
+  const out = rows.map(r=>{
+    bal = bal - r.from + r.to;
+    return {...r, balance:bal};
+  });
+  const totFrom = rows.reduce((s,r)=>s+r.from,0);
+  const totTo = rows.reduce((s,r)=>s+r.to,0);
+  return {rows:out, totFrom, totTo, finalBalance:bal};
+}
+function workerBalance(workerId){ return buildWorkerLedger(workerId).finalBalance; }
+function nextWorkerAcctNumber(){
+  const prefix = '421';
+  let maxSuffix = 0;
+  DB.workers.forEach(w=>{
+    const acc = String(w.accountNumber||'');
+    if(acc.startsWith(prefix)){
+      const suf = parseInt(acc.slice(prefix.length))||0;
+      if(suf>maxSuffix) maxSuffix = suf;
+    }
+  });
+  return prefix + String(maxSuffix+1).padStart(3,'0');
+}
+function nextWorkEntryNumber(){
+  const start = Number.isFinite(DB.settings.workEntryStart) ? DB.settings.workEntryStart : 1;
+  const nums = DB.workEntries.map(e=>parseInt(e.number)||0);
+  const max = nums.length? Math.max(...nums): (start-1);
+  return String(Math.max(max+1, start));
+}
+function nextWorkerPaymentNumber(){
+  const start = Number.isFinite(DB.settings.workerPayStart) ? DB.settings.workerPayStart : 1000;
+  const nums = DB.workerPayments.map(p=>parseInt(p.number)||0);
+  const max = nums.length? Math.max(...nums): (start-1);
+  return String(Math.max(max+1, start));
+}
+
+/* ============================= خصميات الألمنيوم (DEDUCTIONS) ============================= */
+const BUILTIN_DEDUCTION_FIELDS = [
+  {key:'shankal', label:'الشنكل', base:'height', ops:[{op:'subtract', value:5.9}]},
+  {key:'janb', label:'الجنب', base:'height', ops:[{op:'add', value:5}]},
+  {key:'sikka', label:'السكة', base:'width', ops:[{op:'subtract', value:3.1}]},
+  {key:'kaabDarfeh', label:'كعب الدرفة', base:'width', ops:[{op:'subtract', value:3.1},{op:'divide', value:2}]},
+  {key:'yoo', label:'اليو', base:'height', ops:[{op:'subtract', value:3}]},
+  {key:'minkhalWidth', label:'عرض المنخل', base:'kaabDarfeh', ops:[{op:'add', value:2.5}]},
+  {key:'minkhalHeight', label:'علو المنخل', base:'height', ops:[{op:'subtract', value:4}]},
+  {key:'glassWidth', label:'عرض الزجاج', base:'kaabDarfeh', ops:[{op:'subtract', value:7.7}]},
+  {key:'glassHeight', label:'علو الزجاج', base:'height', ops:[{op:'subtract', value:14.7}]}
+];
+const DEDUCTION_TYPES = {
+  single: {key:'single', label:'سيدم عادي 6 ملم', glassLabel:'زجاج بلور 6 ملم', fields:BUILTIN_DEDUCTION_FIELDS, builtin:true},
+  double: {key:'double', label:'سيدم دوبل فيتراج فراغ 9 ملم', glassLabel:'دوبل فيتراج فراغ 9 ملم', fields:BUILTIN_DEDUCTION_FIELDS, builtin:true}
+};
+function getDeductionType(key){
+  if(DEDUCTION_TYPES[key]) return DEDUCTION_TYPES[key];
+  const custom = (DB.settings.customDeductionProfiles||[]).find(p=>p.key===key);
+  if(custom) return custom;
+  return DEDUCTION_TYPES.single;
+}
+function applyDeductionOp(value, op){
+  const n = Number(op.value)||0;
+  if(op.op==='add') return value+n;
+  if(op.op==='subtract') return value-n;
+  if(op.op==='multiply') return value*n;
+  if(op.op==='divide') return n!==0? value/n : value;
+  return value;
+}
+function computeDeductionRow(width, height, fields){
+  const w = Number(width)||0;
+  const h = Number(height)||0;
+  const round2 = n=>Math.round(n*100)/100;
+  const defs = fields || BUILTIN_DEDUCTION_FIELDS;
+  const computed = {width:w, height:h};
+  defs.forEach(f=>{
+    let val;
+    if(f.base==='width') val = w;
+    else if(f.base==='height') val = h;
+    else val = Number(computed[f.base])||0;
+    (f.ops||[]).forEach(op=>{ val = applyDeductionOp(val, op); });
+    computed[f.key] = round2(val);
+  });
+  if(computed.glassWidth===undefined) computed.glassWidth = 0;
+  if(computed.glassHeight===undefined) computed.glassHeight = 0;
+  computed.glassQty = 2;
+  return computed;
+}
+function blankDeductionRow(){ return {id:uid(), width:'', height:''}; }
+function nextDeductionNumber(){
+  const start = Number.isFinite(DB.settings.deductionStart) ? DB.settings.deductionStart : 1;
+  const nums = DB.deductions.map(d=>parseInt(d.number)||0);
+  const max = nums.length? Math.max(...nums): (start-1);
+  return String(Math.max(max+1, start));
+}
+function nextQuoteNumber(){
+  const start = Number.isFinite(DB.settings.quoteStart) ? DB.settings.quoteStart : 1;
+  const nums = DB.quotes.map(q=>parseInt(q.number)||0);
+  const max = nums.length? Math.max(...nums): (start-1);
+  return String(Math.max(max+1, start));
+}
+
+/* ============================= المستودع (WAREHOUSE / INVENTORY) ============================= */
+function nextStockInNumber(){
+  const nums = DB.stockIns.map(s=>parseInt(s.number)||0);
+  const max = nums.length? Math.max(...nums):0;
+  return String(max+1);
+}
+function nextStockOutNumber(){
+  const nums = DB.stockOuts.map(s=>parseInt(s.number)||0);
+  const max = nums.length? Math.max(...nums):0;
+  return String(max+1);
+}
+function buildStockLedger(itemId){
+  const ins = DB.stockIns.filter(s=>s.itemId===itemId && !s.deleted).map(s=>({
+    date:s.date, type:'إضافة', label:s.note? s.note : 'إضافة للمستودع', number:s.number,
+    from:0, to:Number(s.qty)||0, ref:'stockin', id:s.id, sortKey:s.createdAt||0
+  }));
+  const outs = DB.stockOuts.filter(s=>s.itemId===itemId && !s.deleted).map(s=>{
+    const wk = DB.workers.find(w=>w.id===s.workerId);
+    return {
+      date:s.date, type:'سحب', label:(wk?wk.name:'عامل')+(s.note?' — '+s.note:''), number:s.number,
+      from:Number(s.qty)||0, to:0, ref:'stockout', id:s.id, sortKey:s.createdAt||0
+    };
+  });
+  let rows=[...ins,...outs];
+  rows.sort((a,b)=>{
+    if(a.date!==b.date) return a.date<b.date?-1:1;
+    return (a.sortKey||0)-(b.sortKey||0);
+  });
+  let bal = 0;
+  const out = rows.map(r=>{
+    bal = bal - r.from + r.to;
+    return {...r, balance:bal};
+  });
+  const totFrom = rows.reduce((s,r)=>s+r.from,0);
+  const totTo = rows.reduce((s,r)=>s+r.to,0);
+  return {rows:out, totFrom, totTo, finalBalance:bal};
+}
+function currentStock(itemId){ return buildStockLedger(itemId).finalBalance; }
+
+/* ============================= طلبيات الألمنيوم (CUTTING STOCK OPTIMIZER) ============================= */
+const CUT_TYPES = [
+  {key:'shankal', label:'الشنكل', sources:[{field:'shankal', qty:2}], kerf:0.5},
+  {key:'maskeh', label:'مسكة', mirrorOf:'shankal'},
+  {key:'janb', label:'الجنب', sources:[{field:'janb', qty:2}], kerf:0.5},
+  {key:'sikka', label:'السكة', sources:[{field:'sikka', qty:2}], kerf:0.5},
+  {key:'kaabDarfeh', label:'كعب الدرفة', sources:[{field:'kaabDarfeh', qty:4}], kerf:0.5},
+  {key:'yoo', label:'اليو', sources:[{field:'yoo', qty:2}], kerf:0.5},
+  {key:'minkhal', label:'المنخل', sources:[{field:'minkhalWidth', qty:2},{field:'minkhalHeight', qty:2}], kerf:1}
+];
+function nextOrderNumber(){
+  const nums = DB.cuttingOrders.map(o=>parseInt(o.number)||0);
+  const max = nums.length? Math.max(...nums):0;
+  return String(max+1);
+}
+function ensureOrderResultsComplete(order){
+  const missing = CUT_TYPES.some(ct => !order.results || !order.results[ct.key]);
+  if(missing){
+    const deduction = DB.deductions.find(d=>d.id===order.deductionId);
+    if(deduction){
+      order.results = computeCuttingOrder(deduction, order.barLength);
+      save(KEYS.cuttingOrders, DB.cuttingOrders);
+    }
+  }
+  return order;
+}
+function packBars(pieces, barLengthCm){
+  const sorted = [...pieces].sort((a,b)=>b.length-a.length);
+  const bars = [];
+  sorted.forEach(piece=>{
+    if(piece.length > barLengthCm){
+      bars.push({items:[piece], used:piece.length, remaining:barLengthCm-piece.length, overflow:true});
+      return;
+    }
+    let best = null, bestRemaining = Infinity;
+    bars.forEach(bar=>{
+      if(bar.overflow) return;
+      const rem = bar.remaining - piece.length;
+      if(rem >= -0.0001 && bar.remaining < bestRemaining){ best = bar; bestRemaining = bar.remaining; }
+    });
+    if(best){
+      best.items.push(piece);
+      best.used = Math.round((best.used+piece.length)*100)/100;
+      best.remaining = Math.round((best.remaining-piece.length)*100)/100;
+    } else {
+      bars.push({items:[piece], used:piece.length, remaining:Math.round((barLengthCm-piece.length)*100)/100});
+    }
+  });
+  return bars;
+}
+function computeCuttingOrder(deduction, barLengthM){
+  const barLengthCm = Number(barLengthM)*100;
+  const results = {};
+  CUT_TYPES.forEach(ct=>{
+    if(ct.mirrorOf){
+      const src = results[ct.mirrorOf];
+      results[ct.key] = src ? JSON.parse(JSON.stringify(src)) : {pieces:0, bars:[]};
+      return;
+    }
+    const pieces = [];
+    (deduction.rows||[]).forEach((r,idx)=>{
+      const c = computeDeductionRow(r.width, r.height);
+      ct.sources.forEach(src=>{
+        const raw = c[src.field];
+        const pieceLen = Math.round((raw + ct.kerf)*100)/100;
+        for(let i=0;i<src.qty;i++) pieces.push({length:pieceLen, rowIndex:idx+1});
+      });
+    });
+    results[ct.key] = {pieces:pieces.length, bars:packBars(pieces, barLengthCm)};
+  });
+  return results;
+}
+
+/* ============================= الميزانية (BUDGET) ============================= */
+function computePeriodRange(type, a, b){
+  const today = todayISO();
+  if(type==='month'){
+    const val = a || today.slice(0,7);
+    const [y,m] = val.split('-');
+    const lastDay = new Date(Number(y), Number(m), 0).getDate();
+    return {from:`${y}-${m}-01`, to:`${y}-${m}-${String(lastDay).padStart(2,'0')}`};
+  }
+  if(type==='year'){
+    const y = a || today.slice(0,4);
+    return {from:`${y}-01-01`, to:`${y}-12-31`};
+  }
+  if(type==='range'){
+    return {from:a||'0000-01-01', to:b||'9999-12-31'};
+  }
+  return {from:'0000-01-01', to:'9999-12-31'};
+}
+function budgetCategoryEntries(cat, from, to){
+  if(cat.key==='workerPayments'){
+    return DB.workerPayments.filter(p=>!p.deleted && p.date>=from && p.date<=to).map(p=>{
+      const wk = DB.workers.find(w=>w.id===p.workerId);
+      return {date:p.date, amount:Number(p.amount)||0, label:(wk?wk.name:'عامل')+(p.note?' — '+p.note:''), ref:'workerpay', id:p.id};
+    });
+  }
+  if(cat.key==='supplierExpenses'){
+    return DB.paymentVouchers.filter(v=>!v.deleted && v.date>=from && v.date<=to).map(v=>{
+      const sup = DB.suppliers.find(s=>s.id===v.supplierId);
+      return {date:v.date, amount:Number(v.amount)||0, label:(sup?sup.name:'مورد')+(v.details?' — '+v.details:''), ref:'voucher', id:v.id};
+    });
+  }
+  if(cat.key==='receipts'){
+    return DB.receipts.filter(r=>!r.deleted && r.date>=from && r.date<=to).map(r=>{
+      const cust = DB.customers.find(c=>c.id===r.customerId);
+      return {date:r.date, amount:Number(r.amount)||0, label:(cust?cust.name:'زبون')+(r.details?' — '+r.details:''), ref:'receipt', id:r.id};
+    });
+  }
+  return DB.budgetEntries.filter(e=>!e.deleted && e.categoryId===cat.id && e.date>=from && e.date<=to)
+    .map(e=>({date:e.date, amount:Number(e.amount)||0, label:e.note||'', ref:'budgetentry', id:e.id}));
+}
+function budgetCategoryTotal(cat, from, to){
+  return budgetCategoryEntries(cat, from, to).reduce((s,e)=>s+e.amount, 0);
+}
+function nextBudgetEntryNumber(){
+  const nums = DB.budgetEntries.map(e=>parseInt(e.number)||0);
+  const max = nums.length? Math.max(...nums):0;
+  return String(max+1);
+}
+
+/* ============================= ROUTER / RENDER ============================= */
+function go(hash){ location.hash = hash; }
+window.addEventListener('hashchange', render);
+
+function currentRoute(){
+  const h = (location.hash.slice(1) || '/').split('?')[0];
+  const parts = h.split('/').filter(Boolean);
+  return parts;
+}
+
+const PERMISSION_MODULES = [
+  {key:'customers', label:'الزبائن'},
+  {key:'suppliers', label:'الموردون'},
+  {key:'workers', label:'العمال'},
+  {key:'deductions', label:'خصميات الألمنيوم'},
+  {key:'quotes', label:'عروض أسعار'},
+  {key:'warehouse', label:'المستودع'},
+  {key:'orders', label:'إنشاء طلبية'},
+  {key:'budget', label:'الميزانية'}
+];
+let currentUser = null;
+let currentCustomerSession = null;
+let currentWorkerSession = null;
+let pendingTotpUser = null;
+function isPrivilegedUser(u){ return u && (u.role==='admin' || u.role==='superuser'); }
+function hasPermission(moduleKey){
+  if(!currentUser) return false;
+  if(isPrivilegedUser(currentUser)) return true;
+  return (currentUser.permissions||[]).includes(moduleKey);
+}
+const SUPERADMIN_DEFAULT_PASSWORD = 'itech@2027';
+function migrateUsers(){
+  if(DB.settings.users && DB.settings.users.length) return;
+  const oldAuth = DB.settings.auth || {username:'admin', password:'0000'};
+  // مستخدم واحد فقط للمؤسسة — الدخول الإداري صار من منصة LibanApps
+  DB.settings.users = [
+    {id:uid(), username:oldAuth.username||'ADMIN', password:oldAuth.password||'0000', role:'admin'}
+  ];
+}
+const BUDGET_BUILTIN_DEFS = [
+  {key:'fuel', name:'المحروقات', type:'expense', auto:false},
+  {key:'workerPayments', name:'مدفوعات العمال', type:'expense', auto:true},
+  {key:'supplierExpenses', name:'مصاريف الموردين', type:'expense', auto:true},
+  {key:'receipts', name:'الإيصالات', type:'income', auto:true},
+  {key:'maintenance', name:'الصيانة والآليات', type:'expense', auto:false},
+  {key:'otherExpenses', name:'مصاريف أخرى', type:'expense', auto:false}
+];
+function seedBudgetCategoriesLocal(){
+  if(DB.budgetCategories && DB.budgetCategories.length) return false;
+  DB.budgetCategories = BUDGET_BUILTIN_DEFS.map(d=>({id:uid(), key:d.key, name:d.name, type:d.type, auto:d.auto, builtin:true}));
+  return true;
+}
+function migrateBudgetCategories(){
+  seedBudgetCategoriesLocal();
+}
+/* ============================= LICENSING (3-day trial + serial activation) ============================= */
+const LICENSE_PUBLIC_JWK = {"key_ops":["verify"],"ext":true,"kty":"EC","x":"jjQeWIhBYsBXxYPxzH7zmKApYni_ajVuXh4JKoGz7ww","y":"CkjZSZjKFiyxRcXLv7djbS3mhXAROtvyGFuDNvlygw4","crv":"P-256"};
+const TRIAL_DAYS = 3;
+let _licensePublicKey = null;
+function b64urlToBytes(str){
+  str = String(str||'').replace(/-/g,'+').replace(/_/g,'/');
+  while(str.length%4) str+='=';
+  const bin = atob(str);
+  const bytes = new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i);
+  return bytes;
+}
+function strToBytes(str){ return new TextEncoder().encode(str); }
+async function getLicensePublicKey(){
+  if(_licensePublicKey) return _licensePublicKey;
+  _licensePublicKey = await crypto.subtle.importKey('jwk', LICENSE_PUBLIC_JWK, {name:'ECDSA', namedCurve:'P-256'}, false, ['verify']);
+  return _licensePublicKey;
+}
+async function verifyLicenseSerial(serial){
+  try{
+    const parts = String(serial||'').trim().split('.');
+    if(parts.length!==3 || parts[0]!=='HMDH1') return null;
+    const pubKey = await getLicensePublicKey();
+    const sigBytes = b64urlToBytes(parts[2]);
+    const ok = await crypto.subtle.verify({name:'ECDSA', hash:'SHA-256'}, pubKey, sigBytes, strToBytes(parts[1]));
+    if(!ok) return null;
+    const payload = JSON.parse(new TextDecoder().decode(b64urlToBytes(parts[1])));
+    if(!payload || typeof payload.exp !== 'number') return null;
+    return payload;
+  }catch(e){ console.error('verifyLicenseSerial error:', e && e.message); return null; }
+}
+function ensureTrialStarted(){
+  if(!DB.settings.trialStartedAt){
+    DB.settings.trialStartedAt = Date.now();
+    try{ localStorage.setItem(skey(KEYS.settings), JSON.stringify(DB.settings)); }catch(e){}
+  }
+}
+function licenseStatus(){
+  const s = DB.settings;
+  if(s.licenseExpiresAt && s.licenseExpiresAt > Date.now()){
+    return { active:true, mode:'licensed', expiresAt:s.licenseExpiresAt, label:s.licenseLabel||'' };
+  }
+  const trialStart = s.trialStartedAt || Date.now();
+  const trialEnd = trialStart + TRIAL_DAYS*86400000;
+  if(Date.now() < trialEnd){
+    return { active:true, mode:'trial', expiresAt:trialEnd, daysLeft: Math.max(1, Math.ceil((trialEnd-Date.now())/86400000)) };
+  }
+  return { active:false, mode:'expired', expiresAt: s.licenseExpiresAt||trialEnd };
+}
+async function activateLicenseSerial(serial){
+  const payload = await verifyLicenseSerial(serial);
+  if(!payload) return {ok:false, reason:'invalid'};
+  if(payload.exp <= Date.now()) return {ok:false, reason:'expired'};
+  DB.settings.licenseSerial = serial;
+  DB.settings.licenseExpiresAt = payload.exp;
+  DB.settings.licenseLabel = payload.label || '';
+  const ok = await save(KEYS.settings, DB.settings);
+  return {ok: !!ok, reason: ok?null:'save-failed'};
+}
+function licenseBlockedView(){
+  return `
+  <div class="login-wrap">
+    <div class="login-card">
+      <h2 style="justify-content:center; text-align:center;"><span class="dot"></span> انتهت فترة التجربة</h2>
+      <p style="font-size:13.5px; color:var(--ink-soft); text-align:center; line-height:1.7; margin-bottom:14px;">
+        انتهت فترة التجربة المجانية (${TRIAL_DAYS} أيام). لتفعيل البرنامج لمدة سنة كاملة، تواصل مع المزوّد واحصل على رقم تفعيل، وحطو تحت:
+      </p>
+      <div class="field"><label>رقم التفعيل</label><input type="text" id="license_serial_input" placeholder="HMDH1...." style="direction:ltr; text-align:left;"></div>
+      <div id="license_err" style="color:var(--debit); font-size:12.5px; min-height:16px; margin-bottom:6px;"></div>
+      <button class="btn btn-primary" id="licenseActivateBtn" style="width:100%; justify-content:center;">تفعيل</button>
+    </div>
+    ${appFooter()}
+  </div>`;
+}
+function bindLicenseBlockedEvents(){
+  const btn = document.getElementById('licenseActivateBtn');
+  const doActivate = async ()=>{
+    const serial = document.getElementById('license_serial_input').value.trim();
+    const errEl = document.getElementById('license_err');
+    if(!serial){ errEl.textContent = 'لازم تكتب رقم التفعيل'; return; }
+    errEl.textContent = '';
+    const res = await activateLicenseSerial(serial);
+    if(res.ok){ render(); }
+    else{
+      errEl.textContent = res.reason==='expired' ? 'رقم التفعيل هاد منتهي الصلاحية' : (res.reason==='invalid' ? 'رقم التفعيل غلط' : 'صار خطأ بالتفعيل، جرب كمان');
+    }
+  };
+  btn.addEventListener('click', doActivate);
+  document.getElementById('license_serial_input').addEventListener('keydown', e=>{ if(e.key==='Enter') doActivate(); });
+}
+async function init(){
+  DB = await loadAll();
+  migrateUsers();
+  migrateBudgetCategories();
+  ensureTrialStarted();
+  render();
+}
+
+function root(){ return document.getElementById('app'); }
+
+const ITECH_LOGO_URI = 'data:image/png;base64,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
