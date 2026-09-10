@@ -956,12 +956,8 @@ function itemsOf(catId){
               });
 }
 
-// حفظ ترتيب قسم واحد
-async function saveOrder(catId){
-  var arr=itemsOf(catId), ups=[];
-  arr.forEach(function(it,i){
-    if(it.sort!==i+1){ it.sort=i+1; ups.push(it); }
-  });
+// حفظ ترتيب قسم واحد — بتاخد قائمة {id, sort} جاهزة
+async function saveOrder(ups){
   for(var k=0;k<ups.length;k++){
     await sb.from('items').update({sort:ups[k].sort}).eq('id',ups[k].id);
   }
@@ -973,8 +969,14 @@ function moveWithin(catId, fromIdx, toIdx){
   if(toIdx<0||toIdx>=arr.length||fromIdx===toIdx) return;
   var moved=arr.splice(fromIdx,1)[0];
   arr.splice(toIdx,0,moved);
-  arr.forEach(function(it,i){ it.sort=i+1; });
-  paintItems(); saveOrder(catId);
+  // نحسب شو تغيّر فعلاً قبل ما نلمس قيم sort بالذاكرة —
+  // إذا عدّلناها قبل المقارنة، رح تطلع "مافي تغيير" دايماً وما رح ينحفظ شي
+  var ups=[];
+  arr.forEach(function(it,i){
+    if(it.sort!==i+1) ups.push({id:it.id, sort:i+1});
+    it.sort=i+1;
+  });
+  paintItems(); saveOrder(ups);
 }
 
 $('#iq').addEventListener('input',paintItems);
