@@ -1733,10 +1733,28 @@ async function ensureSupabaseAuthSession(username, password){
 /* ===== بوابة المنصة: هوية الزبون + صلاحية الاشتراك ===== */
 async function bootPlatform(){
   if(!supabaseClient) return { ok:false, reason:'no_client' };
-  const ses = await supabaseClient.auth.getSession();
+  let ses = await supabaseClient.auth.getSession();
+
   if(!ses.data.session){
-    location.href = '/login?next=' + encodeURIComponent(location.pathname + location.search);
-    return { ok:false, reason:'no_session' };
+    // دخول تلقائي مأمون لرابط /portal/<slug> — بدون ما نعرض شاشة دخول المنصة
+    const segs = location.pathname.split('/').filter(Boolean);
+    const slugFromUrl = (segs.length >= 2 && segs[0] === 'portal') ? segs[1] : null;
+    if(slugFromUrl){
+      try{
+        const r = await fetch('/api/portal-token?slug=' + encodeURIComponent(slugFromUrl));
+        const j = await r.json();
+        if(j.ok && j.hashed_token){
+          const v = await supabaseClient.auth.verifyOtp({ token_hash: j.hashed_token, type: 'magiclink' });
+          if(!v.error) ses = await supabaseClient.auth.getSession();
+        } else if(j.reason){
+          return { ok:false, reason: j.reason };
+        }
+      }catch(e){ console.error('portal auto-login failed', e && e.message); }
+    }
+    if(!ses.data.session){
+      location.href = '/login?next=' + encodeURIComponent(location.pathname + location.search);
+      return { ok:false, reason:'no_session' };
+    }
   }
 
   // دخول مشرف المنصة على مؤسسة زبون: /alum?c=<client_id>
