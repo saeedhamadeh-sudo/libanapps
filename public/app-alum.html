@@ -869,7 +869,7 @@ function downloadBackupFile(){
 async function handleBackupImportFile(inputEl){
   const file = inputEl.files[0];
   if(!file) return;
-  if(!confirm('استيراد النسخة الاحتياطية رح يستبدل كل بيانات مؤسستك بالكامل — محلياً وبالسحابة.\n\nمتأكد؟')) { inputEl.value=''; return; }
+  if(!confirm('استيراد النسخة الاحتياطية رح يستبدل كل بيانات مؤسستك بالكامل (الزبائن، الفواتير، الإيصالات...) — محلياً وبالسحابة.\n\nملاحظة: اسم شركتك، شعارها، رقم هاتفها، وحسابات الدخول المحلية ما رح يتغيّروا — بيضلّوا متل ما هنّي حالياً.\n\nمتأكد؟')) { inputEl.value=''; return; }
   try{
     const text = await file.text();
     const data = JSON.parse(text);
@@ -888,6 +888,10 @@ async function handleBackupImportFile(inputEl){
       // الترخيص صار من منصة LibanApps — ما منستورد ترخيص النسخة القديمة
       delete incoming.trialStartedAt; delete incoming.licenseSerial;
       delete incoming.licenseExpiresAt; delete incoming.licenseLabel;
+      // هوية المؤسسة وحسابات الدخول المحلية بتبقى متل ما هيي — ما بتتغيّر
+      // بمجرد استرداد نسخة احتياطية (ممكن تكون من مؤسسة/جهاز تاني بالغلط)
+      delete incoming.companyName; delete incoming.companyTag; delete incoming.companyPhone;
+      delete incoming.logo; delete incoming.auth; delete incoming.users;
       DB.settings = {...DB.settings, ...incoming};
     }
     migrateUsers();
