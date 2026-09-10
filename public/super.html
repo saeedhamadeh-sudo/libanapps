@@ -839,15 +839,21 @@ $('#clientsTbl').addEventListener('click',async function(e){
       warn+='· '+hisRests.length+' مطعم ('+hisRests.map(function(x){return x.slug}).join(', ')+')\n'+
             '  بكل أصنافها وطلباتها وفواتيرها\n';
     }
+    warn+='· حساب دخوله (ما رح يقدر يسجّل دخول بعد اليوم)\n';
     warn+='\nما في رجعة. للإيقاف المؤقت استعمل «إيقاف الكل».\n\nاكتب اسم الزبون للتأكيد:';
     var typed=prompt(warn,'');
     if(typed===null) return;
     if(typed.trim()!==c.name){ alert('الاسم ما تطابق — ما انحذف شي'); return; }
-    var r=await sb.from('clients').delete().eq('id',id).select();
-    if(r.error){ alert('ما نجح الحذف: '+r.error.message); return; }
-    if(!r.data || !r.data.length){
-      alert('ما انحذف ولا صف — تأكد إنك مسجّل دخول كمشرف'); return;
-    }
+    var ses3=await sb.auth.getSession();
+    var tok3=ses3.data.session && ses3.data.session.access_token;
+    var r3=await fetch('/api/admin/delete-client',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok3},
+      body:JSON.stringify({client_id:id})
+    });
+    var j3=await r3.json();
+    if(!r3.ok||!j3.ok){ alert('ما نجح الحذف: '+(j3.error||'')); return; }
+    if(j3.auth_error){ alert('انحذفت بياناته، بس ما انقدر يتلغى حساب دخوله: '+j3.auth_error+'\nيقدر لسا يسجّل دخول بس ما رح يشوف أي بيانات.'); }
   }
   await loadSubs(); await loadClients(); await loadRests();
   if(typeof loadRestTable==='function') await loadRestTable();
