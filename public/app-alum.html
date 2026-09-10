@@ -378,6 +378,7 @@ try{
 
 /* ===== سياق الزبون: كل الجداول بسابقة alum_ ومربوطة بـclient_id ===== */
 let CLIENT_ID = null;          // هوية المؤسسة المشتركة
+let CURRENT_USER_ID = null, CURRENT_USER_EMAIL = null;   // تشخيص مؤقت
 let ACCESS = null;             // حالة الاشتراك
 let PLATFORM_ADMIN = false;    // داخل كمشرف منصة (من لوحة /super)
 let PLATFORM_CLIENT_NAME = '';
@@ -1730,6 +1731,8 @@ async function bootPlatform(){
     location.href = '/login?next=' + encodeURIComponent(location.pathname + location.search);
     return { ok:false, reason:'no_session' };
   }
+  CURRENT_USER_ID = ses.data.session.user.id;
+  CURRENT_USER_EMAIL = ses.data.session.user.email;
 
   // دخول مشرف المنصة على مؤسسة زبون: /alum?c=<client_id>
   const wantClient = new URLSearchParams(location.search).get('c');
@@ -1786,7 +1789,12 @@ function platformBlockScreen(a){
     </div>`;
   document.body.style.background = '#F4F8FB';
   if(a.reason === 'no_client')
-    document.body.innerHTML = box('أكمل بياناتك','بنحتاج اسمك ورقمك مرة وحدة قبل ما تستعمل البرنامج.','افتح صفحة حسابي','/account');
+    document.body.innerHTML = box('أكمل بياناتك','بنحتاج اسمك ورقمك مرة وحدة قبل ما تستعمل البرنامج.','افتح صفحة حسابي','/account')
+      + '<pre style="max-width:420px;margin:12px auto;padding:12px;background:#fff;border-radius:10px;'
+      + 'font-size:11px;text-align:left;direction:ltr;overflow:auto;color:#900">[تشخيص مؤقت]\n'
+      + 'auth.uid = ' + (CURRENT_USER_ID||'?') + '\n'
+      + 'email = ' + (CURRENT_USER_EMAIL||'?') + '\n'
+      + JSON.stringify(a) + '</pre>';
   else if(a.reason === 'no_subscription')
     document.body.innerHTML = box('ما عندك اشتراك','اشترك ببرنامج محاسبة الصناعيين أو ابدأ تجربة مجانية.','شوف الباقات','/account');
   else if(a.reason === 'expired')
