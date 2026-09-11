@@ -17,6 +17,23 @@
   --bg:#F4F8FB; --card:#FFFFFF; --muted:#6A7C8C; --line:rgba(14,36,56,.10);
   --ok:#1F7A5A; --bad:#C0392B; --r:16px;
 }
+
+/* ---- ثيمات الموقع — تتفعّل عبر data-theme على <html>، تُختار من لوحة /super ---- */
+html[data-theme="dark"]{
+  --navy:#0B1220; --navy-2:#111A2C; --ink:#E7EEF5;
+  --sky:#5EA6C9; --teal:#63C2D6; --orange:#E39A3E; --orange-2:#F0B65F;
+  --bg:#0B1220; --card:#131C2E; --muted:#8CA0B5; --line:rgba(231,238,245,.10);
+}
+html[data-theme="warm"]{
+  --navy:#3A2412; --navy-2:#54371C; --ink:#2E1D0F;
+  --sky:#C4652A; --teal:#E08A2B; --orange:#D9522B; --orange-2:#F0A24A;
+  --bg:#FBF3EA; --card:#FFFFFF; --muted:#8A6F58; --line:rgba(58,36,18,.12);
+}
+html[data-theme="green"]{
+  --navy:#0E2A22; --navy-2:#154234; --ink:#123227;
+  --sky:#2E8B6F; --teal:#3FAF8C; --orange:#D0A23A; --orange-2:#E4BD5F;
+  --bg:#F3F9F6; --card:#FFFFFF; --muted:#5C7A70; --line:rgba(14,42,34,.10);
+}
 *{box-sizing:border-box}
 html{scroll-behavior:smooth}
 body{margin:0;background:var(--bg);color:var(--ink);
@@ -32,8 +49,15 @@ input,select,textarea{font:inherit;color:inherit}
 /* ---------- شريط علوي ---------- */
 nav{position:sticky;top:0;z-index:50;background:rgba(244,248,251,.93);
   backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
-nav .row{display:flex;align-items:center;gap:16px;padding:12px 18px;max-width:1080px;margin:0 auto}
+nav .row{display:flex;align-items:center;flex-wrap:wrap;gap:16px;padding:12px 18px;max-width:1080px;margin:0 auto}
 nav .brand{display:flex;align-items:center;gap:8px;font-family:'Tajawal';font-weight:800;font-size:20px}
+nav .brand img{height:34px;width:auto;max-width:170px;object-fit:contain;flex-shrink:0}
+.lang-btns{display:flex;gap:4px;background:var(--card);border:1px solid var(--line);
+  border-radius:10px;padding:3px;flex-shrink:0}
+.lang-btns button{padding:5px 11px;border-radius:7px;font-size:12.5px;font-weight:800;
+  color:var(--muted);background:transparent;transition:background .15s ease,color .15s ease}
+.lang-btns button.active{background:var(--navy);color:#fff}
+.lang-btns button:not(.active):hover{background:var(--bg)}
 nav .brand span{color:var(--sky)}
 nav .links{display:flex;gap:18px;margin-inline-start:auto;font-size:15px;font-weight:600}
 nav .links a:hover{color:var(--sky)}
@@ -161,13 +185,11 @@ footer.site .bottom b{color:#fff}
       <a href="/industrial">محاسبة الصناعيين</a>
       <a href="/trade-info">محاسبة التجارة</a>
     </div>
-      <select id="langSel" aria-label="اللغة" style="width:auto;padding:7px 10px;
-        border:1.5px solid var(--line);border-radius:10px;background:#fff;font-size:14px;
-        font-weight:700;cursor:pointer">
-        <option value="ar">عربي</option>
-        <option value="en">English</option>
-        <option value="fr">Français</option>
-      </select>
+      <div class="lang-btns" id="langBtns" role="group" aria-label="اللغة">
+        <button type="button" data-lang="ar">AR</button>
+        <button type="button" data-lang="en">EN</button>
+        <button type="button" data-lang="fr">FR</button>
+      </div>
     <a class="btn btn-g sm" id="navAcct" href="/login" style="margin-inline-start:auto">حسابي</a>
     <a class="btn btn-o sm" id="navJoin" href="/signup">حساب جديد</a>
   </div>
@@ -254,7 +276,7 @@ if(sb) sb.rpc('public_settings').then(function(r){
   if(s.logo_url){
     var bb=document.getElementById('brandBox');
     if(bb) bb.innerHTML='<img src="'+s.logo_url+'" alt="'+(s.brand_name||'LibanApps')+
-      '" style="height:34px;width:auto">';
+      '">';
   } else if(s.brand_name && s.brand_name!=='LibanApps'){
     var bb2=document.getElementById('brandBox');
     if(bb2) bb2.textContent=s.brand_name;
@@ -353,16 +375,21 @@ window.SITE_I18N = { en: {"البرامج": "Products", "منيو المطاعم
     walk(CUR);
     document.documentElement.lang = CUR;
     document.documentElement.dir  = (CUR==='ar') ? 'rtl' : 'ltr';
-    var sel = document.getElementById('langSel');
-    if(sel) sel.value = CUR;
+    var wrapBtns = document.getElementById('langBtns');
+    if(wrapBtns) Array.prototype.forEach.call(wrapBtns.querySelectorAll('button'),function(b){
+      b.classList.toggle('active', b.getAttribute('data-lang')===CUR);
+    });
     try{ localStorage.setItem('la_site_lang', CUR); }catch(e){}
   };
   // تُستدعى بعد أي رسم جديد
   window.siteRelang = function(){ if(CUR!=='ar') walk(CUR); };
 
   document.addEventListener('DOMContentLoaded',function(){
-    var sel=document.getElementById('langSel');
-    if(sel) sel.addEventListener('change',function(){ window.setSiteLang(this.value); });
+    var wrapBtns2=document.getElementById('langBtns');
+    if(wrapBtns2) wrapBtns2.addEventListener('click',function(e){
+      var b=e.target.closest('button[data-lang]'); if(!b) return;
+      window.setSiteLang(b.getAttribute('data-lang'));
+    });
     // اللغة الافتراضية عربي دائماً — ما منتبع لغة المتصفح
     var saved=null;
     try{ saved=localStorage.getItem('la_site_lang'); }catch(e){}
