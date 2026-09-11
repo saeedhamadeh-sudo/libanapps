@@ -1241,7 +1241,7 @@ function migrateBudgetCategories(){
   seedBudgetCategoriesLocal();
 }
 /* ============================= LICENSING (3-day trial + serial activation) ============================= */
-const LICENSE_PUBLIC_JWK = {"key_ops":["verify"],"ext":true,"kty":"EC","x":"jjQeWIhBYsBXxYPxzH7zmKApYni_ajVuXh4JKoGz7ww","y":"CkjZSZjKFiyxRcXLv7djbS3mhXAROtvyGFuDNvlygw4","crv":"P-256"};
+const LICENSE_PUBLIC_JWK = {"key_ops":["verify"],"ext":true,"kty":"EC","x":"E9z9bLEvr9oDV_jpdky7p1lqO7oumiEiLMRo2Q9fmLA","y":"JQIHnNDyTcEKGSlFjfI_BlhPijabEh22t2uVn1SJ4_E","crv":"P-256"};
 const TRIAL_DAYS = 3;
 let _licensePublicKey = null;
 function b64urlToBytes(str){
@@ -1397,7 +1397,19 @@ async function bootPlatform(){
     return { ok:false, reason:'error', message:'ما فيك تفتح مؤسسة هذا الزبون' };
   }
 
-  const acc = await supabaseClient.rpc('app_access', { p_product: 'trade' });
+  let acc;
+  try{
+    acc = await supabaseClient.rpc('app_access', { p_product: 'trade' });
+  }catch(netErr){
+    // ما في إنترنت — إذا عندك رمز تفعيل موقّع فعّال محلياً وآخر هوية مؤسسة محفوظة، منكمل بلا نت
+    const cachedClientId = localStorage.getItem('la_last_client_id');
+    if(cachedClientId && licenseStatus().active && licenseStatus().mode==='licensed'){
+      CLIENT_ID = cachedClientId;
+      ACCESS = { ok:true, offline:true, client_id: CLIENT_ID };
+      return ACCESS;
+    }
+    return { ok:false, reason:'error', message:'ما في إنترنت، ومافي رمز تفعيل فعّال محفوظ على هذا الجهاز' };
+  }
   if(acc.error) return { ok:false, reason:'error', message: acc.error.message };
   ACCESS = acc.data || {};
   if(ACCESS.reason === 'no_client'){
@@ -1406,6 +1418,7 @@ async function bootPlatform(){
     if(!acc2.error) ACCESS = acc2.data || {};
   }
   CLIENT_ID = ACCESS.client_id || null;
+  if(CLIENT_ID){ try{ localStorage.setItem('la_last_client_id', CLIENT_ID); }catch(e){} }
   return ACCESS;
 }
 
@@ -1674,6 +1687,12 @@ function routeRequiredPermission(routeKey){
   return map[routeKey] || null;
 }
 function render(){
+  const lic = licenseStatus();
+  if(!lic.active){
+    root().innerHTML = licenseBlockedView();
+    bindLicenseBlockedEvents();
+    return;
+  }
   if(pendingTotpUser){
     root().innerHTML = totpVerifyView();
     bindTotpVerifyEvents();
@@ -2755,10 +2774,11 @@ function settingsView(){
     ${lic.mode==='licensed' ? `
       <p style="font-size:13.5px; color:var(--credit); font-weight:700;">✅ البرنامج مفعّل${lic.label? ' — '+escapeHtml(lic.label):''}</p>
       <p style="font-size:12.5px; color:var(--ink-soft);">صالح لتاريخ: ${new Date(lic.expiresAt).toLocaleDateString('ar')}</p>
+      <p style="font-size:11.5px; color:var(--ink-soft);">هالرمز موقّع محلياً — البرنامج بيشتغل حتى بدون إنترنت لحد تاريخ الانتهاء.</p>
     ` : `
       <p style="font-size:13.5px; color:${lic.daysLeft<=1?'var(--debit)':'var(--ink)'}; font-weight:700;">⏳ فترة تجربة — باقي ${lic.daysLeft} ${lic.daysLeft===1?'يوم':'أيام'}</p>
     `}
-    <div class="field" style="margin-top:10px;"><label>رقم التفعيل</label><input type="text" id="s_license_serial" placeholder="HMDH1...." style="direction:ltr; text-align:left;" value="${escapeHtml(s.licenseSerial||'')}"></div>
+    <div class="field" style="margin-top:10px;"><label>رقم التفعيل</label><input type="text" id="s_license_serial" placeholder="TRAD1...." style="direction:ltr; text-align:left;" value="${escapeHtml(s.licenseSerial||'')}"></div>
     <div id="s_license_err" style="color:var(--debit); font-size:12.5px; min-height:16px; margin-bottom:6px;"></div>
     <button class="btn btn-primary" id="s_licenseActivateBtn">تفعيل</button>
   </div>
