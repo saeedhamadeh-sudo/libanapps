@@ -1257,7 +1257,8 @@ function paintAlum(){
           '<a class="btn alt sm" style="text-decoration:none" target="_blank" href="'+openHref+'">افتح لوحته</a> '+
           '<button class="btn alt sm" data-alumslug="'+x.client_id+'">تعديل الرابط</button> '+
           (x.sub_id?'<button class="btn alt sm" data-alumtoggle="'+x.sub_id+'" data-on="'+(x.status==='active')+'">'+
-            (x.status==='active'?'إيقاف':'تشغيل')+'</button>':'')+
+            (x.status==='active'?'إيقاف':'تشغيل')+'</button>':'')+' '+
+          '<button class="btn dg sm" data-alumdel="'+x.client_id+'" data-name="'+esc(x.biz_name||x.client_name||'')+'">حذف نهائي</button>'+
         '</td></tr>';
     }).join('') : '<tr><td colspan="5" class="muted" style="padding:20px">ما في نتائج</td></tr>');
 }
@@ -1287,6 +1288,16 @@ $('#alumTbl').addEventListener('click',async function(e){
     var next = b.dataset.on!=='true';
     if(!next && !confirm('إيقاف هذا الاشتراك؟ البرنامج رح يوقف يفتح للزبون فوراً.')) return;
     await sb.from('subscriptions').update({status: next?'active':'suspended'}).eq('id',b.dataset.alumtoggle);
+
+  }else if(b.dataset.alumdel){
+    var cid=b.dataset.alumdel, nm=b.dataset.name||'هذا الزبون';
+    var typed=prompt('حذف نهائي لبرنامج الألمنيوم عند "'+nm+'"\n\n'+
+      'رح ينحذف: الاشتراك، رابط البرنامج، وكل بياناته المحاسبية (زبائن، فواتير، عمال، مستودع...).\n'+
+      'ما في رجعة.\n\nاكتب اسم المصنع/الزبون للتأكيد: '+nm, '');
+    if(typed===null) return;
+    if(typed.trim()!==nm){ alert('الاسم ما تطابق — ما انحذف شي'); return; }
+    var del=await sb.rpc('admin_delete_product_client',{p_client_id:cid, p_product:'alum'});
+    if(del.error){ alert('ما نجح الحذف: '+del.error.message); return; }
   }
   await loadAlumTable();
 });
@@ -1351,7 +1362,8 @@ function paintTrade(){
           '<a class="btn alt sm" style="text-decoration:none" target="_blank" href="'+openHref+'">افتح لوحته</a> '+
           '<button class="btn alt sm" data-tradeslug="'+x.client_id+'">تعديل الرابط</button> '+
           (x.sub_id?'<button class="btn alt sm" data-tradetoggle="'+x.sub_id+'" data-on="'+(x.status==='active')+'">'+
-            (x.status==='active'?'إيقاف':'تشغيل')+'</button>':'')+
+            (x.status==='active'?'إيقاف':'تشغيل')+'</button>':'')+' '+
+          '<button class="btn dg sm" data-tradedel="'+x.client_id+'" data-name="'+esc(x.biz_name||x.client_name||'')+'">حذف نهائي</button>'+
         '</td></tr>';
     }).join('') : '<tr><td colspan="5" class="muted" style="padding:20px">ما في نتائج</td></tr>');
 }
@@ -1381,6 +1393,16 @@ $('#tradeTbl').addEventListener('click',async function(e){
     var next = b.dataset.on!=='true';
     if(!next && !confirm('إيقاف هذا الاشتراك؟ البرنامج رح يوقف يفتح للزبون فوراً.')) return;
     await sb.from('subscriptions').update({status: next?'active':'suspended'}).eq('id',b.dataset.tradetoggle);
+
+  }else if(b.dataset.tradedel){
+    var cid2=b.dataset.tradedel, nm2=b.dataset.name||'هذا الزبون';
+    var typed2=prompt('حذف نهائي لبرنامج التجارة عند "'+nm2+'"\n\n'+
+      'رح ينحذف: الاشتراك، رابط البرنامج، وكل بياناته المحاسبية (زبائن، فواتير، مستودع...).\n'+
+      'ما في رجعة.\n\nاكتب اسم المحل/الزبون للتأكيد: '+nm2, '');
+    if(typed2===null) return;
+    if(typed2.trim()!==nm2){ alert('الاسم ما تطابق — ما انحذف شي'); return; }
+    var del2=await sb.rpc('admin_delete_product_client',{p_client_id:cid2, p_product:'trade'});
+    if(del2.error){ alert('ما نجح الحذف: '+del2.error.message); return; }
   }
   await loadTradeTable();
 });
