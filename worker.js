@@ -544,10 +544,11 @@ async function buyFailure(request, env) {
 async function portalClient(request, env) {
   const url = new URL(request.url);
   const slug = (url.searchParams.get('slug') || '').trim().toLowerCase();
+  const product = (url.searchParams.get('product') || 'alum').trim().toLowerCase();
   if (!slug) return json(400, { error: 'missing slug' });
 
   const rows = await sbGet(env,
-    `app_settings?product_code=eq.alum&slug=eq.${encodeURIComponent(slug)}&select=client_id&limit=1`);
+    `app_settings?product_code=eq.${product}&slug=eq.${encodeURIComponent(slug)}&select=client_id&limit=1`);
   if (!rows.length) return json(200, { ok: false, reason: 'no_client' });
 
   return json(200, { ok: true, client_id: rows[0].client_id });
@@ -557,15 +558,16 @@ async function portalClient(request, env) {
 async function portalToken(request, env) {
   const url = new URL(request.url);
   const slug = (url.searchParams.get('slug') || '').trim().toLowerCase();
+  const product = (url.searchParams.get('product') || 'alum').trim().toLowerCase();
   if (!slug) return json(400, { error: 'missing slug' });
 
   const settingsRows = await sbGet(env,
-    `app_settings?product_code=eq.alum&slug=eq.${encodeURIComponent(slug)}&select=client_id&limit=1`);
+    `app_settings?product_code=eq.${product}&slug=eq.${encodeURIComponent(slug)}&select=client_id&limit=1`);
   if (!settingsRows.length) return json(200, { ok: false, reason: 'no_client' });
   const clientId = settingsRows[0].client_id;
 
   const subs = await sbGet(env,
-    `subscriptions?client_id=eq.${clientId}&product_code=eq.alum&select=status,expires_at&order=expires_at.desc&limit=1`);
+    `subscriptions?client_id=eq.${clientId}&product_code=eq.${product}&select=status,expires_at&order=expires_at.desc&limit=1`);
   if (!subs.length) return json(200, { ok: false, reason: 'no_subscription' });
   const sub = subs[0];
   if (sub.status === 'suspended') return json(200, { ok: false, reason: 'suspended' });
@@ -900,6 +902,8 @@ function pageFor(pathname) {
   if (/^\/[^/]+\/admin\/?$/.test(p)) return '/admin.html';
   // رابط برنامج ألمنيوم مخصص لزبون معيّن: /portal/اسم-محله
   if (/^\/portal\/[^/]+\/?$/.test(p))  return '/app-alum.html';
+  // رابط برنامج تجارة مخصص لزبون معيّن: /portal-trade/اسم-محله
+  if (/^\/portal-trade\/[^/]+\/?$/.test(p)) return '/app-trade.html';
   if (p.startsWith('/admin')) return '/admin.html';
   if (p.startsWith('/super')) return '/super.html';
   return '/menu.html';   // أي مسار آخر = رابط مطعم
