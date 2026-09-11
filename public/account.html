@@ -463,7 +463,7 @@ if(sb) sb.auth.getSession().then(function(r){
       } else if(p.product==='alum' || p.product==='trade'){
         var appUrl = (p.product==='alum')
           ? (p.slug ? '/portal/'+esc(p.slug) : '/alum')
-          : '/trade';
+          : (p.slug ? '/portal-trade/'+esc(p.slug) : '/trade');
         extra='<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">'+
           '<a class="btn btn-p sm" href="'+appUrl+'" target="_blank">افتح البرنامج</a></div>'+
           '<p class="hint">اسم المستخدم الأول: <b>ADMIN</b> — كلمة المرور: <b>0000</b> — '+
@@ -578,17 +578,17 @@ if(sb) sb.auth.getSession().then(function(r){
   $('#trialList').addEventListener('click',async function(e){
     var b=e.target.closest('[data-trial]'); if(!b) return;
     var prod=b.dataset.trial, slug='', biz='';
-    if(prod==='menu' || prod==='alum'){
-      var isAlum=(prod==='alum');
-      slug=prompt(isAlum
+    if(prod==='menu' || prod==='alum' || prod==='trade'){
+      var needsFactoryWording=(prod==='alum'||prod==='trade');
+      slug=prompt(needsFactoryWording
         ? 'اختار رابط محلك/مصنعك (إنكليزي بدون مسافات)\n\nمثال: myfactory\n'+
-          'رح يصير: libanapps.com/portal/myfactory'
+          'رح يصير: libanapps.com/'+(prod==='alum'?'portal/':'portal-trade/')+'myfactory'
         : 'اختار رابط مطعمك (إنكليزي بدون مسافات)\n\nمثال: myrestaurant\n'+
           'رح يصير: libanapps.com/myrestaurant','');
       if(slug===null) return;
       slug=slug.toLowerCase().replace(/[^a-z0-9-]/g,'');
       if(slug.length<2){ alert('الرابط قصير'); return; }
-      biz=prompt(isAlum?'اسم المحل/المصنع بالعربي:':'اسم المطعم بالعربي:','')||slug;
+      biz=prompt(needsFactoryWording?'اسم المحل/المصنع بالعربي:':'اسم المطعم بالعربي:','')||slug;
     }
     b.disabled=true; b.textContent='عم نفعّل…';
     var r=await sb.rpc('start_trial',{p_product:prod,p_slug:slug,p_biz:biz});
@@ -604,6 +604,7 @@ if(sb) sb.auth.getSession().then(function(r){
     alertBox('انفعّلت تجربتك المجانية لمدة '+TRIAL_DAYS+' أيام ✓ '+
       (prod==='menu' ? 'منيوك جاهز على libanapps.com/'+esc(r.data.slug)
        : prod==='alum' && r.data.slug ? 'برنامجك جاهز على libanapps.com/portal/'+esc(r.data.slug)
+       : prod==='trade' && r.data.slug ? 'برنامجك جاهز على libanapps.com/portal-trade/'+esc(r.data.slug)
        : 'مفتاح التفعيل تحت.'),'ok');
     await loadSubs(); await loadTrials();
   });
@@ -655,13 +656,18 @@ if(sb) sb.auth.getSession().then(function(r){
     if(!PICK) return;
     $('#mTitle').textContent=PICK.name_ar;
     $('#mSub').textContent='المبلغ: '+PICK.price_usd+' $ · المدة: '+PICK.days+' يوم';
-    var needsSlug=(PICK.product_code==='menu'||PICK.product_code==='alum');
+    var needsSlug=(PICK.product_code==='menu'||PICK.product_code==='alum'||PICK.product_code==='trade');
     $('#mSlug').classList.toggle('hidden', !needsSlug);
     if(PICK.product_code==='alum'){
       $('#mSlugLbl').textContent='رابط محلك/مصنعك';
       $('#slug').placeholder='myfactory';
       $('#mBizLbl').textContent='اسم المحل/المصنع';
       $('#slugPrev').textContent='libanapps.com/portal/…';
+    }else if(PICK.product_code==='trade'){
+      $('#mSlugLbl').textContent='رابط محلك';
+      $('#slug').placeholder='mystore';
+      $('#mBizLbl').textContent='اسم المحل';
+      $('#slugPrev').textContent='libanapps.com/portal-trade/…';
     }else{
       $('#mSlugLbl').textContent='رابط مطعمك';
       $('#slug').placeholder='myrestaurant';
@@ -674,14 +680,15 @@ if(sb) sb.auth.getSession().then(function(r){
   $('#mClose').addEventListener('click',function(){ $('#modal').classList.add('hidden') });
   $('#slug').addEventListener('input',function(){
     this.value=this.value.toLowerCase().replace(/[^a-z0-9-]/g,'');
-    var prefix=(PICK && PICK.product_code==='alum') ? 'libanapps.com/portal/' : 'libanapps.com/';
+    var prefix=(PICK && PICK.product_code==='alum') ? 'libanapps.com/portal/'
+      : (PICK && PICK.product_code==='trade') ? 'libanapps.com/portal-trade/' : 'libanapps.com/';
     $('#slugPrev').textContent=prefix+(this.value||'…');
   });
 
   $('#payBtn').addEventListener('click',async function(){
     if(!PICK) return;
     var slug='', biz='';
-    if((PICK.product_code==='menu'||PICK.product_code==='alum') && !RENEW){
+    if((PICK.product_code==='menu'||PICK.product_code==='alum'||PICK.product_code==='trade') && !RENEW){
       slug=$('#slug').value.trim(); biz=$('#bizName').value.trim();
       if(slug.length<2) return msg('اكتب الرابط بالإنكليزي',false);
       if(!biz) return msg('اكتب الاسم',false);
