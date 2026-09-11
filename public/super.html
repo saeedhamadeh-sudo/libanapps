@@ -309,6 +309,7 @@ body.login-page .credit .credit-tel{color:#E08A2B}
     <button class="tab" data-t="clients" aria-pressed="false">الزبائن</button>
     <button class="tab" data-t="rests" aria-pressed="false">المطاعم</button>
     <button class="tab" data-t="alum" aria-pressed="false">محاسبة الصناعيين</button>
+    <button class="tab" data-t="trade" aria-pressed="false">محاسبة التجارة</button>
     <button class="tab" data-t="new" aria-pressed="false">إصدار ترخيص جديد</button>
     <button class="tab" data-t="owner" aria-pressed="false">حساب صاحب مطعم</button>
     <button class="tab" data-t="plans" aria-pressed="false">الباقات</button>
@@ -473,6 +474,20 @@ body.login-page .credit .credit-tel{color:#E08A2B}
         <input type="text" id="aq" placeholder="بحث بالاسم أو الرابط أو الزبون">
       </div>
       <div style="overflow-x:auto"><table id="alumTbl"><tbody></tbody></table></div>
+      <p class="muted" style="margin-top:10px">
+        الزبائن يلي اشتركوا قبل ما نضيف الرابط المخصص ما رح يكون عندهم رابط —
+        اضغط «تعديل الرابط» لتضيفلهم واحد.</p>
+    </div>
+  </section>
+
+  <!-- TRADE (RETAIL ACCOUNTING) -->
+  <section data-p="trade" class="hidden">
+    <div class="panel">
+      <h3>محاسبة التجارة</h3>
+      <div class="filters">
+        <input type="text" id="tq" placeholder="بحث بالاسم أو الرابط أو الزبون">
+      </div>
+      <div style="overflow-x:auto"><table id="tradeTbl"><tbody></tbody></table></div>
       <p class="muted" style="margin-top:10px">
         الزبائن يلي اشتركوا قبل ما نضيف الرابط المخصص ما رح يكون عندهم رابط —
         اضغط «تعديل الرابط» لتضيفلهم واحد.</p>
@@ -671,6 +686,7 @@ async function loadAll(){
   await loadRests();
   await loadRestTable();
   await loadAlumTable();
+  await loadTradeTable();
   await loadPlans(); await loadSite(); await loadBuys();
   toggleMenuBox();
 }
@@ -1273,6 +1289,100 @@ $('#alumTbl').addEventListener('click',async function(e){
     await sb.from('subscriptions').update({status: next?'active':'suspended'}).eq('id',b.dataset.alumtoggle);
   }
   await loadAlumTable();
+});
+
+/* ---------- محاسبة التجارة (TRADE) ---------- */
+var TRADE=[];
+async function loadTradeTable(){
+  var a=await sb.from('app_settings').select('*').eq('product_code','trade');
+  var settingsByClient={};
+  (a.data||[]).forEach(function(x){ settingsByClient[x.client_id]=x; });
+
+  var subs=SUBS.filter(function(s){ return s.product_code==='trade'; });
+  TRADE=subs.map(function(s){
+    var st=settingsByClient[s.client_id]||{};
+    var cl=CLIENTS.find(function(c){return c.id===s.client_id});
+    return {
+      client_id: s.client_id,
+      sub_id: s.id,
+      status: s.status,
+      expires_at: s.expires_at,
+      biz_name: st.biz_name || (cl && cl.business) || '',
+      slug: st.slug || '',
+      client_name: cl ? cl.name : (s.clients ? s.clients.name : '')
+    };
+  });
+  (a.data||[]).forEach(function(st){
+    if(!TRADE.some(function(x){return x.client_id===st.client_id})){
+      var cl=CLIENTS.find(function(c){return c.id===st.client_id});
+      TRADE.push({client_id:st.client_id, sub_id:null, status:'no_sub', expires_at:null,
+        biz_name:st.biz_name||'', slug:st.slug||'', client_name: cl?cl.name:''});
+    }
+  });
+  paintTrade();
+}
+function paintTrade(){
+  var q=$('#tq').value.trim().toLowerCase();
+  var rows=TRADE.filter(function(x){
+    if(!q) return true;
+    return (x.biz_name+' '+x.slug+' '+x.client_name).toLowerCase().indexOf(q)>=0;
+  });
+  var b=$('#tradeTbl').querySelector('tbody');
+  b.innerHTML='<tr><th>المحل</th><th>الرابط</th><th>الزبون</th><th>الاشتراك</th><th></th></tr>'+
+    (rows.length?rows.map(function(x){
+      var cls,txt;
+      if(x.status==='no_sub'){ cls='bad'; txt='بلا اشتراك'; }
+      else{
+        var d=x.expires_at?Math.ceil((new Date(x.expires_at)-new Date())/86400000):0;
+        if(x.status!=='active'){ cls='bad'; txt='موقوف'; }
+        else if(d<0){ cls='bad'; txt='منتهي'; }
+        else if(d<=15){ cls='warn'; txt='باقي '+d+' يوم'; }
+        else{ cls='ok'; txt='باقي '+d+' يوم'; }
+      }
+      var openHref='/portal-trade/'+encodeURIComponent(x.slug||'')+'?c='+encodeURIComponent(x.client_id);
+      if(!x.slug) openHref='/trade?c='+encodeURIComponent(x.client_id);
+      return '<tr>'+
+        '<td>'+esc(x.biz_name||'—')+'</td>'+
+        '<td>'+(x.slug?('<a href="/portal-trade/'+esc(x.slug)+'" target="_blank" style="color:var(--accent)">/portal-trade/'+esc(x.slug)+'</a>')
+                       :'<span class="tag bad">بلا رابط</span>')+'</td>'+
+        '<td>'+(x.client_name?esc(x.client_name):'<span class="tag bad">بلا زبون</span>')+'</td>'+
+        '<td><span class="tag '+cls+'">'+txt+'</span></td>'+
+        '<td style="white-space:nowrap">'+
+          '<a class="btn alt sm" style="text-decoration:none" target="_blank" href="'+openHref+'">افتح لوحته</a> '+
+          '<button class="btn alt sm" data-tradeslug="'+x.client_id+'">تعديل الرابط</button> '+
+          (x.sub_id?'<button class="btn alt sm" data-tradetoggle="'+x.sub_id+'" data-on="'+(x.status==='active')+'">'+
+            (x.status==='active'?'إيقاف':'تشغيل')+'</button>':'')+
+        '</td></tr>';
+    }).join('') : '<tr><td colspan="5" class="muted" style="padding:20px">ما في نتائج</td></tr>');
+}
+$('#tq').addEventListener('input',paintTrade);
+$('#tradeTbl').addEventListener('click',async function(e){
+  var b=e.target.closest('button'); if(!b) return;
+
+  if(b.dataset.tradeslug){
+    var cid=b.dataset.tradeslug;
+    var x=TRADE.find(function(a){return a.client_id===cid});
+    var ns=prompt('رابط جديد لـ"'+(x&&x.biz_name||'هذا الزبون')+'" (إنكليزي، بدون مسافات)\n\n'+
+      'الرابط الحالي: '+(x&&x.slug||'ما في'), (x&&x.slug)||'');
+    if(ns===null) return;
+    ns=ns.trim().toLowerCase().replace(/[^a-z0-9-]/g,'');
+    if(ns.length<2){ alert('الرابط قصير'); return; }
+    if(!x || ns!==x.slug){
+      var av=await sb.rpc('slug_available',{p_slug:ns});
+      if(av.error){ alert('ما نجح: '+av.error.message); return; }
+      if(!av.data){ alert('هذا الرابط محجوز — اختار غيره'); return; }
+    }
+    var up=await sb.from('app_settings')
+      .upsert({client_id:cid, product_code:'trade', slug:ns,
+               biz_name:(x&&x.biz_name)||ns}, {onConflict:'client_id,product_code'});
+    if(up.error){ alert('ما نجح: '+up.error.message); return; }
+
+  }else if(b.dataset.tradetoggle){
+    var next = b.dataset.on!=='true';
+    if(!next && !confirm('إيقاف هذا الاشتراك؟ البرنامج رح يوقف يفتح للزبون فوراً.')) return;
+    await sb.from('subscriptions').update({status: next?'active':'suspended'}).eq('id',b.dataset.tradetoggle);
+  }
+  await loadTradeTable();
 });
 
 /* ---------- owner account ---------- */
