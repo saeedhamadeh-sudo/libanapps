@@ -167,6 +167,8 @@
 
   /* ---------- printable documents ---------- */
   .doc{background:#fff; border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow); padding:26px; max-width:900px; margin:0 auto 16px;}
+  .doc table{border-collapse:collapse; width:100%; margin:8px 0;}
+  .doc table td, .doc table th{border:1px solid #ccc; padding:6px 8px;}
   .doc-head{display:flex; justify-content:space-between; align-items:flex-start; border-bottom:3px solid var(--ink); padding-bottom:14px; margin-bottom:16px;}
   .doc-head .co-name{font-family:var(--font-display); font-weight:800; font-size:19px;}
   .doc-head .co-tag{font-size:11.5px; color:var(--ink-soft); margin-top:3px; line-height:1.6;}
@@ -4051,8 +4053,9 @@ function customQuoteFormView(doc){
       <div class="field"><label>Date *</label><input type="date" id="cq_date" value="${d.date}"></div>
     </div>
     <div class="field">
-      <label>النص (Paste أو اكتب — بيتحدد الاتجاه تلقائي حسب اللغة)</label>
-      <textarea id="cq_content" dir="${d.direction}" style="width:100%; min-height:320px; padding:12px; border:1px solid var(--line); border-radius:8px; font-family:inherit; font-size:14px; line-height:1.8; resize:vertical;">${escapeHtml(d.content)}</textarea>
+      <label>النص (لصق من الوورد بيحافظ على الجداول والتنسيق — أو اكتب مباشرة)</label>
+      <div id="cq_content" contenteditable="true" dir="${d.direction}"
+        style="width:100%; min-height:320px; padding:12px; border:1px solid var(--line); border-radius:8px; font-family:inherit; font-size:14px; line-height:1.8; overflow:auto; background:#fff;">${customQuoteContentHtml(d.content)}</div>
     </div>
     <div class="action-row" style="margin-top:16px">
       <button class="btn btn-primary" id="saveCustomQuoteBtn">💾 حفظ</button>
@@ -4075,7 +4078,7 @@ function customQuotePrintView(doc){
       <div class="r" ${doc.direction==='ltr'?'style="justify-content:flex-start;"':''}><span>Location:</span><b>${escapeHtml(doc.location)}</b></div>
       <div class="r" ${doc.direction==='ltr'?'style="justify-content:flex-start;"':''}><span>Date:</span><b class="num">${fmtDate(doc.date)}</b></div>
     </div>
-    <div dir="${doc.direction}" style="margin-top:18px; white-space:pre-wrap; line-height:1.9; font-size:14.5px; text-align:${doc.direction==='ltr'?'left':'right'};">${escapeHtml(doc.content)}</div>
+    <div dir="${doc.direction}" style="margin-top:18px; line-height:1.9; font-size:14.5px; text-align:${doc.direction==='ltr'?'left':'right'};">${customQuoteContentHtml(doc.content)}</div>
     <div class="sig">${doc.direction==='ltr'?'Signature':'التوقيع'}</div>
   </div>`;
 }
@@ -4711,6 +4714,24 @@ function detectTextDirection(text){
 function escapeHtml(s){
   return String(s??'').replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 }
+// عروض الأسعار المخصصة القديمة كانت مخزّنة كنص عادي — الجديدة صارت HTML (لدعم
+// اللصق من الوورد بالجداول والتنسيق). هاي الدالة بتفرّق بينهم عند العرض/الطباعة
+function looksLikeHtml(s){ return /<[a-z][\s\S]*>/i.test(String(s||'')); }
+function customQuoteContentHtml(content){
+  return looksLikeHtml(content) ? content : escapeHtml(content).replace(/\n/g, '<br>');
+}
+// تنظيف أمان بعد اللصق من الوورد — منشيل السكربتات وأي محاولة تنفيذ كود،
+// وبنخلي الجداول/التنسيق العادي متلما هو
+function sanitizeEditableHtml(el){
+  el.querySelectorAll('script,style,link,meta,iframe,object,embed').forEach(n=>n.remove());
+  el.querySelectorAll('*').forEach(n=>{
+    [...n.attributes].forEach(attr=>{
+      const name = attr.name.toLowerCase();
+      if(name.startsWith('on') || name === 'srcdoc') n.removeAttribute(attr.name);
+      if((name==='href'||name==='src') && /^\s*javascript:/i.test(attr.value)) n.removeAttribute(attr.name);
+    });
+  });
+}
 function safeText(s){ return String(s??'').replace(/[^\w-]/g,''); }
 function printWithFilename(name){
   const prevTitle = document.title;
@@ -5110,10 +5131,21 @@ function bindEvents(){
     document.getElementById('cq_location').addEventListener('input', e=>_customQuoteDraft.location=e.target.value);
     document.getElementById('cq_date').addEventListener('input', e=>_customQuoteDraft.date=e.target.value);
     cq_content.addEventListener('input', e=>{
-      _customQuoteDraft.content = e.target.value;
-      const dir = detectTextDirection(e.target.value);
+      _customQuoteDraft.content = e.target.innerHTML;
+      const dir = detectTextDirection(e.target.textContent);
       _customQuoteDraft.direction = dir;
       cq_content.setAttribute('dir', dir);
+    });
+    cq_content.addEventListener('paste', ()=>{
+      // تنظيف بسيط بعد اللصق — منشيل أي سكربتات أو أحداث onXXX ممكن توصل مع اللصق من الوورد،
+      // مع الحفاظ الكامل على الجداول والتنسيق
+      setTimeout(()=>{
+        sanitizeEditableHtml(cq_content);
+        _customQuoteDraft.content = cq_content.innerHTML;
+        const dir = detectTextDirection(cq_content.textContent);
+        _customQuoteDraft.direction = dir;
+        cq_content.setAttribute('dir', dir);
+      }, 0);
     });
     const saveCustomQuoteBtn = document.getElementById('saveCustomQuoteBtn');
     if(saveCustomQuoteBtn) saveCustomQuoteBtn.addEventListener('click', async ()=>{
