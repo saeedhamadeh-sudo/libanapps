@@ -276,15 +276,15 @@ const KEYS = {customers:'customers', invoices:'invoices', receipts:'receipts', s
   suppliers:'suppliers', purchaseInvoices:'purchaseInvoices', paymentVouchers:'paymentVouchers',
   warehouseItems:'warehouseItems', stockIns:'stockIns', stockOuts:'stockOuts',
   customerAccounts:'customerAccounts',
-  budgetCategories:'budgetCategories', budgetEntries:'budgetEntries'};
+  budgetCategories:'budgetCategories', budgetEntries:'budgetEntries', cashMovements:'cashMovements'};
 
 async function loadAll(){
-  const [c,i,r,s,sup,pi,pv,wi,si,so,ca,bc,be] = await Promise.all([
+  const [c,i,r,s,sup,pi,pv,wi,si,so,ca,bc,be,cm] = await Promise.all([
     loadCustomers(),
     loadSyncedArray(KEYS.invoices, []),
     loadSyncedArray(KEYS.receipts, []),
     loadSettings({defaultExchangeRate:90000, invoiceStart:0, receiptStart:1000, companyName:'Trade Co', companyTag:'General Trading', companyPhone:'', logo:'', auth:{username:'admin', password:'0000'}, autoBackupOnClose:false,
-      expiryAlertDays:20, barcodeScanMethod:'camera'
+      expiryAlertDays:20, barcodeScanMethod:'camera', posCustomerId:null, posAutoOpenDrawer:true, cashBoxLBP:0, cashBoxUSD:0
     }),
     loadSyncedArray(KEYS.suppliers, []),
     loadSyncedArray(KEYS.purchaseInvoices, []),
@@ -294,13 +294,14 @@ async function loadAll(){
     loadSyncedArray(KEYS.stockOuts, []),
     loadSyncedArray(KEYS.customerAccounts, []),
     loadSyncedArray(KEYS.budgetCategories, []),
-    loadSyncedArray(KEYS.budgetEntries, [])
+    loadSyncedArray(KEYS.budgetEntries, []),
+    loadSyncedArray(KEYS.cashMovements, [])
   ]);
   return {customers:c, invoices:i, receipts:r, settings:s,
     suppliers:sup, purchaseInvoices:pi, paymentVouchers:pv,
     warehouseItems:wi, stockIns:si, stockOuts:so,
     customerAccounts:ca,
-    budgetCategories:bc, budgetEntries:be};
+    budgetCategories:bc, budgetEntries:be, cashMovements:cm};
 }
 async function loadCustomers(){
   if(supabaseClient){
@@ -334,7 +335,7 @@ async function save(key, value){
   return true;
 }
 
-let DB = {customers:[], invoices:[], receipts:[], settings:{}, suppliers:[], purchaseInvoices:[], paymentVouchers:[], warehouseItems:[], stockIns:[], stockOuts:[], customerAccounts:[], budgetCategories:[], budgetEntries:[]};
+let DB = {customers:[], invoices:[], receipts:[], settings:{}, suppliers:[], purchaseInvoices:[], paymentVouchers:[], warehouseItems:[], stockIns:[], stockOuts:[], customerAccounts:[], budgetCategories:[], budgetEntries:[], cashMovements:[]};
 let authenticated = false;
 async function signOutEverywhere(){
   try{ if(supabaseClient) await supabaseClient.auth.signOut(); }catch(e){}
@@ -498,10 +499,16 @@ function paymentVoucherToDb(v){
   return { id:v.id, supplier_id:v.supplierId||null, number:v.number||null, date:v.date||null, amount:Number(v.amount)||0, method:v.method||null, details:v.details||null, created_at:v.createdAt||Date.now(), deleted:!!v.deleted, deleted_at:v.deletedAt||null, admin_purged:!!v.adminPurged };
 }
 function warehouseItemFromDb(row){
-  return { id:row.id, name:row.name, brand:row.brand||'', type:row.type||'', barcode:row.barcode||'', productionDate:row.production_date||'', expiryDate:row.expiry_date||'', expiryAlertDays:row.expiry_alert_days||null, note:row.note||'', purchaseDate:row.purchase_date||'', createdAt:row.created_at||0 };
+  return { id:row.id, name:row.name, brand:row.brand||'', type:row.type||'', barcode:row.barcode||'', price:row.price!=null?Number(row.price):0, productionDate:row.production_date||'', expiryDate:row.expiry_date||'', expiryAlertDays:row.expiry_alert_days||null, note:row.note||'', purchaseDate:row.purchase_date||'', createdAt:row.created_at||0 };
 }
 function warehouseItemToDb(it){
-  return { id:it.id, name:it.name, brand:it.brand||null, type:it.type||null, barcode:it.barcode||null, production_date:it.productionDate||null, expiry_date:it.expiryDate||null, expiry_alert_days:it.expiryAlertDays||null, note:it.note||null, purchase_date:it.purchaseDate||null, created_at:it.createdAt||Date.now() };
+  return { id:it.id, name:it.name, brand:it.brand||null, type:it.type||null, barcode:it.barcode||null, price:Number(it.price)||0, production_date:it.productionDate||null, expiry_date:it.expiryDate||null, expiry_alert_days:it.expiryAlertDays||null, note:it.note||null, purchase_date:it.purchaseDate||null, created_at:it.createdAt||Date.now() };
+}
+function cashMovementFromDb(row){
+  return { id:row.id, type:row.type, currency:row.currency, amount:Number(row.amount)||0, note:row.note||'', refSaleId:row.ref_sale_id||null, date:row.date||'', createdAt:row.created_at||0, deleted:!!row.deleted };
+}
+function cashMovementToDb(m){
+  return { id:m.id, type:m.type, currency:m.currency, amount:Number(m.amount)||0, note:m.note||null, ref_sale_id:m.refSaleId||null, date:m.date||null, created_at:m.createdAt||Date.now(), deleted:!!m.deleted };
 }
 function stockInFromDb(row){
   return { id:row.id, itemId:row.item_id, qty:row.qty||0, date:row.date, number:row.number, note:row.note||'', createdAt:row.created_at||0, deleted: !!row.deleted };
@@ -546,6 +553,8 @@ function settingsToDb(s){
     invoice_start: s.invoiceStart||0, receipt_start: s.receiptStart||1000,
     auto_backup_on_close: !!s.autoBackupOnClose,
     expiry_alert_days: s.expiryAlertDays||20, barcode_scan_method: s.barcodeScanMethod||'camera',
+    pos_customer_id: s.posCustomerId||null, pos_auto_open_drawer: s.posAutoOpenDrawer!==false,
+    cash_box_lbp: s.cashBoxLBP||0, cash_box_usd: s.cashBoxUSD||0,
     trial_started_at: s.trialStartedAt||null, license_serial: s.licenseSerial||null,
     license_expires_at: s.licenseExpiresAt||null, license_label: s.licenseLabel||null
   };
@@ -563,6 +572,10 @@ function applySettingsFromDb(row, base){
     autoBackupOnClose: !!row.auto_backup_on_close,
     expiryAlertDays: row.expiry_alert_days!=null? row.expiry_alert_days : base.expiryAlertDays,
     barcodeScanMethod: row.barcode_scan_method!=null? row.barcode_scan_method : base.barcodeScanMethod,
+    posCustomerId: row.pos_customer_id!=null? row.pos_customer_id : base.posCustomerId,
+    posAutoOpenDrawer: row.pos_auto_open_drawer!=null? !!row.pos_auto_open_drawer : base.posAutoOpenDrawer,
+    cashBoxLBP: row.cash_box_lbp!=null? Number(row.cash_box_lbp) : base.cashBoxLBP,
+    cashBoxUSD: row.cash_box_usd!=null? Number(row.cash_box_usd) : base.cashBoxUSD,
     trialStartedAt: row.trial_started_at!=null? row.trial_started_at : base.trialStartedAt,
     licenseSerial: row.license_serial!=null? row.license_serial : base.licenseSerial,
     licenseExpiresAt: row.license_expires_at!=null? row.license_expires_at : base.licenseExpiresAt,
@@ -649,7 +662,8 @@ const SUPABASE_TABLES = {
   stockOuts: {table:'stock_outs', toDb:stockOutToDb, fromDb:stockOutFromDb, label:'أوامر السحب'},
   customerAccounts: {table:'customer_accounts', toDb:customerAccountToDb, fromDb:customerAccountFromDb, label:'حسابات دخول الزبائن'},
   budgetCategories: {table:'budget_categories', toDb:budgetCategoryToDb, fromDb:budgetCategoryFromDb, label:'حقول الميزانية'},
-  budgetEntries: {table:'budget_entries', toDb:budgetEntryToDb, fromDb:budgetEntryFromDb, label:'سندات الميزانية'}
+  budgetEntries: {table:'budget_entries', toDb:budgetEntryToDb, fromDb:budgetEntryFromDb, label:'سندات الميزانية'},
+  cashMovements: {table:'cash_movements', toDb:cashMovementToDb, fromDb:cashMovementFromDb, label:'حركات الصندوق'}
 };
 async function syncArrayToSupabase(localKey, arr){
   const cfg = SUPABASE_TABLES[localKey];
@@ -1201,6 +1215,7 @@ function currentRoute(){
 }
 
 const PERMISSION_MODULES = [
+  {key:'pos', label:'نقطة البيع (POS)'},
   {key:'customers', label:'الزبائن'},
   {key:'suppliers', label:'الموردون'},
   {key:'warehouse', label:'المستودع'},
@@ -1678,6 +1693,7 @@ function bindLoginEvents(){
 
 function routeRequiredPermission(routeKey){
   const map = {
+    pos:'pos',
     customers:'customers', customer:'customers', invoice:'customers', receipt:'customers', statement:'customers',
     suppliers:'suppliers', supplier:'suppliers', purchase:'suppliers', voucher:'suppliers', 'supplier-statement':'suppliers',
     warehouse:'warehouse', 'warehouse-print':'warehouse', 'warehouse-item':'warehouse', stockout:'warehouse', stockin:'warehouse',
@@ -1806,6 +1822,8 @@ function render(){
     else html += crumbs([['الرئيسية','#/'],['الموردون','#/suppliers'],[sup.name,`#/supplier/${sup.id}`],['كشف حساب',null]]) + supplierStatementPrintView(sup);
 
   /* ---------- Warehouse (المستودع) ---------- */
+  } else if(parts[0]==='pos'){
+    html += crumbs([['الرئيسية','#/'],['نقطة البيع (POS)',null]]) + posView();
   } else if(parts[0]==='warehouse'){
     html += crumbs([['الرئيسية','#/'],['المستودع',null]]) + warehouseHubView();
   } else if(parts[0]==='warehouse-print'){
@@ -1871,6 +1889,7 @@ function topbar(){
     </div>
     <div class="topbar-actions">
       <button class="btn btn-ghost btn-sm" data-nav="#/">🏠 الرئيسية</button>
+      ${hasPermission('pos')? `<button class="btn btn-primary btn-sm" data-nav="#/pos">🧾 نقطة البيع</button>` : ''}
       <button class="btn btn-ghost btn-sm" id="logoutBtn">🔒 خروج</button>
     </div>
   </div>`;
@@ -1886,6 +1905,12 @@ function emptyState(msg){
 }
 
 /* ---------- Dashboard ---------- */
+function todaySalesSummary(){
+  const today = todayISO();
+  const todaysInvoices = DB.invoices.filter(i=>i.date===today && !i.deleted && i.docType==='بيع نقطة بيع (POS)');
+  const totalUSD = todaysInvoices.reduce((s,i)=>s + (i.items||[]).reduce((s2,it)=>s2+(Number(it.total)||0),0), 0);
+  return { count: todaysInvoices.length, totalUSD };
+}
 function hubView(){
   const custOwed = DB.customers.reduce((s,c)=>{const b=customerBalance(c.id); return s + (b>0?b:0);},0);
   const supOwed = DB.suppliers.reduce((s,x)=>{const b=supplierBalance(x.id); return s + (b>0?b:0);},0);
@@ -1905,6 +1930,12 @@ function hubView(){
     </tbody></table></div>
   </div>` : '';
   const allCards = [
+    {perm:'pos', html:`<div class="hub-card" data-nav="#/pos">
+      <div class="hub-icon">🧾</div>
+      <div class="hub-title">نقطة البيع (POS)</div>
+      <div class="hub-sub">بيع سريع بالباركود</div>
+      <div class="hub-amt" style="color:var(--steel)">افتح شاشة البيع</div>
+    </div>`},
     {perm:'customers', html:`<div class="hub-card" data-nav="#/customers">
       <div class="hub-icon">👤</div>
       <div class="hub-title">الزبائن</div>
@@ -1949,8 +1980,35 @@ function hubView(){
       <div class="hub-sub">${trashTotalCount()} عنصر محذوف</div>
       <div class="hub-amt" style="color:var(--steel)">استرجاع أو حذف نهائي</div>
     </div>` : '';
+  const todaySales = hasPermission('pos') ? todaySalesSummary() : {count:0, totalUSD:0};
+  const cashBoxCard = hasPermission('pos') ? `<div class="card">
+    <h2><span class="dot"></span> 💵 الصندوق</h2>
+    <div style="background:var(--bg-2); border-radius:10px; padding:12px 16px; margin-bottom:12px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+      <div style="font-size:13px; color:var(--ink-soft);">مبيعات اليوم (POS)</div>
+      <div style="font-size:18px; font-weight:800;" class="num">${todaySales.count} عملية — $${todaySales.totalUSD.toFixed(2)}</div>
+    </div>
+    <div class="grid grid-2" style="gap:14px;">
+      <div style="background:var(--bg-2); border-radius:10px; padding:14px; text-align:center;">
+        <div style="font-size:12px; color:var(--ink-soft); margin-bottom:4px;">صندوق الليرة L.L.</div>
+        <div style="font-size:22px; font-weight:800;" class="num">${fmtMoney(DB.settings.cashBoxLBP||0)}</div>
+        <div class="row" style="margin-top:10px; justify-content:center; gap:8px;">
+          <button class="btn btn-sm" data-cashmove="deposit" data-currency="LBP">➕ إضافة</button>
+          <button class="btn btn-sm" data-cashmove="withdraw" data-currency="LBP">➖ سحب</button>
+        </div>
+      </div>
+      <div style="background:var(--bg-2); border-radius:10px; padding:14px; text-align:center;">
+        <div style="font-size:12px; color:var(--ink-soft); margin-bottom:4px;">صندوق الدولار $</div>
+        <div style="font-size:22px; font-weight:800;" class="num">${(DB.settings.cashBoxUSD||0).toFixed(2)}</div>
+        <div class="row" style="margin-top:10px; justify-content:center; gap:8px;">
+          <button class="btn btn-sm" data-cashmove="deposit" data-currency="USD">➕ إضافة</button>
+          <button class="btn btn-sm" data-cashmove="withdraw" data-currency="USD">➖ سحب</button>
+        </div>
+      </div>
+    </div>
+  </div>` : '';
   return `
   ${expiryCard}
+  ${cashBoxCard}
   <div class="hub-grid">
     ${visibleCards}
     ${settingsCard}
@@ -2097,6 +2155,264 @@ function supplierView(sup){
 /* ============================= WORKERS UI ============================= */
 
 /* ============================= WAREHOUSE UI ============================= */
+/* ============================= POS (نقطة البيع) ============================= */
+let _posCart = [];
+function posFindItemByBarcode(code){
+  code = String(code||'').trim();
+  if(!code) return null;
+  return DB.warehouseItems.find(it=>it.barcode && it.barcode===code) || null;
+}
+function posAddToCart(item){
+  if(!item) return;
+  const line = _posCart.find(l=>l.itemId===item.id);
+  if(line) line.qty += 1;
+  else _posCart.push({itemId:item.id, name:item.name, price:Number(item.price)||0, qty:1});
+}
+function posCartTotalUSD(){ return _posCart.reduce((s,l)=>s + l.price*l.qty, 0); }
+function posView(){
+  if(!(DB.settings.posCustomerId && DB.customers.find(c=>c.id===DB.settings.posCustomerId))){
+    return `<div class="card">
+      <div class="empty">
+        <div class="big">لازم تحدد زبون افتراضي لنقطة البيع أول</div>
+        <p style="color:var(--ink-soft); font-size:13px; margin-top:8px;">روح ${isPrivilegedUser(currentUser)?'<a data-nav="#/settings">الإعدادات ← نقطة البيع</a>':'حكي مع ADMIN ليحدد'} وحدد الزبون يلي رح تنسجل عليه كل مبيعات POS.</p>
+      </div>
+    </div>`;
+  }
+  const rate = DB.settings.defaultExchangeRate || 90000;
+  const totalUSD = posCartTotalUSD();
+  const rows = _posCart.map((l,idx)=>`
+    <tr>
+      <td><b>${escapeHtml(l.name)}</b></td>
+      <td class="num">$${l.price.toFixed(2)}</td>
+      <td style="white-space:nowrap;">
+        <button class="btn btn-sm" data-pos-dec="${idx}">−</button>
+        <b style="margin:0 8px;">${l.qty}</b>
+        <button class="btn btn-sm" data-pos-inc="${idx}">+</button>
+      </td>
+      <td class="num">$${(l.price*l.qty).toFixed(2)}</td>
+      <td><button class="btn btn-sm btn-danger" data-pos-remove="${idx}">🗑</button></td>
+    </tr>`).join('');
+  return `
+  <div class="card">
+    <h2><span class="dot"></span> 🧾 نقطة البيع</h2>
+    <div class="field">
+      <label>امسح الباركود أو اكتبه واضغط Enter</label>
+      <div style="display:flex; gap:8px;">
+        <input type="text" id="pos_scan_input" class="num" style="flex:1; font-size:18px; padding:12px;" placeholder="امسح المنتج هون..." autofocus>
+        <button type="button" class="btn" id="pos_camera_scan_btn">📷 كاميرا</button>
+      </div>
+    </div>
+    <div id="pos_scan_msg" style="min-height:18px; font-size:13px; color:var(--credit); margin-top:4px;"></div>
+  </div>
+  <div class="card">
+    <h2><span class="dot"></span> السلة</h2>
+    ${_posCart.length? `<div class="table-scroll"><table>
+      <thead><tr><th>الصنف</th><th>السعر</th><th>الكمية</th><th>الإجمالي</th><th></th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>` : `<div class="empty"><div class="big">السلة فاضية — امسح أول منتج</div></div>`}
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-top:16px; flex-wrap:wrap; gap:10px;">
+      <div>
+        <div style="font-size:13px; color:var(--ink-soft);">الإجمالي</div>
+        <div style="font-size:24px; font-weight:800;" class="num">$${totalUSD.toFixed(2)} <span style="font-size:14px; color:var(--ink-soft);">(${fmtMoney(totalUSD*rate)} ل.ل)</span></div>
+      </div>
+      <div class="row" style="gap:8px;">
+        <button class="btn" id="pos_clear_btn" ${_posCart.length?'':'disabled'}>🗑 تفريغ السلة</button>
+        <button class="btn btn-primary" id="pos_pay_usd_btn" ${_posCart.length?'':'disabled'}>💵 قبض دولار</button>
+        <button class="btn btn-primary" id="pos_pay_lbp_btn" ${_posCart.length?'':'disabled'}>💴 قبض ليرة</button>
+      </div>
+    </div>
+  </div>`;
+}
+function bindPosEvents(){
+  const input = document.getElementById('pos_scan_input');
+  const msg = document.getElementById('pos_scan_msg');
+  function handleCode(code){
+    const item = posFindItemByBarcode(code);
+    if(!item){ if(msg) msg.textContent = '⚠️ ما لقينا منتج بهيدا الباركود: '+code; if(msg) msg.style.color = 'var(--debit)'; return; }
+    posAddToCart(item);
+    if(msg){ msg.textContent = '✅ انضاف: '+item.name; msg.style.color = 'var(--credit)'; }
+    render();
+    setTimeout(()=>{ const i2 = document.getElementById('pos_scan_input'); if(i2) i2.focus(); }, 30);
+  }
+  if(input){
+    input.focus();
+    input.addEventListener('keydown', (e)=>{
+      if(e.key==='Enter'){
+        e.preventDefault();
+        const code = input.value.trim();
+        if(code) handleCode(code);
+        input.value = '';
+      }
+    });
+  }
+  const camBtn = document.getElementById('pos_camera_scan_btn');
+  if(camBtn) camBtn.addEventListener('click', ()=>{ openBarcodeScannerModal((code)=>handleCode(code)); });
+
+  document.querySelectorAll('[data-pos-inc]').forEach(b=>b.addEventListener('click', ()=>{
+    _posCart[Number(b.getAttribute('data-pos-inc'))].qty += 1; render();
+  }));
+  document.querySelectorAll('[data-pos-dec]').forEach(b=>b.addEventListener('click', ()=>{
+    const l = _posCart[Number(b.getAttribute('data-pos-dec'))];
+    l.qty -= 1; if(l.qty<=0) _posCart.splice(_posCart.indexOf(l),1);
+    render();
+  }));
+  document.querySelectorAll('[data-pos-remove]').forEach(b=>b.addEventListener('click', ()=>{
+    _posCart.splice(Number(b.getAttribute('data-pos-remove')),1); render();
+  }));
+  const clearBtn = document.getElementById('pos_clear_btn');
+  if(clearBtn) clearBtn.addEventListener('click', ()=>{ if(confirm('تفريغ السلة؟')){ _posCart=[]; render(); } });
+  const payUsdBtn = document.getElementById('pos_pay_usd_btn');
+  if(payUsdBtn) payUsdBtn.addEventListener('click', ()=>completePosSale('USD'));
+  const payLbpBtn = document.getElementById('pos_pay_lbp_btn');
+  if(payLbpBtn) payLbpBtn.addEventListener('click', ()=>completePosSale('LBP'));
+}
+async function completePosSale(currency){
+  if(!_posCart.length) return;
+  const rate = DB.settings.defaultExchangeRate || 90000;
+  const totalUSD = posCartTotalUSD();
+  const now = Date.now();
+  const date = todayISO();
+  // 1) فاتورة على الزبون الافتراضي لنقطة البيع
+  const invItems = _posCart.map(l=>({id:uid(), productId:l.itemId, desc:l.name, qty:l.qty, price:l.price, total:l.price*l.qty}));
+  const inv = {id:uid(), customerId:DB.settings.posCustomerId, number:nextInvoiceNumber(), date, docType:'بيع نقطة بيع (POS)', exchangeRate:rate, items:invItems, discount:0, createdAt:now};
+  DB.invoices.push(inv);
+  // 2) خصم من المستودع (سماح بالسالب متل باقي البرنامج)
+  _posCart.forEach(l=>{
+    DB.stockOuts.push({id:uid(), createdAt:now, itemId:l.itemId, qty:l.qty, date, number:nextStockOutNumber(), note:'بيع POS #'+inv.number});
+  });
+  // 3) إيصال قبض + تحديث الصندوق
+  const receipt = {id:uid(), createdAt:now, customerId:DB.settings.posCustomerId, number:nextReceiptNumber(), date,
+    amount: currency==='USD'? totalUSD : totalUSD*rate, method: currency==='USD'?'نقد $ (POS)':'نقد ل.ل (POS)', details:'بيع نقطة بيع #'+inv.number};
+  DB.receipts.push(receipt);
+  const movement = {id:uid(), createdAt:now, type:'sale', currency, amount: currency==='USD'?totalUSD:totalUSD*rate, note:'بيع POS #'+inv.number, refSaleId:inv.id, date};
+  DB.cashMovements.push(movement);
+  if(currency==='USD') DB.settings.cashBoxUSD = (DB.settings.cashBoxUSD||0) + totalUSD;
+  else DB.settings.cashBoxLBP = (DB.settings.cashBoxLBP||0) + totalUSD*rate;
+
+  await Promise.all([
+    save(KEYS.invoices, DB.invoices),
+    save(KEYS.stockOuts, DB.stockOuts),
+    save(KEYS.receipts, DB.receipts),
+    save(KEYS.cashMovements, DB.cashMovements),
+    save(KEYS.settings, DB.settings)
+  ]);
+
+  printPosReceipt(inv, currency, totalUSD, rate);
+  if(DB.settings.posAutoOpenDrawer!==false) openCashDrawerViaUSB();
+
+  _posCart = [];
+  toast('تم البيع بنجاح ✅');
+  go('#/pos'); render();
+}
+function printPosReceipt(inv, currency, totalUSD, rate){
+  const s = DB.settings;
+  const styleEl = document.createElement('style');
+  styleEl.id = 'pos-receipt-print-style';
+  styleEl.textContent = `
+    @page{ size: 80mm auto; margin: 2mm; }
+    @media print{
+      body *{ visibility:hidden; }
+      #pos-receipt-print, #pos-receipt-print *{ visibility:visible; }
+      #pos-receipt-print{ position:absolute; inset-inline-start:0; top:0; width:76mm; font-family:'Cairo',system-ui,sans-serif; }
+    }`;
+  document.head.appendChild(styleEl);
+  const wrap = document.createElement('div');
+  wrap.id = 'pos-receipt-print';
+  wrap.style.cssText = 'display:none;';
+  wrap.innerHTML = `
+    <div style="text-align:center; font-size:13px;">
+      ${s.logo? `<img src="${s.logo}" style="height:40px; width:auto; margin-bottom:4px;">` : ''}
+      <div style="font-weight:800; font-size:14px;">${escapeHtml(s.companyName||'')}</div>
+      <div style="font-size:11px;">${escapeHtml(s.companyPhone||'')}</div>
+      <div style="border-top:1px dashed #000; margin:6px 0;"></div>
+      <div style="text-align:start; font-size:11px;">فاتورة #${escapeHtml(inv.number)} — ${fmtDate(inv.date)}</div>
+      <div style="border-top:1px dashed #000; margin:6px 0;"></div>
+    </div>
+    <table style="width:100%; font-size:11.5px; border-collapse:collapse;">
+      <thead><tr><th style="text-align:start;">الصنف</th><th>ك</th><th>سعر</th><th>إجمالي</th></tr></thead>
+      <tbody>
+        ${inv.items.map(it=>`<tr><td style="text-align:start;">${escapeHtml(it.desc)}</td><td class="num">${it.qty}</td><td class="num">${Number(it.price).toFixed(2)}</td><td class="num">${Number(it.total).toFixed(2)}</td></tr>`).join('')}
+      </tbody>
+    </table>
+    <div style="border-top:1px dashed #000; margin:6px 0;"></div>
+    <div style="display:flex; justify-content:space-between; font-weight:800; font-size:13px;">
+      <span>الإجمالي</span><span>$${totalUSD.toFixed(2)} / ${fmtMoney(totalUSD*rate)} ل.ل</span>
+    </div>
+    <div style="text-align:center; font-size:11px; margin-top:8px;">طريقة الدفع: ${currency==='USD'?'نقد دولار':'نقد ل.ل'}</div>
+    <div style="text-align:center; font-size:11px; margin-top:10px;">شكراً لزيارتكم 🙏</div>`;
+  document.body.appendChild(wrap);
+  const prevDisplay = wrap.style.display;
+  const showForPrint = ()=>{ wrap.style.display='block'; };
+  const cleanup = ()=>{
+    wrap.remove();
+    const st = document.getElementById('pos-receipt-print-style'); if(st) st.remove();
+  };
+  window.addEventListener('afterprint', cleanup, {once:true});
+  showForPrint();
+  setTimeout(()=>{ window.print(); setTimeout(cleanup, 1500); }, 60);
+}
+/* ---------- فتح درج الصندوق تلقائياً عبر الطابعة (WebUSB) ---------- */
+async function pickPosPrinterUSB(){
+  if(!('usb' in navigator)){ alert('متصفحك ما بيدعم الاتصال المباشر بالطابعة (WebUSB) — استخدم Chrome على كمبيوتر.'); return; }
+  try{
+    const device = await navigator.usb.requestDevice({ filters: [] });
+    DB.settings.posPrinterVendorId = device.vendorId;
+    DB.settings.posPrinterProductId = device.productId;
+    DB.settings.posPrinterName = device.productName || (device.vendorId+':'+device.productId);
+    await save(KEYS.settings, DB.settings);
+    toast('تم ربط الطابعة: '+DB.settings.posPrinterName);
+    render();
+  }catch(e){ console.error('USB pick failed', e && e.message); }
+}
+async function openCashDrawerViaUSB(){
+  try{
+    if(!('usb' in navigator) || !DB.settings.posPrinterVendorId) return;
+    const devices = await navigator.usb.getDevices();
+    const dev = devices.find(d=>d.vendorId===DB.settings.posPrinterVendorId && d.productId===DB.settings.posPrinterProductId);
+    if(!dev) return; // المتصفح بينسى صلاحية الوصول أحياناً — لازم تربط الطابعة من الإعدادات من جديد
+    await dev.open();
+    if(dev.configuration===null) await dev.selectConfiguration(1);
+    const iface = dev.configuration.interfaces[0];
+    await dev.claimInterface(iface.interfaceNumber);
+    const ep = iface.alternate.endpoints.find(e=>e.direction==='out');
+    if(ep){
+      // أمر ESC/POS القياسي لفتح درج الصندوق المتوصل بالطابعة (RJ11)
+      const kick = new Uint8Array([0x1B, 0x70, 0x00, 0x19, 0xFA]);
+      await dev.transferOut(ep.endpointNumber, kick);
+    }
+    await dev.close();
+  }catch(e){ console.error('cash drawer kick failed', e && e.message); }
+}
+function openCashMovementModal(type, currency){
+  const wrap = document.createElement('div');
+  wrap.className='modal-bg';
+  wrap.innerHTML = `<div class="modal">
+    <h3>${type==='deposit'?'➕ إضافة للصندوق':'➖ سحب من الصندوق'} — ${currency==='USD'?'دولار $':'ليرة ل.ل'}</h3>
+    <div class="field"><label>المبلغ *</label><input type="number" step="0.01" id="cm_amount" class="num" value=""></div>
+    <div class="field"><label>ملاحظة</label><input type="text" id="cm_note" value=""></div>
+    <div class="row">
+      <button class="btn" id="cm_cancel">إلغاء</button>
+      <button class="btn btn-primary" id="cm_save">حفظ</button>
+    </div>
+  </div>`;
+  document.body.appendChild(wrap);
+  wrap.querySelector('#cm_cancel').addEventListener('click', ()=>wrap.remove());
+  wrap.addEventListener('click', (e)=>{ if(e.target===wrap) wrap.remove(); });
+  wrap.querySelector('#cm_save').addEventListener('click', async ()=>{
+    const amount = Number(wrap.querySelector('#cm_amount').value);
+    if(!amount || amount<=0){ toast('لازم تحط مبلغ أكبر من صفر'); return; }
+    const note = wrap.querySelector('#cm_note').value.trim();
+    const now = Date.now();
+    const signedAmount = type==='withdraw'? -amount : amount;
+    if(currency==='USD') DB.settings.cashBoxUSD = (DB.settings.cashBoxUSD||0) + signedAmount;
+    else DB.settings.cashBoxLBP = (DB.settings.cashBoxLBP||0) + signedAmount;
+    DB.cashMovements.push({id:uid(), createdAt:now, type, currency, amount, note, refSaleId:null, date:todayISO()});
+    await Promise.all([save(KEYS.settings, DB.settings), save(KEYS.cashMovements, DB.cashMovements)]);
+    wrap.remove();
+    toast('تم الحفظ');
+    render();
+  });
+}
 function warehouseHubView(){
   const items = DB.warehouseItems.slice().sort((a,b)=>a.name.localeCompare(b.name,'ar'));
   return `
@@ -2813,6 +3129,31 @@ function settingsView(){
   </div>
 
   <div class="card">
+    <h2><span class="dot"></span> 🧾 إعدادات نقطة البيع (POS)</h2>
+    <div class="field"><label>الزبون الافتراضي لمبيعات POS *</label>
+      <select id="s_pos_customer">
+        <option value="">— اختار زبون —</option>
+        ${DB.customers.map(c=>`<option value="${c.id}" ${s.posCustomerId===c.id?'selected':''}>${escapeHtml(c.name)}</option>`).join('')}
+      </select>
+    </div>
+    <div class="field">
+      <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+        <input type="checkbox" id="s_pos_autodrawer" ${s.posAutoOpenDrawer!==false?'checked':''}>
+        افتح درج الصندوق تلقائياً لما نقبض
+      </label>
+    </div>
+    <div class="field">
+      <label>الطابعة الحرارية (٨٠ ملم) — لفتح الدرج تلقائياً عبرها</label>
+      <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+        <span style="font-size:13px; color:var(--ink-soft);">${s.posPrinterName? '✅ متوصلة: '+escapeHtml(s.posPrinterName) : 'ما في طابعة مربوطة بعد'}</span>
+        <button type="button" class="btn btn-sm" id="s_pos_pick_printer">🔌 اختار/غيّر الطابعة</button>
+      </div>
+      <p style="font-size:11.5px; color:var(--ink-soft); margin-top:6px;">لازم Chrome على كمبيوتر متوصل فيه الطابعة عبر USB. الطباعة نفسها (الفاتورة الحرارية) بتصير عادي من نافذة الطباعة العادية، وهاي الخطوة بس لفتح درج القبض تلقائياً.</p>
+    </div>
+    <button class="btn btn-primary" id="saveposSettingsBtn">💾 حفظ إعدادات POS</button>
+  </div>
+
+  <div class="card">
     <h2><span class="dot"></span> شعار المؤسسة</h2>
     <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap;">
       <div id="logoPreviewWrap">${s.logo? `<img src="${s.logo}" style="height:70px; width:auto; border:1px solid var(--line); border-radius:8px; padding:6px; background:#fff;">` : `<div style="color:var(--ink-soft); font-size:13px;">ما في شعار مضاف بعد</div>`}</div>
@@ -3043,6 +3384,14 @@ function bindEvents(){
     el.addEventListener('click', (e)=>{ e.stopPropagation(); go(el.getAttribute('data-nav')); });
   });
 
+  document.querySelectorAll('[data-cashmove]').forEach(btn=>{
+    btn.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      openCashMovementModal(btn.getAttribute('data-cashmove'), btn.getAttribute('data-currency'));
+    });
+  });
+  if(currentRoute()[0]==='pos') bindPosEvents();
+
   const logoutBtn = document.getElementById('logoutBtn');
   if(logoutBtn) logoutBtn.addEventListener('click', ()=> openLogoutModal());
 
@@ -3177,6 +3526,19 @@ function bindEvents(){
     toast(ok? 'تم حفظ إعدادات المستودع':'صار خطأ بالحفظ');
     _expiryAlertShownThisSession = false;
   });
+
+  const savePosSettingsBtn = document.getElementById('saveposSettingsBtn');
+  if(savePosSettingsBtn) savePosSettingsBtn.addEventListener('click', async ()=>{
+    const custId = document.getElementById('s_pos_customer').value || null;
+    if(!custId){ toast('لازم تختار زبون افتراضي لنقطة البيع'); return; }
+    DB.settings.posCustomerId = custId;
+    DB.settings.posAutoOpenDrawer = document.getElementById('s_pos_autodrawer').checked;
+    const ok = await save(KEYS.settings, DB.settings);
+    toast(ok? 'تم حفظ إعدادات POS':'صار خطأ بالحفظ');
+    render();
+  });
+  const pickPrinterBtn = document.getElementById('s_pos_pick_printer');
+  if(pickPrinterBtn) pickPrinterBtn.addEventListener('click', pickPosPrinterUSB);
 
   const licenseActivateBtn = document.getElementById('s_licenseActivateBtn');
   if(licenseActivateBtn) licenseActivateBtn.addEventListener('click', async ()=>{
@@ -3930,6 +4292,7 @@ function openWarehouseItemModal(item){
         <button type="button" class="btn btn-sm" id="wm_scan_btn">📷 SCAN</button>
       </div>
     </div>
+    <div class="field"><label>سعر البيع (لشاشة POS) $</label><input type="number" step="0.01" id="wm_price" class="num" value="${item&&item.price?item.price:0}"></div>
     ${isNew? `
     <div class="grid grid-2">
       <div class="field"><label>الكمية *</label><input type="number" id="wm_qty" class="num" value="0"></div>
@@ -3958,6 +4321,7 @@ function openWarehouseItemModal(item){
     const brand = wrap.querySelector('#wm_brand').value.trim();
     const type = wrap.querySelector('#wm_type').value.trim();
     const barcode = wrap.querySelector('#wm_barcode').value.trim();
+    const price = Number(wrap.querySelector('#wm_price').value)||0;
     const productionDate = wrap.querySelector('#wm_prod_date').value || '';
     const expiryDate = wrap.querySelector('#wm_exp_date').value || '';
     const expAlertRaw = wrap.querySelector('#wm_exp_alert').value.trim();
@@ -3967,7 +4331,7 @@ function openWarehouseItemModal(item){
       const qty = Number(wrap.querySelector('#wm_qty').value)||0;
       const date = wrap.querySelector('#wm_date').value || todayISO();
       if(qty<=0){ toast('لازم تحط كمية أكبر من صفر'); return; }
-      const it = {id:uid(), createdAt:Date.now(), name, brand, type, barcode, productionDate, expiryDate, expiryAlertDays, note, purchaseDate:date};
+      const it = {id:uid(), createdAt:Date.now(), name, brand, type, barcode, price, productionDate, expiryDate, expiryAlertDays, note, purchaseDate:date};
       DB.warehouseItems.push(it);
       const stockIn = {id:uid(), createdAt:Date.now(), itemId:it.id, qty, date, number:nextStockInNumber(), note:'رصيد ابتدائي'};
       DB.stockIns.push(stockIn);
@@ -3976,7 +4340,7 @@ function openWarehouseItemModal(item){
       toast(ok.every(Boolean)? 'تمت الإضافة إلى الستوك' : 'صار خطأ بالحفظ');
       go(`#/warehouse-item/${it.id}`);
     } else {
-      item.name = name; item.brand = brand; item.type = type; item.barcode = barcode;
+      item.name = name; item.brand = brand; item.type = type; item.barcode = barcode; item.price = price;
       item.productionDate = productionDate; item.expiryDate = expiryDate; item.expiryAlertDays = expiryAlertDays; item.note = note;
       const ok = await save(KEYS.warehouseItems, DB.warehouseItems);
       wrap.remove();
