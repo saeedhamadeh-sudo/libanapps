@@ -231,14 +231,18 @@
   @media(max-width:900px){.hub-grid{grid-template-columns:repeat(2,1fr);}}
   @media(max-width:640px){.hub-grid{grid-template-columns:1fr;}}
   .hub-card{background:var(--white); border:1px solid var(--line); border-radius:14px; padding:22px 18px; text-align:center; box-shadow:var(--shadow); cursor:pointer; transition:transform .1s ease, box-shadow .15s ease;}
-  .pos-tile-grid{display:grid; grid-template-columns:repeat(auto-fill, minmax(110px, 1fr)); gap:10px; margin-top:12px;}
-  .pos-tile{background:var(--white); border:1.5px solid var(--line); border-radius:12px; padding:14px 8px; text-align:center; cursor:pointer;
-    display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:78px; -webkit-tap-highlight-color:transparent; user-select:none;}
+  .pos-tile-grid{display:grid; grid-template-columns:repeat(auto-fill, minmax(140px, 1fr)); gap:12px; margin-top:12px;}
+  .pos-tile{background:var(--white); border:1.5px solid var(--line); border-radius:14px; padding:10px; text-align:center; cursor:pointer;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:130px; -webkit-tap-highlight-color:transparent; user-select:none;}
   .pos-tile:active{transform:scale(.96); background:var(--bg-2);}
-  .pos-tile-name{font-size:13px; font-weight:700; line-height:1.3; word-break:break-word;}
-  .pos-tile-price{font-size:12.5px; color:var(--credit); font-weight:800; margin-top:4px;}
+  .pos-tile-img{width:64px; height:64px; object-fit:cover; border-radius:10px; margin-bottom:6px;}
+  .pos-tile-img-placeholder{display:flex; align-items:center; justify-content:center; font-size:26px; background:var(--bg-2);}
+  .pos-tile-name{font-size:13.5px; font-weight:700; line-height:1.3; word-break:break-word;}
+  .pos-tile-price{font-size:13px; color:var(--credit); font-weight:800; margin-top:4px;}
   @media(max-width:520px){
-    .pos-tile-grid{grid-template-columns:repeat(auto-fill, minmax(90px, 1fr));}
+    .pos-tile-grid{grid-template-columns:repeat(auto-fill, minmax(115px, 1fr));}
+    .pos-tile{min-height:110px;}
+    .pos-tile-img{width:50px; height:50px;}
     #pos_scan_input{font-size:16px !important; padding:10px !important;}
   }
   .hub-card:hover{transform:translateY(-2px); box-shadow:0 6px 20px rgba(30,42,56,.14);}
@@ -510,10 +514,10 @@ function paymentVoucherToDb(v){
   return { id:v.id, supplier_id:v.supplierId||null, number:v.number||null, date:v.date||null, amount:Number(v.amount)||0, method:v.method||null, details:v.details||null, created_at:v.createdAt||Date.now(), deleted:!!v.deleted, deleted_at:v.deletedAt||null, admin_purged:!!v.adminPurged };
 }
 function warehouseItemFromDb(row){
-  return { id:row.id, name:row.name, brand:row.brand||'', type:row.type||'', barcode:row.barcode||'', price:row.price!=null?Number(row.price):0, category:row.category||'', productionDate:row.production_date||'', expiryDate:row.expiry_date||'', expiryAlertDays:row.expiry_alert_days||null, note:row.note||'', purchaseDate:row.purchase_date||'', createdAt:row.created_at||0 };
+  return { id:row.id, name:row.name, brand:row.brand||'', type:row.type||'', barcode:row.barcode||'', price:row.price!=null?Number(row.price):0, category:row.category||'', image:row.image||null, productionDate:row.production_date||'', expiryDate:row.expiry_date||'', expiryAlertDays:row.expiry_alert_days||null, note:row.note||'', purchaseDate:row.purchase_date||'', createdAt:row.created_at||0 };
 }
 function warehouseItemToDb(it){
-  return { id:it.id, name:it.name, brand:it.brand||null, type:it.type||null, barcode:it.barcode||null, price:Number(it.price)||0, category:it.category||null, production_date:it.productionDate||null, expiry_date:it.expiryDate||null, expiry_alert_days:it.expiryAlertDays||null, note:it.note||null, purchase_date:it.purchaseDate||null, created_at:it.createdAt||Date.now() };
+  return { id:it.id, name:it.name, brand:it.brand||null, type:it.type||null, barcode:it.barcode||null, price:Number(it.price)||0, category:it.category||null, image:it.image||null, production_date:it.productionDate||null, expiry_date:it.expiryDate||null, expiry_alert_days:it.expiryAlertDays||null, note:it.note||null, purchase_date:it.purchaseDate||null, created_at:it.createdAt||Date.now() };
 }
 function cashMovementFromDb(row){
   return { id:row.id, type:row.type, currency:row.currency, amount:Number(row.amount)||0, note:row.note||'', refSaleId:row.ref_sale_id||null, date:row.date||'', createdAt:row.created_at||0, deleted:!!row.deleted };
@@ -572,6 +576,9 @@ function settingsToDb(s){
     expiry_alert_days: s.expiryAlertDays||20, barcode_scan_method: s.barcodeScanMethod||'camera',
     pos_auto_open_drawer: s.posAutoOpenDrawer!==false,
     cash_box_lbp: s.cashBoxLBP||0, cash_box_usd: s.cashBoxUSD||0,
+    category_images: s.categoryImages||{},
+    second_currency_enabled: !!s.secondCurrencyEnabled, second_currency_code: s.secondCurrencyCode||null,
+    second_currency_rate: s.secondCurrencyRate||null, second_currency_last_sync: s.secondCurrencyLastSync||null,
     trial_started_at: s.trialStartedAt||null, license_serial: s.licenseSerial||null,
     license_expires_at: s.licenseExpiresAt||null, license_label: s.licenseLabel||null
   };
@@ -592,6 +599,11 @@ function applySettingsFromDb(row, base){
     posAutoOpenDrawer: row.pos_auto_open_drawer!=null? !!row.pos_auto_open_drawer : base.posAutoOpenDrawer,
     cashBoxLBP: row.cash_box_lbp!=null? Number(row.cash_box_lbp) : base.cashBoxLBP,
     cashBoxUSD: row.cash_box_usd!=null? Number(row.cash_box_usd) : base.cashBoxUSD,
+    categoryImages: row.category_images!=null? row.category_images : base.categoryImages,
+    secondCurrencyEnabled: row.second_currency_enabled!=null? !!row.second_currency_enabled : base.secondCurrencyEnabled,
+    secondCurrencyCode: row.second_currency_code!=null? row.second_currency_code : base.secondCurrencyCode,
+    secondCurrencyRate: row.second_currency_rate!=null? Number(row.second_currency_rate) : base.secondCurrencyRate,
+    secondCurrencyLastSync: row.second_currency_last_sync!=null? row.second_currency_last_sync : base.secondCurrencyLastSync,
     trialStartedAt: row.trial_started_at!=null? row.trial_started_at : base.trialStartedAt,
     licenseSerial: row.license_serial!=null? row.license_serial : base.licenseSerial,
     licenseExpiresAt: row.license_expires_at!=null? row.license_expires_at : base.licenseExpiresAt,
@@ -1184,6 +1196,14 @@ function computePeriodRange(type, a, b){
   if(type==='day'){
     const val = a || today;
     return {from:val, to:val};
+  }
+  if(type==='week'){
+    const base = a? new Date(a) : new Date(today);
+    const dow = (base.getDay()+6)%7; // 0=Monday
+    const monday = new Date(base); monday.setDate(base.getDate()-dow);
+    const sunday = new Date(monday); sunday.setDate(monday.getDate()+6);
+    const iso = d=>d.toISOString().slice(0,10);
+    return {from:iso(monday), to:iso(sunday)};
   }
   if(type==='month'){
     const val = a || today.slice(0,7);
@@ -1847,7 +1867,7 @@ function render(){
     html += crumbs([['الرئيسية','#/'],['نقطة البيع (POS)',null]]) + posView();
   } else if(parts[0]==='journal'){
     const qs = new URLSearchParams(location.hash.split('?')[1]||'');
-    html += crumbs([['الرئيسية','#/'],['اليوميات',null]]) + journalView(qs.get('date')||todayISO());
+    html += crumbs([['الرئيسية','#/'],['اليوميات',null]]) + journalView(qs);
   } else if(parts[0]==='reports'){
     const qs = new URLSearchParams(location.hash.split('?')[1]||'');
     html += crumbs([['الرئيسية','#/'],['التقارير',null]]) + reportsView(qs);
@@ -2260,7 +2280,12 @@ function posView(){
     </button>`;
   }).join('');
   const categories = posCategories();
-  const catItems = _posActiveCategory ? DB.warehouseItems.filter(it=>it.category===_posActiveCategory) : [];
+  const catImages = DB.settings.categoryImages || {};
+  const noCatCount = DB.warehouseItems.filter(it=>!it.category).length;
+  let tileItems;
+  if(_posActiveCategory===null) tileItems = DB.warehouseItems;
+  else if(_posActiveCategory==='__none__') tileItems = DB.warehouseItems.filter(it=>!it.category);
+  else tileItems = DB.warehouseItems.filter(it=>it.category===_posActiveCategory);
   return `
   <div class="card" style="padding:10px 14px;">
     <div style="display:flex; gap:8px; overflow-x:auto; padding-bottom:4px;">
@@ -2283,17 +2308,23 @@ function posView(){
       </div>
     </div>
     <div id="pos_scan_msg" style="min-height:18px; font-size:13px; color:var(--credit); margin-top:2px;"></div>
-    ${categories.length? `
     <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">
-      <button class="btn btn-sm${!_posActiveCategory?' btn-primary':''}" data-pos-category="">كل الأقسام</button>
-      ${categories.map(c=>`<button class="btn btn-sm${_posActiveCategory===c?' btn-primary':''}" data-pos-category="${escapeHtml(c)}">${escapeHtml(c)}</button>`).join('')}
-    </div>` : ''}
-    ${_posActiveCategory? `<div class="pos-tile-grid">
-      ${catItems.length? catItems.map(it=>`<button class="pos-tile" data-pos-tile="${it.id}">
+      <button class="btn btn-sm${_posActiveCategory===null?' btn-primary':''}" data-pos-category="">🗂 كل المنتجات</button>
+      ${categories.map(c=>`<span style="display:inline-flex; align-items:center; gap:2px;">
+        <button class="btn btn-sm${_posActiveCategory===c?' btn-primary':''}" data-pos-category="${escapeHtml(c)}" style="display:flex; align-items:center; gap:6px;">
+          ${catImages[c]? `<img src="${catImages[c]}" style="height:20px; width:20px; object-fit:cover; border-radius:5px;">` : ''}${escapeHtml(c)}
+        </button>
+        ${isPrivilegedUser(currentUser)? `<button class="btn btn-sm" data-pos-cat-image="${escapeHtml(c)}" title="صورة القسم" style="padding:4px 6px;">🖼</button>` : ''}
+      </span>`).join('')}
+      ${noCatCount? `<button class="btn btn-sm${_posActiveCategory==='__none__'?' btn-primary':''}" data-pos-category="__none__">بدون قسم (${noCatCount})</button>` : ''}
+    </div>
+    <div class="pos-tile-grid">
+      ${tileItems.length? tileItems.map(it=>`<button class="pos-tile" data-pos-tile="${it.id}">
+        ${it.image? `<img src="${it.image}" class="pos-tile-img">` : `<div class="pos-tile-img pos-tile-img-placeholder">📦</div>`}
         <div class="pos-tile-name">${escapeHtml(it.name)}</div>
         <div class="pos-tile-price">$${(Number(it.price)||0).toFixed(2)}</div>
-      </button>`).join('') : `<div class="empty" style="grid-column:1/-1;"><div class="big">ما في أصناف بهالقسم</div></div>`}
-    </div>` : ''}
+      </button>`).join('') : `<div class="empty" style="grid-column:1/-1;"><div class="big">ما في منتجات — ضيف منتج من المستودع أول</div></div>`}
+    </div>
   </div>
   <div class="card">
     <h2><span class="dot"></span> السلة</h2>
@@ -2360,6 +2391,10 @@ function bindPosEvents(){
     _posActiveCategory = b.getAttribute('data-pos-category') || null;
     render();
   }));
+  document.querySelectorAll('[data-pos-cat-image]').forEach(b=>b.addEventListener('click', (e)=>{
+    e.stopPropagation();
+    openCategoryImageModal(b.getAttribute('data-pos-cat-image'));
+  }));
   document.querySelectorAll('[data-pos-inc]').forEach(b=>b.addEventListener('click', ()=>{
     ticket.cart[Number(b.getAttribute('data-pos-inc'))].qty += 1; render();
   }));
@@ -2379,9 +2414,9 @@ function bindPosEvents(){
   const clearBtn = document.getElementById('pos_clear_btn');
   if(clearBtn) clearBtn.addEventListener('click', ()=>{ if(confirm('تفريغ السلة؟')){ ticket.cart=[]; render(); } });
   const payUsdBtn = document.getElementById('pos_pay_usd_btn');
-  if(payUsdBtn) payUsdBtn.addEventListener('click', ()=>completePosSale('USD'));
+  if(payUsdBtn) payUsdBtn.addEventListener('click', ()=>openPosPaymentModal('USD'));
   const payLbpBtn = document.getElementById('pos_pay_lbp_btn');
-  if(payLbpBtn) payLbpBtn.addEventListener('click', ()=>completePosSale('LBP'));
+  if(payLbpBtn) payLbpBtn.addEventListener('click', ()=>openPosPaymentModal('LBP'));
 
   document.querySelectorAll('[data-pos-tab]').forEach(b=>b.addEventListener('click', (e)=>{
     if(e.target.closest('[data-pos-close-tab]')) return;
@@ -2402,6 +2437,47 @@ function bindPosEvents(){
   if(pickCustBtn) pickCustBtn.addEventListener('click', ()=>openPosCustomerPickerModal(ticket));
   const returnBtn = document.getElementById('pos_return_btn');
   if(returnBtn) returnBtn.addEventListener('click', ()=>openPosReturnModal());
+}
+function openCategoryImageModal(category){
+  const current = (DB.settings.categoryImages||{})[category];
+  const wrap = document.createElement('div');
+  wrap.className='modal-bg';
+  wrap.innerHTML = `<div class="modal">
+    <h3>🖼 صورة قسم "${escapeHtml(category)}"</h3>
+    ${current? `<img src="${current}" style="height:70px; width:70px; object-fit:cover; border-radius:10px; margin-bottom:10px;">` : ''}
+    <div class="field"><input type="file" accept="image/*" id="ci_file"></div>
+    <div class="row">
+      <button class="btn" id="ci_cancel">إلغاء</button>
+      ${current? `<button class="btn btn-danger" id="ci_remove">حذف الصورة</button>` : ''}
+      <button class="btn btn-primary" id="ci_save">حفظ</button>
+    </div>
+  </div>`;
+  document.body.appendChild(wrap);
+  wrap.querySelector('#ci_cancel').addEventListener('click', ()=>wrap.remove());
+  wrap.addEventListener('click', (e)=>{ if(e.target===wrap) wrap.remove(); });
+  const removeBtn = wrap.querySelector('#ci_remove');
+  if(removeBtn) removeBtn.addEventListener('click', async ()=>{
+    DB.settings.categoryImages = DB.settings.categoryImages || {};
+    delete DB.settings.categoryImages[category];
+    await save(KEYS.settings, DB.settings);
+    wrap.remove(); render();
+  });
+  wrap.querySelector('#ci_save').addEventListener('click', async ()=>{
+    const file = wrap.querySelector('#ci_file').files[0];
+    if(!file){ toast('اختار صورة'); return; }
+    if(file.size > 400*1024){ toast('الصورة كبيرة — فضّل أصغر من 400KB'); return; }
+    const dataUrl = await new Promise((resolve)=>{
+      const reader = new FileReader();
+      reader.onload = ()=>resolve(reader.result);
+      reader.readAsDataURL(file);
+    });
+    DB.settings.categoryImages = DB.settings.categoryImages || {};
+    DB.settings.categoryImages[category] = dataUrl;
+    await save(KEYS.settings, DB.settings);
+    wrap.remove();
+    toast('تم حفظ صورة القسم');
+    render();
+  });
 }
 function openPosCustomerPickerModal(ticket){
   const wrap = document.createElement('div');
@@ -2510,11 +2586,52 @@ function openPosReturnModal(){
     render();
   });
 }
-async function completePosSale(currency){
+function openPosPaymentModal(currency){
   const ticket = posActiveTicket();
   if(!ticket.cart.length) return;
   const rate = DB.settings.defaultExchangeRate || 90000;
   const totalUSD = posTotalUSD(ticket);
+  const due = currency==='USD'? totalUSD : totalUSD*rate;
+  const wrap = document.createElement('div');
+  wrap.className='modal-bg';
+  wrap.innerHTML = `<div class="modal">
+    <h3>${currency==='USD'?'💵 قبض دولار':'💴 قبض ليرة'}</h3>
+    <div style="font-size:14px; margin-bottom:10px;">المطلوب: <b class="num">${currency==='USD'?'$'+due.toFixed(2):fmtMoney(due)+' ل.ل'}</b></div>
+    <div class="field"><label>المبلغ المقبوض من الزبون *</label>
+      <input type="number" step="${currency==='USD'?'0.01':'1'}" id="pp_received" class="num" value="${due.toFixed(currency==='USD'?2:0)}" style="font-size:18px; padding:10px;">
+    </div>
+    <div style="font-size:15px; margin-top:8px;">الباقي للزبون: <b class="num" id="pp_change" style="color:var(--credit);">0</b></div>
+    <div class="row" style="margin-top:14px;">
+      <button class="btn" id="pp_cancel">إلغاء</button>
+      <button class="btn btn-primary" id="pp_confirm">✅ تأكيد القبض</button>
+    </div>
+  </div>`;
+  document.body.appendChild(wrap);
+  const input = wrap.querySelector('#pp_received');
+  const changeEl = wrap.querySelector('#pp_change');
+  function updateChange(){
+    const received = Number(input.value)||0;
+    const change = received - due;
+    changeEl.textContent = (currency==='USD'? '$'+change.toFixed(2) : fmtMoney(change)+' ل.ل');
+    changeEl.style.color = change<0? 'var(--debit)' : 'var(--credit)';
+  }
+  input.addEventListener('input', updateChange);
+  updateChange();
+  wrap.querySelector('#pp_cancel').addEventListener('click', ()=>wrap.remove());
+  wrap.addEventListener('click', (e)=>{ if(e.target===wrap) wrap.remove(); });
+  wrap.querySelector('#pp_confirm').addEventListener('click', ()=>{
+    const received = Number(input.value)||0;
+    wrap.remove();
+    completePosSale(currency, received, due);
+  });
+}
+async function completePosSale(currency, received, due){
+  const ticket = posActiveTicket();
+  if(!ticket.cart.length) return;
+  const rate = DB.settings.defaultExchangeRate || 90000;
+  const totalUSD = posTotalUSD(ticket);
+  if(received==null){ due = currency==='USD'? totalUSD : totalUSD*rate; received = due; }
+  const changeDue = received - due;
   const now = Date.now();
   const date = todayISO();
   let customerId = ticket.customerId;
@@ -2550,14 +2667,14 @@ async function completePosSale(currency){
     save(KEYS.settings, DB.settings)
   ]);
 
-  printPosReceipt(inv, currency, totalUSD, rate, ticket.customerLabel);
+  printPosReceipt(inv, currency, totalUSD, rate, ticket.customerLabel, received, changeDue);
   if(DB.settings.posAutoOpenDrawer!==false) openCashDrawerViaUSB();
 
   _posTickets = _posTickets.filter(t=>t.id!==ticket.id);
   toast('تم البيع بنجاح ✅');
   go('#/pos'); render();
 }
-function printPosReceipt(inv, currency, totalUSD, rate, customerLabel){
+function printPosReceipt(inv, currency, totalUSD, rate, customerLabel, received, changeDue){
   const s = DB.settings;
   const styleEl = document.createElement('style');
   styleEl.id = 'pos-receipt-print-style';
@@ -2594,6 +2711,9 @@ function printPosReceipt(inv, currency, totalUSD, rate, customerLabel){
       <span>الإجمالي</span><span>$${totalUSD.toFixed(2)} / ${fmtMoney(totalUSD*rate)} ل.ل</span>
     </div>
     <div style="text-align:center; font-size:11px; margin-top:8px;">طريقة الدفع: ${currency==='USD'?'نقد دولار':'نقد ل.ل'}</div>
+    ${(received!=null && changeDue!=null)? `
+    <div style="display:flex; justify-content:space-between; font-size:11.5px; margin-top:4px;"><span>المقبوض</span><span>${currency==='USD'?'$'+Number(received).toFixed(2):fmtMoney(received)+' ل.ل'}</span></div>
+    <div style="display:flex; justify-content:space-between; font-size:11.5px; font-weight:800;"><span>الباقي</span><span>${currency==='USD'?'$'+Number(changeDue).toFixed(2):fmtMoney(changeDue)+' ل.ل'}</span></div>` : ''}
     <div style="text-align:center; font-size:11px; margin-top:10px;">شكراً لزيارتكم 🙏</div>`;
   document.body.appendChild(wrap);
   const showForPrint = ()=>{ wrap.style.display='block'; };
@@ -2738,55 +2858,74 @@ function journalEntriesForRange(from, to){
   DB.invoices.filter(i=>!i.deleted && i.date>=from && i.date<=to).forEach(i=>{
     const cust = DB.customers.find(c=>c.id===i.customerId);
     const total = (i.items||[]).reduce((s,it)=>s+(Number(it.total)||0),0) - (Number(i.discount)||0);
-    rows.push({date:i.date, createdAt:i.createdAt||0, type:i.docType||'فاتورة', party:cust?cust.name:'—', amount:total, currency:'USD', nav:`#/invoice/${i.id}`});
+    rows.push({date:i.date, createdAt:i.createdAt||0, type:i.docType||'فاتورة', party:cust?cust.name:'—', usd:total, lbp:0, nav:`#/invoice/${i.id}`});
   });
   DB.purchaseInvoices.filter(i=>!i.deleted && i.date>=from && i.date<=to).forEach(i=>{
     const sup = DB.suppliers.find(s=>s.id===i.supplierId);
     const total = (i.items||[]).reduce((s,it)=>s+(Number(it.total)||0),0) - (Number(i.discount)||0);
-    rows.push({date:i.date, createdAt:i.createdAt||0, type:'فاتورة مشتريات', party:sup?sup.name:'—', amount:total, currency:'USD', nav:null});
+    rows.push({date:i.date, createdAt:i.createdAt||0, type:'فاتورة مشتريات', party:sup?sup.name:'—', usd:-total, lbp:0, nav:null});
   });
   DB.receipts.filter(r=>!r.deleted && r.date>=from && r.date<=to).forEach(r=>{
     const cust = DB.customers.find(c=>c.id===r.customerId);
-    rows.push({date:r.date, createdAt:r.createdAt||0, type:'إيصال قبض ('+(r.method||'')+')', party:cust?cust.name:'—', amount:Number(r.amount)||0, currency:'—', nav:null});
+    const isLBP = /ل\.ل/.test(r.method||'');
+    const amt = Number(r.amount)||0;
+    rows.push({date:r.date, createdAt:r.createdAt||0, type:'إيصال قبض ('+(r.method||'')+')', party:cust?cust.name:'—', usd:isLBP?0:amt, lbp:isLBP?amt:0, nav:null});
   });
   DB.paymentVouchers.filter(v=>!v.deleted && v.date>=from && v.date<=to).forEach(v=>{
     const sup = DB.suppliers.find(s=>s.id===v.supplierId);
-    rows.push({date:v.date, createdAt:v.createdAt||0, type:'سند صرف ('+(v.method||'')+')', party:sup?sup.name:'—', amount:-(Number(v.amount)||0), currency:'—', nav:null});
+    const isLBP = /ل\.ل/.test(v.method||'');
+    const amt = Number(v.amount)||0;
+    rows.push({date:v.date, createdAt:v.createdAt||0, type:'سند صرف ('+(v.method||'')+')', party:sup?sup.name:'—', usd:isLBP?0:-amt, lbp:isLBP?-amt:0, nav:null});
+  });
+  // حركات صندوق يدوية أو استرجاع (المبيعات نفسها موجودة أصلاً ضمن إيصالات القبض فوق، ما منكررها هون)
+  (DB.cashMovements||[]).filter(m=>!m.deleted && m.type!=='sale' && m.date>=from && m.date<=to).forEach(m=>{
+    const isLBP = m.currency==='LBP';
+    const signed = m.type==='deposit'? Math.abs(m.amount) : -Math.abs(m.amount);
+    const label = m.type==='deposit'?'إضافة يدوية للصندوق':m.type==='withdraw'?'سحب يدوي من الصندوق':'استرجاع POS';
+    rows.push({date:m.date, createdAt:m.createdAt||0, type:label, party:m.note||'—', usd:isLBP?0:signed, lbp:isLBP?signed:0, nav:null});
   });
   rows.sort((a,b)=> a.date!==b.date? (a.date<b.date?1:-1) : (b.createdAt-a.createdAt));
   return rows;
 }
-function journalView(date){
-  const rows = journalEntriesForRange(date, date);
-  const prevDay = new Date(date); prevDay.setDate(prevDay.getDate()-1);
-  const nextDay = new Date(date); nextDay.setDate(nextDay.getDate()+1);
-  const toISO = d=>d.toISOString().slice(0,10);
+function journalView(qs){
+  const period = qs.get('period')||'day';
+  const a = qs.get('a')||''; const b = qs.get('b')||'';
+  const {from, to} = computePeriodRange(period, a, b);
+  const rows = journalEntriesForRange(from, to);
+  const totalUSD = rows.reduce((s,r)=>s+r.usd,0);
+  const totalLBP = rows.reduce((s,r)=>s+r.lbp,0);
+  const title = from===to? 'كشف يومية — '+fmtDate(from) : 'كشف يوميات من '+fmtDate(from)+' إلى '+fmtDate(to);
   return `
   <div class="card no-print">
     <h2><span class="dot"></span> 📒 اليوميات</h2>
-    <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-      <button class="btn btn-sm" data-nav="#/journal?date=${toISO(prevDay)}">◀ اليوم السابق</button>
-      <input type="date" id="jr_date" value="${date}">
-      <button class="btn btn-sm" data-nav="#/journal?date=${toISO(nextDay)}">اليوم التالي ▶</button>
-      <button class="btn btn-sm" id="jr_print">🖨 طباعة</button>
-    </div>
+    ${periodFilterHtml('jr', period, a, b)}
+    <button class="btn btn-sm" id="jr_print" style="margin-top:10px;">🖨 طباعة</button>
   </div>
-  <div class="doc no-print" style="box-shadow:none;">
-    ${docHead('كشف يومية — '+fmtDate(date))}
+  <div class="doc" style="box-shadow:none;">
+    ${docHead(title)}
     <div class="table-scroll"><table>
-      <thead><tr><th>النوع</th><th>الطرف</th><th>المبلغ</th></tr></thead>
+      <thead><tr><th>التاريخ</th><th>النوع</th><th>الطرف</th><th>دولار $</th><th>ليرة ل.ل</th></tr></thead>
       <tbody>${rows.length? rows.map(r=>`<tr ${r.nav?`data-nav="${r.nav}"`:''} style="${r.nav?'cursor:pointer;':''}">
+        <td class="num">${fmtDate(r.date)}</td>
         <td>${escapeHtml(r.type)}</td><td>${escapeHtml(r.party)}</td>
-        <td class="num" style="color:${r.amount<0?'var(--debit)':'var(--credit)'}">${r.amount<0?'-':''}$${Math.abs(r.amount).toFixed(2)}</td>
-      </tr>`).join('') : `<tr><td colspan="3" style="text-align:center; color:var(--ink-soft);">ما في حركات هالتاريخ</td></tr>`}</tbody>
+        <td class="num" style="color:${r.usd<0?'var(--debit)':(r.usd>0?'var(--credit)':'inherit')}">${r.usd?(r.usd<0?'-':'')+'$'+Math.abs(r.usd).toFixed(2):'—'}</td>
+        <td class="num" style="color:${r.lbp<0?'var(--debit)':(r.lbp>0?'var(--credit)':'inherit')}">${r.lbp?(r.lbp<0?'-':'')+fmtMoney(Math.abs(r.lbp)):'—'}</td>
+      </tr>`).join('') : `<tr><td colspan="5" style="text-align:center; color:var(--ink-soft);">ما في حركات بهالفترة</td></tr>`}</tbody>
+      <tfoot><tr style="font-weight:800; border-top:2px solid var(--line);">
+        <td colspan="3">المجموع</td>
+        <td class="num" style="color:${totalUSD<0?'var(--debit)':'var(--credit)'}">${totalUSD<0?'-':''}$${Math.abs(totalUSD).toFixed(2)}</td>
+        <td class="num" style="color:${totalLBP<0?'var(--debit)':'var(--credit)'}">${totalLBP<0?'-':''}${fmtMoney(Math.abs(totalLBP))}</td>
+      </tr></tfoot>
     </table></div>
   </div>`;
 }
 function bindJournalEvents(){
-  const dateInput = document.getElementById('jr_date');
-  if(dateInput) dateInput.addEventListener('change', ()=>go('#/journal?date='+dateInput.value));
+  bindPeriodFilter('jr', (type,a,b)=>{
+    const qs = new URLSearchParams(); qs.set('period', type); if(a) qs.set('a',a); if(b) qs.set('b',b);
+    go('#/journal?'+qs.toString());
+  });
   const printBtn = document.getElementById('jr_print');
-  if(printBtn) printBtn.addEventListener('click', ()=>printWithFilename('Journal-'+(dateInput?dateInput.value:todayISO())));
+  if(printBtn) printBtn.addEventListener('click', ()=>printWithFilename('Journal'));
 }
 /* ============================= التقارير ============================= */
 function reportsView(qs){
@@ -2794,10 +2933,14 @@ function reportsView(qs){
   const a = qs.get('a')||''; const b = qs.get('b')||'';
   const {from, to} = computePeriodRange(period, a, b);
   const rows = journalEntriesForRange(from, to);
-  const salesTotal = rows.filter(r=>String(r.type).includes('بيع نقطة بيع')).reduce((s,r)=>s+r.amount,0);
-  const invoicesTotal = rows.filter(r=>r.nav && r.nav.includes('/invoice/')).reduce((s,r)=>s+r.amount,0);
-  const receiptsTotal = rows.filter(r=>String(r.type).includes('إيصال قبض')).reduce((s,r)=>s+r.amount,0);
-  const vouchersTotal = rows.filter(r=>String(r.type).includes('سند صرف')).reduce((s,r)=>s-r.amount,0);
+  const salesTotal = rows.filter(r=>String(r.type).includes('بيع نقطة بيع')).reduce((s,r)=>s+r.usd,0);
+  const invoicesTotal = rows.filter(r=>r.nav && r.nav.includes('/invoice/')).reduce((s,r)=>s+r.usd,0);
+  const receiptsUSD = rows.filter(r=>String(r.type).includes('إيصال قبض')).reduce((s,r)=>s+r.usd,0);
+  const receiptsLBP = rows.filter(r=>String(r.type).includes('إيصال قبض')).reduce((s,r)=>s+r.lbp,0);
+  const vouchersUSD = rows.filter(r=>String(r.type).includes('سند صرف')).reduce((s,r)=>s-r.usd,0);
+  const vouchersLBP = rows.filter(r=>String(r.type).includes('سند صرف')).reduce((s,r)=>s-r.lbp,0);
+  const totalUSD = rows.reduce((s,r)=>s+r.usd,0);
+  const totalLBP = rows.reduce((s,r)=>s+r.lbp,0);
   return `
   <div class="card no-print">
     <h2><span class="dot"></span> 📊 التقارير</h2>
@@ -2808,15 +2951,21 @@ function reportsView(qs){
     <div class="grid grid-2" style="gap:14px; margin-bottom:16px;">
       <div class="card" style="margin:0;"><div style="font-size:12.5px; color:var(--ink-soft);">إجمالي الفواتير</div><div style="font-size:20px; font-weight:800;" class="num">$${invoicesTotal.toFixed(2)}</div></div>
       <div class="card" style="margin:0;"><div style="font-size:12.5px; color:var(--ink-soft);">منها مبيعات POS</div><div style="font-size:20px; font-weight:800;" class="num">$${salesTotal.toFixed(2)}</div></div>
-      <div class="card" style="margin:0;"><div style="font-size:12.5px; color:var(--ink-soft);">إيصالات القبض</div><div style="font-size:20px; font-weight:800; color:var(--credit);" class="num">$${receiptsTotal.toFixed(2)}</div></div>
-      <div class="card" style="margin:0;"><div style="font-size:12.5px; color:var(--ink-soft);">سندات الصرف</div><div style="font-size:20px; font-weight:800; color:var(--debit);" class="num">$${vouchersTotal.toFixed(2)}</div></div>
+      <div class="card" style="margin:0;"><div style="font-size:12.5px; color:var(--ink-soft);">إيصالات القبض</div><div style="font-size:18px; font-weight:800; color:var(--credit);" class="num">$${receiptsUSD.toFixed(2)} + ${fmtMoney(receiptsLBP)} ل.ل</div></div>
+      <div class="card" style="margin:0;"><div style="font-size:12.5px; color:var(--ink-soft);">سندات الصرف</div><div style="font-size:18px; font-weight:800; color:var(--debit);" class="num">$${vouchersUSD.toFixed(2)} + ${fmtMoney(vouchersLBP)} ل.ل</div></div>
     </div>
     <div class="table-scroll"><table>
-      <thead><tr><th>التاريخ</th><th>النوع</th><th>الطرف</th><th>المبلغ</th></tr></thead>
+      <thead><tr><th>التاريخ</th><th>النوع</th><th>الطرف</th><th>دولار $</th><th>ليرة ل.ل</th></tr></thead>
       <tbody>${rows.length? rows.map(r=>`<tr>
         <td class="num">${fmtDate(r.date)}</td><td>${escapeHtml(r.type)}</td><td>${escapeHtml(r.party)}</td>
-        <td class="num" style="color:${r.amount<0?'var(--debit)':'var(--credit)'}">${r.amount<0?'-':''}$${Math.abs(r.amount).toFixed(2)}</td>
-      </tr>`).join('') : `<tr><td colspan="4" style="text-align:center; color:var(--ink-soft);">ما في حركات بهالفترة</td></tr>`}</tbody>
+        <td class="num" style="color:${r.usd<0?'var(--debit)':(r.usd>0?'var(--credit)':'inherit')}">${r.usd?(r.usd<0?'-':'')+'$'+Math.abs(r.usd).toFixed(2):'—'}</td>
+        <td class="num" style="color:${r.lbp<0?'var(--debit)':(r.lbp>0?'var(--credit)':'inherit')}">${r.lbp?(r.lbp<0?'-':'')+fmtMoney(Math.abs(r.lbp)):'—'}</td>
+      </tr>`).join('') : `<tr><td colspan="5" style="text-align:center; color:var(--ink-soft);">ما في حركات بهالفترة</td></tr>`}</tbody>
+      <tfoot><tr style="font-weight:800; border-top:2px solid var(--line);">
+        <td colspan="3">المجموع</td>
+        <td class="num">${totalUSD<0?'-':''}$${Math.abs(totalUSD).toFixed(2)}</td>
+        <td class="num">${totalLBP<0?'-':''}${fmtMoney(Math.abs(totalLBP))}</td>
+      </tr></tfoot>
     </table></div>
   </div>
   <div class="doc-actions no-print"><button class="btn btn-primary" onclick="printWithFilename('Report-${from}-to-${to}')">🖨 طباعة التقرير</button></div>`;
@@ -2981,13 +3130,14 @@ function periodFilterHtml(idPrefix, period, a, b){
     <div class="field"><label>الفترة</label>
       <select id="${idPrefix}_type">
         <option value="day" ${period==='day'?'selected':''}>يومي</option>
+        <option value="week" ${period==='week'?'selected':''}>أسبوعي</option>
         <option value="month" ${period==='month'?'selected':''}>شهري</option>
         <option value="year" ${period==='year'?'selected':''}>سنوي</option>
         <option value="range" ${period==='range'?'selected':''}>من تاريخ - إلى تاريخ</option>
       </select>
     </div>
-    <div class="field" id="${idPrefix}_wrap_day" style="${period==='day'||!period?'':'display:none;'}">
-      <label>اليوم</label><input type="date" id="${idPrefix}_day" value="${period==='day'&&a? a : todayISO()}">
+    <div class="field" id="${idPrefix}_wrap_day" style="${(period==='day'||period==='week'||!period)?'':'display:none;'}">
+      <label>اليوم</label><input type="date" id="${idPrefix}_day" value="${(period==='day'||period==='week')&&a? a : todayISO()}">
     </div>
     <div class="field" id="${idPrefix}_wrap_month" style="${period==='month'?'':'display:none;'}">
       <label>الشهر</label><input type="month" id="${idPrefix}_month" value="${period==='month'&&a? a : todayISO().slice(0,7)}">
@@ -3014,7 +3164,7 @@ function bindPeriodFilter(idPrefix, onApply){
   const dayWrap = document.getElementById(idPrefix+'_wrap_day');
   typeSel.addEventListener('change', ()=>{
     const v = typeSel.value;
-    if(dayWrap) dayWrap.style.display = v==='day'?'':'none';
+    if(dayWrap) dayWrap.style.display = (v==='day'||v==='week')?'':'none';
     monthWrap.style.display = v==='month'?'':'none';
     yearWrap.style.display = v==='year'?'':'none';
     fromWrap.style.display = v==='range'?'':'none';
@@ -3023,7 +3173,7 @@ function bindPeriodFilter(idPrefix, onApply){
   document.getElementById(idPrefix+'_apply').addEventListener('click', ()=>{
     const type = typeSel.value;
     let a='', b='';
-    if(type==='day') a = document.getElementById(idPrefix+'_day').value;
+    if(type==='day'||type==='week') a = document.getElementById(idPrefix+'_day').value;
     else if(type==='month') a = document.getElementById(idPrefix+'_month').value;
     else if(type==='year') a = document.getElementById(idPrefix+'_year').value;
     else if(type==='range'){ a = document.getElementById(idPrefix+'_from').value; b = document.getElementById(idPrefix+'_to').value; }
@@ -3536,6 +3686,24 @@ function settingsView(){
   </div>
 
   <div class="card">
+    <h2><span class="dot"></span> 💱 العملة الثانية (اختياري)</h2>
+    <p style="font-size:12.5px; color:var(--ink-soft);">البرنامج شغّال أساساً بالدولار والليرة اللبنانية. إذا بدك تبيع/تشتغل ببلد تاني، فعّل عملة ثانية هون وحدد سعر صرفها مقابل الدولار — يدوياً أو بمزامنة تلقائية من الإنترنت.</p>
+    <div class="field">
+      <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+        <input type="checkbox" id="s_cur2_enabled" ${s.secondCurrencyEnabled?'checked':''}>
+        فعّل عملة ثانية
+      </label>
+    </div>
+    <div class="grid grid-3">
+      <div class="field"><label>رمز العملة (مثال: LBP، EUR، SAR)</label><input type="text" id="s_cur2_code" class="num" value="${escapeHtml(s.secondCurrencyCode||'LBP')}" style="text-transform:uppercase;"></div>
+      <div class="field"><label>سعر الصرف مقابل 1$</label><input type="number" id="s_cur2_rate" class="num" value="${s.secondCurrencyRate||s.defaultExchangeRate||0}"></div>
+      <div class="field"><label>&nbsp;</label><button type="button" class="btn btn-sm" id="s_cur2_sync">🔄 مزامنة السعر من الإنترنت</button></div>
+    </div>
+    <div id="s_cur2_synced_note" style="font-size:11.5px; color:var(--ink-soft);">${s.secondCurrencyLastSync? 'آخر مزامنة: '+new Date(s.secondCurrencyLastSync).toLocaleString('ar') : ''}</div>
+    <button class="btn btn-primary" id="saveCur2Btn" style="margin-top:10px;">💾 حفظ إعدادات العملة</button>
+  </div>
+
+  <div class="card">
     <h2><span class="dot"></span> إعدادات المستودع والباركود</h2>
     <div class="grid grid-2">
       <div class="field"><label>تنبيه انتهاء الصلاحية الافتراضي (أيام قبل الانتهاء)</label><input type="number" id="s_expdays" class="num" value="${s.expiryAlertDays||20}"></div>
@@ -3936,7 +4104,33 @@ function bindEvents(){
     toast(ok? 'تم حفظ الإعدادات':'صار خطأ بالحفظ');
   });
 
-  const saveWarehouseSettingsBtn = document.getElementById('saveWarehouseSettingsBtn');
+  const saveCur2Btn = document.getElementById('saveCur2Btn');
+  if(saveCur2Btn) saveCur2Btn.addEventListener('click', async ()=>{
+    DB.settings.secondCurrencyEnabled = document.getElementById('s_cur2_enabled').checked;
+    DB.settings.secondCurrencyCode = document.getElementById('s_cur2_code').value.trim().toUpperCase() || 'LBP';
+    DB.settings.secondCurrencyRate = Number(document.getElementById('s_cur2_rate').value)||0;
+    const ok = await save(KEYS.settings, DB.settings);
+    toast(ok? 'تم حفظ إعدادات العملة':'صار خطأ بالحفظ');
+  });
+  const cur2SyncBtn = document.getElementById('s_cur2_sync');
+  if(cur2SyncBtn) cur2SyncBtn.addEventListener('click', async ()=>{
+    const code = (document.getElementById('s_cur2_code').value.trim()||'LBP').toUpperCase();
+    cur2SyncBtn.disabled = true; cur2SyncBtn.textContent = 'عم يجيب السعر...';
+    try{
+      const res = await fetch('https://open.er-api.com/v6/latest/USD');
+      const data = await res.json();
+      const rate = data && data.rates && data.rates[code];
+      if(!rate){ toast('ما لقينا سعر لهالعملة — تأكد من الرمز (مثال: LBP, EUR, SAR)'); }
+      else{
+        document.getElementById('s_cur2_rate').value = rate;
+        DB.settings.secondCurrencyLastSync = Date.now();
+        toast('تم جلب السعر: 1$ = '+rate+' '+code+' — اضغط حفظ لتثبيته');
+        const note = document.getElementById('s_cur2_synced_note');
+        if(note) note.textContent = 'آخر مزامنة: '+new Date(DB.settings.secondCurrencyLastSync).toLocaleString('ar');
+      }
+    }catch(e){ toast('ما قدرنا نتواصل مع خدمة أسعار الصرف — تأكد من الإنترنت'); console.error(e); }
+    cur2SyncBtn.disabled = false; cur2SyncBtn.textContent = '🔄 مزامنة السعر من الإنترنت';
+  });
   if(saveWarehouseSettingsBtn) saveWarehouseSettingsBtn.addEventListener('click', async ()=>{
     const days = Number(document.getElementById('s_expdays').value);
     DB.settings.expiryAlertDays = Number.isFinite(days) && days>0 ? days : 20;
@@ -4713,6 +4907,12 @@ function openWarehouseItemModal(item){
       <input type="text" id="wm_category" list="wm_category_list" value="${item?escapeHtml(item.category||''):''}" placeholder="مثال: مشروبات">
       <datalist id="wm_category_list">${posCategories().map(c=>`<option value="${escapeHtml(c)}">`).join('')}</datalist>
     </div>
+    <div class="field"><label>صورة المنتج (تظهر بشاشة POS — اختياري)</label>
+      <div style="display:flex; align-items:center; gap:10px;">
+        ${item&&item.image? `<img src="${item.image}" style="height:54px; width:54px; object-fit:cover; border-radius:8px; border:1px solid var(--line);">` : ''}
+        <input type="file" id="wm_image" accept="image/*" style="flex:1;">
+      </div>
+    </div>
     ${isNew? `
     <div class="grid grid-2">
       <div class="field"><label>الكمية *</label><input type="number" id="wm_qty" class="num" value="0"></div>
@@ -4748,11 +4948,21 @@ function openWarehouseItemModal(item){
     const expAlertRaw = wrap.querySelector('#wm_exp_alert').value.trim();
     const expiryAlertDays = expAlertRaw? Number(expAlertRaw) : null;
     const note = wrap.querySelector('#wm_note').value.trim();
+    const imageFile = wrap.querySelector('#wm_image').files[0];
+    let image = item? item.image : null;
+    if(imageFile){
+      if(imageFile.size > 500*1024){ toast('صورة المنتج كبيرة — فضّل أصغر من 500KB'); return; }
+      image = await new Promise((resolve)=>{
+        const reader = new FileReader();
+        reader.onload = ()=>resolve(reader.result);
+        reader.readAsDataURL(imageFile);
+      });
+    }
     if(isNew){
       const qty = Number(wrap.querySelector('#wm_qty').value)||0;
       const date = wrap.querySelector('#wm_date').value || todayISO();
       if(qty<=0){ toast('لازم تحط كمية أكبر من صفر'); return; }
-      const it = {id:uid(), createdAt:Date.now(), name, brand, type, barcode, price, category, productionDate, expiryDate, expiryAlertDays, note, purchaseDate:date};
+      const it = {id:uid(), createdAt:Date.now(), name, brand, type, barcode, price, category, image, productionDate, expiryDate, expiryAlertDays, note, purchaseDate:date};
       DB.warehouseItems.push(it);
       const stockIn = {id:uid(), createdAt:Date.now(), itemId:it.id, qty, date, number:nextStockInNumber(), note:'رصيد ابتدائي'};
       DB.stockIns.push(stockIn);
@@ -4761,7 +4971,7 @@ function openWarehouseItemModal(item){
       toast(ok.every(Boolean)? 'تمت الإضافة إلى الستوك' : 'صار خطأ بالحفظ');
       go(`#/warehouse-item/${it.id}`);
     } else {
-      item.name = name; item.brand = brand; item.type = type; item.barcode = barcode; item.price = price; item.category = category;
+      item.name = name; item.brand = brand; item.type = type; item.barcode = barcode; item.price = price; item.category = category; item.image = image;
       item.productionDate = productionDate; item.expiryDate = expiryDate; item.expiryAlertDays = expiryAlertDays; item.note = note;
       const ok = await save(KEYS.warehouseItems, DB.warehouseItems);
       wrap.remove();
