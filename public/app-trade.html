@@ -2369,7 +2369,8 @@ function posView(){
           ${noCatCount? `<div class="pos-cat-tab${_posActiveCategory==='__none__'?' active':''}" data-pos-category="__none__">بدون قسم (${noCatCount})</div>` : ''}
         </div>
         <div class="pos-search-row">
-          <input type="text" id="pos_scan_input" class="num" style="flex:1; font-size:16px; padding:11px 14px; border-radius:10px; border:1px solid var(--line);" placeholder="🔍 بحث بالاسم أو امسح باركود..." autofocus>
+          <input type="text" id="pos_scan_input" class="num" inputmode="none" style="flex:1; font-size:16px; padding:11px 14px; border-radius:10px; border:1px solid var(--line);" placeholder="🔍 بحث بالاسم أو امسح باركود..." autofocus>
+          <button type="button" class="btn" id="pos_keyboard_btn" title="اكتب يدوياً">⌨️</button>
           <button type="button" class="btn" id="pos_camera_scan_btn">📷</button>
         </div>
         <div id="pos_scan_msg" style="min-height:16px; font-size:12.5px; color:var(--credit);"></div>
@@ -2427,7 +2428,7 @@ function bindPosEvents(){
     posAddToCart(ticket, item);
     if(msg){ msg.textContent = '✅ انضاف: '+item.name; msg.style.color = 'var(--credit)'; }
     render();
-    setTimeout(()=>{ const i2 = document.getElementById('pos_scan_input'); if(i2) i2.focus(); }, 30);
+    setTimeout(()=>{ const i2 = document.getElementById('pos_scan_input'); if(i2){ i2.setAttribute('inputmode','none'); i2.focus(); } }, 30);
   }
   if(input){
     input.focus();
@@ -2442,6 +2443,10 @@ function bindPosEvents(){
   }
   const camBtn = document.getElementById('pos_camera_scan_btn');
   if(camBtn) camBtn.addEventListener('click', ()=>{ openBarcodeScannerModal((code)=>handleCode(code)); });
+  const kbBtn = document.getElementById('pos_keyboard_btn');
+  if(kbBtn) kbBtn.addEventListener('click', ()=>{
+    if(input){ input.removeAttribute('inputmode'); input.focus(); }
+  });
 
   document.querySelectorAll('[data-pos-tile]').forEach(b=>b.addEventListener('click', ()=>{
     const item = DB.warehouseItems.find(x=>x.id===b.getAttribute('data-pos-tile'));
@@ -2785,20 +2790,45 @@ function printPosReceipt(inv, currency, totalUSD, rate, customerLabel, received,
   setTimeout(()=>{ window.print(); setTimeout(cleanup, 1500); }, 60);
 }
 /* ---------- فتح درج الصندوق تلقائياً عبر الطابعة (WebUSB) ---------- */
+const PRINTER_BLE_SERVICES = [
+  '000018f0-0000-1000-8000-00805f9b34fb',
+  '49535343-fe7d-4ae5-8fa9-9fafd205e455',
+  '6e400001-b5a3-f393-e0a9-e50e24dcca9e'
+];
 async function pickPosPrinterUSB(){
-  if(!('usb' in navigator)){ alert('متصفحك ما بيدعم الاتصال المباشر بالطابعة (WebUSB) — استخدم Chrome على كمبيوتر.'); return; }
+  if(!('usb' in navigator)){ alert('متصفحك ما بيدعم الاتصال المباشر بالطابعة عبر USB (WebUSB) — استخدم Chrome على كمبيوتر، أو جرب الاتصال بالبلوتوث.'); return; }
   try{
     const device = await navigator.usb.requestDevice({ filters: [] });
     DB.settings.posPrinterVendorId = device.vendorId;
     DB.settings.posPrinterProductId = device.productId;
     DB.settings.posPrinterName = device.productName || (device.vendorId+':'+device.productId);
+    DB.settings.posPrinterType = 'usb';
     await save(KEYS.settings, DB.settings);
     toast('تم ربط الطابعة: '+DB.settings.posPrinterName);
     render();
   }catch(e){ console.error('USB pick failed', e && e.message); }
 }
+async function pickPosPrinterBluetooth(){
+  if(!('bluetooth' in navigator)){
+    alert('متصفحك ما بيدعم الاتصال بالبلوتوث (Web Bluetooth). جرب Chrome على أندرويد أو كمبيوتر — سفاري وآيفون ما بيدعموها نهائياً، هاي قيود من آبل نفسها ومش شي فينا نتحكم فيه.');
+    return;
+  }
+  try{
+    const device = await navigator.bluetooth.requestDevice({
+      acceptAllDevices: true,
+      optionalServices: PRINTER_BLE_SERVICES
+    });
+    DB.settings.posPrinterBtId = device.id;
+    DB.settings.posPrinterName = device.name || 'طابعة بلوتوث';
+    DB.settings.posPrinterType = 'bluetooth';
+    await save(KEYS.settings, DB.settings);
+    toast('تم ربط الطابعة: '+DB.settings.posPrinterName);
+    render();
+  }catch(e){ console.error('Bluetooth pick failed', e && e.message); }
+}
 async function openCashDrawerViaUSB(){
   try{
+    if(DB.settings.posPrinterType==='bluetooth'){ await openCashDrawerViaBluetooth(); return; }
     if(!('usb' in navigator) || !DB.settings.posPrinterVendorId) return;
     const devices = await navigator.usb.getDevices();
     const dev = devices.find(d=>d.vendorId===DB.settings.posPrinterVendorId && d.productId===DB.settings.posPrinterProductId);
@@ -2815,6 +2845,26 @@ async function openCashDrawerViaUSB(){
     }
     await dev.close();
   }catch(e){ console.error('cash drawer kick failed', e && e.message); }
+}
+async function openCashDrawerViaBluetooth(){
+  try{
+    if(!('bluetooth' in navigator) || !DB.settings.posPrinterBtId) return;
+    if(!navigator.bluetooth.getDevices){ console.warn('هالمتصفح ما بيدعم إعادة الاتصال التلقائي بالبلوتوث'); return; }
+    const devices = await navigator.bluetooth.getDevices();
+    const dev = devices.find(d=>d.id===DB.settings.posPrinterBtId);
+    if(!dev) return;
+    const server = await dev.gatt.connect();
+    const kick = new Uint8Array([0x1B, 0x70, 0x00, 0x19, 0xFA]);
+    for(const svcId of PRINTER_BLE_SERVICES){
+      try{
+        const service = await server.getPrimaryService(svcId);
+        const chars = await service.getCharacteristics();
+        const writable = chars.find(c=>c.properties.write || c.properties.writeWithoutResponse);
+        if(writable){ await writable.writeValue(kick); break; }
+      }catch(e){ /* هالخدمة مش موجودة بهالطابعة — جرب يلي بعدها */ }
+    }
+    server.disconnect();
+  }catch(e){ console.error('Bluetooth cash drawer kick failed', e && e.message); }
 }
 function openCashMovementModal(type, currency){
   const wrap = document.createElement('div');
@@ -3797,10 +3847,11 @@ function settingsView(){
     <div class="field">
       <label>الطابعة الحرارية (٨٠ ملم) — لفتح الدرج تلقائياً عبرها</label>
       <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-        <span style="font-size:13px; color:var(--ink-soft);">${s.posPrinterName? '✅ متوصلة: '+escapeHtml(s.posPrinterName) : 'ما في طابعة مربوطة بعد'}</span>
-        <button type="button" class="btn btn-sm" id="s_pos_pick_printer">🔌 اختار/غيّر الطابعة</button>
+        <span style="font-size:13px; color:var(--ink-soft);">${s.posPrinterName? '✅ متوصلة ('+(s.posPrinterType==='bluetooth'?'بلوتوث':'USB')+'): '+escapeHtml(s.posPrinterName) : 'ما في طابعة مربوطة بعد'}</span>
+        <button type="button" class="btn btn-sm" id="s_pos_pick_printer">🔌 اختار/غيّر عبر USB</button>
+        <button type="button" class="btn btn-sm" id="s_pos_pick_printer_bt">🔷 اختار/غيّر عبر بلوتوث</button>
       </div>
-      <p style="font-size:11.5px; color:var(--ink-soft); margin-top:6px;">لازم Chrome على كمبيوتر متوصل فيه الطابعة عبر USB. الطباعة نفسها (الفاتورة الحرارية) بتصير عادي من نافذة الطباعة العادية، وهاي الخطوة بس لفتح درج القبض تلقائياً.</p>
+      <p style="font-size:11.5px; color:var(--ink-soft); margin-top:6px;">USB: لازم Chrome على كمبيوتر. بلوتوث: بيشتغل من Chrome على أندرويد أو كمبيوتر — للأسف آيفون/سفاري ما بيدعموا هالنوع من الاتصال إطلاقاً (قيد من آبل، مش من عندنا). الطباعة نفسها (الفاتورة الحرارية) بتصير عادي من نافذة الطباعة، وهاي الخطوة بس لفتح درج القبض تلقائياً.</p>
     </div>
     <button class="btn btn-primary" id="saveposSettingsBtn">💾 حفظ إعدادات POS</button>
   </div>
@@ -4222,6 +4273,8 @@ function bindEvents(){
   });
   const pickPrinterBtn = document.getElementById('s_pos_pick_printer');
   if(pickPrinterBtn) pickPrinterBtn.addEventListener('click', pickPosPrinterUSB);
+  const pickPrinterBtBtn = document.getElementById('s_pos_pick_printer_bt');
+  if(pickPrinterBtBtn) pickPrinterBtBtn.addEventListener('click', pickPosPrinterBluetooth);
 
   const licenseActivateBtn = document.getElementById('s_licenseActivateBtn');
   if(licenseActivateBtn) licenseActivateBtn.addEventListener('click', async ()=>{
