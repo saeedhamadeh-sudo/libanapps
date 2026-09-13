@@ -322,6 +322,15 @@ footer .big{display:block;text-decoration:none}
 .line .t b{display:block;font-size:15px;font-weight:700}
 .line .t span{font-size:12.5px;color:var(--muted)}
 .tot{display:flex;justify-content:space-between;font-size:14px;color:var(--muted);margin-bottom:4px}
+.coupon-row{display:flex;gap:6px;margin:10px 0}
+.coupon-row input{flex:1;padding:9px 10px;border:1px solid var(--line,#ddd);border-radius:8px;font-size:13.5px}
+.coupon-row button{padding:9px 14px;border-radius:8px;border:0;background:var(--accent,#12324F);color:#fff;font-weight:700;font-size:13px;white-space:nowrap}
+.coupon-row.applied{background:#eafaf0;border:1px solid #bfe8cf;border-radius:8px;padding:8px 12px;align-items:center;justify-content:space-between}
+.coupon-row.applied span{font-weight:700;color:#1a8f4c;font-size:13.5px}
+.coupon-row.applied button{background:transparent;color:#8a3a3a;font-size:12.5px;padding:4px 8px}
+.coupon-msg{font-size:12px;min-height:16px;margin-bottom:6px}
+.coupon-msg.err{color:#c0392b}
+.coupon-msg.ok{color:#1a8f4c}
 .tot.grand{color:var(--text);font-size:17px;font-weight:800;margin-top:6px}
 .tot.grand b{font-family:var(--font-display);color:var(--price);font-size:24px}
 .lbpline{text-align:end;font-size:13px;color:var(--muted);margin-bottom:10px}
@@ -533,6 +542,9 @@ window.I18N = {
     add:'أضف', added:'تمت الإضافة', unavailable:'غير متوفر', featured:'الأكثر طلباً',
     cart:'السلة', cartEmpty:'السلة فاضية', cartEmptyHint:'اضغط على أي صحن ليتضاف',
     subtotal:'المجموع', delivery:'التوصيل', total:'الإجمالي', continue:'متابعة الطلب',
+    couponPlaceholder:'عندك كود خصم؟', applyCoupon:'تطبيق', couponApplied:'تم تطبيق الخصم',
+    couponInvalid:'كود غير صالح', couponExpired:'الكود منتهي الصلاحية', couponUsedUp:'الكود خلص استخدامه',
+    couponRemove:'إلغاء', discount:'الخصم',
     back:'رجوع', orderType:'نوع الطلب', dineIn:'بالمطعم', deliveryType:'توصيل',
     name:'الاسم', phone:'رقم الهاتف', tableNo:'رقم الطاولة', address:'العنوان',
     note:'ملاحظات (اختياري)', getLocation:'حدد موقعي', locationSet:'تم تحديد الموقع ✓',
@@ -567,6 +579,9 @@ window.I18N = {
     add:'Add', added:'Added', unavailable:'Unavailable', featured:'Popular',
     cart:'Cart', cartEmpty:'Your cart is empty', cartEmptyHint:'Tap any dish to add it',
     subtotal:'Subtotal', delivery:'Delivery', total:'Total', continue:'Checkout',
+    couponPlaceholder:'Have a discount code?', applyCoupon:'Apply', couponApplied:'Discount applied',
+    couponInvalid:'Invalid code', couponExpired:'This code has expired', couponUsedUp:'This code has been fully used',
+    couponRemove:'Remove', discount:'Discount',
     back:'Back', orderType:'Order type', dineIn:'Dine in', deliveryType:'Delivery',
     name:'Name', phone:'Phone number', tableNo:'Table number', address:'Address',
     note:'Notes (optional)', getLocation:'Share my location', locationSet:'Location set ✓',
@@ -856,11 +871,38 @@ function loadCart(){
     });
   }catch(e){}
 }
+var appliedCoupon=null;
 function totals(){
   var sub=0,n=0;
   Object.keys(cart).forEach(function(k){ sub+=cart[k].item.price_usd*cart[k].qty; n+=cart[k].qty; });
   var del=(oType==='delivery'&&sub>0)?Number(R.delivery_fee_usd||0):0;
-  return {sub:sub,del:del,total:sub+del,count:n};
+  var discount=0;
+  if(appliedCoupon){
+    discount = appliedCoupon.discount_type==='percent'
+      ? (sub*Number(appliedCoupon.discount_value)/100)
+      : Number(appliedCoupon.discount_value);
+    discount = Math.min(discount, sub);
+  }
+  return {sub:sub,del:del,discount:discount,total:Math.max(0,sub+del-discount),count:n};
+}
+async function applyCouponCode(code){
+  var msgEl=$('#couponMsg');
+  if(!code){ if(msgEl) msgEl.textContent=''; return; }
+  if(DEMO){ if(msgEl){ msgEl.textContent=T.couponInvalid; msgEl.className='coupon-msg err'; } return; }
+  var r=await sb.rpc('check_coupon',{p_restaurant_id:R.id, p_code:code});
+  var d=r.data;
+  if(r.error || !d || !d.ok){
+    appliedCoupon=null;
+    var reason = d&&d.reason;
+    if(msgEl){
+      msgEl.textContent = reason==='expired'?T.couponExpired : reason==='used_up'?T.couponUsedUp : T.couponInvalid;
+      msgEl.className='coupon-msg err';
+    }
+  } else {
+    appliedCoupon={code:code.toUpperCase(), discount_type:d.discount_type, discount_value:d.discount_value, coupon_id:d.coupon_id};
+    if(msgEl){ msgEl.textContent=T.couponApplied; msgEl.className='coupon-msg ok'; }
+  }
+  paintCart();
 }
 function paintCart(){
   var t=totals();
@@ -887,13 +929,30 @@ function paintCart(){
       '<div class="step"><button data-m="'+k+'">−</button><b>'+c.qty+'</b><button data-a="'+k+'">+</button></div></div>';
   }).join('');
   var lb=subPrice(t.total);
+  var couponHtml = appliedCoupon
+    ? '<div class="coupon-row applied"><span>🏷 '+esc(appliedCoupon.code)+'</span><button id="removeCoupon" type="button">'+T.couponRemove+'</button></div>'
+    : '<div class="coupon-row"><input type="text" id="couponInput" placeholder="'+esc(T.couponPlaceholder)+'" style="text-transform:uppercase">'+
+      '<button id="applyCouponBtn" type="button">'+T.applyCoupon+'</button></div>';
   $('#footCart').innerHTML=
     '<div class="tot"><span>'+T.subtotal+'</span><span>'+mainTxt(t.sub)+'</span></div>'+
     (t.del?'<div class="tot"><span>'+T.delivery+'</span><span>'+mainTxt(t.del)+'</span></div>':'')+
+    (t.discount?'<div class="tot" style="color:#1a8f4c"><span>'+T.discount+'</span><span>-'+mainTxt(t.discount)+'</span></div>':'')+
+    couponHtml+
+    '<div id="couponMsg" class="coupon-msg"></div>'+
     '<div class="tot grand"><span>'+T.total+'</span><b>'+mainTxt(t.total)+'</b></div>'+
     (lb?'<div class="lbpline">'+lb+'</div>':'')+
     '<button class="btn" id="toForm">'+T.continue+'</button>';
   $('#toForm').addEventListener('click',showForm);
+  var applyBtn=$('#applyCouponBtn');
+  if(applyBtn) applyBtn.addEventListener('click',function(){
+    applyCouponCode(($('#couponInput').value||'').trim());
+  });
+  var couponInput=$('#couponInput');
+  if(couponInput) couponInput.addEventListener('keydown',function(e){
+    if(e.key==='Enter'){ e.preventDefault(); applyCouponCode((couponInput.value||'').trim()); }
+  });
+  var removeBtn=$('#removeCoupon');
+  if(removeBtn) removeBtn.addEventListener('click',function(){ appliedCoupon=null; paintCart(); });
 }
 $('#stepCart').addEventListener('click',function(e){
   var a=e.target.closest('[data-a]'), m=e.target.closest('[data-m]');
