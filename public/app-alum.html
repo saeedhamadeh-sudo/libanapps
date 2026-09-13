@@ -863,6 +863,29 @@ function secCurLabel(){
   const code = (DB.settings.secondCurrencyCode||'LBP').toUpperCase();
   return code==='LBP' ? 'ل.ل' : code;
 }
+const COUNTRY_CURRENCIES = [
+  {country:'لبنان', code:'LBP'}, {country:'السعودية', code:'SAR'}, {country:'الإمارات', code:'AED'},
+  {country:'قطر', code:'QAR'}, {country:'الكويت', code:'KWD'}, {country:'البحرين', code:'BHD'},
+  {country:'عُمان', code:'OMR'}, {country:'الأردن', code:'JOD'}, {country:'مصر', code:'EGP'},
+  {country:'العراق', code:'IQD'}, {country:'سوريا', code:'SYP'}, {country:'اليمن', code:'YER'},
+  {country:'ليبيا', code:'LYD'}, {country:'تونس', code:'TND'}, {country:'الجزائر', code:'DZD'},
+  {country:'المغرب', code:'MAD'}, {country:'السودان', code:'SDG'}, {country:'موريتانيا', code:'MRU'},
+  {country:'تركيا', code:'TRY'}, {country:'قبرص', code:'EUR'}, {country:'اليونان', code:'EUR'},
+  {country:'فرنسا', code:'EUR'}, {country:'ألمانيا', code:'EUR'}, {country:'إيطاليا', code:'EUR'},
+  {country:'إسبانيا', code:'EUR'}, {country:'هولندا', code:'EUR'}, {country:'بلجيكا', code:'EUR'},
+  {country:'بريطانيا', code:'GBP'}, {country:'سويسرا', code:'CHF'}, {country:'السويد', code:'SEK'},
+  {country:'النرويج', code:'NOK'}, {country:'الدنمارك', code:'DKK'}, {country:'بولندا', code:'PLN'},
+  {country:'روسيا', code:'RUB'}, {country:'أوكرانيا', code:'UAH'}, {country:'أمريكا', code:'USD'},
+  {country:'كندا', code:'CAD'}, {country:'المكسيك', code:'MXN'}, {country:'البرازيل', code:'BRL'},
+  {country:'الأرجنتين', code:'ARS'}, {country:'أستراليا', code:'AUD'}, {country:'نيوزيلندا', code:'NZD'},
+  {country:'الصين', code:'CNY'}, {country:'اليابان', code:'JPY'}, {country:'كوريا الجنوبية', code:'KRW'},
+  {country:'الهند', code:'INR'}, {country:'باكستان', code:'PKR'}, {country:'بنغلادش', code:'BDT'},
+  {country:'إندونيسيا', code:'IDR'}, {country:'ماليزيا', code:'MYR'}, {country:'الفلبين', code:'PHP'},
+  {country:'تايلاند', code:'THB'}, {country:'فيتنام', code:'VND'}, {country:'سنغافورة', code:'SGD'},
+  {country:'جنوب أفريقيا', code:'ZAR'}, {country:'نيجيريا', code:'NGN'}, {country:'كينيا', code:'KES'},
+  {country:'إثيوبيا', code:'ETB'}, {country:'غانا', code:'GHS'}, {country:'جورجيا', code:'GEL'},
+  {country:'أرمينيا', code:'AMD'}, {country:'أذربيجان', code:'AZN'}, {country:'إيران', code:'IRR'}
+]; // ملاحظة: القائمة ما فيها إسرائيل بناءً على طلب صاحب المنصة
 function fmtMoney(n){
   n = Number(n)||0;
   const neg = n<0; n=Math.abs(n);
@@ -4429,7 +4452,11 @@ function settingsView(){
       </label>
     </div>
     <div class="grid grid-3">
-      <div class="field"><label>رمز العملة (مثال: LBP، EUR، SAR)</label><input type="text" id="s_cur2_code" class="num" value="${escapeHtml(s.secondCurrencyCode||'LBP')}" style="text-transform:uppercase;"></div>
+      <div class="field"><label>البلد / العملة</label>
+        <select id="s_cur2_code">
+          ${COUNTRY_CURRENCIES.map(c=>`<option value="${c.code}" ${((s.secondCurrencyCode||'LBP')===c.code)?'selected':''}>${c.country} — ${c.code}</option>`).join('')}
+        </select>
+      </div>
       <div class="field"><label>سعر الصرف مقابل 1$</label><input type="number" id="s_cur2_rate" class="num" value="${s.secondCurrencyRate||s.defaultExchangeRate||0}"></div>
       <div class="field"><label>&nbsp;</label><button type="button" class="btn btn-sm" id="s_cur2_sync">🔄 مزامنة السعر من الإنترنت</button></div>
     </div>
@@ -5010,7 +5037,7 @@ function bindEvents(){
   const saveCur2Btn = document.getElementById('saveCur2Btn');
   if(saveCur2Btn) saveCur2Btn.addEventListener('click', async ()=>{
     DB.settings.secondCurrencyEnabled = document.getElementById('s_cur2_enabled').checked;
-    DB.settings.secondCurrencyCode = document.getElementById('s_cur2_code').value.trim().toUpperCase() || 'LBP';
+    DB.settings.secondCurrencyCode = document.getElementById('s_cur2_code').value || 'LBP';
     DB.settings.secondCurrencyRate = Number(document.getElementById('s_cur2_rate').value)||0;
     DB.settings.defaultExchangeRate = DB.settings.secondCurrencyRate || DB.settings.defaultExchangeRate || 90000;
     const ok = await save(KEYS.settings, DB.settings);
@@ -5019,7 +5046,7 @@ function bindEvents(){
   });
   const cur2SyncBtn = document.getElementById('s_cur2_sync');
   if(cur2SyncBtn) cur2SyncBtn.addEventListener('click', async ()=>{
-    const code = (document.getElementById('s_cur2_code').value.trim()||'LBP').toUpperCase();
+    const code = document.getElementById('s_cur2_code').value || 'LBP';
     cur2SyncBtn.disabled = true; cur2SyncBtn.textContent = 'عم يجيب السعر...';
     try{
       const res = await fetch('https://open.er-api.com/v6/latest/USD');
