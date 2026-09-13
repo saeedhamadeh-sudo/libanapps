@@ -797,6 +797,14 @@ function totpAuthUri(username, secret){
   return `otpauth://totp/${label}?secret=${secret}&issuer=${issuer}&digits=6&period=30`;
 }
 
+function secCurLabel(){
+  const code = (DB.settings.secondCurrencyCode||'LBP').toUpperCase();
+  return code==='LBP' ? 'ل.ل' : code;
+}
+function fmtNum(n){
+  n = Math.round(Number(n)||0);
+  return n.toLocaleString('en-US');
+}
 function fmtMoney(n){
   n = Number(n)||0;
   const neg = n<0; n=Math.abs(n);
@@ -805,7 +813,7 @@ function fmtMoney(n){
 }
 function fmtLBP(n){
   n = Math.round(Number(n)||0);
-  return n.toLocaleString('en-US')+' ل.ل';
+  return n.toLocaleString('en-US')+' '+secCurLabel();
 }
 function fmtDate(d){
   if(!d) return '';
@@ -2346,7 +2354,7 @@ function posView(){
       <div>
         ${(ticket.discount>0)? `<div style="font-size:12px; color:var(--ink-soft); text-decoration:line-through;">$${subtotal.toFixed(2)}</div>`:''}
         <div style="font-size:13px; color:var(--ink-soft);">الإجمالي</div>
-        <div style="font-size:24px; font-weight:800;" class="num">$${totalUSD.toFixed(2)} <span style="font-size:13.5px; color:var(--ink-soft);">(${fmtMoney(totalUSD*rate)} ل.ل)</span></div>
+        <div style="font-size:24px; font-weight:800;" class="num">$${totalUSD.toFixed(2)} <span style="font-size:13.5px; color:var(--ink-soft);">(${fmtNum(totalUSD*rate)} ${secCurLabel()})</span></div>
       </div>
       <div class="row" style="gap:8px; flex-wrap:wrap;">
         <button class="btn" id="pos_clear_btn" ${ticket.cart.length?'':'disabled'}>🗑 تفريغ</button>
@@ -2596,7 +2604,7 @@ function openPosPaymentModal(currency){
   wrap.className='modal-bg';
   wrap.innerHTML = `<div class="modal">
     <h3>${currency==='USD'?'💵 قبض دولار':'💴 قبض ليرة'}</h3>
-    <div style="font-size:14px; margin-bottom:10px;">المطلوب: <b class="num">${currency==='USD'?'$'+due.toFixed(2):fmtMoney(due)+' ل.ل'}</b></div>
+    <div style="font-size:14px; margin-bottom:10px;">المطلوب: <b class="num">${currency==='USD'?'$'+due.toFixed(2):fmtNum(due)+' '+secCurLabel()}</b></div>
     <div class="field"><label>المبلغ المقبوض من الزبون *</label>
       <input type="number" step="${currency==='USD'?'0.01':'1'}" id="pp_received" class="num" value="${due.toFixed(currency==='USD'?2:0)}" style="font-size:18px; padding:10px;">
     </div>
@@ -2612,7 +2620,7 @@ function openPosPaymentModal(currency){
   function updateChange(){
     const received = Number(input.value)||0;
     const change = received - due;
-    changeEl.textContent = (currency==='USD'? '$'+change.toFixed(2) : fmtMoney(change)+' ل.ل');
+    changeEl.textContent = (currency==='USD'? '$'+change.toFixed(2) : fmtNum(change)+' '+secCurLabel());
     changeEl.style.color = change<0? 'var(--debit)' : 'var(--credit)';
   }
   input.addEventListener('input', updateChange);
@@ -2652,7 +2660,7 @@ async function completePosSale(currency, received, due){
     DB.stockOuts.push({id:uid(), createdAt:now, itemId:l.itemId, qty:l.qty, date, number:nextStockOutNumber(), note:'بيع POS #'+inv.number});
   });
   const receipt = {id:uid(), createdAt:now, customerId, number:nextReceiptNumber(), date,
-    amount: currency==='USD'? totalUSD : totalUSD*rate, method: currency==='USD'?'نقد $ (POS)':'نقد ل.ل (POS)', details:'بيع نقطة بيع #'+inv.number};
+    amount: currency==='USD'? totalUSD : totalUSD*rate, method: currency==='USD'?'نقد $ (POS)':'نقد '+secCurLabel()+' (POS)', details:'بيع نقطة بيع #'+inv.number};
   DB.receipts.push(receipt);
   const movement = {id:uid(), createdAt:now, type:'sale', currency, amount: currency==='USD'?totalUSD:totalUSD*rate, note:'بيع POS #'+inv.number, refSaleId:inv.id, date};
   DB.cashMovements.push(movement);
@@ -2708,12 +2716,12 @@ function printPosReceipt(inv, currency, totalUSD, rate, customerLabel, received,
     <div style="border-top:1px dashed #000; margin:6px 0;"></div>
     ${inv.discount? `<div style="display:flex; justify-content:space-between; font-size:11.5px;"><span>حسم</span><span>-$${Number(inv.discount).toFixed(2)}</span></div>` : ''}
     <div style="display:flex; justify-content:space-between; font-weight:800; font-size:13px;">
-      <span>الإجمالي</span><span>$${totalUSD.toFixed(2)} / ${fmtMoney(totalUSD*rate)} ل.ل</span>
+      <span>الإجمالي</span><span>$${totalUSD.toFixed(2)} / ${fmtNum(totalUSD*rate)} ${secCurLabel()}</span>
     </div>
-    <div style="text-align:center; font-size:11px; margin-top:8px;">طريقة الدفع: ${currency==='USD'?'نقد دولار':'نقد ل.ل'}</div>
+    <div style="text-align:center; font-size:11px; margin-top:8px;">طريقة الدفع: ${currency==='USD'?'نقد دولار':'نقد '+secCurLabel()}</div>
     ${(received!=null && changeDue!=null)? `
-    <div style="display:flex; justify-content:space-between; font-size:11.5px; margin-top:4px;"><span>المقبوض</span><span>${currency==='USD'?'$'+Number(received).toFixed(2):fmtMoney(received)+' ل.ل'}</span></div>
-    <div style="display:flex; justify-content:space-between; font-size:11.5px; font-weight:800;"><span>الباقي</span><span>${currency==='USD'?'$'+Number(changeDue).toFixed(2):fmtMoney(changeDue)+' ل.ل'}</span></div>` : ''}
+    <div style="display:flex; justify-content:space-between; font-size:11.5px; margin-top:4px;"><span>المقبوض</span><span>${currency==='USD'?'$'+Number(received).toFixed(2):fmtNum(received)+' '+secCurLabel()}</span></div>
+    <div style="display:flex; justify-content:space-between; font-size:11.5px; font-weight:800;"><span>الباقي</span><span>${currency==='USD'?'$'+Number(changeDue).toFixed(2):fmtNum(changeDue)+' '+secCurLabel()}</span></div>` : ''}
     <div style="text-align:center; font-size:11px; margin-top:10px;">شكراً لزيارتكم 🙏</div>`;
   document.body.appendChild(wrap);
   const showForPrint = ()=>{ wrap.style.display='block'; };
@@ -2761,7 +2769,7 @@ function openCashMovementModal(type, currency){
   const wrap = document.createElement('div');
   wrap.className='modal-bg';
   wrap.innerHTML = `<div class="modal">
-    <h3>${type==='deposit'?'➕ إضافة للصندوق':'➖ سحب من الصندوق'} — ${currency==='USD'?'دولار $':'ليرة ل.ل'}</h3>
+    <h3>${type==='deposit'?'➕ إضافة للصندوق':'➖ سحب من الصندوق'} — ${currency==='USD'?'دولار $':secCurLabel()}</h3>
     <div class="field"><label>المبلغ *</label><input type="number" step="0.01" id="cm_amount" class="num" value=""></div>
     <div class="field"><label>ملاحظة</label><input type="text" id="cm_note" value=""></div>
     <div class="row">
@@ -2797,14 +2805,14 @@ function openDayCloseModal(){
   wrap.className='modal-bg';
   wrap.innerHTML = `<div class="modal">
     <h3>🔒 إقفال يومية — ${fmtDate(today)}</h3>
-    <p style="font-size:12.5px; color:var(--ink-soft);">مبيعات اليوم: $${salesUSD.toFixed(2)} + ${fmtMoney(salesLBP)} ل.ل</p>
+    <p style="font-size:12.5px; color:var(--ink-soft);">مبيعات اليوم: $${salesUSD.toFixed(2)} + ${fmtNum(salesLBP)} ${secCurLabel()}</p>
     <div class="grid grid-2">
       <div class="field"><label>رصيد الصندوق بالنظام $</label><input type="text" class="num" value="$${(DB.settings.cashBoxUSD||0).toFixed(2)}" disabled></div>
-      <div class="field"><label>رصيد الصندوق بالنظام ل.ل</label><input type="text" class="num" value="${fmtMoney(DB.settings.cashBoxLBP||0)}" disabled></div>
+      <div class="field"><label>رصيد الصندوق بالنظام ${secCurLabel()}</label><input type="text" class="num" value="${fmtNum(DB.settings.cashBoxLBP||0)}" disabled></div>
     </div>
     <div class="grid grid-2">
       <div class="field"><label>المبلغ المعدود فعلياً $</label><input type="number" step="0.01" id="dc_usd" class="num" value="${(DB.settings.cashBoxUSD||0).toFixed(2)}"></div>
-      <div class="field"><label>المبلغ المعدود فعلياً ل.ل</label><input type="number" id="dc_lbp" class="num" value="${DB.settings.cashBoxLBP||0}"></div>
+      <div class="field"><label>المبلغ المعدود فعلياً ${secCurLabel()}</label><input type="number" id="dc_lbp" class="num" value="${DB.settings.cashBoxLBP||0}"></div>
     </div>
     <div class="field"><label>ملاحظة</label><input type="text" id="dc_note" value=""></div>
     <div class="row">
@@ -2841,7 +2849,7 @@ function printDayCloseReport(closure, salesUSD, salesLBP){
   <h2>${escapeHtml(s.companyName||'')} — تقرير إقفال يومية</h2>
   <p>التاريخ: ${fmtDate(closure.date)}</p>
   <table>
-    <tr><th></th><th>دولار $</th><th>ليرة ل.ل</th></tr>
+    <tr><th></th><th>دولار $</th><th>${secCurLabel()}</th></tr>
     <tr><td>مبيعات اليوم</td><td>$${salesUSD.toFixed(2)}</td><td>${fmtMoney(salesLBP)}</td></tr>
     <tr><td>رصيد النظام</td><td>$${closure.expectedUSD.toFixed(2)}</td><td>${fmtMoney(closure.expectedLBP)}</td></tr>
     <tr><td>المعدود فعلياً</td><td>$${closure.countedUSD.toFixed(2)}</td><td>${fmtMoney(closure.countedLBP)}</td></tr>
@@ -2904,7 +2912,7 @@ function journalView(qs){
   <div class="doc" style="box-shadow:none;">
     ${docHead(title)}
     <div class="table-scroll"><table>
-      <thead><tr><th>التاريخ</th><th>النوع</th><th>الطرف</th><th>دولار $</th><th>ليرة ل.ل</th></tr></thead>
+      <thead><tr><th>التاريخ</th><th>النوع</th><th>الطرف</th><th>دولار $</th><th>${secCurLabel()}</th></tr></thead>
       <tbody>${rows.length? rows.map(r=>`<tr ${r.nav?`data-nav="${r.nav}"`:''} style="${r.nav?'cursor:pointer;':''}">
         <td class="num">${fmtDate(r.date)}</td>
         <td>${escapeHtml(r.type)}</td><td>${escapeHtml(r.party)}</td>
@@ -2951,11 +2959,11 @@ function reportsView(qs){
     <div class="grid grid-2" style="gap:14px; margin-bottom:16px;">
       <div class="card" style="margin:0;"><div style="font-size:12.5px; color:var(--ink-soft);">إجمالي الفواتير</div><div style="font-size:20px; font-weight:800;" class="num">$${invoicesTotal.toFixed(2)}</div></div>
       <div class="card" style="margin:0;"><div style="font-size:12.5px; color:var(--ink-soft);">منها مبيعات POS</div><div style="font-size:20px; font-weight:800;" class="num">$${salesTotal.toFixed(2)}</div></div>
-      <div class="card" style="margin:0;"><div style="font-size:12.5px; color:var(--ink-soft);">إيصالات القبض</div><div style="font-size:18px; font-weight:800; color:var(--credit);" class="num">$${receiptsUSD.toFixed(2)} + ${fmtMoney(receiptsLBP)} ل.ل</div></div>
-      <div class="card" style="margin:0;"><div style="font-size:12.5px; color:var(--ink-soft);">سندات الصرف</div><div style="font-size:18px; font-weight:800; color:var(--debit);" class="num">$${vouchersUSD.toFixed(2)} + ${fmtMoney(vouchersLBP)} ل.ل</div></div>
+      <div class="card" style="margin:0;"><div style="font-size:12.5px; color:var(--ink-soft);">إيصالات القبض</div><div style="font-size:18px; font-weight:800; color:var(--credit);" class="num">$${receiptsUSD.toFixed(2)} + ${fmtNum(receiptsLBP)} ${secCurLabel()}</div></div>
+      <div class="card" style="margin:0;"><div style="font-size:12.5px; color:var(--ink-soft);">سندات الصرف</div><div style="font-size:18px; font-weight:800; color:var(--debit);" class="num">$${vouchersUSD.toFixed(2)} + ${fmtNum(vouchersLBP)} ${secCurLabel()}</div></div>
     </div>
     <div class="table-scroll"><table>
-      <thead><tr><th>التاريخ</th><th>النوع</th><th>الطرف</th><th>دولار $</th><th>ليرة ل.ل</th></tr></thead>
+      <thead><tr><th>التاريخ</th><th>النوع</th><th>الطرف</th><th>دولار $</th><th>${secCurLabel()}</th></tr></thead>
       <tbody>${rows.length? rows.map(r=>`<tr>
         <td class="num">${fmtDate(r.date)}</td><td>${escapeHtml(r.type)}</td><td>${escapeHtml(r.party)}</td>
         <td class="num" style="color:${r.usd<0?'var(--debit)':(r.usd>0?'var(--credit)':'inherit')}">${r.usd?(r.usd<0?'-':'')+'$'+Math.abs(r.usd).toFixed(2):'—'}</td>
@@ -3407,7 +3415,7 @@ function itemDocFormView(kind, doc, partyId){
       <div class="field"><label>التاريخ</label><input type="date" id="f_date" value="${d.date}"></div>
       <div class="field"><label>نوع ${cfg.title}</label><input type="text" id="f_doctype" value="${escapeHtml(d.docType)}" placeholder="${cfg.docTypeDefault}"></div>
     </div>
-    <div class="field" style="max-width:260px"><label>سعر الصرف (ل.ل لكل دولار)</label><input type="number" id="f_rate" class="num" value="${d.exchangeRate}"></div>
+    <div class="field" style="max-width:260px"><label>سعر الصرف (${secCurLabel()} لكل دولار)</label><input type="number" id="f_rate" class="num" value="${d.exchangeRate}"></div>
 
     <div id="itemsBody">
       ${d.items.map((it,idx)=>itemRow(it,idx)).join('')}
@@ -3558,7 +3566,7 @@ function itemDocPrintView(kind, doc){
       <div class="amount-box">
         ${totals.discount>0? `<div class="line" style="font-size:13px; font-weight:600; color:var(--ink-soft);">مجموع البنود: ${fmtMoney(totals.subtotal)}</div><div class="line" style="font-size:13px; font-weight:600; color:var(--debit);">الحسم: -${fmtMoney(totals.discount)}</div>` : ''}
         <div class="line">المجموع $: ${fmtMoney(totals.totalUSD)}</div>
-        <div class="line lbp">المجموع ل.ل: ${fmtLBP(totals.totalLBP)}</div>
+        <div class="line lbp">المجموع ${secCurLabel()}: ${fmtLBP(totals.totalLBP)}</div>
       </div>
     </div>
     <div class="sig">التوقيع</div>
@@ -3677,11 +3685,11 @@ function settingsView(){
       <div class="field"><label>هاتف / عنوان</label><input type="text" id="s_phone" value="${escapeHtml(s.companyPhone)}"></div>
     </div>
     <div class="field"><label>وصف النشاط (يظهر تحت اسم الشركة)</label><input type="text" id="s_tag" value="${escapeHtml(s.companyTag)}"></div>
-    <div class="grid grid-3">
-      <div class="field"><label>سعر الصرف الافتراضي (ل.ل)</label><input type="number" id="s_rate" class="num" value="${s.defaultExchangeRate}"></div>
+    <div class="grid grid-2">
       <div class="field"><label>بداية ترقيم الفواتير</label><input type="number" id="s_invstart" class="num" value="${s.invoiceStart}"></div>
       <div class="field"><label>بداية ترقيم إيصالات القبض</label><input type="number" id="s_recstart" class="num" value="${s.receiptStart}"></div>
     </div>
+    <p style="font-size:11.5px; color:var(--ink-soft);">سعر الصرف صار يتحدد من كرت "العملة الثانية" تحت.</p>
     <button class="btn btn-primary" id="saveSettingsBtn">💾 حفظ الإعدادات</button>
   </div>
 
@@ -4097,7 +4105,6 @@ function bindEvents(){
     DB.settings.companyName = document.getElementById('s_name').value.trim() || DB.settings.companyName;
     DB.settings.companyPhone = document.getElementById('s_phone').value.trim();
     DB.settings.companyTag = document.getElementById('s_tag').value.trim();
-    DB.settings.defaultExchangeRate = Number(document.getElementById('s_rate').value)||90000;
     DB.settings.invoiceStart = (()=>{ const n=Number(document.getElementById('s_invstart').value); return Number.isFinite(n)? n : 0; })();
     DB.settings.receiptStart = (()=>{ const n=Number(document.getElementById('s_recstart').value); return Number.isFinite(n)? n : 1000; })();
     const ok = await save(KEYS.settings, DB.settings);
@@ -4109,8 +4116,10 @@ function bindEvents(){
     DB.settings.secondCurrencyEnabled = document.getElementById('s_cur2_enabled').checked;
     DB.settings.secondCurrencyCode = document.getElementById('s_cur2_code').value.trim().toUpperCase() || 'LBP';
     DB.settings.secondCurrencyRate = Number(document.getElementById('s_cur2_rate').value)||0;
+    DB.settings.defaultExchangeRate = DB.settings.secondCurrencyRate || DB.settings.defaultExchangeRate || 90000;
     const ok = await save(KEYS.settings, DB.settings);
     toast(ok? 'تم حفظ إعدادات العملة':'صار خطأ بالحفظ');
+    render();
   });
   const cur2SyncBtn = document.getElementById('s_cur2_sync');
   if(cur2SyncBtn) cur2SyncBtn.addEventListener('click', async ()=>{
