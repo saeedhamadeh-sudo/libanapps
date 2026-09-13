@@ -231,6 +231,16 @@
   @media(max-width:900px){.hub-grid{grid-template-columns:repeat(2,1fr);}}
   @media(max-width:640px){.hub-grid{grid-template-columns:1fr;}}
   .hub-card{background:var(--white); border:1px solid var(--line); border-radius:14px; padding:22px 18px; text-align:center; box-shadow:var(--shadow); cursor:pointer; transition:transform .1s ease, box-shadow .15s ease;}
+  .pos-tile-grid{display:grid; grid-template-columns:repeat(auto-fill, minmax(110px, 1fr)); gap:10px; margin-top:12px;}
+  .pos-tile{background:var(--white); border:1.5px solid var(--line); border-radius:12px; padding:14px 8px; text-align:center; cursor:pointer;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:78px; -webkit-tap-highlight-color:transparent; user-select:none;}
+  .pos-tile:active{transform:scale(.96); background:var(--bg-2);}
+  .pos-tile-name{font-size:13px; font-weight:700; line-height:1.3; word-break:break-word;}
+  .pos-tile-price{font-size:12.5px; color:var(--credit); font-weight:800; margin-top:4px;}
+  @media(max-width:520px){
+    .pos-tile-grid{grid-template-columns:repeat(auto-fill, minmax(90px, 1fr));}
+    #pos_scan_input{font-size:16px !important; padding:10px !important;}
+  }
   .hub-card:hover{transform:translateY(-2px); box-shadow:0 6px 20px rgba(30,42,56,.14);}
   .hub-icon{font-size:32px; margin-bottom:8px;}
   .hub-title{font-family:var(--font-display); font-weight:800; font-size:18px; margin-bottom:4px;}
@@ -276,15 +286,15 @@ const KEYS = {customers:'customers', invoices:'invoices', receipts:'receipts', s
   suppliers:'suppliers', purchaseInvoices:'purchaseInvoices', paymentVouchers:'paymentVouchers',
   warehouseItems:'warehouseItems', stockIns:'stockIns', stockOuts:'stockOuts',
   customerAccounts:'customerAccounts',
-  budgetCategories:'budgetCategories', budgetEntries:'budgetEntries', cashMovements:'cashMovements'};
+  budgetCategories:'budgetCategories', budgetEntries:'budgetEntries', cashMovements:'cashMovements', dayClosures:'dayClosures'};
 
 async function loadAll(){
-  const [c,i,r,s,sup,pi,pv,wi,si,so,ca,bc,be,cm] = await Promise.all([
+  const [c,i,r,s,sup,pi,pv,wi,si,so,ca,bc,be,cm,dc] = await Promise.all([
     loadCustomers(),
     loadSyncedArray(KEYS.invoices, []),
     loadSyncedArray(KEYS.receipts, []),
     loadSettings({defaultExchangeRate:90000, invoiceStart:0, receiptStart:1000, companyName:'Trade Co', companyTag:'General Trading', companyPhone:'', logo:'', auth:{username:'admin', password:'0000'}, autoBackupOnClose:false,
-      expiryAlertDays:20, barcodeScanMethod:'camera', posCustomerId:null, posAutoOpenDrawer:true, cashBoxLBP:0, cashBoxUSD:0
+      expiryAlertDays:20, barcodeScanMethod:'camera', posAutoOpenDrawer:true, cashBoxLBP:0, cashBoxUSD:0
     }),
     loadSyncedArray(KEYS.suppliers, []),
     loadSyncedArray(KEYS.purchaseInvoices, []),
@@ -295,13 +305,14 @@ async function loadAll(){
     loadSyncedArray(KEYS.customerAccounts, []),
     loadSyncedArray(KEYS.budgetCategories, []),
     loadSyncedArray(KEYS.budgetEntries, []),
-    loadSyncedArray(KEYS.cashMovements, [])
+    loadSyncedArray(KEYS.cashMovements, []),
+    loadSyncedArray(KEYS.dayClosures, [])
   ]);
   return {customers:c, invoices:i, receipts:r, settings:s,
     suppliers:sup, purchaseInvoices:pi, paymentVouchers:pv,
     warehouseItems:wi, stockIns:si, stockOuts:so,
     customerAccounts:ca,
-    budgetCategories:bc, budgetEntries:be, cashMovements:cm};
+    budgetCategories:bc, budgetEntries:be, cashMovements:cm, dayClosures:dc};
 }
 async function loadCustomers(){
   if(supabaseClient){
@@ -335,7 +346,7 @@ async function save(key, value){
   return true;
 }
 
-let DB = {customers:[], invoices:[], receipts:[], settings:{}, suppliers:[], purchaseInvoices:[], paymentVouchers:[], warehouseItems:[], stockIns:[], stockOuts:[], customerAccounts:[], budgetCategories:[], budgetEntries:[], cashMovements:[]};
+let DB = {customers:[], invoices:[], receipts:[], settings:{}, suppliers:[], purchaseInvoices:[], paymentVouchers:[], warehouseItems:[], stockIns:[], stockOuts:[], customerAccounts:[], budgetCategories:[], budgetEntries:[], cashMovements:[], dayClosures:[]};
 let authenticated = false;
 async function signOutEverywhere(){
   try{ if(supabaseClient) await supabaseClient.auth.signOut(); }catch(e){}
@@ -499,16 +510,22 @@ function paymentVoucherToDb(v){
   return { id:v.id, supplier_id:v.supplierId||null, number:v.number||null, date:v.date||null, amount:Number(v.amount)||0, method:v.method||null, details:v.details||null, created_at:v.createdAt||Date.now(), deleted:!!v.deleted, deleted_at:v.deletedAt||null, admin_purged:!!v.adminPurged };
 }
 function warehouseItemFromDb(row){
-  return { id:row.id, name:row.name, brand:row.brand||'', type:row.type||'', barcode:row.barcode||'', price:row.price!=null?Number(row.price):0, productionDate:row.production_date||'', expiryDate:row.expiry_date||'', expiryAlertDays:row.expiry_alert_days||null, note:row.note||'', purchaseDate:row.purchase_date||'', createdAt:row.created_at||0 };
+  return { id:row.id, name:row.name, brand:row.brand||'', type:row.type||'', barcode:row.barcode||'', price:row.price!=null?Number(row.price):0, category:row.category||'', productionDate:row.production_date||'', expiryDate:row.expiry_date||'', expiryAlertDays:row.expiry_alert_days||null, note:row.note||'', purchaseDate:row.purchase_date||'', createdAt:row.created_at||0 };
 }
 function warehouseItemToDb(it){
-  return { id:it.id, name:it.name, brand:it.brand||null, type:it.type||null, barcode:it.barcode||null, price:Number(it.price)||0, production_date:it.productionDate||null, expiry_date:it.expiryDate||null, expiry_alert_days:it.expiryAlertDays||null, note:it.note||null, purchase_date:it.purchaseDate||null, created_at:it.createdAt||Date.now() };
+  return { id:it.id, name:it.name, brand:it.brand||null, type:it.type||null, barcode:it.barcode||null, price:Number(it.price)||0, category:it.category||null, production_date:it.productionDate||null, expiry_date:it.expiryDate||null, expiry_alert_days:it.expiryAlertDays||null, note:it.note||null, purchase_date:it.purchaseDate||null, created_at:it.createdAt||Date.now() };
 }
 function cashMovementFromDb(row){
   return { id:row.id, type:row.type, currency:row.currency, amount:Number(row.amount)||0, note:row.note||'', refSaleId:row.ref_sale_id||null, date:row.date||'', createdAt:row.created_at||0, deleted:!!row.deleted };
 }
 function cashMovementToDb(m){
   return { id:m.id, type:m.type, currency:m.currency, amount:Number(m.amount)||0, note:m.note||null, ref_sale_id:m.refSaleId||null, date:m.date||null, created_at:m.createdAt||Date.now(), deleted:!!m.deleted };
+}
+function dayClosureFromDb(row){
+  return { id:row.id, date:row.date, expectedUSD:Number(row.expected_usd)||0, expectedLBP:Number(row.expected_lbp)||0, countedUSD:Number(row.counted_usd)||0, countedLBP:Number(row.counted_lbp)||0, note:row.note||'', createdAt:row.created_at||0 };
+}
+function dayClosureToDb(c){
+  return { id:c.id, date:c.date||null, expected_usd:Number(c.expectedUSD)||0, expected_lbp:Number(c.expectedLBP)||0, counted_usd:Number(c.countedUSD)||0, counted_lbp:Number(c.countedLBP)||0, note:c.note||null, created_at:c.createdAt||Date.now() };
 }
 function stockInFromDb(row){
   return { id:row.id, itemId:row.item_id, qty:row.qty||0, date:row.date, number:row.number, note:row.note||'', createdAt:row.created_at||0, deleted: !!row.deleted };
@@ -553,7 +570,7 @@ function settingsToDb(s){
     invoice_start: s.invoiceStart||0, receipt_start: s.receiptStart||1000,
     auto_backup_on_close: !!s.autoBackupOnClose,
     expiry_alert_days: s.expiryAlertDays||20, barcode_scan_method: s.barcodeScanMethod||'camera',
-    pos_customer_id: s.posCustomerId||null, pos_auto_open_drawer: s.posAutoOpenDrawer!==false,
+    pos_auto_open_drawer: s.posAutoOpenDrawer!==false,
     cash_box_lbp: s.cashBoxLBP||0, cash_box_usd: s.cashBoxUSD||0,
     trial_started_at: s.trialStartedAt||null, license_serial: s.licenseSerial||null,
     license_expires_at: s.licenseExpiresAt||null, license_label: s.licenseLabel||null
@@ -572,7 +589,6 @@ function applySettingsFromDb(row, base){
     autoBackupOnClose: !!row.auto_backup_on_close,
     expiryAlertDays: row.expiry_alert_days!=null? row.expiry_alert_days : base.expiryAlertDays,
     barcodeScanMethod: row.barcode_scan_method!=null? row.barcode_scan_method : base.barcodeScanMethod,
-    posCustomerId: row.pos_customer_id!=null? row.pos_customer_id : base.posCustomerId,
     posAutoOpenDrawer: row.pos_auto_open_drawer!=null? !!row.pos_auto_open_drawer : base.posAutoOpenDrawer,
     cashBoxLBP: row.cash_box_lbp!=null? Number(row.cash_box_lbp) : base.cashBoxLBP,
     cashBoxUSD: row.cash_box_usd!=null? Number(row.cash_box_usd) : base.cashBoxUSD,
@@ -663,7 +679,8 @@ const SUPABASE_TABLES = {
   customerAccounts: {table:'customer_accounts', toDb:customerAccountToDb, fromDb:customerAccountFromDb, label:'حسابات دخول الزبائن'},
   budgetCategories: {table:'budget_categories', toDb:budgetCategoryToDb, fromDb:budgetCategoryFromDb, label:'حقول الميزانية'},
   budgetEntries: {table:'budget_entries', toDb:budgetEntryToDb, fromDb:budgetEntryFromDb, label:'سندات الميزانية'},
-  cashMovements: {table:'cash_movements', toDb:cashMovementToDb, fromDb:cashMovementFromDb, label:'حركات الصندوق'}
+  cashMovements: {table:'cash_movements', toDb:cashMovementToDb, fromDb:cashMovementFromDb, label:'حركات الصندوق'},
+  dayClosures: {table:'day_closures', toDb:dayClosureToDb, fromDb:dayClosureFromDb, label:'إقفالات اليومية'}
 };
 async function syncArrayToSupabase(localKey, arr){
   const cfg = SUPABASE_TABLES[localKey];
@@ -1164,6 +1181,10 @@ const CUT_TYPES = [
 /* ============================= الميزانية (BUDGET) ============================= */
 function computePeriodRange(type, a, b){
   const today = todayISO();
+  if(type==='day'){
+    const val = a || today;
+    return {from:val, to:val};
+  }
   if(type==='month'){
     const val = a || today.slice(0,7);
     const [y,m] = val.split('-');
@@ -1693,7 +1714,7 @@ function bindLoginEvents(){
 
 function routeRequiredPermission(routeKey){
   const map = {
-    pos:'pos',
+    pos:'pos', journal:'pos', reports:'pos',
     customers:'customers', customer:'customers', invoice:'customers', receipt:'customers', statement:'customers',
     suppliers:'suppliers', supplier:'suppliers', purchase:'suppliers', voucher:'suppliers', 'supplier-statement':'suppliers',
     warehouse:'warehouse', 'warehouse-print':'warehouse', 'warehouse-item':'warehouse', stockout:'warehouse', stockin:'warehouse',
@@ -1824,6 +1845,12 @@ function render(){
   /* ---------- Warehouse (المستودع) ---------- */
   } else if(parts[0]==='pos'){
     html += crumbs([['الرئيسية','#/'],['نقطة البيع (POS)',null]]) + posView();
+  } else if(parts[0]==='journal'){
+    const qs = new URLSearchParams(location.hash.split('?')[1]||'');
+    html += crumbs([['الرئيسية','#/'],['اليوميات',null]]) + journalView(qs.get('date')||todayISO());
+  } else if(parts[0]==='reports'){
+    const qs = new URLSearchParams(location.hash.split('?')[1]||'');
+    html += crumbs([['الرئيسية','#/'],['التقارير',null]]) + reportsView(qs);
   } else if(parts[0]==='warehouse'){
     html += crumbs([['الرئيسية','#/'],['المستودع',null]]) + warehouseHubView();
   } else if(parts[0]==='warehouse-print'){
@@ -1936,6 +1963,18 @@ function hubView(){
       <div class="hub-sub">بيع سريع بالباركود</div>
       <div class="hub-amt" style="color:var(--steel)">افتح شاشة البيع</div>
     </div>`},
+    {perm:'pos', html:`<div class="hub-card" data-nav="#/journal">
+      <div class="hub-icon">📒</div>
+      <div class="hub-title">اليوميات</div>
+      <div class="hub-sub">كل حركات اليوم بمكان واحد</div>
+      <div class="hub-amt" style="color:var(--steel)">فواتير، إيصالات، سندات</div>
+    </div>`},
+    {perm:'pos', html:`<div class="hub-card" data-nav="#/reports">
+      <div class="hub-icon">📊</div>
+      <div class="hub-title">التقارير</div>
+      <div class="hub-sub">يومي، شهري، سنوي، أو فترة محددة</div>
+      <div class="hub-amt" style="color:var(--steel)">قابلة للطباعة</div>
+    </div>`},
     {perm:'customers', html:`<div class="hub-card" data-nav="#/customers">
       <div class="hub-icon">👤</div>
       <div class="hub-title">الزبائن</div>
@@ -1981,27 +2020,27 @@ function hubView(){
       <div class="hub-amt" style="color:var(--steel)">استرجاع أو حذف نهائي</div>
     </div>` : '';
   const todaySales = hasPermission('pos') ? todaySalesSummary() : {count:0, totalUSD:0};
-  const cashBoxCard = hasPermission('pos') ? `<div class="card">
-    <h2><span class="dot"></span> 💵 الصندوق</h2>
-    <div style="background:var(--bg-2); border-radius:10px; padding:12px 16px; margin-bottom:12px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
-      <div style="font-size:13px; color:var(--ink-soft);">مبيعات اليوم (POS)</div>
-      <div style="font-size:18px; font-weight:800;" class="num">${todaySales.count} عملية — $${todaySales.totalUSD.toFixed(2)}</div>
+  const cashBoxCard = hasPermission('pos') ? `<div class="card" style="padding:14px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:10px;">
+      <h2 style="margin:0;"><span class="dot"></span> 💵 الصندوق</h2>
+      <button class="btn btn-sm" id="dayCloseBtn">🔒 إقفال يومية</button>
     </div>
-    <div class="grid grid-2" style="gap:14px;">
-      <div style="background:var(--bg-2); border-radius:10px; padding:14px; text-align:center;">
-        <div style="font-size:12px; color:var(--ink-soft); margin-bottom:4px;">صندوق الليرة L.L.</div>
-        <div style="font-size:22px; font-weight:800;" class="num">${fmtMoney(DB.settings.cashBoxLBP||0)}</div>
-        <div class="row" style="margin-top:10px; justify-content:center; gap:8px;">
-          <button class="btn btn-sm" data-cashmove="deposit" data-currency="LBP">➕ إضافة</button>
-          <button class="btn btn-sm" data-cashmove="withdraw" data-currency="LBP">➖ سحب</button>
+    <div style="font-size:12px; color:var(--ink-soft); margin-bottom:10px;">مبيعات اليوم (POS): <b class="num">${todaySales.count} عملية — $${todaySales.totalUSD.toFixed(2)}</b></div>
+    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+      <div style="flex:1; min-width:150px; background:var(--bg-2); border:1px solid var(--line); border-radius:8px; padding:8px 12px; text-align:center;">
+        <div style="font-size:11px; color:var(--ink-soft);">ليرة L.L.</div>
+        <div style="font-size:16px; font-weight:800;" class="num">${fmtMoney(DB.settings.cashBoxLBP||0)}</div>
+        <div style="margin-top:6px; display:flex; gap:5px; justify-content:center;">
+          <button class="btn btn-sm" style="padding:3px 8px; font-size:11px;" data-cashmove="deposit" data-currency="LBP">➕</button>
+          <button class="btn btn-sm" style="padding:3px 8px; font-size:11px;" data-cashmove="withdraw" data-currency="LBP">➖</button>
         </div>
       </div>
-      <div style="background:var(--bg-2); border-radius:10px; padding:14px; text-align:center;">
-        <div style="font-size:12px; color:var(--ink-soft); margin-bottom:4px;">صندوق الدولار $</div>
-        <div style="font-size:22px; font-weight:800;" class="num">${(DB.settings.cashBoxUSD||0).toFixed(2)}</div>
-        <div class="row" style="margin-top:10px; justify-content:center; gap:8px;">
-          <button class="btn btn-sm" data-cashmove="deposit" data-currency="USD">➕ إضافة</button>
-          <button class="btn btn-sm" data-cashmove="withdraw" data-currency="USD">➖ سحب</button>
+      <div style="flex:1; min-width:150px; background:var(--bg-2); border:1px solid var(--line); border-radius:8px; padding:8px 12px; text-align:center;">
+        <div style="font-size:11px; color:var(--ink-soft);">دولار $</div>
+        <div style="font-size:16px; font-weight:800;" class="num">$${(DB.settings.cashBoxUSD||0).toFixed(2)}</div>
+        <div style="margin-top:6px; display:flex; gap:5px; justify-content:center;">
+          <button class="btn btn-sm" style="padding:3px 8px; font-size:11px;" data-cashmove="deposit" data-currency="USD">➕</button>
+          <button class="btn btn-sm" style="padding:3px 8px; font-size:11px;" data-cashmove="withdraw" data-currency="USD">➖</button>
         </div>
       </div>
     </div>
@@ -2155,32 +2194,53 @@ function supplierView(sup){
 /* ============================= WORKERS UI ============================= */
 
 /* ============================= WAREHOUSE UI ============================= */
-/* ============================= POS (نقطة البيع) ============================= */
-let _posCart = [];
+/* ============================= POS (نقطة البيع) — يدعم أكتر من زبون بنفس الوقت ============================= */
+let _posTickets = [];
+let _posActiveTicketId = null;
+let _posActiveCategory = null;
+function posNewTicket(){
+  const t = {id:uid(), customerId:null, customerLabel:'زبون عابر', cart:[], discount:0, discountType:'amount'};
+  _posTickets.push(t);
+  _posActiveTicketId = t.id;
+  return t;
+}
+function posEnsureTicket(){
+  if(!_posTickets.length) posNewTicket();
+  if(!_posTickets.find(t=>t.id===_posActiveTicketId)) _posActiveTicketId = _posTickets[0].id;
+}
+function posActiveTicket(){ posEnsureTicket(); return _posTickets.find(t=>t.id===_posActiveTicketId); }
 function posFindItemByBarcode(code){
   code = String(code||'').trim();
   if(!code) return null;
   return DB.warehouseItems.find(it=>it.barcode && it.barcode===code) || null;
 }
-function posAddToCart(item){
+function posAddToCart(ticket, item){
   if(!item) return;
-  const line = _posCart.find(l=>l.itemId===item.id);
+  const line = ticket.cart.find(l=>l.itemId===item.id);
   if(line) line.qty += 1;
-  else _posCart.push({itemId:item.id, name:item.name, price:Number(item.price)||0, qty:1});
+  else ticket.cart.push({itemId:item.id, name:item.name, price:Number(item.price)||0, qty:1});
 }
-function posCartTotalUSD(){ return _posCart.reduce((s,l)=>s + l.price*l.qty, 0); }
+function posSubtotalUSD(ticket){ return ticket.cart.reduce((s,l)=>s + l.price*l.qty, 0); }
+function posDiscountUSD(ticket, sub){
+  sub = sub!=null? sub : posSubtotalUSD(ticket);
+  if(ticket.discountType==='percent') return sub * (Number(ticket.discount)||0) / 100;
+  return Number(ticket.discount)||0;
+}
+function posTotalUSD(ticket){
+  const sub = posSubtotalUSD(ticket);
+  return Math.max(0, sub - posDiscountUSD(ticket, sub));
+}
+function posCategories(){
+  const set = new Set();
+  DB.warehouseItems.forEach(it=>{ if(it.category) set.add(it.category); });
+  return Array.from(set).sort();
+}
 function posView(){
-  if(!(DB.settings.posCustomerId && DB.customers.find(c=>c.id===DB.settings.posCustomerId))){
-    return `<div class="card">
-      <div class="empty">
-        <div class="big">لازم تحدد زبون افتراضي لنقطة البيع أول</div>
-        <p style="color:var(--ink-soft); font-size:13px; margin-top:8px;">روح ${isPrivilegedUser(currentUser)?'<a data-nav="#/settings">الإعدادات ← نقطة البيع</a>':'حكي مع ADMIN ليحدد'} وحدد الزبون يلي رح تنسجل عليه كل مبيعات POS.</p>
-      </div>
-    </div>`;
-  }
+  const ticket = posActiveTicket();
   const rate = DB.settings.defaultExchangeRate || 90000;
-  const totalUSD = posCartTotalUSD();
-  const rows = _posCart.map((l,idx)=>`
+  const subtotal = posSubtotalUSD(ticket);
+  const totalUSD = posTotalUSD(ticket);
+  const rows = ticket.cart.map((l,idx)=>`
     <tr>
       <td><b>${escapeHtml(l.name)}</b></td>
       <td class="num">$${l.price.toFixed(2)}</td>
@@ -2192,44 +2252,87 @@ function posView(){
       <td class="num">$${(l.price*l.qty).toFixed(2)}</td>
       <td><button class="btn btn-sm btn-danger" data-pos-remove="${idx}">🗑</button></td>
     </tr>`).join('');
+  const tabsHtml = _posTickets.map(t=>{
+    const active = t.id===ticket.id;
+    return `<button class="btn btn-sm${active?' btn-primary':''}" data-pos-tab="${t.id}" style="white-space:nowrap; position:relative;">
+      ${escapeHtml(t.customerLabel)}${t.cart.length?` (${t.cart.length})`:''}
+      ${_posTickets.length>1?`<span data-pos-close-tab="${t.id}" style="margin-inline-start:6px; opacity:.75;">✕</span>`:''}
+    </button>`;
+  }).join('');
+  const categories = posCategories();
+  const catItems = _posActiveCategory ? DB.warehouseItems.filter(it=>it.category===_posActiveCategory) : [];
   return `
+  <div class="card" style="padding:10px 14px;">
+    <div style="display:flex; gap:8px; overflow-x:auto; padding-bottom:4px;">
+      ${tabsHtml}
+      <button class="btn btn-sm" id="pos_new_ticket_btn">+ زبون جديد</button>
+    </div>
+  </div>
   <div class="card">
-    <h2><span class="dot"></span> 🧾 نقطة البيع</h2>
+    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:10px;">
+      <div style="font-size:13.5px;">الزبون: <b>${escapeHtml(ticket.customerLabel)}</b>
+        <button class="btn btn-sm" id="pos_pick_customer_btn" style="margin-inline-start:6px;">تغيير</button>
+      </div>
+      <button class="btn btn-sm" id="pos_return_btn">↩ فاتورة استرجاع</button>
+    </div>
     <div class="field">
       <label>امسح الباركود أو اكتبه واضغط Enter</label>
       <div style="display:flex; gap:8px;">
         <input type="text" id="pos_scan_input" class="num" style="flex:1; font-size:18px; padding:12px;" placeholder="امسح المنتج هون..." autofocus>
-        <button type="button" class="btn" id="pos_camera_scan_btn">📷 كاميرا</button>
+        <button type="button" class="btn" id="pos_camera_scan_btn">📷</button>
       </div>
     </div>
-    <div id="pos_scan_msg" style="min-height:18px; font-size:13px; color:var(--credit); margin-top:4px;"></div>
+    <div id="pos_scan_msg" style="min-height:18px; font-size:13px; color:var(--credit); margin-top:2px;"></div>
+    ${categories.length? `
+    <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">
+      <button class="btn btn-sm${!_posActiveCategory?' btn-primary':''}" data-pos-category="">كل الأقسام</button>
+      ${categories.map(c=>`<button class="btn btn-sm${_posActiveCategory===c?' btn-primary':''}" data-pos-category="${escapeHtml(c)}">${escapeHtml(c)}</button>`).join('')}
+    </div>` : ''}
+    ${_posActiveCategory? `<div class="pos-tile-grid">
+      ${catItems.length? catItems.map(it=>`<button class="pos-tile" data-pos-tile="${it.id}">
+        <div class="pos-tile-name">${escapeHtml(it.name)}</div>
+        <div class="pos-tile-price">$${(Number(it.price)||0).toFixed(2)}</div>
+      </button>`).join('') : `<div class="empty" style="grid-column:1/-1;"><div class="big">ما في أصناف بهالقسم</div></div>`}
+    </div>` : ''}
   </div>
   <div class="card">
     <h2><span class="dot"></span> السلة</h2>
-    ${_posCart.length? `<div class="table-scroll"><table>
+    ${ticket.cart.length? `<div class="table-scroll"><table>
       <thead><tr><th>الصنف</th><th>السعر</th><th>الكمية</th><th>الإجمالي</th><th></th></tr></thead>
       <tbody>${rows}</tbody>
-    </table></div>` : `<div class="empty"><div class="big">السلة فاضية — امسح أول منتج</div></div>`}
+    </table></div>` : `<div class="empty"><div class="big">السلة فاضية — امسح أو اختار منتج</div></div>`}
+    <div class="field" style="margin-top:12px; max-width:280px;">
+      <label>حسم (اختياري)</label>
+      <div style="display:flex; gap:6px;">
+        <input type="number" step="0.01" id="pos_discount_input" class="num" value="${ticket.discount||0}" style="flex:1;">
+        <select id="pos_discount_type" style="width:80px;">
+          <option value="amount" ${ticket.discountType!=='percent'?'selected':''}>$</option>
+          <option value="percent" ${ticket.discountType==='percent'?'selected':''}>%</option>
+        </select>
+      </div>
+    </div>
     <div style="display:flex; justify-content:space-between; align-items:center; margin-top:16px; flex-wrap:wrap; gap:10px;">
       <div>
+        ${(ticket.discount>0)? `<div style="font-size:12px; color:var(--ink-soft); text-decoration:line-through;">$${subtotal.toFixed(2)}</div>`:''}
         <div style="font-size:13px; color:var(--ink-soft);">الإجمالي</div>
-        <div style="font-size:24px; font-weight:800;" class="num">$${totalUSD.toFixed(2)} <span style="font-size:14px; color:var(--ink-soft);">(${fmtMoney(totalUSD*rate)} ل.ل)</span></div>
+        <div style="font-size:24px; font-weight:800;" class="num">$${totalUSD.toFixed(2)} <span style="font-size:13.5px; color:var(--ink-soft);">(${fmtMoney(totalUSD*rate)} ل.ل)</span></div>
       </div>
-      <div class="row" style="gap:8px;">
-        <button class="btn" id="pos_clear_btn" ${_posCart.length?'':'disabled'}>🗑 تفريغ السلة</button>
-        <button class="btn btn-primary" id="pos_pay_usd_btn" ${_posCart.length?'':'disabled'}>💵 قبض دولار</button>
-        <button class="btn btn-primary" id="pos_pay_lbp_btn" ${_posCart.length?'':'disabled'}>💴 قبض ليرة</button>
+      <div class="row" style="gap:8px; flex-wrap:wrap;">
+        <button class="btn" id="pos_clear_btn" ${ticket.cart.length?'':'disabled'}>🗑 تفريغ</button>
+        <button class="btn btn-primary" id="pos_pay_usd_btn" ${ticket.cart.length?'':'disabled'}>💵 قبض دولار</button>
+        <button class="btn btn-primary" id="pos_pay_lbp_btn" ${ticket.cart.length?'':'disabled'}>💴 قبض ليرة</button>
       </div>
     </div>
   </div>`;
 }
 function bindPosEvents(){
+  const ticket = posActiveTicket();
   const input = document.getElementById('pos_scan_input');
   const msg = document.getElementById('pos_scan_msg');
   function handleCode(code){
     const item = posFindItemByBarcode(code);
-    if(!item){ if(msg) msg.textContent = '⚠️ ما لقينا منتج بهيدا الباركود: '+code; if(msg) msg.style.color = 'var(--debit)'; return; }
-    posAddToCart(item);
+    if(!item){ if(msg){ msg.textContent = '⚠️ ما لقينا منتج بهيدا الباركود: '+code; msg.style.color = 'var(--debit)'; } return; }
+    posAddToCart(ticket, item);
     if(msg){ msg.textContent = '✅ انضاف: '+item.name; msg.style.color = 'var(--credit)'; }
     render();
     setTimeout(()=>{ const i2 = document.getElementById('pos_scan_input'); if(i2) i2.focus(); }, 30);
@@ -2248,40 +2351,190 @@ function bindPosEvents(){
   const camBtn = document.getElementById('pos_camera_scan_btn');
   if(camBtn) camBtn.addEventListener('click', ()=>{ openBarcodeScannerModal((code)=>handleCode(code)); });
 
+  document.querySelectorAll('[data-pos-tile]').forEach(b=>b.addEventListener('click', ()=>{
+    const item = DB.warehouseItems.find(x=>x.id===b.getAttribute('data-pos-tile'));
+    posAddToCart(ticket, item);
+    render();
+  }));
+  document.querySelectorAll('[data-pos-category]').forEach(b=>b.addEventListener('click', ()=>{
+    _posActiveCategory = b.getAttribute('data-pos-category') || null;
+    render();
+  }));
   document.querySelectorAll('[data-pos-inc]').forEach(b=>b.addEventListener('click', ()=>{
-    _posCart[Number(b.getAttribute('data-pos-inc'))].qty += 1; render();
+    ticket.cart[Number(b.getAttribute('data-pos-inc'))].qty += 1; render();
   }));
   document.querySelectorAll('[data-pos-dec]').forEach(b=>b.addEventListener('click', ()=>{
-    const l = _posCart[Number(b.getAttribute('data-pos-dec'))];
-    l.qty -= 1; if(l.qty<=0) _posCart.splice(_posCart.indexOf(l),1);
+    const l = ticket.cart[Number(b.getAttribute('data-pos-dec'))];
+    l.qty -= 1; if(l.qty<=0) ticket.cart.splice(ticket.cart.indexOf(l),1);
     render();
   }));
   document.querySelectorAll('[data-pos-remove]').forEach(b=>b.addEventListener('click', ()=>{
-    _posCart.splice(Number(b.getAttribute('data-pos-remove')),1); render();
+    ticket.cart.splice(Number(b.getAttribute('data-pos-remove')),1); render();
   }));
+  const discInput = document.getElementById('pos_discount_input');
+  if(discInput) discInput.addEventListener('input', ()=>{ ticket.discount = Number(discInput.value)||0; render(); });
+  const discType = document.getElementById('pos_discount_type');
+  if(discType) discType.addEventListener('change', ()=>{ ticket.discountType = discType.value; render(); });
+
   const clearBtn = document.getElementById('pos_clear_btn');
-  if(clearBtn) clearBtn.addEventListener('click', ()=>{ if(confirm('تفريغ السلة؟')){ _posCart=[]; render(); } });
+  if(clearBtn) clearBtn.addEventListener('click', ()=>{ if(confirm('تفريغ السلة؟')){ ticket.cart=[]; render(); } });
   const payUsdBtn = document.getElementById('pos_pay_usd_btn');
   if(payUsdBtn) payUsdBtn.addEventListener('click', ()=>completePosSale('USD'));
   const payLbpBtn = document.getElementById('pos_pay_lbp_btn');
   if(payLbpBtn) payLbpBtn.addEventListener('click', ()=>completePosSale('LBP'));
+
+  document.querySelectorAll('[data-pos-tab]').forEach(b=>b.addEventListener('click', (e)=>{
+    if(e.target.closest('[data-pos-close-tab]')) return;
+    _posActiveTicketId = b.getAttribute('data-pos-tab'); render();
+  }));
+  document.querySelectorAll('[data-pos-close-tab]').forEach(el=>el.addEventListener('click', (e)=>{
+    e.stopPropagation();
+    const id = el.getAttribute('data-pos-close-tab');
+    const t = _posTickets.find(x=>x.id===id);
+    if(t && t.cart.length && !confirm('في صنف بسلة هذا الزبون — تأكيد الإغلاق وتفريغها؟')) return;
+    _posTickets = _posTickets.filter(x=>x.id!==id);
+    if(_posActiveTicketId===id) _posActiveTicketId = null;
+    render();
+  }));
+  const newTicketBtn = document.getElementById('pos_new_ticket_btn');
+  if(newTicketBtn) newTicketBtn.addEventListener('click', ()=>{ posNewTicket(); render(); });
+  const pickCustBtn = document.getElementById('pos_pick_customer_btn');
+  if(pickCustBtn) pickCustBtn.addEventListener('click', ()=>openPosCustomerPickerModal(ticket));
+  const returnBtn = document.getElementById('pos_return_btn');
+  if(returnBtn) returnBtn.addEventListener('click', ()=>openPosReturnModal());
+}
+function openPosCustomerPickerModal(ticket){
+  const wrap = document.createElement('div');
+  wrap.className='modal-bg';
+  wrap.innerHTML = `<div class="modal">
+    <h3>اختار الزبون</h3>
+    <div class="field"><input type="text" id="pc_search" placeholder="بحث بالاسم..."></div>
+    <div id="pc_list" style="max-height:260px; overflow:auto; border:1px solid var(--line); border-radius:8px;">
+      <div data-pc-pick="__walkin__" style="padding:10px; cursor:pointer; border-bottom:1px solid var(--line);">🚶 زبون عابر (بدون تسجيل)</div>
+      ${DB.customers.map(c=>`<div data-pc-pick="${c.id}" style="padding:10px; cursor:pointer; border-bottom:1px solid var(--line);">${escapeHtml(c.name)}</div>`).join('')}
+    </div>
+    <div class="field" style="margin-top:12px;"><label>أو زبون جديد بسرعة</label>
+      <div style="display:flex; gap:8px;">
+        <input type="text" id="pc_new_name" placeholder="اسم الزبون" style="flex:1;">
+        <button class="btn btn-sm btn-primary" id="pc_new_add">+ إضافة</button>
+      </div>
+    </div>
+    <div class="row"><button class="btn" id="pc_cancel">إغلاق</button></div>
+  </div>`;
+  document.body.appendChild(wrap);
+  wrap.querySelector('#pc_cancel').addEventListener('click', ()=>wrap.remove());
+  wrap.addEventListener('click', (e)=>{ if(e.target===wrap) wrap.remove(); });
+  function pick(id){
+    if(id==='__walkin__'){ ticket.customerId=null; ticket.customerLabel='زبون عابر'; }
+    else{ const c=DB.customers.find(x=>x.id===id); if(c){ ticket.customerId=c.id; ticket.customerLabel=c.name; } }
+    wrap.remove(); render();
+  }
+  wrap.querySelectorAll('[data-pc-pick]').forEach(el=>el.addEventListener('click', ()=>pick(el.getAttribute('data-pc-pick'))));
+  wrap.querySelector('#pc_search').addEventListener('input', (e)=>{
+    const q = e.target.value.trim().toLowerCase();
+    wrap.querySelectorAll('[data-pc-pick]').forEach(el=>{
+      if(el.getAttribute('data-pc-pick')==='__walkin__') return;
+      el.style.display = el.textContent.toLowerCase().includes(q) ? '' : 'none';
+    });
+  });
+  wrap.querySelector('#pc_new_add').addEventListener('click', async ()=>{
+    const name = wrap.querySelector('#pc_new_name').value.trim();
+    if(!name){ toast('اكتب اسم الزبون'); return; }
+    const c = {id:uid(), createdAt:Date.now(), name, accountNumber:autoAccountNumber(), phone:''};
+    DB.customers.push(c);
+    await save(KEYS.customers, DB.customers);
+    pick(c.id);
+  });
+}
+function openPosReturnModal(){
+  const posInvoices = DB.invoices.filter(i=>i.docType==='بيع نقطة بيع (POS)' && !i.deleted).sort((a,b)=>b.createdAt-a.createdAt).slice(0,30);
+  const wrap = document.createElement('div');
+  wrap.className='modal-bg';
+  wrap.innerHTML = `<div class="modal">
+    <h3>↩ فاتورة استرجاع</h3>
+    ${posInvoices.length? `
+    <div class="field"><label>اختار فاتورة POS</label>
+      <select id="ret_invoice">
+        ${posInvoices.map(i=>`<option value="${i.id}">#${escapeHtml(i.number)} — ${fmtDate(i.date)} — $${(i.items||[]).reduce((s,it)=>s+Number(it.total),0).toFixed(2)}</option>`).join('')}
+      </select>
+    </div>
+    <div id="ret_items"></div>
+    <div class="row"><button class="btn" id="ret_cancel">إلغاء</button><button class="btn btn-primary" id="ret_confirm">تأكيد الاسترجاع</button></div>
+    ` : `<div class="empty"><div class="big">ما في فواتير POS للاسترجاع منها</div></div><div class="row"><button class="btn" id="ret_cancel">إغلاق</button></div>`}
+  </div>`;
+  document.body.appendChild(wrap);
+  wrap.querySelector('#ret_cancel').addEventListener('click', ()=>wrap.remove());
+  wrap.addEventListener('click', (e)=>{ if(e.target===wrap) wrap.remove(); });
+  if(!posInvoices.length) return;
+  const sel = wrap.querySelector('#ret_invoice');
+  function renderItems(){
+    const inv = posInvoices.find(i=>i.id===sel.value);
+    wrap.querySelector('#ret_items').innerHTML = `<div class="table-scroll"><table>
+      <thead><tr><th></th><th>الصنف</th><th>الكمية المباعة</th><th>كمية الاسترجاع</th></tr></thead>
+      <tbody>${inv.items.map((it,idx)=>`<tr>
+        <td><input type="checkbox" data-ret-check="${idx}"></td>
+        <td>${escapeHtml(it.desc)}</td>
+        <td class="num">${it.qty}</td>
+        <td><input type="number" class="num" style="width:70px;" data-ret-qty="${idx}" value="${it.qty}" min="0" max="${it.qty}"></td>
+      </tr>`).join('')}</tbody>
+    </table></div>`;
+  }
+  renderItems();
+  sel.addEventListener('change', renderItems);
+  wrap.querySelector('#ret_confirm').addEventListener('click', async ()=>{
+    const inv = posInvoices.find(i=>i.id===sel.value);
+    const now = Date.now(); const date = todayISO();
+    let totalReturnedUSD = 0;
+    let anyChecked = false;
+    inv.items.forEach((it, idx)=>{
+      const checked = wrap.querySelector(`[data-ret-check="${idx}"]`).checked;
+      if(!checked) return;
+      anyChecked = true;
+      const qty = Math.min(Number(wrap.querySelector(`[data-ret-qty="${idx}"]`).value)||0, it.qty);
+      if(qty<=0) return;
+      totalReturnedUSD += qty * Number(it.price);
+      DB.stockIns.push({id:uid(), createdAt:now, itemId:it.productId, qty, date, number:nextStockInNumber(), note:'استرجاع من فاتورة POS #'+inv.number});
+    });
+    if(!anyChecked || totalReturnedUSD<=0){ toast('اختار صنف واحد ع الأقل للاسترجاع'); return; }
+    const rate = inv.exchangeRate || DB.settings.defaultExchangeRate || 90000;
+    // نرجع المبلغ من نفس عملة الصندوق (نفترض دولار افتراضياً — تقدر تصحح لاحقاً من حركات الصندوق لو لزم)
+    DB.settings.cashBoxUSD = (DB.settings.cashBoxUSD||0) - totalReturnedUSD;
+    DB.cashMovements.push({id:uid(), createdAt:now, type:'return', currency:'USD', amount:totalReturnedUSD, note:'استرجاع من فاتورة POS #'+inv.number, refSaleId:inv.id, date});
+    await Promise.all([
+      save(KEYS.stockIns, DB.stockIns),
+      save(KEYS.cashMovements, DB.cashMovements),
+      save(KEYS.settings, DB.settings)
+    ]);
+    wrap.remove();
+    toast('تم الاسترجاع وتحديث المستودع ✅');
+    render();
+  });
 }
 async function completePosSale(currency){
-  if(!_posCart.length) return;
+  const ticket = posActiveTicket();
+  if(!ticket.cart.length) return;
   const rate = DB.settings.defaultExchangeRate || 90000;
-  const totalUSD = posCartTotalUSD();
+  const totalUSD = posTotalUSD(ticket);
   const now = Date.now();
   const date = todayISO();
-  // 1) فاتورة على الزبون الافتراضي لنقطة البيع
-  const invItems = _posCart.map(l=>({id:uid(), productId:l.itemId, desc:l.name, qty:l.qty, price:l.price, total:l.price*l.qty}));
-  const inv = {id:uid(), customerId:DB.settings.posCustomerId, number:nextInvoiceNumber(), date, docType:'بيع نقطة بيع (POS)', exchangeRate:rate, items:invItems, discount:0, createdAt:now};
+  let customerId = ticket.customerId;
+  if(!customerId){
+    // زبون عابر بدون اسم محدد — منستخدم/مننشئ زبون POS عام حتى تنسجل الفاتورة والإيصال بشكل سليم
+    let walkin = DB.customers.find(c=>c.name==='زبون عابر (POS)');
+    if(!walkin){
+      walkin = {id:uid(), createdAt:now, name:'زبون عابر (POS)', accountNumber:autoAccountNumber(), phone:''};
+      DB.customers.push(walkin);
+      await save(KEYS.customers, DB.customers);
+    }
+    customerId = walkin.id;
+  }
+  const invItems = ticket.cart.map(l=>({id:uid(), productId:l.itemId, desc:l.name, qty:l.qty, price:l.price, total:l.price*l.qty}));
+  const inv = {id:uid(), customerId, number:nextInvoiceNumber(), date, docType:'بيع نقطة بيع (POS)', exchangeRate:rate, items:invItems, discount:posDiscountUSD(ticket), createdAt:now};
   DB.invoices.push(inv);
-  // 2) خصم من المستودع (سماح بالسالب متل باقي البرنامج)
-  _posCart.forEach(l=>{
+  ticket.cart.forEach(l=>{
     DB.stockOuts.push({id:uid(), createdAt:now, itemId:l.itemId, qty:l.qty, date, number:nextStockOutNumber(), note:'بيع POS #'+inv.number});
   });
-  // 3) إيصال قبض + تحديث الصندوق
-  const receipt = {id:uid(), createdAt:now, customerId:DB.settings.posCustomerId, number:nextReceiptNumber(), date,
+  const receipt = {id:uid(), createdAt:now, customerId, number:nextReceiptNumber(), date,
     amount: currency==='USD'? totalUSD : totalUSD*rate, method: currency==='USD'?'نقد $ (POS)':'نقد ل.ل (POS)', details:'بيع نقطة بيع #'+inv.number};
   DB.receipts.push(receipt);
   const movement = {id:uid(), createdAt:now, type:'sale', currency, amount: currency==='USD'?totalUSD:totalUSD*rate, note:'بيع POS #'+inv.number, refSaleId:inv.id, date};
@@ -2297,14 +2550,14 @@ async function completePosSale(currency){
     save(KEYS.settings, DB.settings)
   ]);
 
-  printPosReceipt(inv, currency, totalUSD, rate);
+  printPosReceipt(inv, currency, totalUSD, rate, ticket.customerLabel);
   if(DB.settings.posAutoOpenDrawer!==false) openCashDrawerViaUSB();
 
-  _posCart = [];
+  _posTickets = _posTickets.filter(t=>t.id!==ticket.id);
   toast('تم البيع بنجاح ✅');
   go('#/pos'); render();
 }
-function printPosReceipt(inv, currency, totalUSD, rate){
+function printPosReceipt(inv, currency, totalUSD, rate, customerLabel){
   const s = DB.settings;
   const styleEl = document.createElement('style');
   styleEl.id = 'pos-receipt-print-style';
@@ -2326,6 +2579,7 @@ function printPosReceipt(inv, currency, totalUSD, rate){
       <div style="font-size:11px;">${escapeHtml(s.companyPhone||'')}</div>
       <div style="border-top:1px dashed #000; margin:6px 0;"></div>
       <div style="text-align:start; font-size:11px;">فاتورة #${escapeHtml(inv.number)} — ${fmtDate(inv.date)}</div>
+      <div style="text-align:start; font-size:11px;">الزبون: ${escapeHtml(customerLabel||'')}</div>
       <div style="border-top:1px dashed #000; margin:6px 0;"></div>
     </div>
     <table style="width:100%; font-size:11.5px; border-collapse:collapse;">
@@ -2335,13 +2589,13 @@ function printPosReceipt(inv, currency, totalUSD, rate){
       </tbody>
     </table>
     <div style="border-top:1px dashed #000; margin:6px 0;"></div>
+    ${inv.discount? `<div style="display:flex; justify-content:space-between; font-size:11.5px;"><span>حسم</span><span>-$${Number(inv.discount).toFixed(2)}</span></div>` : ''}
     <div style="display:flex; justify-content:space-between; font-weight:800; font-size:13px;">
       <span>الإجمالي</span><span>$${totalUSD.toFixed(2)} / ${fmtMoney(totalUSD*rate)} ل.ل</span>
     </div>
     <div style="text-align:center; font-size:11px; margin-top:8px;">طريقة الدفع: ${currency==='USD'?'نقد دولار':'نقد ل.ل'}</div>
     <div style="text-align:center; font-size:11px; margin-top:10px;">شكراً لزيارتكم 🙏</div>`;
   document.body.appendChild(wrap);
-  const prevDisplay = wrap.style.display;
   const showForPrint = ()=>{ wrap.style.display='block'; };
   const cleanup = ()=>{
     wrap.remove();
@@ -2411,6 +2665,166 @@ function openCashMovementModal(type, currency){
     wrap.remove();
     toast('تم الحفظ');
     render();
+  });
+}
+/* ---------- إقفال يومية ---------- */
+function openDayCloseModal(){
+  const today = todayISO();
+  const todaysMoves = DB.cashMovements.filter(m=>m.date===today && !m.deleted);
+  const salesUSD = todaysMoves.filter(m=>m.type==='sale'&&m.currency==='USD').reduce((s,m)=>s+Number(m.amount),0);
+  const salesLBP = todaysMoves.filter(m=>m.type==='sale'&&m.currency==='LBP').reduce((s,m)=>s+Number(m.amount),0);
+  const wrap = document.createElement('div');
+  wrap.className='modal-bg';
+  wrap.innerHTML = `<div class="modal">
+    <h3>🔒 إقفال يومية — ${fmtDate(today)}</h3>
+    <p style="font-size:12.5px; color:var(--ink-soft);">مبيعات اليوم: $${salesUSD.toFixed(2)} + ${fmtMoney(salesLBP)} ل.ل</p>
+    <div class="grid grid-2">
+      <div class="field"><label>رصيد الصندوق بالنظام $</label><input type="text" class="num" value="$${(DB.settings.cashBoxUSD||0).toFixed(2)}" disabled></div>
+      <div class="field"><label>رصيد الصندوق بالنظام ل.ل</label><input type="text" class="num" value="${fmtMoney(DB.settings.cashBoxLBP||0)}" disabled></div>
+    </div>
+    <div class="grid grid-2">
+      <div class="field"><label>المبلغ المعدود فعلياً $</label><input type="number" step="0.01" id="dc_usd" class="num" value="${(DB.settings.cashBoxUSD||0).toFixed(2)}"></div>
+      <div class="field"><label>المبلغ المعدود فعلياً ل.ل</label><input type="number" id="dc_lbp" class="num" value="${DB.settings.cashBoxLBP||0}"></div>
+    </div>
+    <div class="field"><label>ملاحظة</label><input type="text" id="dc_note" value=""></div>
+    <div class="row">
+      <button class="btn" id="dc_cancel">إلغاء</button>
+      <button class="btn btn-primary" id="dc_confirm">🖨 إقفال وطباعة التقرير</button>
+    </div>
+  </div>`;
+  document.body.appendChild(wrap);
+  wrap.querySelector('#dc_cancel').addEventListener('click', ()=>wrap.remove());
+  wrap.addEventListener('click', (e)=>{ if(e.target===wrap) wrap.remove(); });
+  wrap.querySelector('#dc_confirm').addEventListener('click', async ()=>{
+    const countedUSD = Number(wrap.querySelector('#dc_usd').value)||0;
+    const countedLBP = Number(wrap.querySelector('#dc_lbp').value)||0;
+    const note = wrap.querySelector('#dc_note').value.trim();
+    const closure = {id:uid(), createdAt:Date.now(), date:today,
+      expectedUSD:DB.settings.cashBoxUSD||0, expectedLBP:DB.settings.cashBoxLBP||0,
+      countedUSD, countedLBP, note};
+    DB.dayClosures = DB.dayClosures || [];
+    DB.dayClosures.push(closure);
+    await save(KEYS.dayClosures, DB.dayClosures);
+    wrap.remove();
+    toast('تم تسجيل إقفال اليومية ✅');
+    printDayCloseReport(closure, salesUSD, salesLBP);
+  });
+}
+function printDayCloseReport(closure, salesUSD, salesLBP){
+  const s = DB.settings;
+  const w = window.open('', '_blank');
+  const diffUSD = closure.countedUSD - closure.expectedUSD;
+  const diffLBP = closure.countedLBP - closure.expectedLBP;
+  w.document.write(`<html dir="rtl"><head><title>إقفال يومية ${fmtDate(closure.date)}</title>
+  <style>body{font-family:Arial; padding:24px;} table{width:100%; border-collapse:collapse; margin-top:14px;} td,th{border:1px solid #999; padding:8px;}</style>
+  </head><body>
+  <h2>${escapeHtml(s.companyName||'')} — تقرير إقفال يومية</h2>
+  <p>التاريخ: ${fmtDate(closure.date)}</p>
+  <table>
+    <tr><th></th><th>دولار $</th><th>ليرة ل.ل</th></tr>
+    <tr><td>مبيعات اليوم</td><td>$${salesUSD.toFixed(2)}</td><td>${fmtMoney(salesLBP)}</td></tr>
+    <tr><td>رصيد النظام</td><td>$${closure.expectedUSD.toFixed(2)}</td><td>${fmtMoney(closure.expectedLBP)}</td></tr>
+    <tr><td>المعدود فعلياً</td><td>$${closure.countedUSD.toFixed(2)}</td><td>${fmtMoney(closure.countedLBP)}</td></tr>
+    <tr><td>الفرق</td><td>$${diffUSD.toFixed(2)}</td><td>${fmtMoney(diffLBP)}</td></tr>
+  </table>
+  ${closure.note? `<p>ملاحظة: ${escapeHtml(closure.note)}</p>` : ''}
+  </body></html>`);
+  w.document.close();
+  setTimeout(()=>w.print(), 300);
+}
+/* ============================= اليوميات (Journal) ============================= */
+function journalEntriesForRange(from, to){
+  const rows = [];
+  DB.invoices.filter(i=>!i.deleted && i.date>=from && i.date<=to).forEach(i=>{
+    const cust = DB.customers.find(c=>c.id===i.customerId);
+    const total = (i.items||[]).reduce((s,it)=>s+(Number(it.total)||0),0) - (Number(i.discount)||0);
+    rows.push({date:i.date, createdAt:i.createdAt||0, type:i.docType||'فاتورة', party:cust?cust.name:'—', amount:total, currency:'USD', nav:`#/invoice/${i.id}`});
+  });
+  DB.purchaseInvoices.filter(i=>!i.deleted && i.date>=from && i.date<=to).forEach(i=>{
+    const sup = DB.suppliers.find(s=>s.id===i.supplierId);
+    const total = (i.items||[]).reduce((s,it)=>s+(Number(it.total)||0),0) - (Number(i.discount)||0);
+    rows.push({date:i.date, createdAt:i.createdAt||0, type:'فاتورة مشتريات', party:sup?sup.name:'—', amount:total, currency:'USD', nav:null});
+  });
+  DB.receipts.filter(r=>!r.deleted && r.date>=from && r.date<=to).forEach(r=>{
+    const cust = DB.customers.find(c=>c.id===r.customerId);
+    rows.push({date:r.date, createdAt:r.createdAt||0, type:'إيصال قبض ('+(r.method||'')+')', party:cust?cust.name:'—', amount:Number(r.amount)||0, currency:'—', nav:null});
+  });
+  DB.paymentVouchers.filter(v=>!v.deleted && v.date>=from && v.date<=to).forEach(v=>{
+    const sup = DB.suppliers.find(s=>s.id===v.supplierId);
+    rows.push({date:v.date, createdAt:v.createdAt||0, type:'سند صرف ('+(v.method||'')+')', party:sup?sup.name:'—', amount:-(Number(v.amount)||0), currency:'—', nav:null});
+  });
+  rows.sort((a,b)=> a.date!==b.date? (a.date<b.date?1:-1) : (b.createdAt-a.createdAt));
+  return rows;
+}
+function journalView(date){
+  const rows = journalEntriesForRange(date, date);
+  const prevDay = new Date(date); prevDay.setDate(prevDay.getDate()-1);
+  const nextDay = new Date(date); nextDay.setDate(nextDay.getDate()+1);
+  const toISO = d=>d.toISOString().slice(0,10);
+  return `
+  <div class="card no-print">
+    <h2><span class="dot"></span> 📒 اليوميات</h2>
+    <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+      <button class="btn btn-sm" data-nav="#/journal?date=${toISO(prevDay)}">◀ اليوم السابق</button>
+      <input type="date" id="jr_date" value="${date}">
+      <button class="btn btn-sm" data-nav="#/journal?date=${toISO(nextDay)}">اليوم التالي ▶</button>
+      <button class="btn btn-sm" id="jr_print">🖨 طباعة</button>
+    </div>
+  </div>
+  <div class="doc no-print" style="box-shadow:none;">
+    ${docHead('كشف يومية — '+fmtDate(date))}
+    <div class="table-scroll"><table>
+      <thead><tr><th>النوع</th><th>الطرف</th><th>المبلغ</th></tr></thead>
+      <tbody>${rows.length? rows.map(r=>`<tr ${r.nav?`data-nav="${r.nav}"`:''} style="${r.nav?'cursor:pointer;':''}">
+        <td>${escapeHtml(r.type)}</td><td>${escapeHtml(r.party)}</td>
+        <td class="num" style="color:${r.amount<0?'var(--debit)':'var(--credit)'}">${r.amount<0?'-':''}$${Math.abs(r.amount).toFixed(2)}</td>
+      </tr>`).join('') : `<tr><td colspan="3" style="text-align:center; color:var(--ink-soft);">ما في حركات هالتاريخ</td></tr>`}</tbody>
+    </table></div>
+  </div>`;
+}
+function bindJournalEvents(){
+  const dateInput = document.getElementById('jr_date');
+  if(dateInput) dateInput.addEventListener('change', ()=>go('#/journal?date='+dateInput.value));
+  const printBtn = document.getElementById('jr_print');
+  if(printBtn) printBtn.addEventListener('click', ()=>printWithFilename('Journal-'+(dateInput?dateInput.value:todayISO())));
+}
+/* ============================= التقارير ============================= */
+function reportsView(qs){
+  const period = qs.get('period')||'day';
+  const a = qs.get('a')||''; const b = qs.get('b')||'';
+  const {from, to} = computePeriodRange(period, a, b);
+  const rows = journalEntriesForRange(from, to);
+  const salesTotal = rows.filter(r=>String(r.type).includes('بيع نقطة بيع')).reduce((s,r)=>s+r.amount,0);
+  const invoicesTotal = rows.filter(r=>r.nav && r.nav.includes('/invoice/')).reduce((s,r)=>s+r.amount,0);
+  const receiptsTotal = rows.filter(r=>String(r.type).includes('إيصال قبض')).reduce((s,r)=>s+r.amount,0);
+  const vouchersTotal = rows.filter(r=>String(r.type).includes('سند صرف')).reduce((s,r)=>s-r.amount,0);
+  return `
+  <div class="card no-print">
+    <h2><span class="dot"></span> 📊 التقارير</h2>
+    ${periodFilterHtml('rp', period, a, b)}
+  </div>
+  <div class="doc" style="box-shadow:none;">
+    ${docHead('تقرير من '+fmtDate(from)+' إلى '+fmtDate(to))}
+    <div class="grid grid-2" style="gap:14px; margin-bottom:16px;">
+      <div class="card" style="margin:0;"><div style="font-size:12.5px; color:var(--ink-soft);">إجمالي الفواتير</div><div style="font-size:20px; font-weight:800;" class="num">$${invoicesTotal.toFixed(2)}</div></div>
+      <div class="card" style="margin:0;"><div style="font-size:12.5px; color:var(--ink-soft);">منها مبيعات POS</div><div style="font-size:20px; font-weight:800;" class="num">$${salesTotal.toFixed(2)}</div></div>
+      <div class="card" style="margin:0;"><div style="font-size:12.5px; color:var(--ink-soft);">إيصالات القبض</div><div style="font-size:20px; font-weight:800; color:var(--credit);" class="num">$${receiptsTotal.toFixed(2)}</div></div>
+      <div class="card" style="margin:0;"><div style="font-size:12.5px; color:var(--ink-soft);">سندات الصرف</div><div style="font-size:20px; font-weight:800; color:var(--debit);" class="num">$${vouchersTotal.toFixed(2)}</div></div>
+    </div>
+    <div class="table-scroll"><table>
+      <thead><tr><th>التاريخ</th><th>النوع</th><th>الطرف</th><th>المبلغ</th></tr></thead>
+      <tbody>${rows.length? rows.map(r=>`<tr>
+        <td class="num">${fmtDate(r.date)}</td><td>${escapeHtml(r.type)}</td><td>${escapeHtml(r.party)}</td>
+        <td class="num" style="color:${r.amount<0?'var(--debit)':'var(--credit)'}">${r.amount<0?'-':''}$${Math.abs(r.amount).toFixed(2)}</td>
+      </tr>`).join('') : `<tr><td colspan="4" style="text-align:center; color:var(--ink-soft);">ما في حركات بهالفترة</td></tr>`}</tbody>
+    </table></div>
+  </div>
+  <div class="doc-actions no-print"><button class="btn btn-primary" onclick="printWithFilename('Report-${from}-to-${to}')">🖨 طباعة التقرير</button></div>`;
+}
+function bindReportsEvents(){
+  bindPeriodFilter('rp', (type,a,b)=>{
+    const qs = new URLSearchParams(); qs.set('period', type); if(a) qs.set('a',a); if(b) qs.set('b',b);
+    go('#/reports?'+qs.toString());
   });
 }
 function warehouseHubView(){
@@ -2566,10 +2980,14 @@ function periodFilterHtml(idPrefix, period, a, b){
   <div class="grid grid-3">
     <div class="field"><label>الفترة</label>
       <select id="${idPrefix}_type">
+        <option value="day" ${period==='day'?'selected':''}>يومي</option>
         <option value="month" ${period==='month'?'selected':''}>شهري</option>
         <option value="year" ${period==='year'?'selected':''}>سنوي</option>
         <option value="range" ${period==='range'?'selected':''}>من تاريخ - إلى تاريخ</option>
       </select>
+    </div>
+    <div class="field" id="${idPrefix}_wrap_day" style="${period==='day'||!period?'':'display:none;'}">
+      <label>اليوم</label><input type="date" id="${idPrefix}_day" value="${period==='day'&&a? a : todayISO()}">
     </div>
     <div class="field" id="${idPrefix}_wrap_month" style="${period==='month'?'':'display:none;'}">
       <label>الشهر</label><input type="month" id="${idPrefix}_month" value="${period==='month'&&a? a : todayISO().slice(0,7)}">
@@ -2593,8 +3011,10 @@ function bindPeriodFilter(idPrefix, onApply){
   const yearWrap = document.getElementById(idPrefix+'_wrap_year');
   const fromWrap = document.getElementById(idPrefix+'_wrap_range_from');
   const toWrap = document.getElementById(idPrefix+'_wrap_range_to');
+  const dayWrap = document.getElementById(idPrefix+'_wrap_day');
   typeSel.addEventListener('change', ()=>{
     const v = typeSel.value;
+    if(dayWrap) dayWrap.style.display = v==='day'?'':'none';
     monthWrap.style.display = v==='month'?'':'none';
     yearWrap.style.display = v==='year'?'':'none';
     fromWrap.style.display = v==='range'?'':'none';
@@ -2603,7 +3023,8 @@ function bindPeriodFilter(idPrefix, onApply){
   document.getElementById(idPrefix+'_apply').addEventListener('click', ()=>{
     const type = typeSel.value;
     let a='', b='';
-    if(type==='month') a = document.getElementById(idPrefix+'_month').value;
+    if(type==='day') a = document.getElementById(idPrefix+'_day').value;
+    else if(type==='month') a = document.getElementById(idPrefix+'_month').value;
     else if(type==='year') a = document.getElementById(idPrefix+'_year').value;
     else if(type==='range'){ a = document.getElementById(idPrefix+'_from').value; b = document.getElementById(idPrefix+'_to').value; }
     onApply(type, a, b);
@@ -3130,12 +3551,6 @@ function settingsView(){
 
   <div class="card">
     <h2><span class="dot"></span> 🧾 إعدادات نقطة البيع (POS)</h2>
-    <div class="field"><label>الزبون الافتراضي لمبيعات POS *</label>
-      <select id="s_pos_customer">
-        <option value="">— اختار زبون —</option>
-        ${DB.customers.map(c=>`<option value="${c.id}" ${s.posCustomerId===c.id?'selected':''}>${escapeHtml(c.name)}</option>`).join('')}
-      </select>
-    </div>
     <div class="field">
       <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
         <input type="checkbox" id="s_pos_autodrawer" ${s.posAutoOpenDrawer!==false?'checked':''}>
@@ -3390,7 +3805,11 @@ function bindEvents(){
       openCashMovementModal(btn.getAttribute('data-cashmove'), btn.getAttribute('data-currency'));
     });
   });
+  const dayCloseBtn = document.getElementById('dayCloseBtn');
+  if(dayCloseBtn) dayCloseBtn.addEventListener('click', (e)=>{ e.stopPropagation(); openDayCloseModal(); });
   if(currentRoute()[0]==='pos') bindPosEvents();
+  if(currentRoute()[0]==='journal') bindJournalEvents();
+  if(currentRoute()[0]==='reports') bindReportsEvents();
 
   const logoutBtn = document.getElementById('logoutBtn');
   if(logoutBtn) logoutBtn.addEventListener('click', ()=> openLogoutModal());
@@ -3529,9 +3948,6 @@ function bindEvents(){
 
   const savePosSettingsBtn = document.getElementById('saveposSettingsBtn');
   if(savePosSettingsBtn) savePosSettingsBtn.addEventListener('click', async ()=>{
-    const custId = document.getElementById('s_pos_customer').value || null;
-    if(!custId){ toast('لازم تختار زبون افتراضي لنقطة البيع'); return; }
-    DB.settings.posCustomerId = custId;
     DB.settings.posAutoOpenDrawer = document.getElementById('s_pos_autodrawer').checked;
     const ok = await save(KEYS.settings, DB.settings);
     toast(ok? 'تم حفظ إعدادات POS':'صار خطأ بالحفظ');
@@ -4293,6 +4709,10 @@ function openWarehouseItemModal(item){
       </div>
     </div>
     <div class="field"><label>سعر البيع (لشاشة POS) $</label><input type="number" step="0.01" id="wm_price" class="num" value="${item&&item.price?item.price:0}"></div>
+    <div class="field"><label>القسم (لتنظيم شاشة POS — اختياري)</label>
+      <input type="text" id="wm_category" list="wm_category_list" value="${item?escapeHtml(item.category||''):''}" placeholder="مثال: مشروبات">
+      <datalist id="wm_category_list">${posCategories().map(c=>`<option value="${escapeHtml(c)}">`).join('')}</datalist>
+    </div>
     ${isNew? `
     <div class="grid grid-2">
       <div class="field"><label>الكمية *</label><input type="number" id="wm_qty" class="num" value="0"></div>
@@ -4322,6 +4742,7 @@ function openWarehouseItemModal(item){
     const type = wrap.querySelector('#wm_type').value.trim();
     const barcode = wrap.querySelector('#wm_barcode').value.trim();
     const price = Number(wrap.querySelector('#wm_price').value)||0;
+    const category = wrap.querySelector('#wm_category').value.trim();
     const productionDate = wrap.querySelector('#wm_prod_date').value || '';
     const expiryDate = wrap.querySelector('#wm_exp_date').value || '';
     const expAlertRaw = wrap.querySelector('#wm_exp_alert').value.trim();
@@ -4331,7 +4752,7 @@ function openWarehouseItemModal(item){
       const qty = Number(wrap.querySelector('#wm_qty').value)||0;
       const date = wrap.querySelector('#wm_date').value || todayISO();
       if(qty<=0){ toast('لازم تحط كمية أكبر من صفر'); return; }
-      const it = {id:uid(), createdAt:Date.now(), name, brand, type, barcode, price, productionDate, expiryDate, expiryAlertDays, note, purchaseDate:date};
+      const it = {id:uid(), createdAt:Date.now(), name, brand, type, barcode, price, category, productionDate, expiryDate, expiryAlertDays, note, purchaseDate:date};
       DB.warehouseItems.push(it);
       const stockIn = {id:uid(), createdAt:Date.now(), itemId:it.id, qty, date, number:nextStockInNumber(), note:'رصيد ابتدائي'};
       DB.stockIns.push(stockIn);
@@ -4340,7 +4761,7 @@ function openWarehouseItemModal(item){
       toast(ok.every(Boolean)? 'تمت الإضافة إلى الستوك' : 'صار خطأ بالحفظ');
       go(`#/warehouse-item/${it.id}`);
     } else {
-      item.name = name; item.brand = brand; item.type = type; item.barcode = barcode; item.price = price;
+      item.name = name; item.brand = brand; item.type = type; item.barcode = barcode; item.price = price; item.category = category;
       item.productionDate = productionDate; item.expiryDate = expiryDate; item.expiryAlertDays = expiryAlertDays; item.note = note;
       const ok = await save(KEYS.warehouseItems, DB.warehouseItems);
       wrap.remove();
