@@ -637,6 +637,8 @@ function settingsToDb(s){
     invoice_start: s.invoiceStart||0, receipt_start: s.receiptStart||1000,
     auto_backup_on_close: !!s.autoBackupOnClose, quote_desc_options: s.quoteDescOptions||[], spec_options: s.specOptions||{},
     custom_deduction_profiles: s.customDeductionProfiles||[],
+    second_currency_enabled: !!s.secondCurrencyEnabled, second_currency_code: s.secondCurrencyCode||null,
+    second_currency_rate: s.secondCurrencyRate||null, second_currency_last_sync: s.secondCurrencyLastSync||null,
     trial_started_at: s.trialStartedAt||null, license_serial: s.licenseSerial||null,
     license_expires_at: s.licenseExpiresAt||null, license_label: s.licenseLabel||null
   };
@@ -655,6 +657,10 @@ function applySettingsFromDb(row, base){
     quoteDescOptions: (row.quote_desc_options && row.quote_desc_options.length)? row.quote_desc_options : base.quoteDescOptions,
     specOptions: (row.spec_options && Object.keys(row.spec_options).length)? row.spec_options : base.specOptions,
     customDeductionProfiles: (row.custom_deduction_profiles && row.custom_deduction_profiles.length)? row.custom_deduction_profiles : (base.customDeductionProfiles||[]),
+    secondCurrencyEnabled: row.second_currency_enabled!=null? !!row.second_currency_enabled : base.secondCurrencyEnabled,
+    secondCurrencyCode: row.second_currency_code!=null? row.second_currency_code : base.secondCurrencyCode,
+    secondCurrencyRate: row.second_currency_rate!=null? Number(row.second_currency_rate) : base.secondCurrencyRate,
+    secondCurrencyLastSync: row.second_currency_last_sync!=null? row.second_currency_last_sync : base.secondCurrencyLastSync,
     trialStartedAt: row.trial_started_at!=null? row.trial_started_at : base.trialStartedAt,
     licenseSerial: row.license_serial!=null? row.license_serial : base.licenseSerial,
     licenseExpiresAt: row.license_expires_at!=null? row.license_expires_at : base.licenseExpiresAt,
@@ -4410,6 +4416,24 @@ function settingsView(){
   </div>
 
   <div class="card">
+    <h2><span class="dot"></span> 💱 العملة الثانية (اختياري)</h2>
+    <p style="font-size:12.5px; color:var(--ink-soft);">البرنامج شغّال أساساً بالدولار والليرة اللبنانية. إذا بدك تبيع/تشتغل ببلد تاني، فعّل عملة ثانية هون وحدد سعر صرفها مقابل الدولار — يدوياً أو بمزامنة تلقائية من الإنترنت.</p>
+    <div class="field">
+      <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+        <input type="checkbox" id="s_cur2_enabled" ${s.secondCurrencyEnabled?'checked':''}>
+        فعّل عملة ثانية
+      </label>
+    </div>
+    <div class="grid grid-3">
+      <div class="field"><label>رمز العملة (مثال: LBP، EUR، SAR)</label><input type="text" id="s_cur2_code" class="num" value="${escapeHtml(s.secondCurrencyCode||'LBP')}" style="text-transform:uppercase;"></div>
+      <div class="field"><label>سعر الصرف مقابل 1$</label><input type="number" id="s_cur2_rate" class="num" value="${s.secondCurrencyRate||s.defaultExchangeRate||0}"></div>
+      <div class="field"><label>&nbsp;</label><button type="button" class="btn btn-sm" id="s_cur2_sync">🔄 مزامنة السعر من الإنترنت</button></div>
+    </div>
+    <div id="s_cur2_synced_note" style="font-size:11.5px; color:var(--ink-soft);">${s.secondCurrencyLastSync? 'آخر مزامنة: '+new Date(s.secondCurrencyLastSync).toLocaleString('ar') : ''}</div>
+    <button class="btn btn-primary" id="saveCur2Btn" style="margin-top:10px;">💾 حفظ إعدادات العملة</button>
+  </div>
+
+  <div class="card">
     <h2><span class="dot"></span> شعار المؤسسة</h2>
     <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap;">
       <div id="logoPreviewWrap">${s.logo? `<img src="${s.logo}" style="height:70px; width:auto; border:1px solid var(--line); border-radius:8px; padding:6px; background:#fff;">` : `<div style="color:var(--ink-soft); font-size:13px;">ما في شعار مضاف بعد</div>`}</div>
@@ -4978,6 +5002,34 @@ function bindEvents(){
     DB.settings.receiptStart = (()=>{ const n=Number(document.getElementById('s_recstart').value); return Number.isFinite(n)? n : 1000; })();
     const ok = await save(KEYS.settings, DB.settings);
     toast(ok? 'تم حفظ الإعدادات':'صار خطأ بالحفظ');
+  });
+
+  const saveCur2Btn = document.getElementById('saveCur2Btn');
+  if(saveCur2Btn) saveCur2Btn.addEventListener('click', async ()=>{
+    DB.settings.secondCurrencyEnabled = document.getElementById('s_cur2_enabled').checked;
+    DB.settings.secondCurrencyCode = document.getElementById('s_cur2_code').value.trim().toUpperCase() || 'LBP';
+    DB.settings.secondCurrencyRate = Number(document.getElementById('s_cur2_rate').value)||0;
+    const ok = await save(KEYS.settings, DB.settings);
+    toast(ok? 'تم حفظ إعدادات العملة':'صار خطأ بالحفظ');
+  });
+  const cur2SyncBtn = document.getElementById('s_cur2_sync');
+  if(cur2SyncBtn) cur2SyncBtn.addEventListener('click', async ()=>{
+    const code = (document.getElementById('s_cur2_code').value.trim()||'LBP').toUpperCase();
+    cur2SyncBtn.disabled = true; cur2SyncBtn.textContent = 'عم يجيب السعر...';
+    try{
+      const res = await fetch('https://open.er-api.com/v6/latest/USD');
+      const data = await res.json();
+      const rate = data && data.rates && data.rates[code];
+      if(!rate){ toast('ما لقينا سعر لهالعملة — تأكد من الرمز (مثال: LBP, EUR, SAR)'); }
+      else{
+        document.getElementById('s_cur2_rate').value = rate;
+        DB.settings.secondCurrencyLastSync = Date.now();
+        toast('تم جلب السعر: 1$ = '+rate+' '+code+' — اضغط حفظ لتثبيته');
+        const note = document.getElementById('s_cur2_synced_note');
+        if(note) note.textContent = 'آخر مزامنة: '+new Date(DB.settings.secondCurrencyLastSync).toLocaleString('ar');
+      }
+    }catch(e){ toast('ما قدرنا نتواصل مع خدمة أسعار الصرف — تأكد من الإنترنت'); console.error(e); }
+    cur2SyncBtn.disabled = false; cur2SyncBtn.textContent = '🔄 مزامنة السعر من الإنترنت';
   });
 
   const licenseActivateBtn = document.getElementById('s_licenseActivateBtn');
