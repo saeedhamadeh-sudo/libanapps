@@ -306,6 +306,7 @@ body.login-page .credit .credit-tel{color:#E08A2B}
     <button class="tab" data-t="cats" aria-pressed="false">الأقسام</button>
     <button class="tab" data-t="orders" aria-pressed="false">الطلبات</button>
     <button class="tab" data-t="promo" aria-pressed="false">صور وعروض</button>
+    <button class="tab" data-t="coupons" aria-pressed="false">الكوبونات</button>
     <button class="tab" data-t="set" aria-pressed="false">الإعدادات</button>
     <button class="tab" data-t="pay" aria-pressed="false">الدفع</button>
     <button class="tab" data-t="qr" aria-pressed="false">رمز QR</button>
@@ -409,6 +410,30 @@ body.login-page .credit .credit-tel{color:#E08A2B}
       </div>
       <div class="acts"><button class="btn" id="addPromo">نشر العرض</button></div>
       <div id="prList" style="margin-top:12px"></div>
+    </div>
+  </section>
+
+  <!-- COUPONS -->
+  <section data-p="coupons" class="hidden">
+    <div class="panel">
+      <h3>إضافة كوبون جديد</h3>
+      <div class="g3">
+        <div><label>الكود</label><input type="text" id="cpCode" style="text-transform:uppercase" placeholder="مثال: WELCOME10"></div>
+        <div><label>نوع الخصم</label>
+          <select id="cpType"><option value="percent">نسبة %</option><option value="amount">مبلغ ثابت $</option></select>
+        </div>
+        <div><label>قيمة الخصم</label><input type="number" id="cpValue" placeholder="10"></div>
+      </div>
+      <div class="g3">
+        <div><label>أقصى عدد استخدام (اختياري)</label><input type="number" id="cpMax" placeholder="بلا حد"></div>
+        <div><label>تاريخ الانتهاء (اختياري)</label><input type="date" id="cpExpiry"></div>
+        <div style="display:flex;align-items:flex-end"><button class="btn" id="addCoupon" style="width:100%">إضافة الكوبون</button></div>
+      </div>
+      <div class="msg" id="cpMsg"></div>
+    </div>
+    <div class="panel">
+      <h3>الكوبونات الحالية</h3>
+      <div id="cpList"></div>
     </div>
   </section>
 
@@ -685,6 +710,7 @@ $$('.tab').forEach(function(t){
     $$('.tab').forEach(function(x){x.setAttribute('aria-pressed',x===t)});
     $$('[data-p]').forEach(function(p){p.classList.toggle('hidden',p.dataset.p!==t.dataset.t)});
     if(t.dataset.t==='orders') loadOrders();
+    if(t.dataset.t==='coupons') loadCoupons();
   });
 });
 
@@ -1158,6 +1184,61 @@ $('#iList').addEventListener('click',async function(e){
 });
 
 /* ---------- orders ---------- */
+/* ---------- coupons ---------- */
+async function loadCoupons(){
+  var r=await sb.from('coupons').select('*').eq('restaurant_id',R.id).order('created_at',{ascending:false});
+  var rows=r.data||[];
+  var today=new Date().toISOString().slice(0,10);
+  $('#cpList').innerHTML=rows.length?rows.map(function(c){
+    var expired = c.expires_at && c.expires_at<today;
+    var usedUp = c.max_uses!=null && c.used_count>=c.max_uses;
+    var statusTxt = !c.is_active?'معطّل':expired?'منتهي':usedUp?'استُهلك بالكامل':'فعّال';
+    var statusCls = !c.is_active||expired||usedUp?'w':'p';
+    var val = c.discount_type==='percent'? (c.discount_value+'%') : ('$'+c.discount_value);
+    return '<div class="row"><div class="t"><b>'+esc(c.code)+'</b>'+
+      '<span>خصم '+val+' · استُخدم '+(c.used_count||0)+(c.max_uses!=null?('/'+c.max_uses):'')+
+      (c.expires_at?(' · ينتهي '+c.expires_at):'')+'</span></div>'+
+      '<span class="chip '+statusCls+'">'+statusTxt+'</span>'+
+      '<div style="display:flex;gap:6px">'+
+      '<button class="btn alt sm" data-toggle-cp="'+c.id+'" data-on="'+c.is_active+'">'+(c.is_active?'تعطيل':'تفعيل')+'</button>'+
+      '<button class="btn alt sm" data-del-cp="'+c.id+'">حذف</button>'+
+      '</div></div>';
+  }).join(''):'<p class="muted">ما في كوبونات بعد</p>';
+
+  $$('[data-toggle-cp]').forEach(function(b){
+    b.onclick=async function(){
+      await sb.from('coupons').update({is_active: b.dataset.on!=='true'}).eq('id',b.dataset.toggleCp);
+      loadCoupons();
+    };
+  });
+  $$('[data-del-cp]').forEach(function(b){
+    b.onclick=async function(){
+      if(!confirm('حذف هذا الكوبون نهائياً؟')) return;
+      await sb.from('coupons').delete().eq('id',b.dataset.delCp);
+      loadCoupons();
+    };
+  });
+}
+$('#addCoupon').addEventListener('click',async function(){
+  var code=$('#cpCode').value.trim().toUpperCase();
+  var type=$('#cpType').value;
+  var value=Number($('#cpValue').value);
+  var max=$('#cpMax').value?Number($('#cpMax').value):null;
+  var expiry=$('#cpExpiry').value||null;
+  if(!code) return msg('#cpMsg','لازم تكتب كود',false);
+  if(!value||value<=0) return msg('#cpMsg','لازم تحط قيمة خصم أكبر من صفر',false);
+  var r=await sb.from('coupons').insert({
+    restaurant_id:R.id, code:code, discount_type:type, discount_value:value,
+    max_uses:max, expires_at:expiry, is_active:true
+  });
+  if(r.error){
+    msg('#cpMsg', /duplicate|unique/i.test(r.error.message)?'هذا الكود مستخدم أصلاً':r.error.message, false);
+    return;
+  }
+  $('#cpCode').value=''; $('#cpValue').value=''; $('#cpMax').value=''; $('#cpExpiry').value='';
+  msg('#cpMsg','تمت إضافة الكوبون ✓',true);
+  loadCoupons();
+});
 async function loadOrders(){
   var r=await sb.from('orders').select('*').eq('restaurant_id',R.id)
         .order('created_at',{ascending:false}).limit(40);
