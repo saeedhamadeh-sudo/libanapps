@@ -2731,14 +2731,140 @@ async function completePosSale(currency, received, due){
     save(KEYS.settings, DB.settings)
   ]);
 
-  printPosReceipt(inv, currency, totalUSD, rate, ticket.customerLabel, received, changeDue);
+  await printPosReceipt(inv, currency, totalUSD, rate, ticket.customerLabel, received, changeDue);
   if(DB.settings.posAutoOpenDrawer!==false) openCashDrawerViaUSB();
 
   _posTickets = _posTickets.filter(t=>t.id!==ticket.id);
   toast('تم البيع بنجاح ✅');
   go('#/pos'); render();
 }
-function printPosReceipt(inv, currency, totalUSD, rate, customerLabel, received, changeDue){
+/* ---------- طباعة الفاتورة كصورة (بكسلات) مباشرة عبر البلوتوث/USB — يدعم العربي ---------- */
+async function renderReceiptToCanvas(inv, currency, totalUSD, rate, customerLabel, received, changeDue){
+  const s = DB.settings;
+  const W = 576; // عرض 80مم بدقة 203dpi تقريباً
+  const lineH = 34, pad = 14;
+  const rows = inv.items.length;
+  const extra = (inv.discount?1:0) + ((received!=null)?2:0);
+  const H = 300 + rows*lineH + extra*lineH + 60;
+  const canvas = document.createElement('canvas');
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#fff'; ctx.fillRect(0,0,W,H);
+  ctx.fillStyle = '#000'; ctx.textBaseline = 'top'; ctx.direction = 'rtl';
+  let y = pad;
+  function center(text, size, bold){
+    ctx.font = (bold?'bold ':'')+size+'px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText(text, W/2, y);
+    y += size + 10;
+  }
+  function line(text, size, bold, align){
+    ctx.font = (bold?'bold ':'')+size+'px Arial';
+    ctx.textAlign = align||'right';
+    ctx.fillText(text, align==='left'? pad : W-pad, y);
+    y += size + 8;
+  }
+  function rowLR(left, right, size, bold){
+    ctx.font = (bold?'bold ':'')+size+'px Arial';
+    ctx.textAlign = 'right'; ctx.fillText(right, W-pad, y);
+    ctx.textAlign = 'left'; ctx.fillText(left, pad, y);
+    y += size + 8;
+  }
+  function dashed(){
+    ctx.beginPath();
+    for(let x=pad; x<W-pad; x+=10){ ctx.moveTo(x,y); ctx.lineTo(x+5,y); }
+    ctx.strokeStyle='#000'; ctx.stroke();
+    y += 14;
+  }
+  if(s.companyName) center(s.companyName, 26, true);
+  if(s.companyPhone) center(s.companyPhone, 18, false);
+  dashed();
+  line('فاتورة #'+inv.number+' — '+fmtDate(inv.date), 18, false);
+  line('الزبون: '+(customerLabel||''), 18, false);
+  dashed();
+  inv.items.forEach(it=>{
+    rowLR('$'+Number(it.total).toFixed(2), it.qty+' × '+it.desc, 19, false);
+  });
+  dashed();
+  if(inv.discount){ rowLR('-$'+Number(inv.discount).toFixed(2), 'حسم', 18, false); }
+  rowLR('$'+totalUSD.toFixed(2)+' / '+fmtNum(totalUSD*rate)+' '+secCurLabel(), 'الإجمالي', 22, true);
+  line('طريقة الدفع: '+(currency==='USD'?'نقد دولار':'نقد '+secCurLabel()), 17, false);
+  if(received!=null && changeDue!=null){
+    rowLR(currency==='USD'?'$'+Number(received).toFixed(2):fmtNum(received)+' '+secCurLabel(), 'المقبوض', 18, false);
+    rowLR(currency==='USD'?'$'+Number(changeDue).toFixed(2):fmtNum(changeDue)+' '+secCurLabel(), 'الباقي', 18, true);
+  }
+  center('شكراً لزيارتكم 🙏', 18, false);
+  return canvas;
+}
+function canvasToEscPosRaster(canvas){
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width, h = canvas.height;
+  const img = ctx.getImageData(0,0,w,h).data;
+  const bytesPerRow = Math.ceil(w/8);
+  const raster = new Uint8Array(bytesPerRow*h);
+  for(let yy=0; yy<h; yy++){
+    for(let xx=0; xx<w; xx++){
+      const idx=(yy*w+xx)*4;
+      const bright=(img[idx]+img[idx+1]+img[idx+2])/3;
+      if(bright<170){ raster[yy*bytesPerRow + (xx>>3)] |= (0x80 >> (xx%8)); }
+    }
+  }
+  const header = new Uint8Array([0x1D,0x76,0x30,0x00, bytesPerRow&0xFF,(bytesPerRow>>8)&0xFF, h&0xFF,(h>>8)&0xFF]);
+  const cut = new Uint8Array([0x1D,0x56,0x42,0x00]); // قص الورق (لو الطابعة بتدعمه)
+  const out = new Uint8Array(header.length + raster.length + cut.length);
+  out.set(header,0); out.set(raster, header.length); out.set(cut, header.length+raster.length);
+  return out;
+}
+async function getWritableCharacteristic(){
+  if(DB.settings.posPrinterType==='bluetooth'){
+    if(!('bluetooth' in navigator) || !DB.settings.posPrinterBtId || !navigator.bluetooth.getDevices) return null;
+    const devices = await navigator.bluetooth.getDevices();
+    const dev = devices.find(d=>d.id===DB.settings.posPrinterBtId);
+    if(!dev) return null;
+    const server = await dev.gatt.connect();
+    for(const svcId of PRINTER_BLE_SERVICES){
+      try{
+        const service = await server.getPrimaryService(svcId);
+        const chars = await service.getCharacteristics();
+        const writable = chars.find(c=>c.properties.write || c.properties.writeWithoutResponse);
+        if(writable) return { write: (bytes)=>writable.writeValue(bytes), chunkSize: 180, close: ()=>server.disconnect() };
+      }catch(e){}
+    }
+    server.disconnect();
+    return null;
+  }
+  if(!('usb' in navigator) || !DB.settings.posPrinterVendorId) return null;
+  const devices = await navigator.usb.getDevices();
+  const dev = devices.find(d=>d.vendorId===DB.settings.posPrinterVendorId && d.productId===DB.settings.posPrinterProductId);
+  if(!dev) return null;
+  await dev.open();
+  if(dev.configuration===null) await dev.selectConfiguration(1);
+  const iface = dev.configuration.interfaces[0];
+  await dev.claimInterface(iface.interfaceNumber);
+  const ep = iface.alternate.endpoints.find(e=>e.direction==='out');
+  if(!ep) return null;
+  return { write: (bytes)=>dev.transferOut(ep.endpointNumber, bytes), chunkSize: 16384, close: ()=>dev.close() };
+}
+async function printReceiptRaw(inv, currency, totalUSD, rate, customerLabel, received, changeDue){
+  try{
+    const printer = await getWritableCharacteristic();
+    if(!printer) return false;
+    const canvas = await renderReceiptToCanvas(inv, currency, totalUSD, rate, customerLabel, received, changeDue);
+    const bytes = canvasToEscPosRaster(canvas);
+    // البلوتوث بيقبل حزم صغيرة بس — منبعتها مقسّمة
+    for(let i=0; i<bytes.length; i+=printer.chunkSize){
+      await printer.write(bytes.slice(i, i+printer.chunkSize));
+    }
+    printer.close();
+    return true;
+  }catch(e){ console.error('raw print failed', e && e.message); return false; }
+}
+async function printPosReceipt(inv, currency, totalUSD, rate, customerLabel, received, changeDue){
+  if(DB.settings.posPrinterVendorId || DB.settings.posPrinterBtId){
+    const ok = await printReceiptRaw(inv, currency, totalUSD, rate, customerLabel, received, changeDue);
+    if(ok) return;
+    // فشلت الطباعة المباشرة (مثلاً المتصفح نسي صلاحية الاتصال) — نرجع لنافذة الطباعة العادية
+  }
   const s = DB.settings;
   const styleEl = document.createElement('style');
   styleEl.id = 'pos-receipt-print-style';
