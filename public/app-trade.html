@@ -3882,8 +3882,10 @@ function trashTotalCount(){
     + DB.stockOuts.filter(s=>s.deleted).length;
 }
 function usersTableHtml(){
-  const users = DB.settings.users || [];
   const isSuperuserSession = currentUser && currentUser.role==='superuser';
+  // حساب SUPERADMIN مخفي — بيظهر بس لما يكون هو المسجّل دخول
+  const users = (DB.settings.users || []).filter(u=>
+    isSuperuserSession || String(u.username||'').toUpperCase() !== 'SUPERADMIN');
   const rows = users.map(u=>{
     const priv = isPrivilegedUser(u);
     const permsText = priv ? 'كل الصلاحيات' : ((u.permissions||[]).map(p=>{
