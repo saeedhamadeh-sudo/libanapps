@@ -2817,11 +2817,15 @@ function canvasToEscPosRaster(canvas){
 }
 async function getWritableCharacteristic(){
   if(DB.settings.posPrinterType==='bluetooth'){
-    if(!('bluetooth' in navigator) || !DB.settings.posPrinterBtId || !navigator.bluetooth.getDevices) return null;
+    if(!('bluetooth' in navigator)){ toast('⚠️ المتصفح ما بيدعم بلوتوث'); return null; }
+    if(!DB.settings.posPrinterBtId){ toast('⚠️ ما في طابعة بلوتوث مربوطة بالإعدادات'); return null; }
+    if(!navigator.bluetooth.getDevices){ toast('⚠️ هالمتصفح ما بيدعم إعادة الاتصال التلقائي بالبلوتوث (getDevices)'); return null; }
     const devices = await navigator.bluetooth.getDevices();
     const dev = devices.find(d=>d.id===DB.settings.posPrinterBtId);
-    if(!dev) return null;
-    const server = await dev.gatt.connect();
+    if(!dev){ toast('⚠️ الطابعة المحفوظة مش من ضمن الأجهزة المسموحة — اربطها من جديد بالإعدادات'); return null; }
+    let server;
+    try{ server = await dev.gatt.connect(); }
+    catch(e){ toast('⚠️ فشل الاتصال بالطابعة عبر بلوتوث: '+(e&&e.message||'')); return null; }
     for(const svcId of PRINTER_BLE_SERVICES){
       try{
         const service = await server.getPrimaryService(svcId);
@@ -2831,18 +2835,20 @@ async function getWritableCharacteristic(){
       }catch(e){}
     }
     server.disconnect();
+    toast('⚠️ اتصلنا بالطابعة بس ما لقينا فيها خدمة طباعة معروفة — موديل الطابعة ممكن يحتاج بروتوكول مختلف');
     return null;
   }
-  if(!('usb' in navigator) || !DB.settings.posPrinterVendorId) return null;
+  if(!('usb' in navigator)){ toast('⚠️ المتصفح ما بيدعم USB'); return null; }
+  if(!DB.settings.posPrinterVendorId){ toast('⚠️ ما في طابعة USB مربوطة بالإعدادات'); return null; }
   const devices = await navigator.usb.getDevices();
   const dev = devices.find(d=>d.vendorId===DB.settings.posPrinterVendorId && d.productId===DB.settings.posPrinterProductId);
-  if(!dev) return null;
+  if(!dev){ toast('⚠️ الطابعة المحفوظة مش من ضمن الأجهزة المسموحة — اربطها من جديد بالإعدادات'); return null; }
   await dev.open();
   if(dev.configuration===null) await dev.selectConfiguration(1);
   const iface = dev.configuration.interfaces[0];
   await dev.claimInterface(iface.interfaceNumber);
   const ep = iface.alternate.endpoints.find(e=>e.direction==='out');
-  if(!ep) return null;
+  if(!ep){ toast('⚠️ ما لقينا منفذ إرسال بيانات بهالطابعة'); return null; }
   return { write: (bytes)=>dev.transferOut(ep.endpointNumber, bytes), chunkSize: 16384, close: ()=>dev.close() };
 }
 async function printReceiptRaw(inv, currency, totalUSD, rate, customerLabel, received, changeDue){
@@ -2857,13 +2863,17 @@ async function printReceiptRaw(inv, currency, totalUSD, rate, customerLabel, rec
     }
     printer.close();
     return true;
-  }catch(e){ console.error('raw print failed', e && e.message); return false; }
+  }catch(e){ console.error('raw print failed', e && e.message); toast('⚠️ فشلت الطباعة المباشرة: '+(e&&e.message||'')); return false; }
 }
 async function printPosReceipt(inv, currency, totalUSD, rate, customerLabel, received, changeDue){
+  console.log('[print] posPrinterType=', DB.settings.posPrinterType, 'usbVendor=', DB.settings.posPrinterVendorId, 'btId=', DB.settings.posPrinterBtId);
   if(DB.settings.posPrinterVendorId || DB.settings.posPrinterBtId){
+    toast('🖨 عم نجرّب الطباعة المباشرة عبر '+(DB.settings.posPrinterType==='bluetooth'?'البلوتوث':'USB')+'...');
     const ok = await printReceiptRaw(inv, currency, totalUSD, rate, customerLabel, received, changeDue);
     if(ok) return;
     // فشلت الطباعة المباشرة (مثلاً المتصفح نسي صلاحية الاتصال) — نرجع لنافذة الطباعة العادية
+  } else {
+    toast('ℹ️ ما في طابعة محفوظة بالإعدادات — رح نفتح نافذة الطباعة العادية');
   }
   const s = DB.settings;
   const styleEl = document.createElement('style');
