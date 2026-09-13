@@ -579,6 +579,7 @@ function settingsToDb(s){
     category_images: s.categoryImages||{},
     second_currency_enabled: !!s.secondCurrencyEnabled, second_currency_code: s.secondCurrencyCode||null,
     second_currency_rate: s.secondCurrencyRate||null, second_currency_last_sync: s.secondCurrencyLastSync||null,
+    pos_payment_currency: s.posPaymentCurrency||'USD',
     trial_started_at: s.trialStartedAt||null, license_serial: s.licenseSerial||null,
     license_expires_at: s.licenseExpiresAt||null, license_label: s.licenseLabel||null
   };
@@ -604,6 +605,7 @@ function applySettingsFromDb(row, base){
     secondCurrencyCode: row.second_currency_code!=null? row.second_currency_code : base.secondCurrencyCode,
     secondCurrencyRate: row.second_currency_rate!=null? Number(row.second_currency_rate) : base.secondCurrencyRate,
     secondCurrencyLastSync: row.second_currency_last_sync!=null? row.second_currency_last_sync : base.secondCurrencyLastSync,
+    posPaymentCurrency: row.pos_payment_currency!=null? row.pos_payment_currency : base.posPaymentCurrency,
     trialStartedAt: row.trial_started_at!=null? row.trial_started_at : base.trialStartedAt,
     licenseSerial: row.license_serial!=null? row.license_serial : base.licenseSerial,
     licenseExpiresAt: row.license_expires_at!=null? row.license_expires_at : base.licenseExpiresAt,
@@ -801,6 +803,29 @@ function secCurLabel(){
   const code = (DB.settings.secondCurrencyCode||'LBP').toUpperCase();
   return code==='LBP' ? 'ل.ل' : code;
 }
+const COUNTRY_CURRENCIES = [
+  {country:'لبنان', code:'LBP'}, {country:'السعودية', code:'SAR'}, {country:'الإمارات', code:'AED'},
+  {country:'قطر', code:'QAR'}, {country:'الكويت', code:'KWD'}, {country:'البحرين', code:'BHD'},
+  {country:'عُمان', code:'OMR'}, {country:'الأردن', code:'JOD'}, {country:'مصر', code:'EGP'},
+  {country:'العراق', code:'IQD'}, {country:'سوريا', code:'SYP'}, {country:'اليمن', code:'YER'},
+  {country:'ليبيا', code:'LYD'}, {country:'تونس', code:'TND'}, {country:'الجزائر', code:'DZD'},
+  {country:'المغرب', code:'MAD'}, {country:'السودان', code:'SDG'}, {country:'موريتانيا', code:'MRU'},
+  {country:'تركيا', code:'TRY'}, {country:'قبرص', code:'EUR'}, {country:'اليونان', code:'EUR'},
+  {country:'فرنسا', code:'EUR'}, {country:'ألمانيا', code:'EUR'}, {country:'إيطاليا', code:'EUR'},
+  {country:'إسبانيا', code:'EUR'}, {country:'هولندا', code:'EUR'}, {country:'بلجيكا', code:'EUR'},
+  {country:'بريطانيا', code:'GBP'}, {country:'سويسرا', code:'CHF'}, {country:'السويد', code:'SEK'},
+  {country:'النرويج', code:'NOK'}, {country:'الدنمارك', code:'DKK'}, {country:'بولندا', code:'PLN'},
+  {country:'روسيا', code:'RUB'}, {country:'أوكرانيا', code:'UAH'}, {country:'أمريكا', code:'USD'},
+  {country:'كندا', code:'CAD'}, {country:'المكسيك', code:'MXN'}, {country:'البرازيل', code:'BRL'},
+  {country:'الأرجنتين', code:'ARS'}, {country:'أستراليا', code:'AUD'}, {country:'نيوزيلندا', code:'NZD'},
+  {country:'الصين', code:'CNY'}, {country:'اليابان', code:'JPY'}, {country:'كوريا الجنوبية', code:'KRW'},
+  {country:'الهند', code:'INR'}, {country:'باكستان', code:'PKR'}, {country:'بنغلادش', code:'BDT'},
+  {country:'إندونيسيا', code:'IDR'}, {country:'ماليزيا', code:'MYR'}, {country:'الفلبين', code:'PHP'},
+  {country:'تايلاند', code:'THB'}, {country:'فيتنام', code:'VND'}, {country:'سنغافورة', code:'SGD'},
+  {country:'جنوب أفريقيا', code:'ZAR'}, {country:'نيجيريا', code:'NGN'}, {country:'كينيا', code:'KES'},
+  {country:'إثيوبيا', code:'ETB'}, {country:'غانا', code:'GHS'}, {country:'جورجيا', code:'GEL'},
+  {country:'أرمينيا', code:'AMD'}, {country:'أذربيجان', code:'AZN'}, {country:'إيران', code:'IRR'}
+]; // ملاحظة: القائمة ما فيها إسرائيل بناءً على طلب صاحب المنصة
 function fmtNum(n){
   n = Math.round(Number(n)||0);
   return n.toLocaleString('en-US');
@@ -2266,6 +2291,7 @@ function posCategories(){
 function posView(){
   const ticket = posActiveTicket();
   const rate = DB.settings.defaultExchangeRate || 90000;
+  const payCurrency = DB.settings.posPaymentCurrency==='SECOND' ? 'SECOND' : 'USD';
   const subtotal = posSubtotalUSD(ticket);
   const totalUSD = posTotalUSD(ticket);
   const rows = ticket.cart.map((l,idx)=>`
@@ -2354,12 +2380,15 @@ function posView(){
       <div>
         ${(ticket.discount>0)? `<div style="font-size:12px; color:var(--ink-soft); text-decoration:line-through;">$${subtotal.toFixed(2)}</div>`:''}
         <div style="font-size:13px; color:var(--ink-soft);">الإجمالي</div>
+        ${payCurrency==='SECOND' ? `
+        <div style="font-size:24px; font-weight:800;" class="num">${fmtNum(totalUSD*rate)} ${secCurLabel()} <span style="font-size:13.5px; color:var(--ink-soft);">($${totalUSD.toFixed(2)})</span></div>
+        ` : `
         <div style="font-size:24px; font-weight:800;" class="num">$${totalUSD.toFixed(2)} <span style="font-size:13.5px; color:var(--ink-soft);">(${fmtNum(totalUSD*rate)} ${secCurLabel()})</span></div>
+        `}
       </div>
       <div class="row" style="gap:8px; flex-wrap:wrap;">
         <button class="btn" id="pos_clear_btn" ${ticket.cart.length?'':'disabled'}>🗑 تفريغ</button>
-        <button class="btn btn-primary" id="pos_pay_usd_btn" ${ticket.cart.length?'':'disabled'}>💵 قبض دولار</button>
-        <button class="btn btn-primary" id="pos_pay_lbp_btn" ${ticket.cart.length?'':'disabled'}>💴 قبض ليرة</button>
+        <button class="btn btn-primary" id="pos_pay_btn" ${ticket.cart.length?'':'disabled'}>${payCurrency==='SECOND'?'💴':'💵'} قبض</button>
       </div>
     </div>
   </div>`;
@@ -2421,10 +2450,8 @@ function bindPosEvents(){
 
   const clearBtn = document.getElementById('pos_clear_btn');
   if(clearBtn) clearBtn.addEventListener('click', ()=>{ if(confirm('تفريغ السلة؟')){ ticket.cart=[]; render(); } });
-  const payUsdBtn = document.getElementById('pos_pay_usd_btn');
-  if(payUsdBtn) payUsdBtn.addEventListener('click', ()=>openPosPaymentModal('USD'));
-  const payLbpBtn = document.getElementById('pos_pay_lbp_btn');
-  if(payLbpBtn) payLbpBtn.addEventListener('click', ()=>openPosPaymentModal('LBP'));
+  const payBtn = document.getElementById('pos_pay_btn');
+  if(payBtn) payBtn.addEventListener('click', ()=>openPosPaymentModal(DB.settings.posPaymentCurrency==='SECOND'?'LBP':'USD'));
 
   document.querySelectorAll('[data-pos-tab]').forEach(b=>b.addEventListener('click', (e)=>{
     if(e.target.closest('[data-pos-close-tab]')) return;
@@ -3695,7 +3722,7 @@ function settingsView(){
 
   <div class="card">
     <h2><span class="dot"></span> 💱 العملة الثانية (اختياري)</h2>
-    <p style="font-size:12.5px; color:var(--ink-soft);">البرنامج شغّال أساساً بالدولار والليرة اللبنانية. إذا بدك تبيع/تشتغل ببلد تاني، فعّل عملة ثانية هون وحدد سعر صرفها مقابل الدولار — يدوياً أو بمزامنة تلقائية من الإنترنت.</p>
+    <p style="font-size:12.5px; color:var(--ink-soft);">البرنامج شغّال أساساً بالدولار. إذا بدك تبيع/تشتغل ببلد تاني، فعّل عملة ثانية هون واختار البلد — سعر الصرف بينسحب من الإنترنت تلقائياً.</p>
     <div class="field">
       <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
         <input type="checkbox" id="s_cur2_enabled" ${s.secondCurrencyEnabled?'checked':''}>
@@ -3703,11 +3730,21 @@ function settingsView(){
       </label>
     </div>
     <div class="grid grid-3">
-      <div class="field"><label>رمز العملة (مثال: LBP، EUR، SAR)</label><input type="text" id="s_cur2_code" class="num" value="${escapeHtml(s.secondCurrencyCode||'LBP')}" style="text-transform:uppercase;"></div>
+      <div class="field"><label>البلد / العملة</label>
+        <select id="s_cur2_code">
+          ${COUNTRY_CURRENCIES.map(c=>`<option value="${c.code}" ${((s.secondCurrencyCode||'LBP')===c.code)?'selected':''}>${c.country} — ${c.code}</option>`).join('')}
+        </select>
+      </div>
       <div class="field"><label>سعر الصرف مقابل 1$</label><input type="number" id="s_cur2_rate" class="num" value="${s.secondCurrencyRate||s.defaultExchangeRate||0}"></div>
       <div class="field"><label>&nbsp;</label><button type="button" class="btn btn-sm" id="s_cur2_sync">🔄 مزامنة السعر من الإنترنت</button></div>
     </div>
     <div id="s_cur2_synced_note" style="font-size:11.5px; color:var(--ink-soft);">${s.secondCurrencyLastSync? 'آخر مزامنة: '+new Date(s.secondCurrencyLastSync).toLocaleString('ar') : ''}</div>
+    <div class="field" style="margin-top:10px; max-width:320px;"><label>عملة القبض بشاشة POS</label>
+      <select id="s_pos_pay_currency">
+        <option value="USD" ${s.posPaymentCurrency!=='SECOND'?'selected':''}>دولار $ (دايماً)</option>
+        <option value="SECOND" ${s.posPaymentCurrency==='SECOND'?'selected':''}>العملة الثانية (${secCurLabel()})</option>
+      </select>
+    </div>
     <button class="btn btn-primary" id="saveCur2Btn" style="margin-top:10px;">💾 حفظ إعدادات العملة</button>
   </div>
 
@@ -4114,16 +4151,17 @@ function bindEvents(){
   const saveCur2Btn = document.getElementById('saveCur2Btn');
   if(saveCur2Btn) saveCur2Btn.addEventListener('click', async ()=>{
     DB.settings.secondCurrencyEnabled = document.getElementById('s_cur2_enabled').checked;
-    DB.settings.secondCurrencyCode = document.getElementById('s_cur2_code').value.trim().toUpperCase() || 'LBP';
+    DB.settings.secondCurrencyCode = document.getElementById('s_cur2_code').value || 'LBP';
     DB.settings.secondCurrencyRate = Number(document.getElementById('s_cur2_rate').value)||0;
     DB.settings.defaultExchangeRate = DB.settings.secondCurrencyRate || DB.settings.defaultExchangeRate || 90000;
+    DB.settings.posPaymentCurrency = document.getElementById('s_pos_pay_currency').value || 'USD';
     const ok = await save(KEYS.settings, DB.settings);
     toast(ok? 'تم حفظ إعدادات العملة':'صار خطأ بالحفظ');
     render();
   });
   const cur2SyncBtn = document.getElementById('s_cur2_sync');
   if(cur2SyncBtn) cur2SyncBtn.addEventListener('click', async ()=>{
-    const code = (document.getElementById('s_cur2_code').value.trim()||'LBP').toUpperCase();
+    const code = document.getElementById('s_cur2_code').value || 'LBP';
     cur2SyncBtn.disabled = true; cur2SyncBtn.textContent = 'عم يجيب السعر...';
     try{
       const res = await fetch('https://open.er-api.com/v6/latest/USD');
