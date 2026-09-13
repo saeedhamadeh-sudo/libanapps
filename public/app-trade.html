@@ -239,6 +239,34 @@
   .pos-tile-img-placeholder{display:flex; align-items:center; justify-content:center; font-size:26px; background:var(--bg-2);}
   .pos-tile-name{font-size:13.5px; font-weight:700; line-height:1.3; word-break:break-word;}
   .pos-tile-price{font-size:13px; color:var(--credit); font-weight:800; margin-top:4px;}
+  /* ---- تخطيط شاشة POS: منتجات + فاتورة جانبية ثابتة ---- */
+  .pos-layout{display:flex; align-items:flex-start; gap:16px; padding:0 18px 24px;}
+  .pos-main{flex:1; min-width:0;}
+  .pos-receipt{width:340px; flex-shrink:0; background:var(--white); border:1px solid var(--line); border-radius:16px;
+    box-shadow:var(--shadow); display:flex; flex-direction:column; position:sticky; top:74px; max-height:calc(100vh - 90px);}
+  .pos-receipt-head{padding:14px 16px 10px; border-bottom:1px solid var(--line);}
+  .pos-ticket-tabs{display:flex; gap:6px; overflow-x:auto; padding-bottom:8px;}
+  .pos-receipt-customer{display:flex; align-items:center; justify-content:space-between; font-size:13.5px;}
+  .pos-receipt-items{flex:1; overflow-y:auto; padding:6px 16px; min-height:80px;}
+  .pos-receipt-item{display:flex; align-items:center; gap:10px; padding:10px 0; border-bottom:1px dashed var(--line);}
+  .pos-receipt-item:last-child{border-bottom:none;}
+  .pos-receipt-item-img{width:40px; height:40px; border-radius:8px; object-fit:cover; flex-shrink:0; background:var(--bg-2);}
+  .pos-receipt-item-body{flex:1; min-width:0;}
+  .pos-receipt-item-name{font-size:13.5px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .pos-receipt-item-price{font-size:12px; color:var(--ink-soft);}
+  .pos-qty-stepper{display:flex; align-items:center; gap:6px; flex-shrink:0;}
+  .pos-qty-stepper button{width:24px; height:24px; border-radius:7px; border:1px solid var(--line); background:var(--bg-2); font-weight:800; line-height:1;}
+  .pos-receipt-item-total{width:56px; text-align:end; font-weight:800; font-size:13px; flex-shrink:0;}
+  .pos-receipt-item-del{flex-shrink:0; opacity:.6; padding:2px 4px;}
+  .pos-receipt-foot{padding:12px 16px 16px; border-top:1px solid var(--line);}
+  .pos-cat-tabs{display:flex; gap:16px; overflow-x:auto; border-bottom:1px solid var(--line); margin-bottom:12px; padding-bottom:0;}
+  .pos-cat-tab{padding:10px 2px; font-size:14px; font-weight:700; color:var(--ink-soft); white-space:nowrap; border-bottom:2.5px solid transparent; flex-shrink:0; display:flex; align-items:center; gap:6px;}
+  .pos-cat-tab.active{color:var(--sky, var(--ink)); border-bottom-color:var(--orange, #E08A2B);}
+  .pos-search-row{display:flex; gap:8px; margin-bottom:4px;}
+  @media(max-width:900px){
+    .pos-layout{flex-direction:column; padding:0 12px 16px;}
+    .pos-receipt{width:100%; position:static; max-height:none;}
+  }
   @media(max-width:520px){
     .pos-tile-grid{grid-template-columns:repeat(auto-fill, minmax(115px, 1fr));}
     .pos-tile{min-height:110px;}
@@ -2294,19 +2322,24 @@ function posView(){
   const payCurrency = DB.settings.posPaymentCurrency==='SECOND' ? 'SECOND' : 'USD';
   const subtotal = posSubtotalUSD(ticket);
   const totalUSD = posTotalUSD(ticket);
-  const rows = ticket.cart.map((l,idx)=>`
-    <tr>
-      <td><b>${escapeHtml(l.name)}</b></td>
-      <td class="num">$${l.price.toFixed(2)}</td>
-      <td style="white-space:nowrap;">
-        <button class="btn btn-sm" data-pos-dec="${idx}">−</button>
-        <b style="margin:0 8px;">${l.qty}</b>
-        <button class="btn btn-sm" data-pos-inc="${idx}">+</button>
-      </td>
-      <td class="num">$${(l.price*l.qty).toFixed(2)}</td>
-      <td><button class="btn btn-sm btn-danger" data-pos-remove="${idx}">🗑</button></td>
-    </tr>`).join('');
-  const tabsHtml = _posTickets.map(t=>{
+  const itemRows = ticket.cart.map((l,idx)=>{
+    const it = DB.warehouseItems.find(x=>x.id===l.itemId);
+    return `<div class="pos-receipt-item">
+      ${it&&it.image? `<img src="${it.image}" class="pos-receipt-item-img">` : `<div class="pos-receipt-item-img" style="display:flex;align-items:center;justify-content:center;">📦</div>`}
+      <div class="pos-receipt-item-body">
+        <div class="pos-receipt-item-name">${escapeHtml(l.name)}</div>
+        <div class="pos-receipt-item-price">$${l.price.toFixed(2)}</div>
+      </div>
+      <div class="pos-qty-stepper">
+        <button data-pos-dec="${idx}">−</button>
+        <b style="min-width:16px; text-align:center; font-size:13px;">${l.qty}</b>
+        <button data-pos-inc="${idx}">+</button>
+      </div>
+      <div class="pos-receipt-item-total num">$${(l.price*l.qty).toFixed(2)}</div>
+      <button class="pos-receipt-item-del" data-pos-remove="${idx}">🗑</button>
+    </div>`;
+  }).join('');
+  const ticketTabsHtml = _posTickets.map(t=>{
     const active = t.id===ticket.id;
     return `<button class="btn btn-sm${active?' btn-primary':''}" data-pos-tab="${t.id}" style="white-space:nowrap; position:relative;">
       ${escapeHtml(t.customerLabel)}${t.cart.length?` (${t.cart.length})`:''}
@@ -2320,77 +2353,68 @@ function posView(){
   if(_posActiveCategory===null) tileItems = DB.warehouseItems;
   else if(_posActiveCategory==='__none__') tileItems = DB.warehouseItems.filter(it=>!it.category);
   else tileItems = DB.warehouseItems.filter(it=>it.category===_posActiveCategory);
+  const totalLine = payCurrency==='SECOND'
+    ? `<div style="font-size:22px; font-weight:800;" class="num">${fmtNum(totalUSD*rate)} ${secCurLabel()}</div><div style="font-size:12px; color:var(--ink-soft);">($${totalUSD.toFixed(2)})</div>`
+    : `<div style="font-size:22px; font-weight:800;" class="num">$${totalUSD.toFixed(2)}</div><div style="font-size:12px; color:var(--ink-soft);">(${fmtNum(totalUSD*rate)} ${secCurLabel()})</div>`;
   return `
-  <div class="card" style="padding:10px 14px;">
-    <div style="display:flex; gap:8px; overflow-x:auto; padding-bottom:4px;">
-      ${tabsHtml}
-      <button class="btn btn-sm" id="pos_new_ticket_btn">+ زبون جديد</button>
-    </div>
-  </div>
-  <div class="card">
-    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:10px;">
-      <div style="font-size:13.5px;">الزبون: <b>${escapeHtml(ticket.customerLabel)}</b>
-        <button class="btn btn-sm" id="pos_pick_customer_btn" style="margin-inline-start:6px;">تغيير</button>
-      </div>
-      <button class="btn btn-sm" id="pos_return_btn">↩ فاتورة استرجاع</button>
-    </div>
-    <div class="field">
-      <label>امسح الباركود أو اكتبه واضغط Enter</label>
-      <div style="display:flex; gap:8px;">
-        <input type="text" id="pos_scan_input" class="num" style="flex:1; font-size:18px; padding:12px;" placeholder="امسح المنتج هون..." autofocus>
-        <button type="button" class="btn" id="pos_camera_scan_btn">📷</button>
-      </div>
-    </div>
-    <div id="pos_scan_msg" style="min-height:18px; font-size:13px; color:var(--credit); margin-top:2px;"></div>
-    <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">
-      <button class="btn btn-sm${_posActiveCategory===null?' btn-primary':''}" data-pos-category="">🗂 كل المنتجات</button>
-      ${categories.map(c=>`<span style="display:inline-flex; align-items:center; gap:2px;">
-        <button class="btn btn-sm${_posActiveCategory===c?' btn-primary':''}" data-pos-category="${escapeHtml(c)}" style="display:flex; align-items:center; gap:6px;">
-          ${catImages[c]? `<img src="${catImages[c]}" style="height:20px; width:20px; object-fit:cover; border-radius:5px;">` : ''}${escapeHtml(c)}
-        </button>
-        ${isPrivilegedUser(currentUser)? `<button class="btn btn-sm" data-pos-cat-image="${escapeHtml(c)}" title="صورة القسم" style="padding:4px 6px;">🖼</button>` : ''}
-      </span>`).join('')}
-      ${noCatCount? `<button class="btn btn-sm${_posActiveCategory==='__none__'?' btn-primary':''}" data-pos-category="__none__">بدون قسم (${noCatCount})</button>` : ''}
-    </div>
-    <div class="pos-tile-grid">
-      ${tileItems.length? tileItems.map(it=>`<button class="pos-tile" data-pos-tile="${it.id}">
-        ${it.image? `<img src="${it.image}" class="pos-tile-img">` : `<div class="pos-tile-img pos-tile-img-placeholder">📦</div>`}
-        <div class="pos-tile-name">${escapeHtml(it.name)}</div>
-        <div class="pos-tile-price">$${(Number(it.price)||0).toFixed(2)}</div>
-      </button>`).join('') : `<div class="empty" style="grid-column:1/-1;"><div class="big">ما في منتجات — ضيف منتج من المستودع أول</div></div>`}
-    </div>
-  </div>
-  <div class="card">
-    <h2><span class="dot"></span> السلة</h2>
-    ${ticket.cart.length? `<div class="table-scroll"><table>
-      <thead><tr><th>الصنف</th><th>السعر</th><th>الكمية</th><th>الإجمالي</th><th></th></tr></thead>
-      <tbody>${rows}</tbody>
-    </table></div>` : `<div class="empty"><div class="big">السلة فاضية — امسح أو اختار منتج</div></div>`}
-    <div class="field" style="margin-top:12px; max-width:280px;">
-      <label>حسم (اختياري)</label>
-      <div style="display:flex; gap:6px;">
-        <input type="number" step="0.01" id="pos_discount_input" class="num" value="${ticket.discount||0}" style="flex:1;">
-        <select id="pos_discount_type" style="width:80px;">
-          <option value="amount" ${ticket.discountType!=='percent'?'selected':''}>$</option>
-          <option value="percent" ${ticket.discountType==='percent'?'selected':''}>%</option>
-        </select>
+  <div class="pos-layout">
+    <div class="pos-main">
+      <div class="card" style="padding:12px 16px;">
+        <div class="pos-cat-tabs">
+          <div class="pos-cat-tab${_posActiveCategory===null?' active':''}" data-pos-category="">🗂 الكل</div>
+          ${categories.map(c=>`<div class="pos-cat-tab${_posActiveCategory===c?' active':''}" data-pos-category="${escapeHtml(c)}">
+            ${catImages[c]? `<img src="${catImages[c]}" style="height:18px; width:18px; object-fit:cover; border-radius:5px;">` : ''}${escapeHtml(c)}
+            ${isPrivilegedUser(currentUser)? `<span data-pos-cat-image="${escapeHtml(c)}" title="صورة القسم" style="opacity:.6; margin-inline-start:2px;">🖼</span>`:''}
+          </div>`).join('')}
+          ${noCatCount? `<div class="pos-cat-tab${_posActiveCategory==='__none__'?' active':''}" data-pos-category="__none__">بدون قسم (${noCatCount})</div>` : ''}
+        </div>
+        <div class="pos-search-row">
+          <input type="text" id="pos_scan_input" class="num" style="flex:1; font-size:16px; padding:11px 14px; border-radius:10px; border:1px solid var(--line);" placeholder="🔍 بحث بالاسم أو امسح باركود..." autofocus>
+          <button type="button" class="btn" id="pos_camera_scan_btn">📷</button>
+        </div>
+        <div id="pos_scan_msg" style="min-height:16px; font-size:12.5px; color:var(--credit);"></div>
+        <div class="pos-tile-grid">
+          ${tileItems.length? tileItems.map(it=>`<button class="pos-tile" data-pos-tile="${it.id}">
+            ${it.image? `<img src="${it.image}" class="pos-tile-img">` : `<div class="pos-tile-img pos-tile-img-placeholder">📦</div>`}
+            <div class="pos-tile-name">${escapeHtml(it.name)}</div>
+            <div class="pos-tile-price">$${(Number(it.price)||0).toFixed(2)}</div>
+          </button>`).join('') : `<div class="empty" style="grid-column:1/-1;"><div class="big">ما في منتجات — ضيف منتج من المستودع أول</div></div>`}
+        </div>
       </div>
     </div>
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-top:16px; flex-wrap:wrap; gap:10px;">
-      <div>
-        ${(ticket.discount>0)? `<div style="font-size:12px; color:var(--ink-soft); text-decoration:line-through;">$${subtotal.toFixed(2)}</div>`:''}
-        <div style="font-size:13px; color:var(--ink-soft);">الإجمالي</div>
-        ${payCurrency==='SECOND' ? `
-        <div style="font-size:24px; font-weight:800;" class="num">${fmtNum(totalUSD*rate)} ${secCurLabel()} <span style="font-size:13.5px; color:var(--ink-soft);">($${totalUSD.toFixed(2)})</span></div>
-        ` : `
-        <div style="font-size:24px; font-weight:800;" class="num">$${totalUSD.toFixed(2)} <span style="font-size:13.5px; color:var(--ink-soft);">(${fmtNum(totalUSD*rate)} ${secCurLabel()})</span></div>
-        `}
+    <aside class="pos-receipt">
+      <div class="pos-receipt-head">
+        <div class="pos-ticket-tabs">
+          ${ticketTabsHtml}
+          <button class="btn btn-sm" id="pos_new_ticket_btn">+</button>
+        </div>
+        <div class="pos-receipt-customer">
+          <span>👤 <b>${escapeHtml(ticket.customerLabel)}</b></span>
+          <button class="btn btn-sm" id="pos_pick_customer_btn">تغيير</button>
+        </div>
       </div>
-      <div class="row" style="gap:8px; flex-wrap:wrap;">
-        <button class="btn" id="pos_clear_btn" ${ticket.cart.length?'':'disabled'}>🗑 تفريغ</button>
-        <button class="btn btn-primary" id="pos_pay_btn" ${ticket.cart.length?'':'disabled'}>${payCurrency==='SECOND'?'💴':'💵'} قبض</button>
+      <div class="pos-receipt-items">
+        ${ticket.cart.length? itemRows : `<div class="empty" style="padding:24px 0;"><div class="big" style="font-size:13px;">السلة فاضية</div></div>`}
       </div>
-    </div>
+      <div class="pos-receipt-foot">
+        <div style="display:flex; gap:6px; margin-bottom:10px;">
+          <input type="number" step="0.01" id="pos_discount_input" class="num" value="${ticket.discount||0}" placeholder="حسم" style="flex:1; padding:7px; border-radius:8px; border:1px solid var(--line);">
+          <select id="pos_discount_type" style="width:64px; border-radius:8px; border:1px solid var(--line);">
+            <option value="amount" ${ticket.discountType!=='percent'?'selected':''}>$</option>
+            <option value="percent" ${ticket.discountType==='percent'?'selected':''}>%</option>
+          </select>
+        </div>
+        <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:12px;">
+          <span style="font-size:12.5px; color:var(--ink-soft);">الإجمالي</span>
+          <div style="text-align:end;">${totalLine}</div>
+        </div>
+        <div style="display:flex; gap:8px;">
+          <button class="btn" id="pos_clear_btn" style="flex:1;" ${ticket.cart.length?'':'disabled'}>إلغاء</button>
+          <button class="btn btn-primary" id="pos_pay_btn" style="flex:2;" ${ticket.cart.length?'':'disabled'}>${payCurrency==='SECOND'?'💴':'💵'} قبض</button>
+        </div>
+        <button class="btn btn-sm" id="pos_return_btn" style="width:100%; margin-top:8px;">↩ فاتورة استرجاع</button>
+      </div>
+    </aside>
   </div>`;
 }
 function bindPosEvents(){
