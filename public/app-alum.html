@@ -859,6 +859,10 @@ function totpAuthUri(username, secret){
   return `otpauth://totp/${label}?secret=${secret}&issuer=${issuer}&digits=6&period=30`;
 }
 
+function secCurLabel(){
+  const code = (DB.settings.secondCurrencyCode||'LBP').toUpperCase();
+  return code==='LBP' ? 'ل.ل' : code;
+}
 function fmtMoney(n){
   n = Number(n)||0;
   const neg = n<0; n=Math.abs(n);
@@ -867,7 +871,7 @@ function fmtMoney(n){
 }
 function fmtLBP(n){
   n = Math.round(Number(n)||0);
-  return n.toLocaleString('en-US')+' ل.ل';
+  return n.toLocaleString('en-US')+' '+secCurLabel();
 }
 function fmtDate(d){
   if(!d) return '';
@@ -3181,7 +3185,7 @@ function itemDocFormView(kind, doc, partyId){
       <div class="field"><label>التاريخ</label><input type="date" id="f_date" value="${d.date}"></div>
       <div class="field"><label>نوع ${cfg.title}</label><input type="text" id="f_doctype" value="${escapeHtml(d.docType)}" placeholder="${cfg.docTypeDefault}"></div>
     </div>
-    <div class="field" style="max-width:260px"><label>سعر الصرف (ل.ل لكل دولار)</label><input type="number" id="f_rate" class="num" value="${d.exchangeRate}"></div>
+    <div class="field" style="max-width:260px"><label>سعر الصرف (${secCurLabel()} لكل دولار)</label><input type="number" id="f_rate" class="num" value="${d.exchangeRate}"></div>
 
     <div id="itemsBody">
       ${d.items.map((it,idx)=>itemRow(it,idx,kind)).join('')}
@@ -4228,7 +4232,7 @@ function itemDocPrintView(kind, doc){
       <div class="amount-box">
         ${totals.discount>0? `<div class="line" style="font-size:13px; font-weight:600; color:var(--ink-soft);">مجموع البنود: ${fmtMoney(totals.subtotal)}</div><div class="line" style="font-size:13px; font-weight:600; color:var(--debit);">الحسم: -${fmtMoney(totals.discount)}</div>` : ''}
         <div class="line">المجموع $: ${fmtMoney(totals.totalUSD)}</div>
-        <div class="line lbp">المجموع ل.ل: ${fmtLBP(totals.totalLBP)}</div>
+        <div class="line lbp">المجموع ${secCurLabel()}: ${fmtLBP(totals.totalLBP)}</div>
       </div>
     </div>
     <div class="sig">التوقيع</div>
@@ -4407,11 +4411,11 @@ function settingsView(){
       <div class="field"><label>هاتف / عنوان</label><input type="text" id="s_phone" value="${escapeHtml(s.companyPhone)}"></div>
     </div>
     <div class="field"><label>وصف النشاط (يظهر تحت اسم الشركة)</label><input type="text" id="s_tag" value="${escapeHtml(s.companyTag)}"></div>
-    <div class="grid grid-3">
-      <div class="field"><label>سعر الصرف الافتراضي (ل.ل)</label><input type="number" id="s_rate" class="num" value="${s.defaultExchangeRate}"></div>
+    <div class="grid grid-2">
       <div class="field"><label>بداية ترقيم الفواتير</label><input type="number" id="s_invstart" class="num" value="${s.invoiceStart}"></div>
       <div class="field"><label>بداية ترقيم إيصالات القبض</label><input type="number" id="s_recstart" class="num" value="${s.receiptStart}"></div>
     </div>
+    <p style="font-size:11.5px; color:var(--ink-soft);">سعر الصرف صار يتحدد من كرت "العملة الثانية" تحت.</p>
     <button class="btn btn-primary" id="saveSettingsBtn">💾 حفظ الإعدادات</button>
   </div>
 
@@ -4997,7 +5001,6 @@ function bindEvents(){
     DB.settings.companyName = document.getElementById('s_name').value.trim() || DB.settings.companyName;
     DB.settings.companyPhone = document.getElementById('s_phone').value.trim();
     DB.settings.companyTag = document.getElementById('s_tag').value.trim();
-    DB.settings.defaultExchangeRate = Number(document.getElementById('s_rate').value)||90000;
     DB.settings.invoiceStart = (()=>{ const n=Number(document.getElementById('s_invstart').value); return Number.isFinite(n)? n : 0; })();
     DB.settings.receiptStart = (()=>{ const n=Number(document.getElementById('s_recstart').value); return Number.isFinite(n)? n : 1000; })();
     const ok = await save(KEYS.settings, DB.settings);
@@ -5009,8 +5012,10 @@ function bindEvents(){
     DB.settings.secondCurrencyEnabled = document.getElementById('s_cur2_enabled').checked;
     DB.settings.secondCurrencyCode = document.getElementById('s_cur2_code').value.trim().toUpperCase() || 'LBP';
     DB.settings.secondCurrencyRate = Number(document.getElementById('s_cur2_rate').value)||0;
+    DB.settings.defaultExchangeRate = DB.settings.secondCurrencyRate || DB.settings.defaultExchangeRate || 90000;
     const ok = await save(KEYS.settings, DB.settings);
     toast(ok? 'تم حفظ إعدادات العملة':'صار خطأ بالحفظ');
+    render();
   });
   const cur2SyncBtn = document.getElementById('s_cur2_sync');
   if(cur2SyncBtn) cur2SyncBtn.addEventListener('click', async ()=>{
