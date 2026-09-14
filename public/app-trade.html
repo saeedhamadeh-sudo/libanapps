@@ -2867,14 +2867,13 @@ async function printReceiptRaw(inv, currency, totalUSD, rate, customerLabel, rec
   }catch(e){ console.error('raw print failed', e && e.message); toast('⚠️ فشلت الطباعة المباشرة: '+(e&&e.message||'')); return false; }
 }
 async function printPosReceipt(inv, currency, totalUSD, rate, customerLabel, received, changeDue){
-  console.log('[print] posPrinterType=', DB.settings.posPrinterType, 'usbVendor=', DB.settings.posPrinterVendorId, 'btId=', DB.settings.posPrinterBtId);
-  if(DB.settings.posPrinterVendorId || DB.settings.posPrinterBtId){
-    toast('🖨 عم نجرّب الطباعة المباشرة عبر '+(DB.settings.posPrinterType==='bluetooth'?'البلوتوث':'USB')+'...');
+  // البلوتوث (BLE) ما عاد نجرّب الطباعة المباشرة فيه — أثبتت الاختبارات إنو ما بيوصل
+  // للطابعات يلي بتشتغل Classic/SPP (زي RPP300-B). الاعتماد صار على نافذة الطباعة
+  // العادية + تطبيق RawBT (Classic Bluetooth) لهالحالة.
+  if(DB.settings.posPrinterVendorId && DB.settings.posPrinterType!=='bluetooth'){
     const ok = await printReceiptRaw(inv, currency, totalUSD, rate, customerLabel, received, changeDue);
     if(ok) return;
-    // فشلت الطباعة المباشرة (مثلاً المتصفح نسي صلاحية الاتصال) — نرجع لنافذة الطباعة العادية
-  } else {
-    toast('ℹ️ ما في طابعة محفوظة بالإعدادات — رح نفتح نافذة الطباعة العادية');
+    // فشلت الطباعة المباشرة عبر USB — نرجع لنافذة الطباعة العادية
   }
   const s = DB.settings;
   const styleEl = document.createElement('style');
@@ -3988,7 +3987,7 @@ function settingsView(){
         <button type="button" class="btn btn-sm" id="s_pos_pick_printer">🔌 اختار/غيّر عبر USB</button>
         <button type="button" class="btn btn-sm" id="s_pos_pick_printer_bt">🔷 اختار/غيّر عبر بلوتوث</button>
       </div>
-      <p style="font-size:11.5px; color:var(--ink-soft); margin-top:6px;">USB: لازم Chrome على كمبيوتر. بلوتوث: بيشتغل من Chrome على أندرويد أو كمبيوتر — للأسف آيفون/سفاري ما بيدعموا هالنوع من الاتصال إطلاقاً (قيد من آبل، مش من عندنا). الطباعة نفسها (الفاتورة الحرارية) بتصير عادي من نافذة الطباعة، وهاي الخطوة بس لفتح درج القبض تلقائياً.</p>
+      <p style="font-size:11.5px; color:var(--ink-soft); margin-top:6px;">USB: بيطبع مباشرة تلقائياً من Chrome على كمبيوتر. بلوتوث: للأسف أغلب الطابعات الرخيصة ما بتقبل طباعة مباشرة من المتصفح عبرها — لازم تطبيق وسيط متل <b>RawBT</b> (اقرن الطابعة Classic Bluetooth بـPIN من إعدادات النظام، ثبّت RawBT، وبعدين اختاره من نافذة الطباعة العادية بدل "حفظ PDF"). ربط البلوتوث من هون بيفيد بس لمحاولة فتح درج القبض تلقائياً، مش للطباعة نفسها.</p>
     </div>
     <button class="btn btn-primary" id="saveposSettingsBtn">💾 حفظ إعدادات POS</button>
   </div>
