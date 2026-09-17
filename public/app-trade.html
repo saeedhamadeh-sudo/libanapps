@@ -1162,7 +1162,7 @@ function expiringSoonItems(){
     return d <= itemExpiryAlertDays(it);
   }).sort((a,b)=>daysUntilExpiry(a)-daysUntilExpiry(b));
 }
-function openBarcodeScannerModal(onScan){
+function openBarcodeScannerModal(onScan, continuous){
   const method = DB.settings.barcodeScanMethod || 'camera';
   const wrap = document.createElement('div');
   wrap.className = 'modal-bg';
@@ -1194,23 +1194,26 @@ function openBarcodeScannerModal(onScan){
       <video id="bc_video" style="width:100%; max-height:300px;" autoplay playsinline muted></video>
     </div>
     <div id="bc_err" style="color:var(--debit); font-size:12.5px; margin-top:8px;"></div>
-    <div class="field" style="margin-top:10px;"><label>أو اكتب الرقم يدويًا</label><input type="text" id="bc_manual_input" class="num"></div>
+    <div id="bc_ok_msg" style="color:var(--credit); font-size:13px; margin-top:6px; min-height:18px; font-weight:700;"></div>
+    ${continuous? '' : `<div class="field" style="margin-top:10px;"><label>أو اكتب الرقم يدويًا</label><input type="text" id="bc_manual_input" class="num"></div>`}
     <div class="row">
-      <button class="btn" id="bc_cancel">إلغاء</button>
-      <button class="btn btn-primary" id="bc_manual_ok">استخدام الرقم اليدوي</button>
+      <button class="btn" id="bc_cancel">${continuous?'✅ خلصت / إنهاء':'إلغاء'}</button>
+      ${continuous? '' : `<button class="btn btn-primary" id="bc_manual_ok">استخدام الرقم اليدوي</button>`}
     </div>
   </div>`;
   document.body.appendChild(wrap);
   let stream = null, rafId = null;
   const video = wrap.querySelector('#bc_video');
   const errEl = wrap.querySelector('#bc_err');
+  const okEl = wrap.querySelector('#bc_ok_msg');
   function cleanup(){
     if(rafId) cancelAnimationFrame(rafId);
     if(stream) stream.getTracks().forEach(t=>t.stop());
   }
   wrap.querySelector('#bc_cancel').addEventListener('click', ()=>{ cleanup(); wrap.remove(); });
   wrap.addEventListener('click', (e)=>{ if(e.target===wrap){ cleanup(); wrap.remove(); } });
-  wrap.querySelector('#bc_manual_ok').addEventListener('click', ()=>{
+  const manualOkBtn = wrap.querySelector('#bc_manual_ok');
+  if(manualOkBtn) manualOkBtn.addEventListener('click', ()=>{
     const val = wrap.querySelector('#bc_manual_input').value.trim();
     if(!val){ toast('اكتب رقم الباركود'); return; }
     cleanup(); onScan(val); wrap.remove();
@@ -1224,12 +1227,23 @@ function openBarcodeScannerModal(onScan){
       const detector = new BarcodeDetector({formats:['ean_13','ean_8','upc_a','upc_e','code_128','code_39','qr_code']});
       stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
       video.srcObject = stream;
+      let lastCode = null, lastAt = 0;
       const scanLoop = async ()=>{
         try{
           const codes = await detector.detect(video);
           if(codes && codes.length){
-            cleanup(); onScan(codes[0].rawValue); wrap.remove();
-            return;
+            const val = codes[0].rawValue;
+            const now = Date.now();
+            if(!continuous){
+              cleanup(); onScan(val); wrap.remove();
+              return;
+            }
+            // وضع POS المستمر: منمنع تكرار نفس الكود خلال ثانيتين (تجنّب الإضافة المضاعفة)
+            if(!(val===lastCode && now-lastAt<2000)){
+              lastCode = val; lastAt = now;
+              onScan(val);
+              if(okEl){ okEl.textContent = '✅ '+val; setTimeout(()=>{ if(okEl) okEl.textContent=''; }, 1200); }
+            }
           }
         }catch(e){}
         rafId = requestAnimationFrame(scanLoop);
@@ -2443,7 +2457,7 @@ function bindPosEvents(){
     });
   }
   const camBtn = document.getElementById('pos_camera_scan_btn');
-  if(camBtn) camBtn.addEventListener('click', ()=>{ openBarcodeScannerModal((code)=>handleCode(code)); });
+  if(camBtn) camBtn.addEventListener('click', ()=>{ openBarcodeScannerModal((code)=>handleCode(code), true); });
   const kbBtn = document.getElementById('pos_keyboard_btn');
   if(kbBtn) kbBtn.addEventListener('click', ()=>{
     if(input){ input.removeAttribute('inputmode'); input.focus(); }
