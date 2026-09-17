@@ -935,6 +935,21 @@ window.addEventListener('beforeunload', ()=>{
     try{ downloadBackupFile(); }catch(e){ /* best-effort */ }
   }
 });
+function playBeep(){
+  try{
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = 1500;
+    gain.gain.setValueAtTime(0.25, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.12);
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.13);
+    osc.onended = ()=>ctx.close();
+  }catch(e){}
+}
 function toast(msg){
   const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show');
   clearTimeout(toast._t); toast._t=setTimeout(()=>t.classList.remove('show'), 2200);
@@ -2440,6 +2455,7 @@ function bindPosEvents(){
   function handleCode(code){
     const item = posFindItemByBarcode(code);
     if(!item){ if(msg){ msg.textContent = '⚠️ ما لقينا منتج بهيدا الباركود: '+code; msg.style.color = 'var(--debit)'; } return; }
+    playBeep();
     posAddToCart(ticket, item);
     if(msg){ msg.textContent = '✅ انضاف: '+item.name; msg.style.color = 'var(--credit)'; }
     render();
