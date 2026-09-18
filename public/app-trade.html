@@ -2777,7 +2777,7 @@ async function renderReceiptToCanvas(inv, currency, totalUSD, rate, customerLabe
   const lineH = 34, pad = 14;
   const rows = inv.items.length;
   const extra = (inv.discount?1:0) + ((received!=null)?2:0);
-  const H = 300 + rows*lineH + extra*lineH + 60;
+  const H = 300 + rows*lineH + extra*lineH + 150; // مسافة بيضاء إضافية بالأسفل حتى ما تنقص آخر جملة عند قص الورق
   const canvas = document.createElement('canvas');
   canvas.width = W; canvas.height = H;
   const ctx = canvas.getContext('2d');
@@ -2812,7 +2812,7 @@ async function renderReceiptToCanvas(inv, currency, totalUSD, rate, customerLabe
   if(s.companyPhone) center(s.companyPhone, 18, false);
   dashed();
   line('فاتورة #'+inv.number+' — '+fmtDate(inv.date), 18, false);
-  line('الزبون: '+(customerLabel||''), 18, false);
+  if(customerLabel && customerLabel!=='زبون عابر') line('الزبون: '+customerLabel, 18, false);
   dashed();
   inv.items.forEach(it=>{
     rowLR('$'+Number(it.total).toFixed(2), it.qty+' × '+it.desc, 19, false);
@@ -2927,7 +2927,7 @@ async function printPosReceipt(inv, currency, totalUSD, rate, customerLabel, rec
       <div style="font-size:11px;">${escapeHtml(s.companyPhone||'')}</div>
       <div style="border-top:1px dashed #000; margin:6px 0;"></div>
       <div style="text-align:start; font-size:11px;">فاتورة #${escapeHtml(inv.number)} — ${fmtDate(inv.date)}</div>
-      <div style="text-align:start; font-size:11px;">الزبون: ${escapeHtml(customerLabel||'')}</div>
+      ${(customerLabel && customerLabel!=='زبون عابر')? `<div style="text-align:start; font-size:11px;">الزبون: ${escapeHtml(customerLabel)}</div>` : ''}
       <div style="border-top:1px dashed #000; margin:6px 0;"></div>
     </div>
     <table style="width:100%; font-size:11.5px; border-collapse:collapse;">
@@ -2945,7 +2945,8 @@ async function printPosReceipt(inv, currency, totalUSD, rate, customerLabel, rec
     ${(received!=null && changeDue!=null)? `
     <div style="display:flex; justify-content:space-between; font-size:11.5px; margin-top:4px;"><span>المقبوض</span><span>${currency==='USD'?'$'+Number(received).toFixed(2):fmtNum(received)+' '+secCurLabel()}</span></div>
     <div style="display:flex; justify-content:space-between; font-size:11.5px; font-weight:800;"><span>الباقي</span><span>${currency==='USD'?'$'+Number(changeDue).toFixed(2):fmtNum(changeDue)+' '+secCurLabel()}</span></div>` : ''}
-    <div style="text-align:center; font-size:11px; margin-top:10px;">شكراً لزيارتكم 🙏</div>`;
+    <div style="text-align:center; font-size:11px; margin-top:10px;">شكراً لزيارتكم 🙏</div>
+    <div style="height:50px;"></div>`;
   document.body.appendChild(wrap);
   const showForPrint = ()=>{ wrap.style.display='block'; };
   const cleanup = ()=>{
@@ -3134,7 +3135,9 @@ function journalEntriesForRange(from, to){
   DB.invoices.filter(i=>!i.deleted && i.date>=from && i.date<=to).forEach(i=>{
     const cust = DB.customers.find(c=>c.id===i.customerId);
     const total = (i.items||[]).reduce((s,it)=>s+(Number(it.total)||0),0) - (Number(i.discount)||0);
-    rows.push({date:i.date, createdAt:i.createdAt||0, type:i.docType||'فاتورة', party:cust?cust.name:'—', usd:total, lbp:0, nav:`#/invoice/${i.id}`});
+    const isPos = i.docType==='بيع نقطة بيع (POS)';
+    rows.push({date:i.date, createdAt:i.createdAt||0, type:i.docType||'فاتورة', party:cust?cust.name:'—', usd:total, lbp:0,
+      nav: isPos? null : `#/invoice/${i.id}`, reprintPosId: isPos? i.id : null});
   });
   DB.purchaseInvoices.filter(i=>!i.deleted && i.date>=from && i.date<=to).forEach(i=>{
     const sup = DB.suppliers.find(s=>s.id===i.supplierId);
@@ -3181,9 +3184,9 @@ function journalView(qs){
     ${docHead(title)}
     <div class="table-scroll"><table>
       <thead><tr><th>التاريخ</th><th>النوع</th><th>الطرف</th><th>دولار $</th><th>${secCurLabel()}</th></tr></thead>
-      <tbody>${rows.length? rows.map(r=>`<tr ${r.nav?`data-nav="${r.nav}"`:''} style="${r.nav?'cursor:pointer;':''}">
+      <tbody>${rows.length? rows.map(r=>`<tr ${r.nav?`data-nav="${r.nav}"`:''} ${r.reprintPosId?`data-reprint-pos="${r.reprintPosId}"`:''} style="${(r.nav||r.reprintPosId)?'cursor:pointer;':''}">
         <td class="num">${fmtDate(r.date)}</td>
-        <td>${escapeHtml(r.type)}</td><td>${escapeHtml(r.party)}</td>
+        <td>${escapeHtml(r.type)}${r.reprintPosId?' 🖨':''}</td><td>${escapeHtml(r.party)}</td>
         <td class="num" style="color:${r.usd<0?'var(--debit)':(r.usd>0?'var(--credit)':'inherit')}">${r.usd?(r.usd<0?'-':'')+'$'+Math.abs(r.usd).toFixed(2):'—'}</td>
         <td class="num" style="color:${r.lbp<0?'var(--debit)':(r.lbp>0?'var(--credit)':'inherit')}">${r.lbp?(r.lbp<0?'-':'')+fmtMoney(Math.abs(r.lbp)):'—'}</td>
       </tr>`).join('') : `<tr><td colspan="5" style="text-align:center; color:var(--ink-soft);">ما في حركات بهالفترة</td></tr>`}</tbody>
@@ -3202,6 +3205,21 @@ function bindJournalEvents(){
   });
   const printBtn = document.getElementById('jr_print');
   if(printBtn) printBtn.addEventListener('click', ()=>printWithFilename('Journal'));
+  document.querySelectorAll('[data-reprint-pos]').forEach(el=>el.addEventListener('click', ()=>{
+    reprintPosInvoice(el.getAttribute('data-reprint-pos'));
+  }));
+}
+function reprintPosInvoice(invId){
+  const inv = DB.invoices.find(i=>i.id===invId);
+  if(!inv){ toast('ما لقينا الفاتورة'); return; }
+  const cust = DB.customers.find(c=>c.id===inv.customerId);
+  const customerLabel = cust? cust.name : '';
+  const rate = inv.exchangeRate || DB.settings.defaultExchangeRate || 90000;
+  const totalUSD = (inv.items||[]).reduce((s,it)=>s+(Number(it.total)||0),0) - (Number(inv.discount)||0);
+  // نحدد عملة الدفع من إيصال القبض المرتبط (إذا لقيناه)، وإلا منفترض دولار
+  const receipt = DB.receipts.find(r=>(r.details||'').includes('#'+inv.number));
+  const currency = receipt && /ل\.ل|SECOND|[A-Z]{3}/.test(receipt.method||'') && !/\$/.test(receipt.method||'') ? 'LBP' : 'USD';
+  printPosReceipt(inv, currency, totalUSD, rate, customerLabel, null, null);
 }
 /* ============================= التقارير ============================= */
 function reportsView(qs){
