@@ -2983,7 +2983,7 @@ async function renderReceiptToCanvas(inv, currency, totalUSD, rate, customerLabe
   const W = 576; // عرض 80مم بدقة 203dpi تقريباً
   const lineH = 34, pad = 14;
   const rows = inv.items.length;
-  const extra = (inv.discount?1:0) + ((received!=null)?2:0);
+  const extra = (inv.discount?1:0) + ((received!=null)?2:0) + (inv.cashierUsername?1:0);
   const H = 300 + rows*lineH + extra*lineH + 150; // مسافة بيضاء إضافية بالأسفل حتى ما تنقص آخر جملة عند قص الورق
   const canvas = document.createElement('canvas');
   canvas.width = W; canvas.height = H;
@@ -3020,6 +3020,7 @@ async function renderReceiptToCanvas(inv, currency, totalUSD, rate, customerLabe
   dashed();
   line('فاتورة #'+inv.number+' — '+fmtDate(inv.date), 18, false);
   if(customerLabel && customerLabel!=='زبون عابر') line('الزبون: '+customerLabel, 18, false);
+  if(inv.cashierUsername) line('الموظف: '+inv.cashierUsername, 16, false);
   dashed();
   inv.items.forEach(it=>{
     rowLR('$'+Number(it.total).toFixed(2), it.qty+' × '+it.desc, 19, false);
@@ -3135,6 +3136,7 @@ async function printPosReceipt(inv, currency, totalUSD, rate, customerLabel, rec
       <div style="border-top:1px dashed #000; margin:6px 0;"></div>
       <div style="text-align:start; font-size:11px;">فاتورة #${escapeHtml(inv.number)} — ${fmtDate(inv.date)}</div>
       ${(customerLabel && customerLabel!=='زبون عابر')? `<div style="text-align:start; font-size:11px;">الزبون: ${escapeHtml(customerLabel)}</div>` : ''}
+      ${inv.cashierUsername? `<div style="text-align:start; font-size:10.5px;">الموظف: ${escapeHtml(inv.cashierUsername)}</div>` : ''}
       <div style="border-top:1px dashed #000; margin:6px 0;"></div>
     </div>
     <table style="width:100%; font-size:11.5px; border-collapse:collapse;">
@@ -3366,7 +3368,7 @@ function journalEntriesForRange(from, to){
       if(isLBP){ lbp = total * (i.exchangeRate || DB.settings.defaultExchangeRate || 90000); usd = 0; }
     }
     rows.push({date:i.date, createdAt:i.createdAt||0, type:i.docType||'فاتورة', party:cust?cust.name:'—', usd, lbp,
-      nav: isPos? null : `#/invoice/${i.id}`, reprintPosId: isPos? i.id : null});
+      nav: isPos? null : `#/invoice/${i.id}`, reprintPosId: isPos? i.id : null, cashierUsername: i.cashierUsername||''});
   });
   DB.purchaseInvoices.filter(i=>!i.deleted && i.date>=from && i.date<=to).forEach(i=>{
     const sup = DB.suppliers.find(s=>s.id===i.supplierId);
@@ -3415,7 +3417,7 @@ function journalView(qs){
       <thead><tr><th>التاريخ</th><th>النوع</th><th>الطرف</th><th>دولار $</th><th>${secCurLabel()}</th></tr></thead>
       <tbody>${rows.length? rows.map(r=>`<tr ${r.nav?`data-nav="${r.nav}"`:''} ${r.reprintPosId?`data-reprint-pos="${r.reprintPosId}"`:''} style="${(r.nav||r.reprintPosId)?'cursor:pointer;':''}">
         <td class="num">${fmtDate(r.date)}</td>
-        <td>${escapeHtml(r.type)}${r.reprintPosId?' 🖨':''}</td><td>${escapeHtml(r.party)}</td>
+        <td>${escapeHtml(r.type)}${r.reprintPosId?' 🖨':''}${(isPrivilegedUser(currentUser) && r.cashierUsername)? ` <span style="font-size:11px; color:var(--ink-soft);">— ${escapeHtml(r.cashierUsername)}</span>`:''}</td><td>${escapeHtml(r.party)}</td>
         <td class="num" style="color:${r.usd<0?'var(--debit)':(r.usd>0?'var(--credit)':'inherit')}">${r.usd?(r.usd<0?'-':'')+'$'+Math.abs(r.usd).toFixed(2):'—'}</td>
         <td class="num" style="color:${r.lbp<0?'var(--debit)':(r.lbp>0?'var(--credit)':'inherit')}">${r.lbp?(r.lbp<0?'-':'')+fmtMoney(Math.abs(r.lbp)):'—'}</td>
       </tr>`).join('') : `<tr><td colspan="5" style="text-align:center; color:var(--ink-soft);">ما في حركات بهالفترة</td></tr>`}</tbody>
