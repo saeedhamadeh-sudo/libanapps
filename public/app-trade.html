@@ -1762,8 +1762,17 @@ function authSafePassword(pw){
   return out;
 }
 async function ensureSupabaseAuthSession(username, password){
-  // الدخول صار من منصة LibanApps — ما عاد في حسابات Supabase وهمية
-  return;
+  if(!supabaseClient || !supabaseClient.auth) return;
+  try{
+    const email = credentialToAuthEmail(username);
+    const pw = authSafePassword(password);
+    let { error } = await supabaseClient.auth.signInWithPassword({ email, password: pw });
+    if(error){
+      // أول مرة يسجّل فيها هالمستخدم دخول — منعمللو حساب مصادقة حقيقي بقاعدة البيانات
+      const signUpRes = await supabaseClient.auth.signUp({ email, password: pw });
+      if(signUpRes.error){ console.warn('ensureSupabaseAuthSession: فشل إنشاء جلسة حقيقية —', signUpRes.error.message); }
+    }
+  }catch(e){ console.warn('ensureSupabaseAuthSession error', e && e.message); }
 }
 function bindLoginEvents(){
   const btn = document.getElementById('loginBtn');
