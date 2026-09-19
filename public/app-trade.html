@@ -3375,7 +3375,9 @@ function journalEntriesForRange(from, to){
     const cust = DB.customers.find(c=>c.id===i.customerId);
     const total = (i.items||[]).reduce((s,it)=>s+(Number(it.total)||0),0) - (Number(i.discount)||0);
     const isPos = i.docType==='بيع نقطة بيع (POS)';
-    rows.push({date:i.date, createdAt:i.createdAt||0, type:i.docType||'فاتورة', party:cust?cust.name:'—', usd:total, lbp:0,
+    // فواتير POS إلها إيصال قبض بنفس القيمة أصلاً (أسفل) — منعرض سطر الفاتورة للتفاصيل/إعادة الطباعة
+    // بس بلا ما نحسب قيمتها هون كمان حتى ما يتكرر المبلغ بالمجموع
+    rows.push({date:i.date, createdAt:i.createdAt||0, type:i.docType||'فاتورة', party:cust?cust.name:'—', usd: isPos?0:total, lbp:0,
       nav: isPos? null : `#/invoice/${i.id}`, reprintPosId: isPos? i.id : null});
   });
   DB.purchaseInvoices.filter(i=>!i.deleted && i.date>=from && i.date<=to).forEach(i=>{
@@ -3466,8 +3468,9 @@ function reportsView(qs){
   const a = qs.get('a')||''; const b = qs.get('b')||'';
   const {from, to} = computePeriodRange(period, a, b);
   const rows = journalEntriesForRange(from, to);
-  const salesTotal = rows.filter(r=>String(r.type).includes('بيع نقطة بيع')).reduce((s,r)=>s+r.usd,0);
-  const invoicesTotal = rows.filter(r=>r.nav && r.nav.includes('/invoice/')).reduce((s,r)=>s+r.usd,0);
+  const salesTotal = DB.invoices.filter(i=>!i.deleted && i.date>=from && i.date<=to && i.docType==='بيع نقطة بيع (POS)')
+    .reduce((s,i)=>s + ((i.items||[]).reduce((s2,it)=>s2+(Number(it.total)||0),0) - (Number(i.discount)||0)), 0);
+  const invoicesTotal = rows.filter(r=>r.nav && r.nav.includes('/invoice/')).reduce((s,r)=>s+r.usd,0) + salesTotal;
   const receiptsUSD = rows.filter(r=>String(r.type).includes('إيصال قبض')).reduce((s,r)=>s+r.usd,0);
   const receiptsLBP = rows.filter(r=>String(r.type).includes('إيصال قبض')).reduce((s,r)=>s+r.lbp,0);
   const vouchersUSD = rows.filter(r=>String(r.type).includes('سند صرف')).reduce((s,r)=>s-r.usd,0);
