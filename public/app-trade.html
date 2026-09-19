@@ -1761,14 +1761,23 @@ function authSafePassword(pw){
   while(out.length < 6){ out += pad[i % pad.length]; i++; }
   return out;
 }
+function primaryAuthCredentials(){
+  // كل المستخدمين المحليين (أدمن أو كاشير) لازم يشاركوا نفس جلسة Supabase الحقيقية
+  // تبع صاحب الحساب (أول حساب ADMIN) حتى تنجح صلاحيات RLS المرتبطة بـclient_id
+  const admin = (DB.settings.users||[]).find(u=>u.role==='admin');
+  if(admin) return {username:admin.username, password:admin.password};
+  const oldAuth = DB.settings.auth || {username:'admin', password:'0000'};
+  return {username:oldAuth.username||'admin', password:oldAuth.password||'0000'};
+}
 async function ensureSupabaseAuthSession(username, password){
   if(!supabaseClient || !supabaseClient.auth) return;
+  const primary = primaryAuthCredentials();
   try{
-    const email = credentialToAuthEmail(username);
-    const pw = authSafePassword(password);
+    const email = credentialToAuthEmail(primary.username);
+    const pw = authSafePassword(primary.password);
     let { error } = await supabaseClient.auth.signInWithPassword({ email, password: pw });
     if(error){
-      // أول مرة يسجّل فيها هالمستخدم دخول — منعمللو حساب مصادقة حقيقي بقاعدة البيانات
+      // أول مرة يسجّل فيها هالحساب دخول — منعمللو حساب مصادقة حقيقي بقاعدة البيانات
       const signUpRes = await supabaseClient.auth.signUp({ email, password: pw });
       if(signUpRes.error){ console.warn('ensureSupabaseAuthSession: فشل إنشاء جلسة حقيقية —', signUpRes.error.message); }
     }
