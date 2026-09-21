@@ -860,7 +860,7 @@ footer.ft{margin-top:clamp(50px,8vw,120px);background:var(--surface);border-top:
 /* شريط التصنيفات الرمادي */
 [data-theme="electro"] .hd2{display:block;background:#F4F4F4;border-bottom:1px solid #e7e7e7;position:relative;z-index:6}
 .hd2-in{display:flex;align-items:center;gap:8px;min-height:46px}
-.mnav{display:flex;flex-wrap:wrap;align-items:stretch;flex:1}
+.mnav{display:flex;flex-wrap:nowrap;align-items:stretch;flex:1;min-width:0}
 .mnav .ni{position:relative}
 .mnav .ni>a{display:flex;align-items:center;gap:7px;height:46px;padding:0 15px;font-size:12px;font-weight:700;text-transform:uppercase;color:#43474E;white-space:nowrap;letter-spacing:.01em}
 .mnav .ni>a .ci{width:17px;height:17px;color:#43474E}
@@ -1057,7 +1057,8 @@ footer.ft{margin-top:clamp(50px,8vw,120px);background:var(--surface);border-top:
 .pr .fr,.pv-pr .fr{font-size:11.5px;color:var(--muted);font-weight:500;text-transform:uppercase;letter-spacing:.04em}
 .mnav .dd a.l3{padding-inline-start:52px;font-size:12.5px;color:#999;padding-block:7px}
 .mnav .dd{max-height:72vh;overflow:auto}
-.mnav .more .dd{min-width:260px}
+.mnav .moreni .dd{min-width:260px}
+.mtools{flex:none;white-space:nowrap}
 </style>
 </head>
 <body>
@@ -1459,10 +1460,10 @@ function renderHeader(){
   var ph=$('#hdPhone'); if(el&&S.phone){ph.classList.remove('hidden');ph.innerHTML='<span class="pi"><svg class="i" viewBox="0 0 24 24"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z"/></svg></span><div><small>'+esc(L==='en'?'Call us now':'اتصل بنا')+'</small><b dir="ltr">'+esc(S.phone)+'</b></div>';}else ph.classList.add('hidden');
   var h2=$('#hd2In'); if(el){
     h2.innerHTML='<nav class="mnav"><div class="ni"><a href="#shop" data-cat="all">'+cic('box')+'<span>'+esc(L==='en'?'Shop all':'كل المنتجات')+'</span></a></div>'+
-      top.slice(0,7).map(function(c){var kids=kidsOf(c.id);
-        return '<div class="ni'+(kids.length?' hk':'')+'"><a href="#shop" data-cat="'+esc(c.id)+'">'+(c.icon?cic(c.icon):'')+'<span>'+esc(tx(c,'name'))+'</span>'+(kids.length?IC.chevd:'')+'</a>'+
+      top.map(function(c){var kids=kidsOf(c.id);
+        return '<div class="ni'+(kids.length?' hk':'')+'" data-cid="'+esc(c.id)+'"><a href="#shop" data-cat="'+esc(c.id)+'">'+(c.icon?cic(c.icon):'')+'<span>'+esc(tx(c,'name'))+'</span>'+(kids.length?IC.chevd:'')+'</a>'+
           (kids.length?'<div class="dd">'+kids.map(function(k){return '<a href="#shop" data-cat="'+esc(k.id)+'">'+cic(k.icon||'tag')+'<span>'+esc(tx(k,'name'))+'</span></a>'+kidsOf(k.id).map(function(g){return '<a class="l3" href="#shop" data-cat="'+esc(g.id)+'"><span>'+esc(tx(g,'name'))+'</span></a>'}).join('')}).join('')+'</div>':'')+'</div>'}).join('')+
-      (top.length>7?'<div class="ni hk more"><a href="#" data-more><span>'+esc(L==='en'?'More':'المزيد')+'</span>'+IC.chevd+'</a><div class="dd">'+top.slice(7).map(function(c){return '<a href="#shop" data-cat="'+esc(c.id)+'"><span>'+esc(tx(c,'name'))+'</span></a>'+kidsOf(c.id).map(function(k){return '<a class="l3" href="#shop" data-cat="'+esc(k.id)+'"><span>'+esc(tx(k,'name'))+'</span></a>'}).join('')}).join('')+'</div></div>':'')+
+      '<div class="ni hk moreni" style="display:none"><a href="#" data-more><span>'+esc(L==='en'?'More':'المزيد')+'</span>'+IC.chevd+'</a><div class="dd"></div></div>'+
       '</nav><div class="mtools"><a href="#" data-track>'+esc(T.trackO)+'</a><button class="hlang" type="button" data-lang>'+esc(T.other)+'</button></div>';
   } else h2.innerHTML='';
   $$('[data-lang]').forEach(function(b){b.textContent=T.other});
@@ -1472,7 +1473,25 @@ function renderHeader(){
     '<button class="ib" type="button" data-wishopen aria-label="'+esc(T.wishT)+'">'+IC.heart+'<span class="cnt hidden" id="wcnt">0</span></button>'+
     '<button class="ib" type="button" data-cartopen aria-label="'+esc(T.cart)+'">'+IC.bag+'<span class="cnt hidden" id="ccnt">0</span></button>';
   $('.hd-lang .ib').textContent=T.other;
+  fitNav(); if(document.fonts&&document.fonts.ready) document.fonts.ready.then(fitNav);
 }
+function fitNav(){
+  if(S.theme!=='electro') return; var nav=$('.mnav'), wrap=$('#hd2In'); if(!nav||!wrap||!wrap.offsetWidth) return;
+  var items=$$('.mnav>.ni:not(.moreni)'), more=$('.mnav>.ni.moreni'), tools=$('.mtools'); if(!more) return;
+  items.forEach(function(i){i.style.display=''}); more.style.display='none';
+  var avail=wrap.clientWidth-(tools?tools.offsetWidth:0)-30, used=0, cut=items.length, i;
+  for(i=0;i<items.length;i++){used+=items[i].offsetWidth; if(used>avail){cut=i;break;}}
+  if(cut<items.length){
+    more.style.display=''; var mw=more.offsetWidth; used=0; cut=items.length;
+    for(i=0;i<items.length;i++){used+=items[i].offsetWidth; if(used+mw>avail){cut=i;break;}}
+    cut=Math.max(1,cut);
+    var h='';
+    for(i=cut;i<items.length;i++){ items[i].style.display='none'; var c=catById[items[i].dataset.cid]; if(!c) continue;
+      h+='<a href="#shop" data-cat="'+esc(c.id)+'"><span>'+esc(tx(c,'name'))+'</span></a>'+kidsOf(c.id).map(function(k){return '<a class="l3" href="#shop" data-cat="'+esc(k.id)+'"><span>'+esc(tx(k,'name'))+'</span></a>'}).join(''); }
+    $('.dd',more).innerHTML=h; if(!h) more.style.display='none';
+  }
+}
+var fitT; window.addEventListener('resize',function(){clearTimeout(fitT);fitT=setTimeout(fitNav,120)});
 function syncCounts(){
   var n=0; cart.forEach(function(l){n+=l.q});
   var c=$('#ccnt'); if(c){c.textContent=n;c.classList.toggle('hidden',!n);}
