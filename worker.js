@@ -1231,6 +1231,42 @@ async function payTest(request, env) {
   catch (e) { return json(200, { ok: false, error: String((e && e.message) || e) }); }
 }
 
+
+// ---------- استيراد صورة من رابط خارجي (WooCommerce…) لتخزينها عند صاحب المتجر ----------
+function isBlockedHost(h) {
+  h = String(h || '').toLowerCase();
+  return !h || h === 'localhost' || h.endsWith('.local') || h.endsWith('.internal') ||
+    /^(\d{1,3}\.){3}\d{1,3}$/.test(h) || h.includes(':') || h.startsWith('[');
+}
+async function importImage(request, env) {
+  let body; try { body = await request.json(); } catch { return json(400, { error: 'bad json' }); }
+  const o = await ownerCheck(request, env, body.store_id); if (o.err) return o.err;
+  let u; try { u = new URL(String(body.url || '')); } catch { return json(400, { error: 'bad url' }); }
+  if (!/^https?:$/.test(u.protocol) || isBlockedHost(u.hostname)) return json(400, { error: 'url not allowed' });
+  const ctl = new AbortController(); const to = setTimeout(() => ctl.abort(), 20000);
+  let r;
+  try {
+    r = await fetch(u.toString(), { signal: ctl.signal, redirect: 'follow', headers: {
+      'User-Agent': 'Mozilla/5.0 (compatible; LibanAppsImporter/1.0)', 'Accept': 'image/*,*/*;q=0.5', 'Referer': u.origin + '/' } });
+  } catch (e) { clearTimeout(to); return json(502, { error: 'fetch failed' }); }
+  clearTimeout(to);
+  if (!r.ok) return json(502, { error: 'source returned ' + r.status });
+  let ct = (r.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+  const extFromUrl = (u.pathname.match(/\.([a-z0-9]{3,4})$/i) || [])[1];
+  const byExt = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif', avif: 'image/avif', svg: 'image/svg+xml' };
+  if (!ct.startsWith('image/')) ct = byExt[(extFromUrl || '').toLowerCase()] || '';
+  if (!ct.startsWith('image/')) return json(415, { error: 'not an image' });
+  const buf = await r.arrayBuffer();
+  if (buf.byteLength > 8 * 1024 * 1024) return json(413, { error: 'image too large' });
+  if (buf.byteLength < 200) return json(415, { error: 'empty image' });
+  const ext = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif', 'image/avif': 'avif', 'image/svg+xml': 'svg' }[ct] || 'jpg';
+  const path = `st-${o.store.id}/imp-${Date.now().toString(36)}-${randId(6)}.${ext}`;
+  const up = await fetch(`${env.SUPABASE_URL}/storage/v1/object/items/${path}`, { method: 'POST', body: buf,
+    headers: { apikey: env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`, 'Content-Type': ct, 'x-upsert': 'false' } });
+  if (!up.ok) return json(502, { error: 'storage upload failed ' + up.status });
+  return json(200, { ok: true, url: `${env.SUPABASE_URL}/storage/v1/object/public/items/${path}`, bytes: buf.byteLength });
+}
+
 // ---------- الدومين الخاص (Cloudflare for SaaS — Custom Hostnames) ----------
 //  المتغيرات المطلوبة (Secrets): CF_API_TOKEN (صلاحية SSL and Certificates: Edit) + CF_ZONE_ID
 //  متغير عادي اختياري: STORE_CNAME_TARGET (الافتراضي stores.libanapps.com)
@@ -1444,6 +1480,10 @@ export default {
         }
         if (url.pathname === '/api/store/pay/verify') return await payVerify(request, env);
         if (url.pathname === '/api/store/pay/webhook') return await payWebhook(request, env);
+        if (url.pathname === '/api/store/import-image') {
+          if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
+          return await importImage(request, env);
+        }
         if (url.pathname === '/api/store/pay/test') {
           if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
           return await payTest(request, env);
