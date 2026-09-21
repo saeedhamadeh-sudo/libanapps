@@ -482,6 +482,12 @@ if(sb) sb.auth.getSession().then(function(r){
         extra='<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">'+
           '<a class="btn btn-g sm" href="/'+esc(p.slug)+'" target="_blank">شوف منيوك</a>'+
           '<a class="btn btn-g sm" href="/'+esc(p.slug)+'/admin" target="_blank">لوحة التحكم</a></div>';
+      } else if(p.product==='store'){
+        extra = p.slug
+          ? '<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">'+
+            '<a class="btn btn-g sm" href="/portal-store/'+esc(p.slug)+'" target="_blank">شوف متجرك</a>'+
+            '<a class="btn btn-p sm" href="/portal-store/'+esc(p.slug)+'/admin" target="_blank">لوحة التحكم</a></div>'
+          : '<p class="hint">رابط المتجر غير محدد — تواصل معنا.</p>';
       } else if(p.product==='alum' || p.product==='trade'){
         var appUrl = (p.product==='alum')
           ? (p.slug ? '/portal/'+esc(p.slug) : '/alum')
@@ -585,7 +591,7 @@ if(sb) sb.auth.getSession().then(function(r){
     var lic=(await sb.rpc('my_licenses')).data||[];
     var have={}; lic.forEach(function(x){ have[x.product]=1; });
 
-    var PROD=[['menu','منيو المطاعم'],['alum','محاسبة الصناعيين'],['trade','محاسبة التجارة']];
+    var PROD=[['menu','منيو المطاعم'],['alum','محاسبة الصناعيين'],['trade','محاسبة التجارة'],['store','متجر إلكتروني']];
     var open=PROD.filter(function(p){ return !have[p[0]] });
     if(!open.length){ $('#trialBox').classList.add('hidden'); return; }
 
@@ -600,9 +606,11 @@ if(sb) sb.auth.getSession().then(function(r){
   $('#trialList').addEventListener('click',async function(e){
     var b=e.target.closest('[data-trial]'); if(!b) return;
     var prod=b.dataset.trial, slug='', biz='';
-    if(prod==='menu' || prod==='alum' || prod==='trade'){
-      var needsFactoryWording=(prod==='alum'||prod==='trade');
-      slug=prompt(needsFactoryWording
+    if(prod==='menu' || prod==='alum' || prod==='trade' || prod==='store'){
+      var needsFactoryWording=(prod==='alum'||prod==='trade'||prod==='store');
+      slug=prompt(prod==='store'
+        ? 'اختار رابط متجرك (إنكليزي بدون مسافات)\n\nمثال: mystore\nرح يصير: libanapps.com/portal-store/mystore'
+        : needsFactoryWording
         ? 'اختار رابط محلك/مصنعك (إنكليزي بدون مسافات)\n\nمثال: myfactory\n'+
           'رح يصير: libanapps.com/'+(prod==='alum'?'portal/':'portal-trade/')+'myfactory'
         : 'اختار رابط مطعمك (إنكليزي بدون مسافات)\n\nمثال: myrestaurant\n'+
@@ -610,10 +618,12 @@ if(sb) sb.auth.getSession().then(function(r){
       if(slug===null) return;
       slug=slug.toLowerCase().replace(/[^a-z0-9-]/g,'');
       if(slug.length<2){ alert('الرابط قصير'); return; }
-      biz=prompt(needsFactoryWording?'اسم المحل/المصنع بالعربي:':'اسم المطعم بالعربي:','')||slug;
+      biz=prompt(prod==='store'?'اسم المتجر:':(needsFactoryWording?'اسم المحل/المصنع بالعربي:':'اسم المطعم بالعربي:'),'')||slug;
     }
     b.disabled=true; b.textContent='عم نفعّل…';
-    var r=await sb.rpc('start_trial',{p_product:prod,p_slug:slug,p_biz:biz});
+    var r= prod==='store'
+      ? await sb.rpc('start_store_trial',{p_slug:slug,p_biz:biz})
+      : await sb.rpc('start_trial',{p_product:prod,p_slug:slug,p_biz:biz});
     if(r.error){
       alert(/profile/.test(String(r.error.message))
         ? 'عبّي بياناتك أولاً' : r.error.message);
@@ -623,10 +633,11 @@ if(sb) sb.auth.getSession().then(function(r){
       alert(r.data.reason||'ما نجحت التجربة');
       b.disabled=false; b.textContent='ابدأ التجربة'; return;
     }
-    alertBox('انفعّلت تجربتك المجانية لمدة '+TRIAL_DAYS+' أيام ✓ '+
+    alertBox('انفعّلت تجربتك المجانية لمدة '+(prod==='store'?(r.data.days||5):TRIAL_DAYS)+' أيام ✓ '+
       (prod==='menu' ? 'منيوك جاهز على libanapps.com/'+esc(r.data.slug)
        : prod==='alum' && r.data.slug ? 'برنامجك جاهز على libanapps.com/portal/'+esc(r.data.slug)
        : prod==='trade' && r.data.slug ? 'برنامجك جاهز على libanapps.com/portal-trade/'+esc(r.data.slug)
+       : prod==='store' && r.data.slug ? 'متجرك جاهز على libanapps.com/portal-store/'+esc(r.data.slug)
        : 'مفتاح التفعيل تحت.'),'ok');
     await loadSubs(); await loadTrials();
   });
@@ -634,7 +645,7 @@ if(sb) sb.auth.getSession().then(function(r){
   async function loadPlans(){
     var r=await sb.from('plans').select('*').eq('is_active',true).order('product_code').order('sort');
     PLANS=r.data||[];
-    var NAMES={menu:'منيو المطاعم',alum:'محاسبة الصناعيين',trade:'محاسبة التجارة'};
+    var NAMES={menu:'منيو المطاعم',alum:'محاسبة الصناعيين',trade:'محاسبة التجارة',store:'متجر إلكتروني'};
     $('#planList').innerHTML=PLANS.map(function(p){
       var f=(p.features_ar||[]).slice(0,4).map(function(x){return '<li>'+esc(x)+'</li>'}).join('');
       return '<div class="plan'+(p.badge_ar?' hot':'')+'">'+
@@ -678,13 +689,18 @@ if(sb) sb.auth.getSession().then(function(r){
     if(!PICK) return;
     $('#mTitle').textContent=PICK.name_ar;
     $('#mSub').textContent='المبلغ: '+PICK.price_usd+' $ · المدة: '+PICK.days+' يوم';
-    var needsSlug=(PICK.product_code==='menu'||PICK.product_code==='alum'||PICK.product_code==='trade');
+    var needsSlug=(PICK.product_code==='menu'||PICK.product_code==='alum'||PICK.product_code==='trade'||PICK.product_code==='store');
     $('#mSlug').classList.toggle('hidden', !needsSlug);
     if(PICK.product_code==='alum'){
       $('#mSlugLbl').textContent='رابط محلك/مصنعك';
       $('#slug').placeholder='myfactory';
       $('#mBizLbl').textContent='اسم المحل/المصنع';
       $('#slugPrev').textContent='libanapps.com/portal/…';
+    }else if(PICK.product_code==='store'){
+      $('#mSlugLbl').textContent='رابط متجرك';
+      $('#slug').placeholder='mystore';
+      $('#mBizLbl').textContent='اسم المتجر';
+      $('#slugPrev').textContent='libanapps.com/portal-store/…';
     }else if(PICK.product_code==='trade'){
       $('#mSlugLbl').textContent='رابط محلك';
       $('#slug').placeholder='mystore';
@@ -703,17 +719,23 @@ if(sb) sb.auth.getSession().then(function(r){
   $('#slug').addEventListener('input',function(){
     this.value=this.value.toLowerCase().replace(/[^a-z0-9-]/g,'');
     var prefix=(PICK && PICK.product_code==='alum') ? 'libanapps.com/portal/'
-      : (PICK && PICK.product_code==='trade') ? 'libanapps.com/portal-trade/' : 'libanapps.com/';
+      : (PICK && PICK.product_code==='trade') ? 'libanapps.com/portal-trade/'
+      : (PICK && PICK.product_code==='store') ? 'libanapps.com/portal-store/' : 'libanapps.com/';
     $('#slugPrev').textContent=prefix+(this.value||'…');
   });
 
   $('#payBtn').addEventListener('click',async function(){
     if(!PICK) return;
     var slug='', biz='';
-    if((PICK.product_code==='menu'||PICK.product_code==='alum'||PICK.product_code==='trade') && !RENEW){
+    if((PICK.product_code==='menu'||PICK.product_code==='alum'||PICK.product_code==='trade'||PICK.product_code==='store') && !RENEW){
       slug=$('#slug').value.trim(); biz=$('#bizName').value.trim();
       if(slug.length<2) return msg('اكتب الرابط بالإنكليزي',false);
       if(!biz) return msg('اكتب الاسم',false);
+      if(PICK.product_code==='store'){
+        var av=await sb.rpc('store_slug_available',{p_slug:slug});
+        if(av.error) return msg(String(av.error.message||av.error),false);
+        if(!av.data) return msg('هذا الرابط محجوز أو غير صالح — اختار غيره (أحرف إنكليزية وأرقام وشرطة)',false);
+      }
     }
     this.disabled=true; msg('عم نجهّز الدفع…');
     var st = RENEW
