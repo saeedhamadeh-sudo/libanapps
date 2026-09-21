@@ -1,0 +1,1276 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl" data-theme="maison">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>LibanApps Store</title>
+<meta name="theme-color" content="#191512">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<style>
+/* ============================================================
+   LibanApps Store — واجهة المتجر
+   ٥ ثيمات: maison · fresh · volt · petal · atelier
+   كل ثيم = ألوان + خطوط + شكل الهيرو + شكل كرت المنتج
+   ============================================================ */
+
+/* ---------- ثيم 1: MAISON — فخم داكن، سيريف، صور طولية بلا إطار ---------- */
+[data-theme="maison"]{
+  --bg:#191512; --surface:#221D18; --text:#F0E8DA; --muted:#A3968A;
+  --line:rgba(240,232,218,.14); --brand:#C9AE7C; --brand-ink:#1A1512;
+  --accent:#B8443A; --accent-ink:#fff; --radius:0px; --radius-lg:0px;
+  --font-display:'Cormorant Garamond','Amiri',Georgia,serif;
+  --font-body:'Tajawal',system-ui,sans-serif;
+  --shadow:0 20px 50px rgba(0,0,0,.45); --cols:2; --cols-m:3; --cols-d:4;
+}
+/* ---------- ثيم 2: FRESH — أخضر فاتح، دائري، شبكة كثيفة ---------- */
+[data-theme="fresh"]{
+  --bg:#F2F6F1; --surface:#FFFFFF; --text:#17281E; --muted:#5E7266;
+  --line:rgba(23,40,30,.10); --brand:#1F7A4D; --brand-ink:#FFFFFF;
+  --accent:#FF7A1A; --accent-ink:#fff; --radius:14px; --radius-lg:22px;
+  --font-display:'Cairo',system-ui,sans-serif; --font-body:'Cairo',system-ui,sans-serif;
+  --shadow:0 12px 30px rgba(23,40,30,.12); --cols:2; --cols-m:4; --cols-d:5;
+}
+/* ---------- ثيم 3: VOLT — أبيض بحدود سوداء وظلال صلبة، كوبالت وأصفر ---------- */
+[data-theme="volt"]{
+  --bg:#FFFFFF; --surface:#F3F3F3; --text:#0E0E12; --muted:#55555F;
+  --line:#0E0E12; --brand:#2340FF; --brand-ink:#FFFFFF;
+  --accent:#FFD60A; --accent-ink:#0E0E12; --radius:6px; --radius-lg:10px;
+  --font-display:'Space Grotesk','Cairo',system-ui,sans-serif; --font-body:'Cairo',system-ui,sans-serif;
+  --shadow:6px 6px 0 #0E0E12; --cols:2; --cols-m:3; --cols-d:4;
+}
+/* ---------- ثيم 4: PETAL — وردي فاتح وعنابي، حواف ناعمة ---------- */
+[data-theme="petal"]{
+  --bg:#FFF1EE; --surface:#FFFFFF; --text:#3A1F35; --muted:#86677F;
+  --line:rgba(107,45,92,.14); --brand:#6B2D5C; --brand-ink:#FFFFFF;
+  --accent:#F0728A; --accent-ink:#fff; --radius:22px; --radius-lg:32px;
+  --font-display:'El Messiri','Tajawal',serif; --font-body:'Tajawal',system-ui,sans-serif;
+  --shadow:0 16px 40px rgba(107,45,92,.14); --cols:2; --cols-m:3; --cols-d:4;
+}
+/* ---------- ثيم 5: ATELIER — أبيض تحريري، مساحات واسعة، خط خفيف ---------- */
+[data-theme="atelier"]{
+  --bg:#FFFFFF; --surface:#F2F1EE; --text:#171717; --muted:#77756F;
+  --line:rgba(0,0,0,.12); --brand:#171717; --brand-ink:#FFFFFF;
+  --accent:#4F6B57; --accent-ink:#fff; --radius:2px; --radius-lg:4px;
+  --font-display:'IBM Plex Sans Arabic',system-ui,sans-serif; --font-body:'IBM Plex Sans Arabic',system-ui,sans-serif;
+  --shadow:0 10px 30px rgba(0,0,0,.10); --cols:2; --cols-m:3; --cols-d:3;
+}
+
+/* ============================================================
+   الأساس
+   ============================================================ */
+*{box-sizing:border-box}
+:root{--danger:#C0392B}
+[data-theme="maison"]{--danger:#E58A7D}
+html{-webkit-text-size-adjust:100%;scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--font-body);
+  line-height:1.6;-webkit-font-smoothing:antialiased;min-height:100vh}
+img{display:block;max-width:100%}
+button{font:inherit;color:inherit;cursor:pointer;background:none;border:0;padding:0}
+a{color:inherit}
+input,select,textarea{font:inherit;color:inherit}
+.hidden{display:none!important}
+.wrap{max-width:1240px;margin:0 auto;padding:0 clamp(14px,3vw,32px)}
+:focus-visible{outline:3px solid var(--brand);outline-offset:2px}
+[data-theme="maison"] :focus-visible{outline-color:var(--brand)}
+bdi{unicode-bidi:isolate}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+
+/* شاشات الحالة (تحميل / خطأ / منتهي) */
+.state{min-height:100vh;display:grid;place-items:center;padding:24px;text-align:center}
+.state .box{max-width:420px}
+.state .lg{width:84px;height:84px;border-radius:50%;object-fit:cover;margin:0 auto 18px;background:var(--surface)}
+.state h1{font-family:var(--font-display);font-size:clamp(26px,5vw,36px);margin:0 0 8px;line-height:1.2}
+.state p{color:var(--muted);margin:0 0 18px}
+.spin{width:34px;height:34px;border:3px solid var(--line);border-top-color:var(--brand);border-radius:50%;
+  animation:sp .8s linear infinite;margin:0 auto}
+@keyframes sp{to{transform:rotate(360deg)}}
+
+/* الأزرار */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:46px;
+  padding:0 22px;border-radius:var(--radius);background:var(--brand);color:var(--brand-ink);
+  font-weight:700;text-decoration:none;border:2px solid var(--brand);transition:filter .15s,transform .15s}
+.btn:hover{filter:brightness(1.08)}
+.btn:active{transform:translateY(1px)}
+.btn.alt{background:transparent;color:var(--text);border-color:var(--line)}
+.btn.full{width:100%}
+.btn[disabled]{opacity:.5;cursor:not-allowed}
+[data-theme="volt"] .btn{border-color:#0E0E12;box-shadow:3px 3px 0 #0E0E12}
+[data-theme="volt"] .btn:active{box-shadow:1px 1px 0 #0E0E12;transform:translate(2px,2px)}
+[data-theme="volt"] .btn.alt{background:#fff}
+[data-theme="maison"] .btn{letter-spacing:.04em}
+
+/* شريط الإعلان */
+.ann{background:var(--brand);color:var(--brand-ink);text-align:center;font-size:13.5px;
+  padding:8px 14px;font-weight:600}
+[data-theme="volt"] .ann{background:var(--accent);color:var(--accent-ink);border-bottom:2px solid #0E0E12}
+
+/* الهيدر */
+.top{position:sticky;top:0;z-index:40;background:color-mix(in srgb,var(--bg) 92%,transparent);
+  -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+[data-theme="volt"] .top{border-bottom:2px solid #0E0E12;background:#fff}
+.top .in{display:flex;align-items:center;gap:14px;height:68px}
+.brand{display:flex;align-items:center;gap:12px;text-decoration:none;min-width:0;margin-inline-end:auto}
+.brand img{width:42px;height:42px;object-fit:cover;border-radius:var(--radius);background:var(--surface)}
+.brand b{font-family:var(--font-display);font-size:clamp(20px,3vw,26px);line-height:1.1;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+[data-theme="maison"] .brand b{font-size:clamp(24px,3.4vw,32px);letter-spacing:.02em}
+[data-theme="atelier"] .brand b{font-weight:500;letter-spacing:.01em}
+.iconbtn{position:relative;min-width:44px;height:44px;display:grid;place-items:center;
+  border-radius:var(--radius);font-weight:700;font-size:14px;padding:0 10px}
+.iconbtn:hover{background:var(--surface)}
+.iconbtn svg{width:24px;height:24px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.cnt{position:absolute;top:2px;inset-inline-end:0;min-width:19px;height:19px;border-radius:99px;
+  background:var(--brand);color:var(--brand-ink);font-size:11.5px;font-weight:800;display:grid;place-items:center;padding:0 5px}
+[data-theme="volt"] .cnt{background:var(--accent);color:var(--accent-ink);border:2px solid #0E0E12}
+
+/* ============================================================
+   الهيرو (السلايدر) — شكل مختلف لكل ثيم
+   ============================================================ */
+.hero{position:relative}
+.hero-wrap{padding-top:clamp(14px,2.4vw,28px)}
+.slides{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;
+  -webkit-overflow-scrolling:touch}
+.slides::-webkit-scrollbar{display:none}
+.slide{flex:0 0 100%;scroll-snap-align:start;position:relative;min-width:0}
+.s-img img{width:100%;height:100%;object-fit:cover}
+.s-img.fb{background:linear-gradient(135deg,var(--brand),color-mix(in srgb,var(--brand) 55%,var(--bg)))}
+.s-txt h2{font-family:var(--font-display);margin:0 0 10px;line-height:1.1;font-weight:700}
+.s-txt p{margin:0 0 18px;font-size:clamp(15px,1.8vw,18px)}
+.dots{display:flex;gap:8px;justify-content:center;padding:14px 0 0}
+.dot{width:9px;height:9px;border-radius:99px;background:var(--line);transition:.25s}
+.dot.on{width:26px;background:var(--brand)}
+.arw{position:absolute;top:50%;transform:translateY(-50%);width:44px;height:44px;border-radius:50%;
+  background:var(--bg);color:var(--text);display:grid;place-items:center;box-shadow:var(--shadow);z-index:3}
+.arw.p{inset-inline-start:12px}.arw.n{inset-inline-end:12px}
+.arw svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2}
+.arw.p svg{transform:scaleX(-1)}
+[dir="rtl"] .arw.p svg{transform:none}
+[dir="rtl"] .arw.n svg{transform:scaleX(-1)}
+@media(max-width:700px){.arw{display:none}}
+
+/* maison: صورة كاملة العرض، نص كبير سيريف أسفل البداية */
+[data-theme="maison"] .hero-wrap{padding:0}
+[data-theme="maison"] .hero .wrap{max-width:none;padding:0}
+[data-theme="maison"] .slide{height:clamp(380px,66vh,660px);color:#F6EEE0}
+[data-theme="maison"] .s-img{position:absolute;inset:0}
+[data-theme="maison"] .s-img::after{content:"";position:absolute;inset:0;
+  background:linear-gradient(to top,rgba(10,7,5,.78),rgba(10,7,5,.05) 62%)}
+[data-theme="maison"] .s-txt{position:absolute;inset-inline-start:clamp(22px,7vw,110px);
+  bottom:clamp(34px,9vh,86px);max-width:600px;z-index:2}
+[data-theme="maison"] .s-txt h2{font-size:clamp(38px,6.4vw,84px);font-weight:600;letter-spacing:-.01em}
+[data-theme="maison"] .dots{position:absolute;inset-inline-end:clamp(22px,7vw,110px);bottom:30px;padding:0}
+[data-theme="maison"] .dot{background:rgba(255,255,255,.35)}
+[data-theme="maison"] .dot.on{background:var(--brand)}
+
+/* fresh: بطاقة دائرية بحواف كبيرة، النص فوق تدرّج فاتح */
+[data-theme="fresh"] .slide{height:clamp(190px,32vw,360px);border-radius:var(--radius-lg);overflow:hidden}
+[data-theme="fresh"] .s-img{position:absolute;inset:0}
+[data-theme="fresh"] .s-img::after{content:"";position:absolute;inset:0;
+  background:linear-gradient(to inline-end,rgba(12,40,25,.72),rgba(12,40,25,0) 62%)}
+[data-theme="fresh"] .s-txt{position:absolute;inset-inline-start:clamp(18px,4vw,52px);top:50%;
+  transform:translateY(-50%);max-width:min(440px,70%);color:#fff;z-index:2}
+[data-theme="fresh"] .s-txt h2{font-size:clamp(22px,3.8vw,44px);font-weight:800}
+[data-theme="fresh"] .s-txt .btn{background:var(--accent);border-color:var(--accent)}
+
+/* volt: قسمين — كتلة كوبالت بنص أبيض + صورة بإطار */
+[data-theme="volt"] .slide{display:grid;grid-template-columns:1fr 1fr;min-height:clamp(260px,38vw,440px);
+  border:2px solid #0E0E12;background:var(--brand)}
+[data-theme="volt"] .s-txt{display:flex;flex-direction:column;justify-content:center;
+  padding:clamp(20px,4vw,56px);color:#fff;order:1}
+[data-theme="volt"] .s-txt h2{font-size:clamp(28px,4.8vw,58px);font-weight:700;text-transform:none;letter-spacing:-.02em}
+[data-theme="volt"] .s-txt .btn{background:var(--accent);color:var(--accent-ink);align-self:flex-start}
+[data-theme="volt"] .s-img{order:2;border-inline-start:2px solid #0E0E12;min-height:200px}
+[data-theme="volt"] .s-img.fb{background:var(--accent)}
+@media(max-width:700px){[data-theme="volt"] .slide{grid-template-columns:1fr}
+  [data-theme="volt"] .s-img{order:1;border:0;border-bottom:2px solid #0E0E12;height:190px}
+  [data-theme="volt"] .s-txt{order:2}}
+
+/* petal: صورة بحواف كبيرة وبطاقة بيضاء شفافة فوقها */
+[data-theme="petal"] .slide{height:clamp(250px,40vw,470px);border-radius:var(--radius-lg);overflow:hidden}
+[data-theme="petal"] .s-img{position:absolute;inset:0}
+[data-theme="petal"] .s-txt{position:absolute;inset-inline-start:clamp(14px,3vw,40px);bottom:clamp(14px,3vw,40px);
+  max-width:min(400px,calc(100% - 28px));background:rgba(255,255,255,.9);
+  -webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);
+  border-radius:var(--radius);padding:clamp(16px,2.6vw,28px);color:var(--text);z-index:2}
+[data-theme="petal"] .s-txt h2{font-size:clamp(22px,3.2vw,38px);color:var(--brand)}
+[data-theme="petal"] .s-txt p{margin-bottom:14px}
+
+/* atelier: نص كبير خفيف على اليمين، صورة كبيرة بلا إطار */
+[data-theme="atelier"] .slide{display:grid;grid-template-columns:5fr 7fr;min-height:clamp(320px,46vw,540px);
+  background:var(--surface)}
+[data-theme="atelier"] .s-txt{display:flex;flex-direction:column;justify-content:center;
+  padding:clamp(22px,5vw,72px);order:1}
+[data-theme="atelier"] .s-txt h2{font-size:clamp(30px,4.6vw,60px);font-weight:300;letter-spacing:-.02em}
+[data-theme="atelier"] .s-txt p{color:var(--muted)}
+[data-theme="atelier"] .s-txt .btn{align-self:flex-start}
+[data-theme="atelier"] .s-img{order:2}
+@media(max-width:760px){[data-theme="atelier"] .slide{grid-template-columns:1fr}
+  [data-theme="atelier"] .s-img{order:1;height:240px}}
+
+/* ============================================================
+   التصنيفات
+   ============================================================ */
+.cats{position:sticky;top:68px;z-index:30;background:var(--bg);border-bottom:1px solid var(--line)}
+[data-theme="volt"] .cats{border-bottom:2px solid #0E0E12}
+.cats .rail{display:flex;gap:10px;overflow-x:auto;padding:12px 0;scrollbar-width:none;align-items:center}
+.cats .rail::-webkit-scrollbar{display:none}
+.cat{flex:none;white-space:nowrap;font-weight:600;color:var(--muted);transition:.15s}
+.cat .ci{display:none}
+.cat[aria-pressed="true"]{color:var(--text)}
+/* maison: نص مع خط سفلي */
+[data-theme="maison"] .cat{padding:8px 4px;margin-inline-end:18px;font-family:var(--font-display);font-size:20px;
+  border-bottom:1px solid transparent}
+[data-theme="maison"] .cat[aria-pressed="true"]{border-color:var(--brand);color:var(--brand)}
+/* fresh: دوائر بصورة التصنيف */
+[data-theme="fresh"] .cats .rail{gap:18px;padding:14px 0}
+[data-theme="fresh"] .cat{display:flex;flex-direction:column;align-items:center;gap:6px;font-size:13px;min-width:64px}
+[data-theme="fresh"] .cat .ci{display:grid;place-items:center;width:58px;height:58px;border-radius:50%;
+  background:var(--surface);object-fit:cover;border:2px solid transparent;font-weight:800;font-size:20px;color:var(--brand)}
+[data-theme="fresh"] .cat[aria-pressed="true"] .ci{border-color:var(--brand)}
+[data-theme="fresh"] .cat[aria-pressed="true"]{color:var(--brand)}
+/* volt: أزرار بحدود سوداء */
+[data-theme="volt"] .cat{padding:6px 16px;border:2px solid #0E0E12;border-radius:var(--radius);color:var(--text);background:#fff}
+[data-theme="volt"] .cat[aria-pressed="true"]{background:var(--brand);color:#fff;box-shadow:3px 3px 0 #0E0E12}
+/* petal: حبوب ناعمة */
+[data-theme="petal"] .cat{padding:8px 20px;border-radius:99px;background:#fff;color:var(--brand);
+  box-shadow:0 2px 10px rgba(107,45,92,.08)}
+[data-theme="petal"] .cat[aria-pressed="true"]{background:var(--brand);color:#fff}
+/* atelier: نص بفواصل */
+[data-theme="atelier"] .cat{padding:6px 0;margin-inline-end:26px;font-weight:400;font-size:15px}
+[data-theme="atelier"] .cat[aria-pressed="true"]{color:var(--text);text-decoration:underline;text-underline-offset:8px}
+
+/* ============================================================
+   أقسام وعناوين
+   ============================================================ */
+.sec{padding:clamp(26px,5vw,56px) 0 0}
+.sec-h{display:flex;align-items:flex-end;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:clamp(14px,2.4vw,26px)}
+.sec-h h2{font-family:var(--font-display);margin:0;font-size:clamp(26px,4vw,40px);line-height:1.15}
+[data-theme="maison"] .sec-h h2{font-weight:600;font-size:clamp(30px,4.6vw,52px)}
+[data-theme="atelier"] .sec-h h2{font-weight:300;letter-spacing:-.01em}
+[data-theme="volt"] .sec-h h2{font-weight:700;letter-spacing:-.02em}
+.tools{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.tools input,.tools select{height:44px;border:1px solid var(--line);background:var(--surface);
+  border-radius:var(--radius);padding:0 14px;min-width:0}
+[data-theme="volt"] .tools input,[data-theme="volt"] .tools select{border:2px solid #0E0E12;background:#fff}
+.tools input{width:260px;max-width:100%}
+
+/* Hot sale */
+.hot{margin-top:clamp(26px,5vw,56px);padding:clamp(18px,3vw,32px) 0;background:var(--surface)}
+[data-theme="maison"] .hot{background:linear-gradient(180deg,#221D18,#191512);border-block:1px solid var(--line)}
+[data-theme="volt"] .hot{background:var(--accent);border-block:2px solid #0E0E12}
+[data-theme="petal"] .hot{background:linear-gradient(135deg,#FFE0DE,#FFD1DC)}
+[data-theme="fresh"] .hot{background:#FFF2E6}
+.hot .sec-h{margin-bottom:16px}
+.hot .sec-h h2{display:flex;align-items:center;gap:10px}
+.flame{width:.9em;height:.9em;fill:var(--accent);flex:none}
+[data-theme="volt"] .flame{fill:#0E0E12}
+.cd{display:flex;gap:8px;align-items:center;font-weight:700;font-size:14px}
+.cd .u{min-width:52px;text-align:center;padding:6px 8px;background:var(--bg);border:1px solid var(--line);
+  border-radius:var(--radius);line-height:1.1}
+.cd .u b{display:block;font-size:20px;font-variant-numeric:tabular-nums}
+.cd .u small{font-size:11px;color:var(--muted);font-weight:500}
+[data-theme="volt"] .cd .u{border:2px solid #0E0E12;background:#fff}
+.hrow{display:flex;gap:var(--gapc,16px);overflow-x:auto;scroll-snap-type:x proximity;padding:4px 2px 12px;scrollbar-width:thin}
+.hrow .card{flex:0 0 clamp(150px,42vw,230px);scroll-snap-align:start}
+
+/* ============================================================
+   الشبكة وكرت المنتج — يتغيّر شكله حسب الثيم
+   ============================================================ */
+.grid{display:grid;grid-template-columns:repeat(var(--cols),minmax(0,1fr));gap:var(--gapc,16px)}
+@media(min-width:720px){.grid{grid-template-columns:repeat(var(--cols-m),minmax(0,1fr))}}
+@media(min-width:1040px){.grid{grid-template-columns:repeat(var(--cols-d),minmax(0,1fr))}}
+[data-theme="maison"]{--gapc:clamp(14px,2.4vw,34px)}
+[data-theme="atelier"]{--gapc:clamp(16px,3vw,44px)}
+[data-theme="volt"]{--gapc:clamp(14px,2vw,26px)}
+
+.card{position:relative;min-width:0;cursor:pointer;display:flex;flex-direction:column}
+.ph{position:relative;overflow:hidden;background:var(--surface)}
+.ph img{width:100%;height:100%;object-fit:cover;transition:transform .5s ease}
+.ph .noimg{width:100%;height:100%;display:grid;place-items:center;font-family:var(--font-display);
+  font-size:clamp(34px,6vw,56px);color:var(--muted);opacity:.55}
+.card:hover .ph img{transform:scale(1.045)}
+.cb{min-width:0}
+.cb h3{margin:0;font-weight:600;font-size:15.5px;line-height:1.35;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.pr{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.pr b{font-weight:800}
+.pr s{color:var(--muted);font-size:.86em}
+.bd{position:absolute;top:10px;inset-inline-start:10px;z-index:2;font-size:12px;font-weight:800;
+  padding:3px 9px;border-radius:99px;background:var(--accent);color:var(--accent-ink);line-height:1.5}
+.bd.so{inset:0;border-radius:0;display:grid;place-items:center;background:rgba(0,0,0,.5);color:#fff;
+  font-size:15px;letter-spacing:.02em}
+.quick{position:absolute;z-index:3;width:42px;height:42px;display:grid;place-items:center;
+  background:var(--brand);color:var(--brand-ink);border-radius:var(--radius);transition:.15s}
+.quick svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:2.2;stroke-linecap:round}
+.quick:hover{filter:brightness(1.1);transform:scale(1.06)}
+.card.sold .quick{display:none}
+
+/* maison */
+[data-theme="maison"] .ph{aspect-ratio:4/5}
+[data-theme="maison"] .cb{padding:14px 0 4px;text-align:center}
+[data-theme="maison"] .cb h3{font-family:var(--font-display);font-size:21px;font-weight:600;-webkit-line-clamp:1}
+[data-theme="maison"] .pr{justify-content:center}
+[data-theme="maison"] .pr b{color:var(--brand);font-weight:600;font-size:16px;letter-spacing:.03em}
+[data-theme="maison"] .bd{border-radius:0;letter-spacing:.06em}
+[data-theme="maison"] .quick{inset-inline-end:0;bottom:0;border-radius:0}
+@media(hover:hover){[data-theme="maison"] .quick{transform:translateY(100%);opacity:0}
+  [data-theme="maison"] .card:hover .quick{transform:none;opacity:1}}
+
+/* fresh */
+[data-theme="fresh"] .card{background:#fff;border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;
+  transition:box-shadow .2s,transform .2s}
+[data-theme="fresh"] .card:hover{box-shadow:var(--shadow);transform:translateY(-2px)}
+[data-theme="fresh"] .ph{aspect-ratio:1/1}
+[data-theme="fresh"] .cb{padding:10px 12px 14px;min-height:78px}
+[data-theme="fresh"] .pr b{color:var(--brand);font-size:17px}
+[data-theme="fresh"] .quick{inset-inline-end:10px;bottom:10px;border-radius:50%;box-shadow:0 6px 16px rgba(31,122,77,.35)}
+
+/* volt */
+[data-theme="volt"] .card{background:#fff;border:2px solid #0E0E12;border-radius:var(--radius);
+  box-shadow:4px 4px 0 #0E0E12;transition:transform .12s,box-shadow .12s}
+[data-theme="volt"] .card:hover{transform:translate(-2px,-2px);box-shadow:6px 6px 0 #0E0E12}
+[data-theme="volt"] .ph{aspect-ratio:1/1;border-bottom:2px solid #0E0E12}
+[data-theme="volt"] .cb{padding:12px 14px 14px;display:flex;flex-direction:column;gap:8px;flex:1}
+[data-theme="volt"] .cb h3{font-weight:700}
+[data-theme="volt"] .pr{margin-top:auto}
+[data-theme="volt"] .pr b{background:var(--accent);color:var(--accent-ink);border:2px solid #0E0E12;
+  padding:1px 9px;font-family:var(--font-display);font-size:16px}
+[data-theme="volt"] .bd{border:2px solid #0E0E12;border-radius:var(--radius);background:var(--brand);color:#fff}
+[data-theme="volt"] .quick{inset-inline-end:8px;bottom:8px;border:2px solid #0E0E12;box-shadow:2px 2px 0 #0E0E12}
+
+/* petal */
+[data-theme="petal"] .card{background:#fff;border-radius:var(--radius-lg);padding:10px;box-shadow:0 10px 28px rgba(107,45,92,.08);
+  transition:transform .2s,box-shadow .2s}
+[data-theme="petal"] .card:hover{transform:translateY(-4px);box-shadow:var(--shadow)}
+[data-theme="petal"] .ph{aspect-ratio:1/1.04;border-radius:64px 64px 22px 22px}
+[data-theme="petal"] .cb{padding:12px 8px 8px;text-align:center}
+[data-theme="petal"] .cb h3{font-family:var(--font-display);font-size:17px}
+[data-theme="petal"] .pr{justify-content:center}
+[data-theme="petal"] .pr b{color:var(--brand);font-size:17px}
+[data-theme="petal"] .quick{inset-inline-end:10px;bottom:10px;border-radius:50%;background:var(--accent)}
+
+/* atelier */
+[data-theme="atelier"] .ph{aspect-ratio:1/1.16}
+[data-theme="atelier"] .cb{display:flex;justify-content:space-between;align-items:baseline;gap:14px;padding:14px 0 0}
+[data-theme="atelier"] .cb h3{font-weight:400;font-size:15px;-webkit-line-clamp:2}
+[data-theme="atelier"] .pr{flex-direction:column;align-items:flex-end;gap:0;flex:none}
+[data-theme="atelier"] .pr b{font-weight:500;font-size:15px}
+[data-theme="atelier"] .bd{border-radius:0;font-weight:500;background:var(--text);color:#fff}
+[data-theme="atelier"] .quick{inset-inline-end:0;bottom:0;border-radius:0;height:40px;width:40px}
+@media(hover:hover){[data-theme="atelier"] .quick{opacity:0}
+  [data-theme="atelier"] .card:hover .quick,[data-theme="atelier"] .quick:focus-visible{opacity:1}}
+
+[data-theme] .bd.so{background:rgba(0,0,0,.55);color:#fff;border:0;border-radius:0;font-weight:700}
+.empty{grid-column:1/-1;text-align:center;padding:48px 14px;color:var(--muted)}
+
+/* ============================================================
+   نافذة المنتج
+   ============================================================ */
+.ov{position:fixed;inset:0;z-index:80;background:rgba(10,8,6,.55);display:none;
+  -webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px)}
+.ov.on{display:block}
+.sheet{position:absolute;inset-inline:0;bottom:0;max-height:94vh;overflow:auto;background:var(--bg);
+  color:var(--text);border-radius:var(--radius-lg) var(--radius-lg) 0 0;animation:up .28s ease}
+@keyframes up{from{transform:translateY(40px);opacity:0}to{transform:none;opacity:1}}
+@media(min-width:900px){
+  .sheet{inset:50% auto auto 50%;transform:translate(-50%,-50%);width:min(1040px,94vw);max-height:90vh;
+    border-radius:var(--radius-lg);animation:pop .22s ease}
+  @keyframes pop{from{opacity:0;transform:translate(-50%,-48%)}to{opacity:1;transform:translate(-50%,-50%)}}
+}
+[data-theme="volt"] .sheet{border:2px solid #0E0E12;box-shadow:var(--shadow)}
+.x{position:absolute;top:10px;inset-inline-end:10px;z-index:5;width:42px;height:42px;border-radius:50%;
+  background:var(--bg);color:var(--text);display:grid;place-items:center;box-shadow:0 4px 14px rgba(0,0,0,.2)}
+.x svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2.2}
+[data-theme="volt"] .x{border:2px solid #0E0E12;border-radius:var(--radius)}
+.pd{display:grid;grid-template-columns:1fr}
+@media(min-width:900px){.pd{grid-template-columns:1.05fr 1fr}}
+.gal{background:var(--surface)}
+.gmain{aspect-ratio:1/1;position:relative;background:var(--surface);overflow:hidden}
+.gmain img,.gmain iframe{position:absolute;inset:0;width:100%;height:100%;border:0;object-fit:cover}
+.gmain .vp{position:absolute;inset:0;display:grid;place-items:center;background:#000}
+.gmain .vp img{opacity:.78}
+.play{position:relative;z-index:2;width:74px;height:74px;border-radius:50%;background:rgba(255,255,255,.95);
+  display:grid;place-items:center;box-shadow:0 8px 30px rgba(0,0,0,.4)}
+.play svg{width:30px;height:30px;fill:#111;margin-inline-start:4px}
+.thumbs{display:flex;gap:8px;padding:10px;overflow-x:auto;scrollbar-width:thin}
+.thumbs button{flex:none;width:64px;height:64px;border:2px solid transparent;border-radius:var(--radius);overflow:hidden;position:relative;background:var(--bg)}
+.thumbs button[aria-pressed="true"]{border-color:var(--brand)}
+.thumbs img{width:100%;height:100%;object-fit:cover}
+.thumbs .vt{position:absolute;inset:0;display:grid;place-items:center;background:rgba(0,0,0,.45)}
+.thumbs .vt svg{width:22px;height:22px;fill:#fff}
+.pinfo{padding:clamp(20px,3vw,40px);display:flex;flex-direction:column;gap:14px}
+.pinfo h2{font-family:var(--font-display);margin:0;font-size:clamp(26px,3.6vw,38px);line-height:1.15;padding-inline-end:44px}
+.pinfo .pr b{font-size:clamp(22px,3vw,30px);color:var(--brand)}
+[data-theme="volt"] .pinfo .pr b{color:var(--accent-ink)}
+.pinfo .desc{color:var(--muted);white-space:pre-line}
+.stock{font-size:13.5px;font-weight:700;color:var(--text)}
+.stock::before{content:"";display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--accent);margin-inline-end:8px;border:1px solid rgba(0,0,0,.35)}
+.qrow{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:6px}
+.qty{display:inline-flex;align-items:center;border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+[data-theme="volt"] .qty{border:2px solid #0E0E12}
+.qty button{width:42px;height:44px;font-size:20px;display:grid;place-items:center}
+.qty button:hover{background:var(--surface)}
+.qty span{min-width:34px;text-align:center;font-weight:700;font-variant-numeric:tabular-nums}
+
+/* ============================================================
+   السلة
+   ============================================================ */
+.drawer{position:absolute;top:0;bottom:0;inset-inline-end:0;width:min(460px,100vw);background:var(--bg);
+  color:var(--text);display:flex;flex-direction:column;animation:slide .26s ease}
+@keyframes slide{from{transform:translateX(30px);opacity:0}to{transform:none;opacity:1}}
+[dir="rtl"] .drawer{animation-name:slideR}
+@keyframes slideR{from{transform:translateX(-30px);opacity:0}to{transform:none;opacity:1}}
+[data-theme="volt"] .drawer{border-inline-start:2px solid #0E0E12}
+.dh{display:flex;align-items:center;justify-content:space-between;padding:16px 18px;border-bottom:1px solid var(--line)}
+.dh h2{margin:0;font-family:var(--font-display);font-size:26px}
+.dh .x{position:static;box-shadow:none}
+.db{flex:1;overflow:auto;padding:16px 18px}
+.df{padding:14px 18px 18px;border-top:1px solid var(--line);background:var(--bg)}
+.li{display:grid;grid-template-columns:68px 1fr auto;gap:12px;align-items:center;padding:12px 0;border-bottom:1px solid var(--line)}
+.li .lt{width:68px;height:68px;border-radius:var(--radius);overflow:hidden;background:var(--surface)}
+.li .lt img{width:100%;height:100%;object-fit:cover}
+.li h4{margin:0 0 4px;font-size:15px;font-weight:600;line-height:1.3}
+.li .qty button{width:34px;height:34px;font-size:18px}
+.li .qty{margin-top:6px}
+.rm{color:var(--muted);font-size:13px;text-decoration:underline}
+.tot{display:flex;justify-content:space-between;padding:4px 0;color:var(--muted)}
+.tot.g{color:var(--text);font-weight:800;font-size:19px;padding-top:10px;margin-top:6px;border-top:1px solid var(--line)}
+.cp{display:flex;gap:8px;margin:14px 0 6px}
+.cp input{flex:1;min-width:0;height:44px;border:1px solid var(--line);background:var(--surface);
+  border-radius:var(--radius);padding:0 12px;text-transform:uppercase}
+[data-theme="volt"] .cp input{border:2px solid #0E0E12;background:#fff}
+.cp .btn{min-height:44px;padding:0 16px}
+.note{font-size:13px;margin:4px 0 0}
+.note.ok{color:var(--brand)}.note.no{color:var(--danger)}
+[data-theme="maison"] .note.ok{color:var(--brand)}
+.fld{display:block;margin-bottom:12px}
+.fld>span{display:block;font-size:13.5px;font-weight:700;margin-bottom:5px}
+.fld input,.fld textarea,.fld select{width:100%;border:1px solid var(--line);background:var(--surface);
+  border-radius:var(--radius);padding:11px 13px;min-height:46px}
+[data-theme="volt"] .fld input,[data-theme="volt"] .fld textarea,[data-theme="volt"] .fld select{border:2px solid #0E0E12;background:#fff}
+.fld textarea{resize:vertical;min-height:70px}
+.fld.bad input,.fld.bad textarea{border-color:var(--danger)!important}
+.seg{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:8px;margin-bottom:14px}
+.seg button{padding:11px 10px;border:1px solid var(--line);border-radius:var(--radius);font-weight:700;background:var(--surface);
+  text-align:center}
+.seg button[aria-pressed="true"]{background:var(--brand);color:var(--brand-ink);border-color:var(--brand)}
+[data-theme="volt"] .seg button{border:2px solid #0E0E12;background:#fff}
+[data-theme="volt"] .seg button[aria-pressed="true"]{background:var(--brand);color:#fff}
+.ok-box{text-align:center;padding:24px 8px}
+.ok-box .tick{width:76px;height:76px;border-radius:50%;background:var(--brand);color:var(--brand-ink);
+  display:grid;place-items:center;margin:0 auto 14px}
+.ok-box .tick svg{width:38px;height:38px;stroke:currentColor;fill:none;stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
+.ok-box h3{font-family:var(--font-display);font-size:28px;margin:0 0 6px}
+.ok-box p{color:var(--muted);margin:0 0 16px}
+.wa-btn{background:#25D366!important;border-color:#25D366!important;color:#073B1B!important}
+[data-theme="volt"] .wa-btn{border-color:#0E0E12!important}
+
+/* ============================================================
+   بوب أب / تذييل / واتساب عائم / توست
+   ============================================================ */
+.pop{position:absolute;inset:50% auto auto 50%;transform:translate(-50%,-50%);width:min(420px,92vw);
+  background:var(--bg);color:var(--text);border-radius:var(--radius-lg);overflow:hidden;box-shadow:var(--shadow);
+  animation:pop2 .3s ease}
+@keyframes pop2{from{opacity:0;transform:translate(-50%,-46%) scale(.97)}to{opacity:1;transform:translate(-50%,-50%)}}
+[data-theme="volt"] .pop{border:2px solid #0E0E12}
+.pop .pi{aspect-ratio:16/10;background:var(--surface)}
+.pop .pi img{width:100%;height:100%;object-fit:cover}
+.pop .pt{padding:22px;text-align:center}
+.pop h3{font-family:var(--font-display);font-size:30px;margin:0 0 8px;line-height:1.15}
+.pop p{color:var(--muted);margin:0 0 14px;white-space:pre-line}
+.code{display:inline-flex;gap:10px;align-items:center;border:2px dashed var(--brand);padding:8px 8px 8px 14px;
+  border-radius:var(--radius);margin-bottom:16px;font-weight:800;letter-spacing:.08em;direction:ltr}
+.code button{background:var(--brand);color:var(--brand-ink);padding:6px 12px;border-radius:calc(var(--radius) - 2px);font-size:12.5px;letter-spacing:0}
+.pop .x{top:8px;inset-inline-end:8px}
+
+footer.ft{margin-top:clamp(40px,7vw,90px);padding:clamp(28px,5vw,56px) 0 calc(28px + env(safe-area-inset-bottom));
+  background:var(--surface);border-top:1px solid var(--line)}
+[data-theme="maison"] footer.ft{background:#120F0C}
+[data-theme="volt"] footer.ft{background:#0E0E12;color:#fff;border-top:2px solid #0E0E12}
+[data-theme="volt"] footer.ft a{color:#fff}
+.fg{display:grid;gap:26px;grid-template-columns:1fr}
+@media(min-width:760px){.fg{grid-template-columns:1.4fr 1fr 1fr}}
+.ft h4{font-family:var(--font-display);margin:0 0 10px;font-size:20px}
+.ft p,.ft a{color:var(--muted);text-decoration:none;display:block;margin:0 0 6px;font-size:14.5px}
+[data-theme="volt"] .ft p,[data-theme="volt"] .ft a,[data-theme="volt"] .ft .bt{color:#d6d6dd}
+.ft a:hover{color:var(--text)}
+.ft .bt{margin-top:26px;padding-top:16px;border-top:1px solid var(--line);font-size:13px;color:var(--muted);
+  display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.ft .bt a{display:inline;font-size:13px}
+.wa-fab{position:fixed;inset-inline-start:16px;bottom:calc(16px + env(safe-area-inset-bottom));z-index:60;
+  width:56px;height:56px;border-radius:50%;background:#25D366;display:grid;place-items:center;
+  box-shadow:0 10px 26px rgba(37,211,102,.45)}
+.wa-fab svg{width:30px;height:30px;fill:#fff}
+[data-theme="volt"] .wa-fab{border:2px solid #0E0E12;box-shadow:3px 3px 0 #0E0E12}
+@media(max-width:700px){.wa-fab{width:48px;height:48px}.wa-fab svg{width:26px;height:26px}}
+.toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom));transform:translate(-50%,30px);
+  background:var(--text);color:var(--bg);padding:11px 20px;border-radius:99px;font-weight:700;font-size:14px;
+  opacity:0;pointer-events:none;transition:.25s;z-index:120;max-width:90vw;text-align:center}
+.toast.on{opacity:1;transform:translate(-50%,0)}
+
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}
+}
+</style>
+<style>
+.hero-wrap{position:relative}
+.slide.notxt{display:block!important}
+.slide.notxt .s-img{position:absolute;inset:0;height:100%!important;min-height:0!important;border:0!important}
+#shop{scroll-margin-top:140px}
+.hero .slide .btn{margin-top:2px}
+</style>
+</head>
+<body>
+<!--STORE_BOOT-->
+<div id="state" class="state"><div class="box"><div class="spin" role="status" aria-label="loading"></div></div></div>
+
+<div id="app" class="hidden">
+  <div id="ann" class="ann hidden"></div>
+  <header class="top">
+    <div class="wrap in">
+      <a class="brand" id="brand" href="#"><img id="logo" alt="" class="hidden"><b id="sname"></b></a>
+      <button class="iconbtn" id="langBtn" type="button"></button>
+      <button class="iconbtn" id="cartBtn" type="button" aria-label="cart">
+        <svg viewBox="0 0 24 24"><path d="M6 8h12l-1 12H7L6 8z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/></svg>
+        <span class="cnt hidden" id="cnt">0</span>
+      </button>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero hidden" id="hero">
+      <div class="wrap hero-wrap">
+        <div class="slides" id="slides"></div>
+        <div class="dots" id="dots"></div>
+      </div>
+    </section>
+
+    <nav class="cats hidden" id="catsNav" aria-label="categories"><div class="wrap"><div class="rail" id="cats"></div></div></nav>
+
+    <section class="hot hidden" id="hot">
+      <div class="wrap">
+        <div class="sec-h"><h2 id="hotT"></h2><div class="cd" id="cd"></div></div>
+        <div class="hrow" id="hrow"></div>
+      </div>
+    </section>
+
+    <section class="sec" id="shop">
+      <div class="wrap">
+        <div class="sec-h">
+          <h2 id="shopT"></h2>
+          <div class="tools">
+            <input id="q" type="search" autocomplete="off">
+            <select id="sortSel" aria-label="sort"></select>
+          </div>
+        </div>
+        <div class="grid" id="grid"></div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="ft" id="foot"></footer>
+  <a class="wa-fab hidden" id="waFab" target="_blank" rel="noopener" aria-label="WhatsApp">
+    <svg viewBox="0 0 24 24"><path d="M12.04 2a9.9 9.9 0 0 0-8.5 14.98L2 22l5.17-1.5A9.9 9.9 0 1 0 12.04 2zm5.8 14.02c-.24.68-1.4 1.3-1.94 1.35-.5.05-1.13.07-1.82-.11a16.6 16.6 0 0 1-1.65-.6c-2.9-1.25-4.78-4.15-4.92-4.34-.14-.19-1.17-1.56-1.17-2.97 0-1.42.74-2.1 1-2.39.26-.29.57-.36.76-.36l.55.01c.18 0 .42-.07.65.5.24.58.82 2 .89 2.14.07.15.12.32.02.5-.1.2-.15.32-.29.49-.15.17-.31.38-.44.51-.15.14-.3.3-.13.59.17.29.76 1.25 1.63 2.03 1.12 1 2.06 1.3 2.36 1.45.29.14.46.12.63-.07.17-.2.73-.85.93-1.14.19-.29.39-.24.65-.14.27.1 1.69.8 1.98.94.29.14.48.22.55.34.07.12.07.7-.17 1.38z"/></svg>
+  </a>
+</div>
+
+<div class="ov" id="ovP"><div class="sheet" id="sheet" role="dialog" aria-modal="true"></div></div>
+<div class="ov" id="ovC"><aside class="drawer" id="drawer" role="dialog" aria-modal="true"></aside></div>
+<div class="ov" id="ovPop"><div class="pop" id="pop" role="dialog" aria-modal="true"></div></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+window.LIBANAPPS = {
+  SUPABASE_URL: 'https://moriwmhlgugmjzddwfgv.supabase.co',
+  SUPABASE_ANON_KEY: 'sb_publishable_ypfm_aulpcqBpeFpyD_7iw_mA4DNlR5'
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.0/dist/umd/supabase.min.js"></script>
+<script>
+(function(){
+"use strict";
+
+/* ============================================================
+   نصوص الواجهة
+   ============================================================ */
+var I18N={
+ ar:{dir:'rtl',other:'English',search:'دوّر عن منتج…',all:'الكل',allProducts:'كل المنتجات',hot:'عروض ساخنة',
+  endsIn:'ينتهي خلال',d:'يوم',h:'ساعة',m:'دقيقة',s:'ثانية',sort:'الترتيب',sortDef:'الافتراضي',
+  sortLow:'الأقل سعراً',sortHigh:'الأعلى سعراً',sortNew:'الأحدث',add:'أضف للسلة',added:'تمت الإضافة للسلة',
+  sold:'نفدت الكمية',left:'باقي {n} فقط',cart:'السلة',emptyCart:'سلتك فاضية',emptyHint:'ضيف منتجات وارجع',
+  subtotal:'المجموع',discount:'الخصم',delivery:'التوصيل',free:'مجاني',total:'الإجمالي',checkout:'متابعة الطلب',
+  couponPh:'كود الخصم',apply:'تطبيق',remove:'حذف',couponOk:'تم تطبيق الخصم',couponBad:'كود غير صالح',
+  couponExp:'الكود منتهي الصلاحية',couponUsed:'الكود انستعمل بالكامل',couponMin:'الحد الأدنى للطلب لهذا الكود: {n}',
+  name:'الاسم',phone:'رقم الهاتف',email:'الإيميل (اختياري)',city:'المدينة',address:'العنوان بالتفصيل',
+  note:'ملاحظات (اختياري)',method:'طريقة الاستلام',ship:'توصيل',pickup:'استلام من المتجر',
+  payment:'طريقة الدفع',cod:'نقداً عند الاستلام',whish:'أونلاين عبر Whish',confirm:'تأكيد الطلب',
+  sending:'عم نبعت الطلب…',back:'رجوع',required:'عبّي هالحقل',badPhone:'رقم الهاتف غير صحيح',
+  minOrder:'الحد الأدنى للطلب: {n}',ok:'تم استلام طلبك',orderNo:'رقم الطلب',
+  sendWa:'أرسل الطلب على واتساب',waHint:'اضغط الزر ثم «إرسال» لتوصل تفاصيل الطلب للمتجر مباشرة',
+  keep:'كمّل التسوق',err:'صار خطأ، جرّب مرة تانية',errStock:'الكمية المطلوبة غير متوفرة: {n}',
+  unavailable:'المتجر غير متاح حالياً',closedT:'هذا المتجر متوقف مؤقتاً',closedS:'تواصل مع صاحب المتجر لمعرفة التفاصيل',
+  notFoundT:'ما لقينا هالمتجر',notFoundS:'تأكد من الرابط وجرّب مرة تانية',
+  notReadyT:'المتجر قيد الإعداد',notReadyS:'رجّع جرّب بعد شوي',payWait:'عم نتأكد من الدفع…',
+  paid:'تم الدفع بنجاح',payFail:'لسا ما تأكد الدفع',payFailS:'إذا انسحب المبلغ من حسابك تواصل معنا وقت طلبك',
+  recheck:'تحقق مجدداً',goPay:'عم نحوّلك لصفحة الدفع…',
+  payErr:'استلمنا طلبك لكن تعذّر فتح صفحة الدفع. تواصل معنا على واتساب لإكمال الدفع.',
+  video:'فيديو',qty:'الكمية',copy:'نسخ',copied:'تم نسخ الكود',noRes:'ما في منتجات مطابقة',
+  soon:'المنتجات قريباً',soonS:'عم نجهّز المتجر، رجّع بعد شوي',contact:'تواصل معنا',follow:'تابعنا',
+  items:'منتج',shopNow:'تسوّق الآن',waMsgNew:'طلب جديد',waName:'الاسم',waPhone:'الهاتف',waTo:'التوصيل إلى',
+  waPickup:'استلام من المتجر',waTotal:'الإجمالي',waPay:'الدفع',waNote:'ملاحظة',close:'إغلاق',
+  free2:'توصيل مجاني للطلبات فوق {n}'},
+ en:{dir:'ltr',other:'عربي',search:'Search products…',all:'All',allProducts:'All products',hot:'Hot Sale',
+  endsIn:'Ends in',d:'days',h:'hrs',m:'min',s:'sec',sort:'Sort',sortDef:'Default',
+  sortLow:'Price: low to high',sortHigh:'Price: high to low',sortNew:'Newest',add:'Add to cart',added:'Added to cart',
+  sold:'Sold out',left:'Only {n} left',cart:'Cart',emptyCart:'Your cart is empty',emptyHint:'Add some products and come back',
+  subtotal:'Subtotal',discount:'Discount',delivery:'Delivery',free:'Free',total:'Total',checkout:'Checkout',
+  couponPh:'Discount code',apply:'Apply',remove:'Remove',couponOk:'Discount applied',couponBad:'Invalid code',
+  couponExp:'This code has expired',couponUsed:'This code is fully used',couponMin:'Minimum order for this code: {n}',
+  name:'Name',phone:'Phone number',email:'Email (optional)',city:'City',address:'Full address',
+  note:'Notes (optional)',method:'Receiving method',ship:'Delivery',pickup:'Store pickup',
+  payment:'Payment',cod:'Cash on delivery',whish:'Online with Whish',confirm:'Place order',
+  sending:'Sending your order…',back:'Back',required:'This field is required',badPhone:'Invalid phone number',
+  minOrder:'Minimum order: {n}',ok:'Order received',orderNo:'Order number',
+  sendWa:'Send order on WhatsApp',waHint:'Tap the button, then press Send so the store gets your order details',
+  keep:'Keep shopping',err:'Something went wrong, please try again',errStock:'Not enough stock: {n}',
+  unavailable:'This store is unavailable',closedT:'This store is temporarily closed',closedS:'Contact the store owner for details',
+  notFoundT:'Store not found',notFoundS:'Check the link and try again',
+  notReadyT:'Store is being set up',notReadyS:'Please check back soon',payWait:'Confirming your payment…',
+  paid:'Payment successful',payFail:'Payment not confirmed yet',payFailS:'If you were charged, contact us with your order number',
+  recheck:'Check again',goPay:'Redirecting to payment…',
+  payErr:'We received your order but could not open the payment page. Contact us on WhatsApp to complete payment.',
+  video:'Video',qty:'Quantity',copy:'Copy',copied:'Code copied',noRes:'No matching products',
+  soon:'Products coming soon',soonS:'We are setting up the store, please check back soon',contact:'Contact',follow:'Follow us',
+  items:'items',shopNow:'Shop now',waMsgNew:'New order',waName:'Name',waPhone:'Phone',waTo:'Deliver to',
+  waPickup:'Store pickup',waTotal:'Total',waPay:'Payment',waNote:'Note',close:'Close',
+  free2:'Free delivery over {n}'}
+};
+
+var FONTS={
+ maison:'family=Cormorant+Garamond:wght@500;600;700&family=Amiri:wght@400;700&family=Tajawal:wght@400;500;700',
+ fresh:'family=Cairo:wght@400;600;800',
+ volt:'family=Space+Grotesk:wght@500;700&family=Cairo:wght@400;600;800',
+ petal:'family=El+Messiri:wght@500;700&family=Tajawal:wght@400;500;700',
+ atelier:'family=IBM+Plex+Sans+Arabic:wght@300;400;500;600'
+};
+var BAR={maison:'#191512',fresh:'#F2F6F1',volt:'#FFFFFF',petal:'#FFF1EE',atelier:'#FFFFFF'};
+
+var IC={
+ plus:'<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>',
+ x:'<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+ play:'<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>',
+ flame:'<svg class="flame" viewBox="0 0 24 24"><path d="M12 2s1 3.5-1 6c-1.6 2-4 3.6-4 7a6 6 0 0 0 12 0c0-2.2-1-3.8-2.2-5.2C16 8 16.3 6 15 4.6c-.3 1.6-1.2 2.6-2 2.9C13.3 5.6 12.8 3.6 12 2z"/></svg>',
+ tick:'<svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
+ chev:'<svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg>'
+};
+
+/* ============================================================
+   أدوات
+   ============================================================ */
+var $=function(s,r){return (r||document).querySelector(s)};
+var $$=function(s,r){return Array.prototype.slice.call((r||document).querySelectorAll(s))};
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){
+  return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
+function safeUrl(u){u=String(u||'').trim();return /^(https?:\/\/|\/(?!\/))/i.test(u)?u:''}
+function img(u){ if(!u) return ''; var m=String(u).match(/\/storage\/v1\/object\/public\/(.+)$/);
+  return m?('/img/'+m[1]):u }
+function ytId(u){ u=String(u||'').trim(); if(/^[A-Za-z0-9_-]{11}$/.test(u)) return u;
+  var m=u.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?(?:[^#]*&)?v=|embed\/|shorts\/|live\/|v\/))([A-Za-z0-9_-]{11})/);
+  return m?m[1]:'' }
+function lsGet(k){try{return localStorage.getItem(k)}catch(e){return null}}
+function lsSet(k,v){try{localStorage.setItem(k,v)}catch(e){}}
+function ssGet(k){try{return sessionStorage.getItem(k)}catch(e){return null}}
+function ssSet(k,v){try{sessionStorage.setItem(k,v)}catch(e){}}
+var tt; function toast(m){var t=$('#toast');t.textContent=m;t.classList.add('on');clearTimeout(tt);
+  tt=setTimeout(function(){t.classList.remove('on')},2200)}
+
+/* ============================================================
+   الحالة
+   ============================================================ */
+var sb=null, S=null, CATS=[], PRODS=[], SLIDES=[], POP=null, byId={};
+var L='ar', T=I18N.ar;
+var filter='all', query='', sortBy='def';
+var cart={}, coupon=null, method='delivery', pay='cod', drawerView='cart';
+var form={name:'',phone:'',email:'',city:'',address:'',note:''}, lastOrder=null, payErr=false, busy=false;
+var sliderIdx=0, sliderTimer=null, cdTimer=null, lockCount=0;
+
+function slugFromUrl(){
+  if(window.__STORE_SLUG__) return String(window.__STORE_SLUG__).toLowerCase();
+  var seg=location.pathname.split('/').filter(Boolean);
+  if(seg[0]==='portal-store' && seg[1]) return decodeURIComponent(seg[1]).toLowerCase();
+  return '';
+}
+function tx(o,f){ return L==='en' ? (o[f+'_en']||o[f+'_ar']||'') : (o[f+'_ar']||o[f+'_en']||''); }
+function fmt(n){
+  n=Number(n)||0; var D=S.currency_decimals;
+  var t=(n%1===0)?n.toLocaleString('en-US'):n.toLocaleString('en-US',{minimumFractionDigits:D,maximumFractionDigits:D});
+  var sym=S.currency_symbol||S.currency_code;
+  return /[\u0600-\u06FF]/.test(sym)?(t+' '+sym):(sym+t);
+}
+function money(n){return '<bdi>'+esc(fmt(n))+'</bdi>'}
+function rnd(n){var D=S.currency_decimals,f=Math.pow(10,D);return Math.round(n*f)/f}
+function lockBody(on){lockCount+=on?1:-1;if(lockCount<0)lockCount=0;document.body.style.overflow=lockCount?'hidden':''}
+
+/* ============================================================
+   شاشات الحالة
+   ============================================================ */
+function applyThemeTokens(theme){
+  if(!FONTS[theme]) theme='maison';
+  document.documentElement.setAttribute('data-theme',theme);
+  var meta=document.querySelector('meta[name="theme-color"]'); if(meta) meta.content=BAR[theme]||'#fff';
+  if(!document.getElementById('fontlink')){
+    var lk=document.createElement('link'); lk.id='fontlink'; lk.rel='stylesheet';
+    lk.href='https://fonts.googleapis.com/css2?'+FONTS[theme]+'&display=swap'; document.head.appendChild(lk);
+  }
+}
+function setLang(l){
+  L=l; T=I18N[l]; document.documentElement.lang=l; document.documentElement.dir=T.dir;
+}
+function showState(kind,store){
+  var st=$('#state'); st.classList.remove('hidden'); $('#app').classList.add('hidden');
+  var map={
+    notfound:[T.notFoundT,T.notFoundS], notready:[T.notReadyT,T.notReadyS],
+    closed:[T.closedT,T.closedS], err:[T.err,'']
+  }[kind]||[T.err,''];
+  var wa=store&&store.whatsapp?('<a class="btn" target="_blank" rel="noopener" href="https://wa.me/'+
+    esc(String(store.whatsapp).replace(/\D/g,''))+'">WhatsApp</a>'):'';
+  st.innerHTML='<div class="box">'+
+    (store&&store.logo_url?'<img class="lg" alt="" src="'+esc(img(store.logo_url))+'">':'')+
+    (store&&store.name?'<p style="margin:0 0 4px;font-weight:700">'+esc(store.name)+'</p>':'')+
+    '<h1>'+esc(map[0])+'</h1><p>'+esc(map[1])+'</p>'+wa+'</div>';
+}
+
+/* ============================================================
+   تحميل
+   ============================================================ */
+async function boot(){
+  var slug=slugFromUrl();
+  var pre=lsGet('lang:'+slug); setLang(pre==='en'?'en':'ar');
+  if(!slug){ applyThemeTokens('maison'); showState('notfound'); return; }
+  try{ sb=window.supabase.createClient(window.LIBANAPPS.SUPABASE_URL,window.LIBANAPPS.SUPABASE_ANON_KEY); }
+  catch(e){ applyThemeTokens('maison'); showState('err'); return; }
+
+  var r;
+  try{ r=await sb.rpc('store_public',{p_slug:slug}); }catch(e){ r={error:e}; }
+  if(r.error||!r.data){ applyThemeTokens('maison'); showState('err'); return; }
+  var d=r.data;
+  if(!d.ok){
+    applyThemeTokens((d.store&&d.store.theme)||'maison');
+    var k=d.reason==='not_found'?'notfound':d.reason==='not_ready'?'notready':'closed';
+    showState(k,d.store); return;
+  }
+  S=d.store; CATS=d.categories||[]; PRODS=d.products||[]; SLIDES=d.slides||[]; POP=d.popup||null;
+  PRODS.forEach(function(p){byId[p.id]=p});
+
+  var pt=new URLSearchParams(location.search).get('theme');
+  var theme=(pt&&FONTS[pt])?pt:S.theme;
+  applyThemeTokens(theme);
+  if(!lsGet('lang:'+slug)) setLang(S.default_lang==='en'?'en':'ar');
+  if(/^#[0-9a-f]{6}$/i.test(S.primary_color||'')){
+    var c=S.primary_color, n=parseInt(c.slice(1),16), r_=n>>16, g=(n>>8)&255, b=n&255;
+    var lum=(0.299*r_+0.587*g+0.114*b)/255;
+    var rs=document.documentElement.style; rs.setProperty('--brand',c);
+    rs.setProperty('--brand-ink',lum>0.6?'#111111':'#FFFFFF');
+  }
+  document.title=S.name||'Store';
+  if(S.logo_url){var fv=document.createElement('link');fv.rel='icon';fv.href=img(S.logo_url);document.head.appendChild(fv);}
+
+  try{var saved=JSON.parse(lsGet('cart:'+S.slug)||'{}'); Object.keys(saved).forEach(function(id){
+    if(byId[id]&&saved[id]>0) cart[id]=saved[id]; });}catch(e){}
+  try{var cu=JSON.parse(lsGet('cust:'+S.slug)||'{}'); Object.keys(form).forEach(function(k){ if(cu[k]) form[k]=cu[k]; });}catch(e){}
+  if(!S.delivery_enabled&&S.pickup_enabled) method='pickup';
+  if(!S.cod_enabled&&S.whish_ready) pay='whish';
+
+  $('#state').classList.add('hidden'); $('#app').classList.remove('hidden');
+  renderAll();
+  var pd=new URLSearchParams(location.search).get('paid');
+  if(pd){ history.replaceState(null,'',location.pathname); showPayResult(pd); }
+  else schedulePopup();
+}
+
+/* ============================================================
+   رسم الصفحة
+   ============================================================ */
+function renderAll(){
+  $('#sname').textContent=S.name||''; 
+  var lg=$('#logo'); if(S.logo_url){lg.src=img(S.logo_url);lg.classList.remove('hidden')}else lg.classList.add('hidden');
+  $('#brand').setAttribute('href',location.pathname);
+  $('#langBtn').textContent=T.other;
+  $('#q').placeholder=T.search;
+  $('#cartBtn').setAttribute('aria-label',T.cart);
+  var an=$('#ann'); if(S.announcement){an.textContent=S.announcement;an.classList.remove('hidden')}else an.classList.add('hidden');
+  renderHero(); renderCats(); renderHot(); renderSort(); renderGrid(); renderFoot(); updateCount();
+  var wa=$('#waFab'); var d=String(S.whatsapp||'').replace(/\D/g,'');
+  if(d){wa.href='https://wa.me/'+d;wa.classList.remove('hidden')}else wa.classList.add('hidden');
+}
+
+function renderHero(){
+  var box=$('#slides'), dots=$('#dots'), wrap=box.parentNode;
+  $$('.arw',wrap).forEach(function(a){a.remove()});
+  clearInterval(sliderTimer);
+  var sl=SLIDES.filter(function(s){return s.image_url});
+  var fallback=false;
+  if(!sl.length){fallback=true;sl=[{title:S.name||'',subtitle:S.tagline||'',cta:'',link_url:''}];}
+  box.innerHTML=sl.map(function(s){
+    var hasTxt=!!(s.title||s.subtitle||s.cta);
+    var href=safeUrl(s.link_url)||'#shop';
+    var ext=/^https?:/i.test(href)?' target="_blank" rel="noopener"':'';
+    return '<div class="slide'+(hasTxt?'':' notxt')+'">'+
+      '<div class="s-img'+(s.image_url?'':' fb')+'">'+(s.image_url?'<img alt="" loading="lazy" src="'+esc(img(s.image_url))+'">':'')+'</div>'+
+      (hasTxt?'<div class="s-txt">'+(s.title?'<h2>'+esc(s.title)+'</h2>':'')+(s.subtitle?'<p>'+esc(s.subtitle)+'</p>':'')+
+        (s.cta?'<a class="btn" href="'+esc(href)+'"'+ext+'>'+esc(s.cta)+'</a>':'')+'</div>':'')+
+      '</div>';
+  }).join('');
+  $('#hero').classList.remove('hidden');
+  sliderIdx=0;
+  if(sl.length<2){dots.innerHTML='';return;}
+  dots.innerHTML=sl.map(function(_,i){return '<button class="dot'+(i?'':' on')+'" type="button" data-dot="'+i+'" aria-label="'+(i+1)+'"></button>'}).join('');
+  ['p','n'].forEach(function(k){
+    var b=document.createElement('button'); b.type='button'; b.className='arw '+k; b.dataset.arw=k;
+    b.setAttribute('aria-label',k==='p'?'previous':'next'); b.innerHTML=IC.chev;
+    wrap.appendChild(b);
+  });
+  var rm=window.matchMedia&&window.matchMedia('(prefers-reduced-motion:reduce)').matches;
+  if(!rm) sliderTimer=setInterval(function(){goSlide(sliderIdx+1)},5500);
+}
+function goSlide(i){
+  var box=$('#slides'), n=box.children.length; if(!n) return;
+  sliderIdx=(i+n)%n;
+  var sign=getComputedStyle(box).direction==='rtl'?-1:1;
+  box.scrollTo({left:sign*sliderIdx*box.clientWidth,behavior:'smooth'});
+  paintDots();
+}
+function paintDots(){$$('.dot').forEach(function(d,i){d.classList.toggle('on',i===sliderIdx)})}
+
+function renderCats(){
+  var nav=$('#catsNav');
+  if(!CATS.length){nav.classList.add('hidden');return;}
+  nav.classList.remove('hidden');
+  var GRID='<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="4" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5"/></svg>';
+  var h='<button class="cat" type="button" data-cat="all" aria-pressed="'+(filter==='all')+'"><span class="ci">'+GRID+'</span>'+esc(T.all)+'</button>';
+  h+=CATS.map(function(c){
+    var n=tx(c,'name');
+    return '<button class="cat" type="button" data-cat="'+esc(c.id)+'" aria-pressed="'+(filter===c.id)+'">'+
+      (c.image_url?'<img class="ci" alt="" loading="lazy" src="'+esc(img(c.image_url))+'">':'<span class="ci">'+esc(n.charAt(0))+'</span>')+
+      esc(n)+'</button>';
+  }).join('');
+  $('#cats').innerHTML=h;
+}
+
+function cardHTML(p){
+  var so=p.stock!=null&&p.stock<=0, n=tx(p,'name');
+  var cmp=Number(p.compare_price)>Number(p.price)?Number(p.compare_price):0;
+  var pct=cmp?Math.round((1-p.price/cmp)*100):0;
+  var im=p.image_url?'<img loading="lazy" decoding="async" alt="" src="'+esc(img(p.image_url))+'">'
+    :'<div class="noimg">'+esc(n.charAt(0))+'</div>';
+  var badge=so?'<span class="bd so">'+esc(T.sold)+'</span>':(pct>0?'<span class="bd" dir="ltr">-'+pct+'%</span>':'');
+  return '<article class="card'+(so?' sold':'')+'" data-id="'+esc(p.id)+'" tabindex="0" role="button" aria-label="'+esc(n)+'">'+
+    '<div class="ph">'+im+badge+(so?'':'<button class="quick" type="button" data-add="'+esc(p.id)+'" aria-label="'+esc(T.add)+'">'+IC.plus+'</button>')+'</div>'+
+    '<div class="cb"><h3>'+esc(n)+'</h3><div class="pr"><b>'+money(p.price)+'</b>'+(cmp?'<s>'+money(cmp)+'</s>':'')+'</div></div></article>';
+}
+
+function hotList(){
+  if(!S.hot_enabled) return [];
+  if(S.hot_ends_at && new Date(S.hot_ends_at).getTime()<=Date.now()) return [];
+  return PRODS.filter(function(p){return p.is_hot});
+}
+function renderHot(){
+  var sec=$('#hot'), list=hotList();
+  clearInterval(cdTimer);
+  if(!list.length){sec.classList.add('hidden');return;}
+  sec.classList.remove('hidden');
+  $('#hotT').innerHTML=IC.flame+'<span>'+esc(S.hot_title||T.hot)+'</span>';
+  $('#hrow').innerHTML=list.map(cardHTML).join('');
+  var cd=$('#cd');
+  if(S.hot_ends_at){ tick(); cdTimer=setInterval(tick,1000); } else cd.innerHTML='';
+  function tick(){
+    var ms=new Date(S.hot_ends_at).getTime()-Date.now();
+    if(ms<=0){clearInterval(cdTimer);renderHot();return;}
+    var s=Math.floor(ms/1000), dd=Math.floor(s/86400), hh=Math.floor(s%86400/3600), mm=Math.floor(s%3600/60), ss=s%60;
+    function u(v,l){return '<span class="u"><b>'+String(v).padStart(2,'0')+'</b><small>'+esc(l)+'</small></span>'}
+    cd.innerHTML='<span>'+esc(T.endsIn)+'</span>'+(dd?u(dd,T.d):'')+u(hh,T.h)+u(mm,T.m)+u(ss,T.s);
+  }
+}
+
+function renderSort(){
+  var sel=$('#sortSel');
+  sel.innerHTML=[['def',T.sortDef],['new',T.sortNew],['low',T.sortLow],['high',T.sortHigh]].map(function(o){
+    return '<option value="'+o[0]+'"'+(sortBy===o[0]?' selected':'')+'>'+esc(o[1])+'</option>'}).join('');
+}
+function visible(){
+  var q=query.trim().toLowerCase();
+  var a=PRODS.filter(function(p){
+    if(filter!=='all'&&p.category_id!==filter) return false;
+    if(!q) return true;
+    return (p.name_ar+' '+p.name_en+' '+p.desc_ar+' '+p.desc_en).toLowerCase().indexOf(q)>=0;
+  });
+  if(sortBy==='low') a.sort(function(x,y){return x.price-y.price});
+  else if(sortBy==='high') a.sort(function(x,y){return y.price-x.price});
+  else if(sortBy==='new') a.sort(function(x,y){return String(y.created_at).localeCompare(String(x.created_at))});
+  return a;
+}
+function renderGrid(){
+  var cat=CATS.filter(function(c){return c.id===filter})[0];
+  $('#shopT').textContent=cat?tx(cat,'name'):T.allProducts;
+  var a=visible();
+  if(!PRODS.length){ $('#grid').innerHTML='<div class="empty"><b>'+esc(T.soon)+'</b><br>'+esc(T.soonS)+'</div>'; return; }
+  $('#grid').innerHTML=a.length?a.map(cardHTML).join(''):'<div class="empty">'+esc(T.noRes)+'</div>';
+}
+
+function socialUrl(v,base){
+  v=String(v||'').trim(); if(!v) return '';
+  if(/^https?:\/\//i.test(v)) return v;
+  return base+v.replace(/^@/,'');
+}
+function renderFoot(){
+  var d=String(S.whatsapp||'').replace(/\D/g,'');
+  var soc=[['Instagram',socialUrl(S.instagram,'https://instagram.com/')],
+           ['Facebook',socialUrl(S.facebook,'https://facebook.com/')],
+           ['TikTok',socialUrl(S.tiktok,'https://tiktok.com/@')]].filter(function(x){return safeUrl(x[1])});
+  var contact=[];
+  if(S.phone) contact.push('<a href="tel:'+esc(String(S.phone).replace(/[^\d+]/g,''))+'"><bdi>'+esc(S.phone)+'</bdi></a>');
+  if(d) contact.push('<a target="_blank" rel="noopener" href="https://wa.me/'+esc(d)+'">WhatsApp</a>');
+  if(S.email) contact.push('<a href="mailto:'+esc(S.email)+'">'+esc(S.email)+'</a>');
+  if(S.address) contact.push('<p>'+esc(S.address)+'</p>');
+  $('#foot').innerHTML='<div class="wrap"><div class="fg">'+
+    '<div><h4>'+esc(S.name)+'</h4>'+(S.tagline?'<p>'+esc(S.tagline)+'</p>':'')+(S.footer_note?'<p>'+esc(S.footer_note)+'</p>':'')+'</div>'+
+    '<div>'+(contact.length?'<h4>'+esc(T.contact)+'</h4>'+contact.join(''):'')+'</div>'+
+    '<div>'+(soc.length?'<h4>'+esc(T.follow)+'</h4>'+soc.map(function(x){
+      return '<a target="_blank" rel="noopener" href="'+esc(safeUrl(x[1]))+'">'+x[0]+'</a>'}).join(''):'')+'</div>'+
+    '</div><div class="bt"><span>&copy; '+new Date().getFullYear()+' '+esc(S.name)+'</span>'+
+    '<a href="https://libanapps.com" target="_blank" rel="noopener">Powered by LibanApps</a></div></div>';
+}
+
+/* ============================================================
+   نافذة المنتج
+   ============================================================ */
+var media=[], mediaIdx=0, curProd=null, curQty=1;
+function openProduct(id){
+  var p=byId[id]; if(!p) return; curProd=p; curQty=1;
+  media=[];
+  if(p.image_url) media.push({t:'i',src:p.image_url});
+  (p.images||[]).forEach(function(u){ if(u) media.push({t:'i',src:u}) });
+  var vid=ytId(p.video_url); if(vid) media.push({t:'v',id:vid});
+  mediaIdx=0; renderSheet();
+  $('#ovP').classList.add('on'); lockBody(true);
+  var x=$('#sheet .x'); if(x) x.focus();
+}
+function closeSheet(){ if($('#ovP').classList.contains('on')){$('#ovP').classList.remove('on');lockBody(false);$('#sheet').innerHTML='';} }
+function mediaHTML(){
+  var m=media[mediaIdx];
+  if(!m) return '<div class="noimg" style="position:absolute;inset:0;display:grid;place-items:center;font-size:64px;opacity:.4">'+esc(tx(curProd,'name').charAt(0))+'</div>';
+  if(m.t==='i') return '<img alt="" src="'+esc(img(m.src))+'">';
+  return '<div class="vp"><img alt="" src="https://i.ytimg.com/vi/'+esc(m.id)+'/hqdefault.jpg"><button class="play" type="button" data-playvid="'+esc(m.id)+'" aria-label="'+esc(T.video)+'">'+IC.play+'</button></div>';
+}
+function renderSheet(){
+  var p=curProd, n=tx(p,'name'), d=tx(p,'desc');
+  var cmp=Number(p.compare_price)>Number(p.price)?Number(p.compare_price):0;
+  var so=p.stock!=null&&p.stock<=0, max=p.stock!=null?p.stock:99;
+  if(curQty>max) curQty=Math.max(1,max);
+  var thumbs=media.length>1?'<div class="thumbs">'+media.map(function(m,i){
+    return '<button type="button" data-media="'+i+'" aria-pressed="'+(i===mediaIdx)+'" aria-label="'+(i+1)+'">'+
+      (m.t==='i'?'<img alt="" loading="lazy" src="'+esc(img(m.src))+'">':
+        '<img alt="" loading="lazy" src="https://i.ytimg.com/vi/'+esc(m.id)+'/default.jpg"><span class="vt"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></span>')+'</button>'}).join('')+'</div>':'';
+  $('#sheet').innerHTML='<button class="x" type="button" data-close aria-label="'+esc(T.close)+'">'+IC.x+'</button>'+
+    '<div class="pd"><div class="gal"><div class="gmain" id="gmain">'+mediaHTML()+'</div>'+thumbs+'</div>'+
+    '<div class="pinfo"><h2>'+esc(n)+'</h2>'+
+    '<div class="pr"><b>'+money(p.price)+'</b>'+(cmp?'<s>'+money(cmp)+'</s>':'')+'</div>'+
+    (d?'<div class="desc">'+esc(d)+'</div>':'')+
+    (p.stock!=null&&p.stock>0&&p.stock<=5?'<div class="stock">'+esc(T.left.replace('{n}',p.stock))+'</div>':'')+
+    (so?'<div class="stock">'+esc(T.sold)+'</div>':
+      '<div class="qrow"><div class="qty"><button type="button" data-q="-1" aria-label="-">−</button><span>'+curQty+
+      '</span><button type="button" data-q="1" aria-label="+">+</button></div>'+
+      '<button class="btn" type="button" data-addsheet style="flex:1;min-width:160px">'+esc(T.add)+'</button></div>')+
+    '</div></div>';
+}
+
+/* ============================================================
+   السلة
+   ============================================================ */
+function saveCart(){lsSet('cart:'+S.slug,JSON.stringify(cart))}
+function cartLines(){return Object.keys(cart).map(function(id){var p=byId[id];return p?{p:p,q:cart[id]}:null}).filter(Boolean)}
+function updateCount(){
+  var n=0; Object.keys(cart).forEach(function(k){n+=cart[k]});
+  var c=$('#cnt'); c.textContent=n; c.classList.toggle('hidden',!n);
+}
+function addToCart(id,q){
+  var p=byId[id]; if(!p) return false;
+  var max=p.stock!=null?p.stock:99, cur=cart[id]||0;
+  if(cur>=max){toast(T.errStock.replace('{n}',tx(p,'name')));return false;}
+  cart[id]=Math.min(max,cur+(q||1)); saveCart(); updateCount(); revalidateCoupon();
+  toast(T.added); return true;
+}
+function setQty(id,q){
+  var p=byId[id]; if(!p) return; var max=p.stock!=null?p.stock:99;
+  if(q<=0) delete cart[id]; else cart[id]=Math.min(max,q);
+  saveCart(); updateCount(); revalidateCoupon(); if($('#ovC').classList.contains('on')) renderDrawer();
+}
+function calc(){
+  var sub=0; cartLines().forEach(function(l){sub+=l.p.price*l.q});
+  sub=rnd(sub);
+  var disc=coupon?Math.min(coupon.discount,sub):0, fee=0;
+  if(method==='delivery'&&S.delivery_enabled){
+    fee=Number(S.delivery_fee)||0;
+    if(S.free_delivery_over!=null&&(sub-disc)>=Number(S.free_delivery_over)) fee=0;
+  }
+  return {sub:sub,disc:disc,fee:fee,total:rnd(sub-disc+fee)};
+}
+async function applyCoupon(code){
+  var c=calc(); code=String(code||'').trim();
+  if(!code) return;
+  var r=await sb.rpc('check_store_coupon',{p_slug:S.slug,p_code:code,p_subtotal:c.sub});
+  var d=r.data;
+  if(r.error||!d||!d.ok){
+    var why=d&&d.reason;
+    return {ok:false,msg:why==='expired'?T.couponExp:why==='used_up'?T.couponUsed:
+      why==='min_order'?T.couponMin.replace('{n}',fmt(d.min)):T.couponBad};
+  }
+  coupon={code:d.code,discount:Number(d.discount)}; return {ok:true,msg:T.couponOk};
+}
+async function revalidateCoupon(){
+  if(!coupon) return; var code=coupon.code;
+  var r=await applyCoupon(code); if(!r||!r.ok){ coupon=null; toast(r?r.msg:T.couponBad); }
+  if($('#ovC').classList.contains('on')&&drawerView!=='done') renderDrawer();
+}
+function totalsHTML(withFee){
+  var c=calc(), h='<div class="tot"><span>'+esc(T.subtotal)+'</span><span>'+money(c.sub)+'</span></div>';
+  if(c.disc>0) h+='<div class="tot"><span>'+esc(T.discount)+(coupon?' ('+esc(coupon.code)+')':'')+'</span><span>−'+money(c.disc)+'</span></div>';
+  if(withFee&&method==='delivery') h+='<div class="tot"><span>'+esc(T.delivery)+'</span><span>'+(c.fee>0?money(c.fee):esc(T.free))+'</span></div>';
+  h+='<div class="tot g"><span>'+esc(T.total)+'</span><span>'+money(withFee?c.total:rnd(c.sub-c.disc))+'</span></div>';
+  return h;
+}
+
+function openCart(){ if(drawerView!=='checkout') drawerView='cart';
+  renderDrawer(); $('#ovC').classList.add('on'); lockBody(true); }
+function closeCart(){ if($('#ovC').classList.contains('on')){$('#ovC').classList.remove('on');lockBody(false);
+  if(drawerView==='done') drawerView='cart'; } }
+function head(title,back){
+  return '<div class="dh">'+(back?'<button class="rm" type="button" data-view="cart">'+esc(T.back)+'</button>':'')+
+    '<h2>'+esc(title)+'</h2><button class="x" type="button" data-close aria-label="'+esc(T.close)+'">'+IC.x+'</button></div>';
+}
+function renderDrawer(){
+  var dr=$('#drawer'), lines=cartLines(), keepFocus=document.activeElement&&document.activeElement.id;
+  if(drawerView==='done') return dr.innerHTML=doneHTML();
+  if(drawerView==='paying') return dr.innerHTML=head(T.cart)+'<div class="db"><div class="ok-box"><div class="spin"></div><p style="margin-top:16px">'+esc(T.goPay)+'</p></div></div>';
+  if(drawerView==='payres') return dr.innerHTML=payResHTML();
+  if(!lines.length&&drawerView!=='done'){
+    drawerView='cart';
+    return dr.innerHTML=head(T.cart)+'<div class="db"><div class="ok-box"><p><b>'+esc(T.emptyCart)+'</b><br>'+esc(T.emptyHint)+'</p>'+
+      '<button class="btn alt" type="button" data-close>'+esc(T.keep)+'</button></div></div>';
+  }
+  if(drawerView==='checkout') return dr.innerHTML=checkoutHTML();
+  dr.innerHTML=head(T.cart)+'<div class="db">'+lines.map(function(l){
+    var p=l.p, n=tx(p,'name');
+    return '<div class="li"><div class="lt">'+(p.image_url?'<img alt="" src="'+esc(img(p.image_url))+'">':'')+'</div>'+
+      '<div><h4>'+esc(n)+'</h4><div class="pr"><b>'+money(p.price)+'</b></div>'+
+      '<div class="qty"><button type="button" data-cq="'+esc(p.id)+'" data-d="-1" aria-label="-">−</button><span>'+l.q+
+      '</span><button type="button" data-cq="'+esc(p.id)+'" data-d="1" aria-label="+">+</button></div></div>'+
+      '<button class="rm" type="button" data-rm="'+esc(p.id)+'">'+esc(T.remove)+'</button></div>';
+  }).join('')+'</div><div class="df">'+
+    (coupon?'<div class="cp"><div style="flex:1;font-weight:800;letter-spacing:.06em;align-self:center;direction:ltr;text-align:start">'+esc(coupon.code)+'</div><button class="btn alt" type="button" data-cprm>'+esc(T.remove)+'</button></div><p class="note ok">'+esc(T.couponOk)+'</p>':
+      '<div class="cp"><input id="cpIn" placeholder="'+esc(T.couponPh)+'" autocomplete="off"><button class="btn alt" type="button" data-cpgo>'+esc(T.apply)+'</button></div><p class="note no" id="cpMsg"></p>')+
+    totalsHTML(false)+
+    (S.free_delivery_over!=null&&S.delivery_enabled?'<p class="note" style="color:var(--muted)">'+esc(T.free2.replace('{n}',fmt(S.free_delivery_over)))+'</p>':'')+
+    '<button class="btn full" type="button" style="margin-top:12px" data-view="checkout">'+esc(T.checkout)+'</button></div>';
+  if(keepFocus){var f=document.getElementById(keepFocus); if(f) f.focus();}
+}
+function fld(id,label,type,val,extra){
+  return '<label class="fld" id="f_'+id+'"><span>'+esc(label)+'</span>'+
+    (type==='area'?'<textarea data-f="'+id+'" rows="2">'+esc(val)+'</textarea>':
+    '<input data-f="'+id+'" type="'+type+'" value="'+esc(val)+'" '+(extra||'')+'>')+'</label>';
+}
+function checkoutHTML(){
+  var methods=[]; if(S.delivery_enabled) methods.push(['delivery',T.ship]); if(S.pickup_enabled) methods.push(['pickup',T.pickup]);
+  if(!methods.length) methods.push(['delivery',T.ship]);
+  var pays=[]; if(S.cod_enabled) pays.push(['cod',T.cod]); if(S.whish_ready) pays.push(['whish',T.whish]);
+  if(!pays.length) pays.push(['cod',T.cod]);
+  if(!methods.some(function(m){return m[0]===method})) method=methods[0][0];
+  if(!pays.some(function(m){return m[0]===pay})) pay=pays[0][0];
+  return head(T.checkout,true)+'<div class="db">'+
+    (methods.length>1?'<div class="fld"><span>'+esc(T.method)+'</span><div class="seg">'+methods.map(function(m){
+      return '<button type="button" data-method="'+m[0]+'" aria-pressed="'+(method===m[0])+'">'+esc(m[1])+'</button>'}).join('')+'</div></div>':'')+
+    fld('name',T.name,'text',form.name,'autocomplete="name"')+
+    fld('phone',T.phone,'tel',form.phone,'autocomplete="tel" inputmode="tel" dir="ltr" style="text-align:start"')+
+    fld('email',T.email,'email',form.email,'autocomplete="email" dir="ltr" style="text-align:start"')+
+    (method==='delivery'?fld('city',T.city,'text',form.city,'autocomplete="address-level2"')+fld('address',T.address,'area',form.address):'')+
+    fld('note',T.note,'area',form.note)+
+    (pays.length>1?'<div class="fld"><span>'+esc(T.payment)+'</span><div class="seg">'+pays.map(function(m){
+      return '<button type="button" data-pay="'+m[0]+'" aria-pressed="'+(pay===m[0])+'">'+esc(m[1])+'</button>'}).join('')+'</div></div>':'')+
+    '</div><div class="df">'+totalsHTML(true)+'<p class="note no" id="coMsg"></p>'+
+    '<button class="btn full" type="button" id="placeBtn" style="margin-top:8px">'+esc(T.confirm)+'</button></div>';
+}
+function orderWaText(){
+  var o=lastOrder, f=o.form, lines=o.lines;
+  var t=T.waMsgNew+' #'+o.data.order_no+'\n'+T.waName+': '+f.name+'\n'+T.waPhone+': '+f.phone+'\n';
+  t+=(o.method==='delivery'?T.waTo+': '+[f.city,f.address].filter(Boolean).join(' - '):T.waPickup)+'\n\n';
+  lines.forEach(function(l){t+='• '+l.name+' ×'+l.q+' = '+fmt(l.price*l.q)+'\n'});
+  t+='\n'+T.subtotal+': '+fmt(o.data.subtotal)+'\n';
+  if(o.data.discount>0) t+=T.discount+': -'+fmt(o.data.discount)+'\n';
+  if(o.method==='delivery') t+=T.delivery+': '+(o.data.delivery_fee>0?fmt(o.data.delivery_fee):T.free)+'\n';
+  t+=T.waTotal+': '+fmt(o.data.total)+'\n'+T.waPay+': '+(o.pay==='whish'?'Whish':T.cod);
+  if(f.note) t+='\n'+T.waNote+': '+f.note;
+  return t;
+}
+function doneHTML(){
+  var o=lastOrder, d=String(S.whatsapp||'').replace(/\D/g,'');
+  return head(T.cart)+'<div class="db"><div class="ok-box"><div class="tick">'+IC.tick+'</div><h3>'+esc(T.ok)+'</h3>'+
+    '<p>'+esc(T.orderNo)+': <b><bdi>'+esc(o.data.order_no)+'</bdi></b></p>'+
+    (payErr?'<p class="note no">'+esc(T.payErr)+'</p>':'')+
+    (d?'<p>'+esc(T.waHint)+'</p><a class="btn full wa-btn" target="_blank" rel="noopener" href="https://wa.me/'+esc(d)+'?text='+encodeURIComponent(orderWaText())+'">'+esc(T.sendWa)+'</a>':'')+
+    '<button class="btn alt full" type="button" style="margin-top:10px" data-close>'+esc(T.keep)+'</button></div></div>';
+}
+function payResHTML(){
+  var r=window.__payRes||{};
+  if(r.loading) return head(T.cart)+'<div class="db"><div class="ok-box"><div class="spin"></div><p style="margin-top:16px">'+esc(T.payWait)+'</p></div></div>';
+  var d=String(r.whatsapp||S.whatsapp||'').replace(/\D/g,'');
+  if(r.paid) return head(T.cart)+'<div class="db"><div class="ok-box"><div class="tick">'+IC.tick+'</div><h3>'+esc(T.paid)+'</h3>'+
+    '<p>'+esc(T.orderNo)+': <b><bdi>'+esc(r.order_no)+'</bdi></b></p>'+
+    '<button class="btn full" type="button" data-close>'+esc(T.keep)+'</button></div></div>';
+  return head(T.cart)+'<div class="db"><div class="ok-box"><h3>'+esc(T.payFail)+'</h3><p>'+esc(T.payFailS)+
+    (r.order_no?'<br>'+esc(T.orderNo)+': <b><bdi>'+esc(r.order_no)+'</bdi></b>':'')+'</p>'+
+    '<button class="btn full" type="button" data-recheck>'+esc(T.recheck)+'</button>'+
+    (d?'<a class="btn alt full" style="margin-top:10px" target="_blank" rel="noopener" href="https://wa.me/'+esc(d)+'">WhatsApp</a>':'')+
+    '</div></div>';
+}
+async function showPayResult(token){
+  window.__payRes={loading:true}; drawerView='payres'; renderDrawer(); $('#ovC').classList.add('on'); lockBody(true);
+  for(var i=0;i<6;i++){
+    var r=await sb.rpc('store_order_status',{p_token:token}); var d=r.data;
+    if(d&&(d.status==='paid'||d.status==='confirmed'||d.status==='shipped'||d.status==='completed')){
+      window.__payRes={paid:true,order_no:d.order_no,whatsapp:d.whatsapp}; renderDrawer(); return;}
+    if(d&&(d.status==='failed'||d.status==='cancelled')){ window.__payRes={order_no:d.order_no,whatsapp:d.whatsapp}; renderDrawer(); return;}
+    window.__payRes={loading:true,token:token}; renderDrawer();
+    await new Promise(function(res){setTimeout(res,2500)});
+  }
+  window.__payRes={order_no:(r&&r.data&&r.data.order_no)||'',token:token,whatsapp:(r&&r.data&&r.data.whatsapp)||''}; renderDrawer();
+}
+
+async function placeOrder(){
+  if(busy) return;
+  var ok=true, msg=$('#coMsg'); msg.textContent='';
+  function bad(id){var e=$('#f_'+id); if(e) e.classList.add('bad'); ok=false}
+  $$('.fld.bad').forEach(function(e){e.classList.remove('bad')});
+  if(form.name.trim().length<2) bad('name');
+  if(form.phone.replace(/\D/g,'').length<7) bad('phone');
+  if(method==='delivery'&&form.address.trim().length<3) bad('address');
+  if(!ok){msg.textContent=T.required;return;}
+  var c=calc(); if(c.sub<Number(S.min_order||0)){msg.textContent=T.minOrder.replace('{n}',fmt(S.min_order));return;}
+  busy=true; var btn=$('#placeBtn'); btn.disabled=true; btn.textContent=T.sending;
+  var lines=cartLines();
+  var snap=lines.map(function(l){return {name:tx(l.p,'name'),q:l.q,price:l.p.price}});
+  var r;
+  try{
+    r=await sb.rpc('store_place_order',{p_slug:S.slug,p_name:form.name,p_phone:form.phone,p_email:form.email,
+      p_method:method,p_city:form.city,p_address:form.address,p_note:form.note,p_payment:pay,
+      p_coupon:coupon?coupon.code:'',p_lines:lines.map(function(l){return {id:l.p.id,qty:l.q}})});
+  }catch(e){r={error:e};}
+  busy=false;
+  if(r.error||!r.data){
+    var m=String((r.error&&r.error.message)||'');
+    btn.disabled=false; btn.textContent=T.confirm;
+    if(/insufficient stock/i.test(m)) msg.textContent=T.errStock.replace('{n}',m.split(':').slice(1).join(':').trim());
+    else if(/coupon/i.test(m)){coupon=null;msg.textContent=T.couponBad;}
+    else if(/min order/i.test(m)) msg.textContent=T.minOrder.replace('{n}',fmt(S.min_order));
+    else if(/unavailable/i.test(m)) msg.textContent=T.unavailable;
+    else msg.textContent=T.err;
+    return;
+  }
+  lsSet('cust:'+S.slug,JSON.stringify({name:form.name,phone:form.phone,email:form.email,city:form.city,address:form.address}));
+  lastOrder={data:r.data,lines:snap,form:{name:form.name,phone:form.phone,city:form.city,address:form.address,note:form.note},method:method,pay:pay};
+  cart={}; coupon=null; saveCart(); updateCount(); payErr=false;
+  if(pay==='whish'){
+    drawerView='paying'; renderDrawer();
+    try{
+      var res=await fetch('/api/store/whish/create',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({order_id:r.data.order_id,token:r.data.token,slug:S.slug})});
+      var j=await res.json();
+      if(j&&j.collectUrl){location.href=j.collectUrl;return;}
+      throw new Error((j&&j.error)||'pay');
+    }catch(e){payErr=true;}
+  }
+  drawerView='done'; renderDrawer();
+}
+
+/* ============================================================
+   بوب أب
+   ============================================================ */
+function schedulePopup(){
+  if(!POP||!POP.is_active) return;
+  var key='pop:'+S.slug+':'+(POP.updated_at||''), store=POP.show_once?{get:lsGet,set:lsSet}:{get:ssGet,set:ssSet};
+  if(store.get(key)) return;
+  setTimeout(function(){
+    if($('#ovC').classList.contains('on')||$('#ovP').classList.contains('on')) return;
+    store.set(key,'1');
+    var href=safeUrl(POP.link_url), ext=/^https?:/i.test(href)?' target="_blank" rel="noopener"':'';
+    $('#pop').innerHTML='<button class="x" type="button" data-close aria-label="'+esc(T.close)+'">'+IC.x+'</button>'+
+      (POP.image_url?'<div class="pi"><img alt="" src="'+esc(img(POP.image_url))+'"></div>':'')+
+      '<div class="pt">'+(POP.title?'<h3>'+esc(POP.title)+'</h3>':'')+(POP.body?'<p>'+esc(POP.body)+'</p>':'')+
+      (POP.coupon_code?'<div class="code"><span>'+esc(POP.coupon_code)+'</span><button type="button" data-copycode="'+esc(POP.coupon_code)+'">'+esc(T.copy)+'</button></div><br>':'')+
+      (POP.cta?'<a class="btn" href="'+esc(href||'#shop')+'"'+ext+' data-close>'+esc(POP.cta)+'</a>':'')+'</div>';
+    $('#ovPop').classList.add('on'); lockBody(true);
+  },1600);
+}
+function closePop(){ if($('#ovPop').classList.contains('on')){$('#ovPop').classList.remove('on');lockBody(false);} }
+
+/* ============================================================
+   الأحداث
+   ============================================================ */
+document.addEventListener('click',function(e){
+  var t=e.target, el;
+  if((el=t.closest('[data-add]'))){e.stopPropagation();addToCart(el.dataset.add,1);return;}
+  if((el=t.closest('[data-cat]'))){filter=el.dataset.cat;renderCats();renderGrid();
+    var g=$('#shop').getBoundingClientRect(); if(g.top<0) $('#shop').scrollIntoView({block:'start',behavior:'smooth'}); return;}
+  if((el=t.closest('[data-dot]'))){goSlide(Number(el.dataset.dot));return;}
+  if((el=t.closest('[data-arw]'))){goSlide(sliderIdx+(el.dataset.arw==='n'?1:-1));return;}
+  if((el=t.closest('[data-media]'))){mediaIdx=Number(el.dataset.media);renderSheet();return;}
+  if((el=t.closest('[data-playvid]'))){
+    $('#gmain').innerHTML='<iframe src="https://www.youtube-nocookie.com/embed/'+encodeURIComponent(el.dataset.playvid)+
+      '?autoplay=1&rel=0&modestbranding=1&playsinline=1" title="video" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen></iframe>';return;}
+  if((el=t.closest('[data-q]'))){var max=curProd.stock!=null?curProd.stock:99;
+    curQty=Math.max(1,Math.min(max,curQty+Number(el.dataset.q)));renderSheet();return;}
+  if(t.closest('[data-addsheet]')){ if(addToCart(curProd.id,curQty)) closeSheet(); return;}
+  if((el=t.closest('[data-cq]'))){var id=el.dataset.cq;setQty(id,(cart[id]||0)+Number(el.dataset.d));return;}
+  if((el=t.closest('[data-rm]'))){setQty(el.dataset.rm,0);return;}
+  if(t.closest('[data-cpgo]')){var v=$('#cpIn').value;applyCoupon(v).then(function(r){
+    if(r&&r.ok) renderDrawer(); else if(r){var m=$('#cpMsg');if(m)m.textContent=r.msg;}});return;}
+  if(t.closest('[data-cprm]')){coupon=null;renderDrawer();return;}
+  if((el=t.closest('[data-view]'))){drawerView=el.dataset.view;renderDrawer();return;}
+  if((el=t.closest('[data-method]'))){method=el.dataset.method;renderDrawer();return;}
+  if((el=t.closest('[data-pay]'))){pay=el.dataset.pay;renderDrawer();return;}
+  if(t.closest('#placeBtn')){placeOrder();return;}
+  if((el=t.closest('[data-copycode]'))){var code=el.dataset.copycode;
+    if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(code).then(function(){toast(T.copied)},function(){toast(code)});
+    else toast(code); return;}
+  if(t.closest('[data-recheck]')){var tk=(window.__payRes||{}).token; if(tk) showPayResult(tk); return;}
+  if(t.closest('[data-close]')){ closeSheet(); closeCart(); closePop(); return;}
+  if(t.id==='ovP') return closeSheet();
+  if(t.id==='ovC') return closeCart();
+  if(t.id==='ovPop') return closePop();
+  if(t.closest('#cartBtn')){openCart();return;}
+  if(t.closest('#langBtn')){setLang(L==='ar'?'en':'ar');lsSet('lang:'+S.slug,L);renderAll();return;}
+  if((el=t.closest('.card'))){openProduct(el.dataset.id);return;}
+});
+document.addEventListener('keydown',function(e){
+  if(e.key==='Escape'){closePop();closeSheet();closeCart();return;}
+  if((e.key==='Enter'||e.key===' ')&&e.target.classList&&e.target.classList.contains('card')){e.preventDefault();openProduct(e.target.dataset.id);}
+  if(e.key==='Enter'&&e.target.id==='cpIn'){e.preventDefault();var b=$('[data-cpgo]');if(b)b.click();}
+});
+document.addEventListener('input',function(e){
+  var t=e.target;
+  if(t.dataset&&t.dataset.f){form[t.dataset.f]=t.value;var f=$('#f_'+t.dataset.f);if(f)f.classList.remove('bad');}
+  if(t.id==='q'){query=t.value;renderGrid();}
+});
+document.addEventListener('change',function(e){ if(e.target.id==='sortSel'){sortBy=e.target.value;renderGrid();} });
+document.addEventListener('DOMContentLoaded',function(){
+  var box=$('#slides'), to;
+  box.addEventListener('scroll',function(){clearTimeout(to);to=setTimeout(function(){
+    var i=Math.round(Math.abs(box.scrollLeft)/(box.clientWidth||1)); if(i!==sliderIdx){sliderIdx=i;paintDots();}},80)},{passive:true});
+  ['pointerenter','touchstart'].forEach(function(ev){$('#hero').addEventListener(ev,function(){clearInterval(sliderTimer)},{passive:true})});
+});
+
+boot();
+})();
+</script>
+</body>
+</html>
