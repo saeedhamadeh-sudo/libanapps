@@ -221,9 +221,34 @@ create table if not exists public.restaurants (
 );
 
 -- أعمدة تُضاف لاحقاً بأمان
-alter table public.restaurants add column if not exists client_id uuid references public.clients(id) on delete set null;
+alter table public.restaurants add column if not exists client_id uuid references public.clients(id) on delete cascade;
+
+-- ترقية للقواعد القديمة: حذف الزبون يحذف مطاعمه معه
+do $$
+declare cname text;
+begin
+  select con.conname into cname
+    from pg_constraint con
+    join pg_class rel on rel.oid = con.conrelid
+    join pg_attribute att on att.attrelid = rel.oid and att.attnum = con.conkey[1]
+   where rel.relname = 'restaurants' and con.contype = 'f' and att.attname = 'client_id';
+  if cname is not null then
+    execute format('alter table public.restaurants drop constraint %I', cname);
+  end if;
+  alter table public.restaurants
+    add constraint restaurants_client_id_fkey
+    foreign key (client_id) references public.clients(id) on delete cascade;
+end $$;
 alter table public.restaurants add column if not exists whish_enabled boolean not null default false;
 alter table public.restaurants add column if not exists working_hours jsonb default '{}'::jsonb;
+alter table public.restaurants add column if not exists instagram text default '';
+alter table public.restaurants add column if not exists facebook  text default '';
+alter table public.restaurants add column if not exists tiktok    text default '';
+alter table public.restaurants add column if not exists base_currency text not null default 'USD';
+do $$ begin
+  alter table public.restaurants add constraint base_currency_chk
+    check (base_currency in ('USD','LBP'));
+exception when duplicate_object then null; end $$;
 
 do $$ begin
   alter table public.restaurants add constraint slug_format
@@ -486,7 +511,7 @@ begin
           coalesce(p_table,''), coalesce(p_address,''), p_lat, p_lng, coalesce(p_note,''),
           0, 0, 0, r.exchange_rate, 0, p_payment,
           case when p_payment = 'whish' then 'awaiting_payment' else 'pending' end)
-  returning id, token into v_id, v_tok;
+  returning orders.id, orders.token into v_id, v_tok;
 
   for ln in select * from jsonb_array_elements(p_lines) loop
     v_qty := greatest(1, least(50, (ln->>'qty')::int));
@@ -525,7 +550,9 @@ begin
     'order', to_jsonb(o) - 'restaurant_id',
     'restaurant', jsonb_build_object('name_ar',r.name_ar,'name_en',r.name_en,'logo_url',r.logo_url,
                                      'phone',r.phone,'slug',r.slug,'theme',r.theme,
-                                     'default_lang',r.default_lang),
+                                     'default_lang',r.default_lang,
+                                     'base_currency',r.base_currency,
+                                     'exchange_rate',r.exchange_rate),
     'items', coalesce((select jsonb_agg(to_jsonb(oi) - 'order_id' - 'id')
                        from public.order_items oi where oi.order_id = o.id), '[]'::jsonb)
   );
