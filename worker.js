@@ -880,114 +880,355 @@ function isPlatformHost(host, env) {
          host.endsWith('.' + site) || host.endsWith('.workers.dev');
 }
 
-// ---------- Whish الخاص بكل متجر ----------
-async function storeWhishFor(env, storeId) {
-  const rows = await sbGet(env, `store_payment_credentials?store_id=eq.${storeId}&select=*&limit=1`);
-  const c = rows[0];
-  if (!c || !c.whish_channel || !c.whish_secret) return null;
-  return {
-    cred: c,
-    client: new WhishClient({
-      channel: c.whish_channel,
-      secret: c.whish_secret,
-      websiteUrl: c.website_url || env.WEBSITE_URL,
-      environment: (env.WHISH_ENV === 'sandbox') ? 'sandbox' : 'production'
-    })
-  };
+// ============================================================
+//  بوابات الدفع للمتاجر
+//  كل بوابة = adapter فيه create (بيرجّع رابط الدفع) و verify (تحقق مباشر من البوابة).
+//  الإعدادات (المفاتيح) بجدول store_gateways ولا بتوصل للمتصفح أبداً.
+//  لإضافة بوابة جديدة: أضف adapter بـGATEWAYS + سطر بـ_gw_ready/_gw_supports بالـSQL.
+// ============================================================
+const ZERO_DEC = new Set(['BIF','CLP','DJF','GNF','JPY','KMF','KRW','MGA','PYG','RWF','UGX','VND','VUV','XAF','XOF','XPF','LBP','IQD','SYP','YER','IRR','IDR']);
+const THREE_DEC = new Set(['BHD','JOD','KWD','OMR','TND','LYD']);
+function decimalsOf(cur) { cur = String(cur).toUpperCase(); return ZERO_DEC.has(cur) ? 0 : (THREE_DEC.has(cur) ? 3 : 2); }
+function fixedAmt(amount, cur) { return Number(amount).toFixed(decimalsOf(cur)); }
+// Stripe: عملات صفرية الكسور (بدون LBP/IDR اللي بتتعامل ككسرين عندهم) وثلاثية بآخر رقم 0
+const STRIPE_ZERO = new Set(['BIF','CLP','DJF','GNF','JPY','KMF','KRW','MGA','PYG','RWF','UGX','VND','VUV','XAF','XOF','XPF']);
+function stripeMinor(amount, cur) {
+  cur = String(cur).toUpperCase();
+  if (STRIPE_ZERO.has(cur)) return Math.round(amount);
+  if (THREE_DEC.has(cur)) return Math.round(amount * 100) * 10;
+  return Math.round(amount * 100);
+}
+function dig(obj, path) {
+  return String(path || '').split('.').filter(Boolean).reduce((o, k) => (o && o[k] !== undefined ? o[k] : undefined), obj);
+}
+function fillTpl(tpl, vars, mode) {
+  return String(tpl || '').replace(/\{\{(\w+)\}\}/g, (m, k) => {
+    const v = vars[k] === undefined || vars[k] === null ? '' : String(vars[k]);
+    if (mode === 'json') return JSON.stringify(v).slice(1, -1);
+    if (mode === 'url' || mode === 'form') return encodeURIComponent(v);
+    return v;
+  });
+}
+function parseHeaderLines(txt, vars) {
+  const h = {};
+  String(txt || '').split(/\r?\n/).forEach(line => {
+    const k = line.indexOf(':'); if (k < 1) return;
+    h[line.slice(0, k).trim()] = fillTpl(line.slice(k + 1).trim(), vars, 'raw');
+  });
+  return h;
+}
+async function hmacHex(algo, secret, msg) {
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: algo }, false, ['sign']);
+  const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(msg));
+  return Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+function randId(n) {
+  const a = 'abcdefghijklmnopqrstuvwxyz0123456789'; let o = '';
+  const r = crypto.getRandomValues(new Uint8Array(n));
+  for (let i = 0; i < n; i++) o += a[r[i] % a.length];
+  return o;
+}
+async function jfetch(url, opt) {
+  const r = await fetch(url, opt);
+  let j = null; const t = await r.text();
+  try { j = JSON.parse(t); } catch (e) { j = { _raw: t.slice(0, 300) }; }
+  return { ok: r.ok, status: r.status, j };
 }
 
-async function storeWhishCreate(request, env) {
-  let body;
-  try { body = await request.json(); } catch { return json(400, { error: 'bad json' }); }
-  const { order_id, token, slug } = body || {};
-  if (!order_id || !token || !slug) return json(400, { error: 'missing fields' });
+const GATEWAYS = {
+  // ---------- Whish ----------
+  whish: {
+    client(c) {
+      return new WhishClient({ channel: c.cfg.channel, secret: c.cfg.secret, websiteUrl: c.env.WEBSITE_URL,
+        environment: (c.env.WHISH_ENV === 'sandbox') ? 'sandbox' : 'production' });
+    },
+    async create(c) {
+      const cur = c.order.currency_code === 'LBP' ? 'LBP' : 'USD';
+      const r = await this.client(c).createPayment({
+        amount: Number(c.order.total), currency: cur,
+        invoice: `${c.store.name} — ${c.order.order_no}`, externalId: Number(c.order.id),
+        successCallbackUrl: `${c.site}/api/store/whish/callback-success`,
+        failureCallbackUrl: `${c.site}/api/store/whish/callback-failure`,
+        successRedirectUrl: c.ret, failureRedirectUrl: c.ret });
+      if (!r.success) throw new Error((r.dialog && r.dialog.message) || 'Whish rejected');
+      return { url: r.collectUrl, ref: String(c.order.id) };
+    },
+    async verify(c) {
+      const cur = c.order.currency_code === 'LBP' ? 'LBP' : 'USD';
+      const st = await this.client(c).getPaymentStatus(cur, Number(c.order.id));
+      return { paid: st.collectStatus === 'success', txn: st.transactionId || '' };
+    }
+  },
+  // ---------- Stripe (Checkout Session) ----------
+  stripe: {
+    async create(c) {
+      const cur = c.order.currency_code.toLowerCase();
+      const f = new URLSearchParams();
+      f.set('mode', 'payment'); f.set('success_url', c.ret); f.set('cancel_url', c.ret);
+      f.set('client_reference_id', String(c.order.id)); f.set('metadata[order_id]', String(c.order.id));
+      f.set('line_items[0][quantity]', '1');
+      f.set('line_items[0][price_data][currency]', cur);
+      f.set('line_items[0][price_data][unit_amount]', String(stripeMinor(c.order.total, cur)));
+      f.set('line_items[0][price_data][product_data][name]', `${c.store.name} — ${c.order.order_no}`);
+      if (/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(c.order.customer_email || '')) f.set('customer_email', c.order.customer_email);
+      const r = await jfetch('https://api.stripe.com/v1/checkout/sessions', { method: 'POST',
+        headers: { Authorization: 'Bearer ' + c.cfg.secret_key, 'Content-Type': 'application/x-www-form-urlencoded' }, body: f });
+      if (!r.ok || !r.j.url) throw new Error((r.j.error && r.j.error.message) || 'Stripe error ' + r.status);
+      return { url: r.j.url, ref: r.j.id };
+    },
+    async verify(c) {
+      const r = await jfetch(`https://api.stripe.com/v1/checkout/sessions/${encodeURIComponent(c.order.payment_ref)}`,
+        { headers: { Authorization: 'Bearer ' + c.cfg.secret_key } });
+      if (!r.ok) throw new Error((r.j.error && r.j.error.message) || 'Stripe error ' + r.status);
+      const okAmt = r.j.amount_total === stripeMinor(c.order.total, c.order.currency_code);
+      return { paid: r.j.payment_status === 'paid' && okAmt, failed: r.j.status === 'expired',
+        txn: typeof r.j.payment_intent === 'string' ? r.j.payment_intent : '' };
+    },
+    async test(c) {
+      const r = await jfetch('https://api.stripe.com/v1/balance', { headers: { Authorization: 'Bearer ' + c.cfg.secret_key } });
+      if (!r.ok) throw new Error((r.j.error && r.j.error.message) || 'Stripe error ' + r.status);
+      return { note: 'Stripe OK' + (c.cfg.secret_key.startsWith('sk_test') ? ' (test mode)' : '') };
+    }
+  },
+  // ---------- PayPal (Orders v2) ----------
+  paypal: {
+    base(c) { return c.cfg.mode === 'live' ? 'https://api-m.paypal.com' : 'https://api-m.sandbox.paypal.com'; },
+    async token(c) {
+      const r = await jfetch(this.base(c) + '/v1/oauth2/token', { method: 'POST',
+        headers: { Authorization: 'Basic ' + btoa(`${c.cfg.client_id}:${c.cfg.secret}`), 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'grant_type=client_credentials' });
+      if (!r.ok || !r.j.access_token) throw new Error(r.j.error_description || 'PayPal auth failed (' + r.status + ')');
+      return r.j.access_token;
+    },
+    async create(c) {
+      const t = await this.token(c), cur = c.order.currency_code;
+      const r = await jfetch(this.base(c) + '/v2/checkout/orders', { method: 'POST',
+        headers: { Authorization: 'Bearer ' + t, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ intent: 'CAPTURE',
+          purchase_units: [{ reference_id: c.order.order_no, custom_id: String(c.order.id),
+            description: `${c.store.name} — ${c.order.order_no}`.slice(0, 120),
+            amount: { currency_code: cur, value: fixedAmt(c.order.total, cur) } }],
+          application_context: { return_url: c.ret, cancel_url: c.ret, user_action: 'PAY_NOW',
+            brand_name: String(c.store.name).slice(0, 120), shipping_preference: 'NO_SHIPPING' } }) });
+      const link = ((r.j.links || []).find(l => l.rel === 'approve' || l.rel === 'payer-action') || {}).href;
+      if (!r.ok || !link) throw new Error(r.j.message || (r.j.details && r.j.details[0] && r.j.details[0].description) || 'PayPal error ' + r.status);
+      return { url: link, ref: r.j.id };
+    },
+    async verify(c) {
+      const t = await this.token(c), h = { Authorization: 'Bearer ' + t, 'Content-Type': 'application/json' };
+      let r = await jfetch(`${this.base(c)}/v2/checkout/orders/${encodeURIComponent(c.order.payment_ref)}`, { headers: h });
+      if (!r.ok) throw new Error(r.j.message || 'PayPal error ' + r.status);
+      if (r.j.status === 'APPROVED') {
+        r = await jfetch(`${this.base(c)}/v2/checkout/orders/${encodeURIComponent(c.order.payment_ref)}/capture`,
+          { method: 'POST', headers: h, body: '{}' });
+        if (!r.ok && !(r.j.details || []).some(d => d.issue === 'ORDER_ALREADY_CAPTURED')) throw new Error(r.j.message || 'PayPal capture failed');
+      }
+      const cap = dig(r.j, 'purchase_units.0.payments.captures.0');
+      const done = r.j.status === 'COMPLETED' && cap && cap.status === 'COMPLETED' &&
+        Math.abs(Number(cap.amount.value) - Number(c.order.total)) < 0.011;
+      return { paid: !!done, txn: cap ? cap.id : '', failed: r.j.status === 'VOIDED' };
+    },
+    async test(c) { await this.token(c); return { note: 'PayPal OK (' + (c.cfg.mode === 'live' ? 'live' : 'sandbox') + ')' }; }
+  },
+  // ---------- Binance Pay ----------
+  binance: {
+    async call(c, path, body) {
+      const ts = String(Date.now()), nonce = randId(32), b = JSON.stringify(body);
+      const sig = (await hmacHex('SHA-512', c.cfg.secret_key, `${ts}\n${nonce}\n${b}\n`)).toUpperCase();
+      return jfetch('https://bpay.binanceapi.com' + path, { method: 'POST', body: b, headers: {
+        'Content-Type': 'application/json', 'BinancePay-Timestamp': ts, 'BinancePay-Nonce': nonce,
+        'BinancePay-Certificate-SN': c.cfg.api_key, 'BinancePay-Signature': sig } });
+    },
+    async create(c) {
+      const sc = c.order.currency_code, want = String(c.cfg.currency || 'USDT').toUpperCase();
+      const pegged = sc === 'USD' && ['USDT', 'USDC', 'BUSD', 'USD'].includes(want);
+      if (!(pegged || want === sc)) throw new Error(`Binance currency ${want} does not match store currency ${sc}`);
+      const no = ('L' + c.order.id + randId(10)).slice(0, 32);
+      const r = await this.call(c, '/binancepay/openapi/v3/order', {
+        env: { terminalType: 'WEB' }, merchantTradeNo: no, orderAmount: Number(fixedAmt(c.order.total, sc)), currency: want,
+        goods: { goodsType: '02', goodsCategory: 'Z000', referenceGoodsId: String(c.order.id), goodsName: `${c.store.name} ${c.order.order_no}`.slice(0, 60) },
+        returnUrl: c.ret, cancelUrl: c.ret, webhookUrl: c.webhook });
+      if (r.j.status !== 'SUCCESS' || !r.j.data) throw new Error(r.j.errorMessage || 'Binance Pay error ' + (r.j.code || r.status));
+      return { url: r.j.data.checkoutUrl || r.j.data.universalUrl, ref: no };
+    },
+    async verify(c) {
+      const r = await this.call(c, '/binancepay/openapi/v2/order/query', { merchantTradeNo: c.order.payment_ref });
+      if (r.j.status !== 'SUCCESS' || !r.j.data) throw new Error(r.j.errorMessage || 'Binance Pay error');
+      const st = r.j.data.status;
+      return { paid: st === 'PAID', failed: ['EXPIRED', 'CANCELED', 'ERROR'].includes(st), txn: r.j.data.transactionId || '' };
+    }
+  },
+  // ---------- Areeba / Mastercard Gateway (MPGS) — Hosted Checkout ----------
+  areeba: {
+    base(c) { return `https://${c.cfg.host || 'areeba.gateway.mastercard.com'}/api/rest/version/${c.cfg.api_version || '100'}/merchant/${encodeURIComponent(c.cfg.merchant_id)}`; },
+    auth(c) { return 'Basic ' + btoa(`merchant.${c.cfg.merchant_id}:${c.cfg.api_password}`); },
+    async create(c) {
+      const ref = ('A' + c.order.id + randId(8)).toUpperCase(), cur = c.order.currency_code;
+      const r = await jfetch(this.base(c) + '/session', { method: 'POST',
+        headers: { Authorization: this.auth(c), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apiOperation: 'INITIATE_CHECKOUT',
+          interaction: { operation: 'PURCHASE', returnUrl: c.ret, cancelUrl: c.ret, merchant: { name: String(c.store.name).slice(0, 40) },
+            displayControl: { billingAddress: 'HIDE' } },
+          order: { id: ref, amount: fixedAmt(c.order.total, cur), currency: cur, description: `${c.store.name} ${c.order.order_no}`.slice(0, 120) } }) });
+      const sid = r.j.session && r.j.session.id;
+      if (!r.ok || !sid) throw new Error((r.j.error && r.j.error.explanation) || 'Areeba error ' + r.status);
+      return { url: `https://${c.cfg.host || 'areeba.gateway.mastercard.com'}/checkout/pay/${sid}`, ref };
+    },
+    async verify(c) {
+      const r = await jfetch(`${this.base(c)}/order/${encodeURIComponent(c.order.payment_ref)}`, { headers: { Authorization: this.auth(c) } });
+      if (!r.ok) return { paid: false };
+      const okAmt = Math.abs(Number(r.j.amount) - Number(c.order.total)) < 0.011;
+      return { paid: r.j.result === 'SUCCESS' && r.j.status === 'CAPTURED' && okAmt,
+        failed: r.j.result === 'FAILURE', txn: (dig(r.j, 'transaction.0.transaction.id')) || '' };
+    }
+  }
+};
 
-  const orders = await sbGet(env,
-    `store_orders?id=eq.${Number(order_id)}&token=eq.${encodeURIComponent(token)}` +
-    `&select=id,order_no,store_id,total,currency_code,status,token&limit=1`);
-  const order = orders[0];
+// ---------- بوابة عامة قابلة للضبط (MontyPay أو أي REST gateway) ----------
+const GENERIC = {
+  vars(c, ref) {
+    return { amount: fixedAmt(c.order.total, c.order.currency_code), amount_minor: stripeMinor(c.order.total, c.order.currency_code),
+      currency: c.order.currency_code, order_id: c.order.id, order_no: c.order.order_no, reference: ref, ref,
+      return_url: c.ret, cancel_url: c.ret, webhook_url: c.webhook, customer_name: c.order.customer_name,
+      customer_email: c.order.customer_email || '', customer_phone: c.order.customer_phone, store_name: c.store.name };
+  },
+  async create(c) {
+    const ref = ('L' + c.order.id + randId(8)).toUpperCase(), v = this.vars(c, ref), form = c.cfg.content_type === 'form';
+    const headers = Object.assign({ 'Content-Type': form ? 'application/x-www-form-urlencoded' : 'application/json' },
+      parseHeaderLines(c.cfg.headers, v));
+    const r = await jfetch(c.cfg.create_url, { method: c.cfg.method || 'POST', headers,
+      body: fillTpl(c.cfg.body, v, form ? 'form' : 'json') });
+    const url = dig(r.j, c.cfg.redirect_path);
+    if (!r.ok || !url) throw new Error('Gateway error ' + r.status + ' ' + JSON.stringify(r.j).slice(0, 160));
+    const refOut = c.cfg.ref_path ? String(dig(r.j, c.cfg.ref_path) || ref) : ref;
+    return { url: String(url), ref: refOut };
+  },
+  async verify(c) {
+    if (!c.cfg.status_url) return { paid: false, manual: true };
+    const v = this.vars(c, c.order.payment_ref);
+    const r = await jfetch(fillTpl(c.cfg.status_url, v, 'url'),
+      { method: c.cfg.status_method || 'GET', headers: parseHeaderLines(c.cfg.headers, v) });
+    const val = String(dig(r.j, c.cfg.status_path) === undefined ? '' : dig(r.j, c.cfg.status_path)).toLowerCase();
+    const okv = String(c.cfg.paid_values || 'paid,success,successful,captured,completed,approved,settled').toLowerCase().split(',').map(x => x.trim());
+    return { paid: okv.includes(val) };
+  }
+};
+GATEWAYS.montypay = GENERIC;
+GATEWAYS.custom = GENERIC;
+
+async function gwContext(request, env, order) {
+  const stores = await sbGet(env, `stores?id=eq.${order.store_id}&select=id,slug,name,is_active&limit=1`);
+  const store = stores[0];
+  if (!store) throw new Error('store not found');
+  const gws = await sbGet(env, `store_gateways?store_id=eq.${store.id}&provider=eq.${encodeURIComponent(order.payment_method)}&select=enabled,config&limit=1`);
+  const gw = gws[0];
+  if (!gw || !gw.enabled) throw new Error('payment method disabled');
+  const u = new URL(request.url), site = env.WEBSITE_URL;
+  const back = isPlatformHost(u.hostname, env) ? `${u.origin}/portal-store/${store.slug}` : u.origin;
+  return { env, order, store, cfg: gw.config || {}, site, origin: u.origin,
+    ret: `${back}?paid=${encodeURIComponent(order.token)}`,
+    webhook: `${site}/api/store/pay/webhook?t=${encodeURIComponent(order.token)}` };
+}
+const ORDER_COLS = 'id,order_no,store_id,total,currency_code,status,payment_method,payment_ref,token,customer_name,customer_email,customer_phone';
+
+// إنشاء دفعة: الرمز السري للطلب هو الإثبات
+async function payCreate(request, env) {
+  let body; try { body = await request.json(); } catch { return json(400, { error: 'bad json' }); }
+  const token = String(body.token || '');
+  if (!token) return json(400, { error: 'missing token' });
+  const order = (await sbGet(env, `store_orders?token=eq.${encodeURIComponent(token)}&select=${ORDER_COLS}&limit=1`))[0];
   if (!order) return json(404, { error: 'order not found' });
   if (order.status === 'paid') return json(400, { error: 'already paid' });
-
-  const stores = await sbGet(env,
-    `stores?id=eq.${order.store_id}&select=id,slug,name,whish_enabled,is_active&limit=1`);
-  const store = stores[0];
-  if (!store || store.slug !== String(slug).toLowerCase()) return json(400, { error: 'store mismatch' });
-  if (!store.is_active || !store.whish_enabled) return json(400, { error: 'الدفع عبر Whish غير مفعّل لهذا المتجر' });
-
-  const w = await storeWhishFor(env, store.id);
-  if (!w) return json(400, { error: 'بيانات Whish غير مكتملة عند صاحب المتجر' });
-
-  const currency = order.currency_code === 'LBP' ? 'LBP' : (order.currency_code === 'USD' ? 'USD' : null);
-  if (!currency) return json(400, { error: 'Whish بيدعم فقط الدولار والليرة' });
-  const amount = Number(order.total);
-  if (!(amount > 0)) return json(400, { error: 'invalid amount' });
-
-  const site = env.WEBSITE_URL;
-  const reqUrl = new URL(request.url);
-  const back = isPlatformHost(reqUrl.hostname, env)
-    ? `${reqUrl.origin}/portal-store/${store.slug}` : reqUrl.origin;
-  const returnUrl = `${back}?paid=${encodeURIComponent(order.token)}`;
-
+  if (!['awaiting_payment', 'pending'].includes(order.status)) return json(400, { error: 'order not payable' });
+  const adapter = GATEWAYS[order.payment_method];
+  if (!adapter) return json(400, { error: 'هذه الطلبية مش لدفع أونلاين' });
   try {
-    const result = await w.client.createPayment({
-      amount, currency,
-      invoice: `${store.name} — ${order.order_no}`,
-      externalId: Number(order.id),
-      successCallbackUrl: `${site}/api/store/whish/callback-success`,
-      failureCallbackUrl: `${site}/api/store/whish/callback-failure`,
-      successRedirectUrl: returnUrl,
-      failureRedirectUrl: returnUrl
-    });
-    if (!result.success) {
-      return json(400, { error: (result.dialog && result.dialog.message) || 'payment rejected' });
-    }
-    await sbPatch(env, `store_orders?id=eq.${order.id}`, { status: 'awaiting_payment', whish_currency: currency });
-    return json(200, { collectUrl: result.collectUrl });
+    const c = await gwContext(request, env, order);
+    const r = await adapter.create(c);
+    await sbPatch(env, `store_orders?id=eq.${order.id}`, { payment_ref: r.ref, status: 'awaiting_payment' });
+    return json(200, { url: r.url });
   } catch (e) {
-    console.error('store whish create failed', e);
-    const d = (e && e.dialog && e.dialog.message) || (e && (e.code || e.message)) || '';
-    return json(502, { error: 'بوابة الدفع رفضت العملية: ' + d });
+    console.error('pay create failed', order.payment_method, e && e.message);
+    return json(502, { error: 'بوابة الدفع رفضت العملية: ' + ((e && e.message) || '') });
   }
 }
 
+// تحقق مباشر من البوابة — بيناديه المتجر بعد رجوع الزبون، وwebhook، ولوحة التحكم
+async function verifyOrder(request, env, order) {
+  if (order.status === 'paid') return { status: 'paid', paid: true };
+  const adapter = GATEWAYS[order.payment_method];
+  if (!adapter || !order.payment_ref) return { status: order.status, paid: false };
+  const c = await gwContext(request, env, order);
+  const r = await adapter.verify(c);
+  if (r.paid) {
+    await sbPatch(env, `store_orders?id=eq.${order.id}&status=neq.paid`, {
+      status: 'paid', paid_at: new Date().toISOString(), whish_txn_id: r.txn || null });
+    return { status: 'paid', paid: true };
+  }
+  if (r.failed && order.status === 'awaiting_payment') {
+    await sbPatch(env, `store_orders?id=eq.${order.id}&status=eq.awaiting_payment`, { status: 'failed' });
+    return { status: 'failed', paid: false };
+  }
+  return { status: order.status, paid: false, manual: !!r.manual };
+}
+async function payVerify(request, env) {
+  const u = new URL(request.url);
+  let token = u.searchParams.get('t') || '';
+  if (!token && request.method === 'POST') { try { token = String((await request.json()).token || ''); } catch (e) {} }
+  if (!token) return json(400, { error: 'missing token' });
+  const order = (await sbGet(env, `store_orders?token=eq.${encodeURIComponent(token)}&select=${ORDER_COLS}&limit=1`))[0];
+  if (!order) return json(404, { error: 'order not found' });
+  try { return json(200, Object.assign({ ok: true, order_no: order.order_no }, await verifyOrder(request, env, order))); }
+  catch (e) { console.error('pay verify failed', e && e.message); return json(200, { ok: true, status: order.status, paid: false, error: String((e && e.message) || '') }); }
+}
+async function payWebhook(request, env) {
+  const u = new URL(request.url), token = u.searchParams.get('t') || '';
+  if (token) {
+    const order = (await sbGet(env, `store_orders?token=eq.${encodeURIComponent(token)}&select=${ORDER_COLS}&limit=1`))[0];
+    if (order) { try { await verifyOrder(request, env, order); } catch (e) { console.error('webhook verify', e && e.message); } }
+  }
+  return json(200, { returnCode: 'SUCCESS', returnMessage: null });   // الشكل اللي بتتوقعه Binance
+}
+
+// ---------- callbacks تبع Whish (بتشغّل نفس التحقق) ----------
 async function storeWhishSuccess(request, env) {
-  const parsed = parseCallbackUrl(request.url) || {};
-  const { externalId, currency } = parsed;
-  if (!externalId || !currency) return json(400, { error: 'malformed callback' });
-
-  const orders = await sbGet(env,
-    `store_orders?id=eq.${Number(externalId)}&select=id,store_id,total,currency_code,status&limit=1`);
-  const order = orders[0];
+  const { externalId } = parseCallbackUrl(request.url) || {};
+  if (!externalId) return json(400, { error: 'malformed callback' });
+  const order = (await sbGet(env, `store_orders?id=eq.${Number(externalId)}&select=${ORDER_COLS}&limit=1`))[0];
   if (!order) return json(404, { error: 'unknown order' });
-  if (order.status === 'paid') return json(200, { ok: true, already: true });
-
-  const w = await storeWhishFor(env, order.store_id);
-  if (!w) return json(400, { error: 'no credentials' });
-
-  let status;
-  try { status = await w.client.getPaymentStatus(currency, Number(externalId)); }
-  catch (e) { console.error('store status check failed', e && (e.code || e.message)); return json(502, { error: 'status check failed' }); }
-  if (status.collectStatus !== 'success') return json(400, { error: 'not confirmed', status: status.collectStatus });
-
-  if (status.amount !== undefined && status.amount !== null) {
-    if (!w.client.validateAmount(Number(status.amount), Number(order.total), currency)) {
-      console.error('store amount mismatch', order.id, status.amount, order.total);
-      return json(400, { error: 'amount mismatch' });
-    }
-  }
-  await sbPatch(env, `store_orders?id=eq.${order.id}&status=neq.paid`, {
-    status: 'paid', paid_at: new Date().toISOString(),
-    whish_txn_id: status.transactionId || null, whish_currency: currency
-  });
-  return json(200, { ok: true });
+  try { return json(200, Object.assign({ ok: true }, await verifyOrder(request, env, order))); }
+  catch (e) { return json(502, { error: 'status check failed' }); }
 }
-
 async function storeWhishFailure(request, env) {
   const { externalId } = parseCallbackUrl(request.url) || {};
   if (!externalId) return json(400, { error: 'malformed callback' });
   await sbPatch(env, `store_orders?id=eq.${Number(externalId)}&status=eq.awaiting_payment`, { status: 'failed' });
   return json(200, { ok: true });
+}
+
+// ---------- فحص المفاتيح من لوحة التحكم ----------
+async function ownerCheck(request, env, storeId) {
+  const me = await currentUser(request, env);
+  if (!me) return { err: json(401, { error: 'سجّل دخولك أولاً' }) };
+  if (!/^[0-9a-f-]{36}$/i.test(String(storeId || ''))) return { err: json(400, { error: 'bad store' }) };
+  const store = (await sbGet(env, `stores?id=eq.${storeId}&select=id,client_id,slug,name&limit=1`))[0];
+  if (!store) return { err: json(404, { error: 'store not found' }) };
+  const cl = await sbGet(env, `clients?id=eq.${store.client_id}&select=user_id&limit=1`);
+  let allowed = cl[0] && cl[0].user_id === me.id;
+  if (!allowed) allowed = (await sbGet(env, `platform_admins?user_id=eq.${me.id}&select=user_id&limit=1`)).length > 0;
+  if (!allowed) return { err: json(403, { error: 'not allowed' }) };
+  return { store, me };
+}
+async function payTest(request, env) {
+  let body; try { body = await request.json(); } catch { return json(400, { error: 'bad json' }); }
+  const o = await ownerCheck(request, env, body.store_id); if (o.err) return o.err;
+  const provider = String(body.provider || '');
+  const gw = (await sbGet(env, `store_gateways?store_id=eq.${o.store.id}&provider=eq.${encodeURIComponent(provider)}&select=config&limit=1`))[0];
+  if (!gw) return json(400, { error: 'احفظ الإعدادات أولاً' });
+  const adapter = GATEWAYS[provider];
+  if (!adapter || !adapter.test) return json(200, { ok: true, note: 'ما في فحص تلقائي لهذه البوابة — جرّب طلب صغير.' });
+  try { return json(200, Object.assign({ ok: true }, await adapter.test({ env, cfg: gw.config || {}, store: o.store }))); }
+  catch (e) { return json(200, { ok: false, error: String((e && e.message) || e) }); }
 }
 
 // ---------- الدومين الخاص (Cloudflare for SaaS — Custom Hostnames) ----------
@@ -1197,9 +1438,15 @@ export default {
         }
         if (url.pathname === '/api/whish/callback-success') return await whishSuccess(request, env);
         if (url.pathname === '/api/whish/callback-failure') return await whishFailure(request, env);
-        if (url.pathname === '/api/store/whish/create') {
+        if (url.pathname === '/api/store/pay/create') {
           if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
-          return await storeWhishCreate(request, env);
+          return await payCreate(request, env);
+        }
+        if (url.pathname === '/api/store/pay/verify') return await payVerify(request, env);
+        if (url.pathname === '/api/store/pay/webhook') return await payWebhook(request, env);
+        if (url.pathname === '/api/store/pay/test') {
+          if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
+          return await payTest(request, env);
         }
         if (url.pathname === '/api/store/whish/callback-success') return await storeWhishSuccess(request, env);
         if (url.pathname === '/api/store/whish/callback-failure') return await storeWhishFailure(request, env);
