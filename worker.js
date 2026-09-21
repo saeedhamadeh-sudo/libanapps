@@ -866,6 +866,259 @@ async function adminExtendLicense(request, env) {
   return json(200, { ok: true, key: finalKey, expires_at: sub.expires_at });
 }
 
+
+// ============================================================
+//  المتجر الإلكتروني (product = store)
+// ============================================================
+
+// هل هذا الـHost تبع المنصة نفسها (وليس دومين زبون)؟
+function isPlatformHost(host, env) {
+  host = String(host || '').toLowerCase();
+  let site = '';
+  try { site = new URL(env.WEBSITE_URL || '').hostname.toLowerCase(); } catch (e) {}
+  return host === 'localhost' || host === site || host === 'www.' + site ||
+         host.endsWith('.' + site) || host.endsWith('.workers.dev');
+}
+
+// ---------- Whish الخاص بكل متجر ----------
+async function storeWhishFor(env, storeId) {
+  const rows = await sbGet(env, `store_payment_credentials?store_id=eq.${storeId}&select=*&limit=1`);
+  const c = rows[0];
+  if (!c || !c.whish_channel || !c.whish_secret) return null;
+  return {
+    cred: c,
+    client: new WhishClient({
+      channel: c.whish_channel,
+      secret: c.whish_secret,
+      websiteUrl: c.website_url || env.WEBSITE_URL,
+      environment: (env.WHISH_ENV === 'sandbox') ? 'sandbox' : 'production'
+    })
+  };
+}
+
+async function storeWhishCreate(request, env) {
+  let body;
+  try { body = await request.json(); } catch { return json(400, { error: 'bad json' }); }
+  const { order_id, token, slug } = body || {};
+  if (!order_id || !token || !slug) return json(400, { error: 'missing fields' });
+
+  const orders = await sbGet(env,
+    `store_orders?id=eq.${Number(order_id)}&token=eq.${encodeURIComponent(token)}` +
+    `&select=id,order_no,store_id,total,currency_code,status,token&limit=1`);
+  const order = orders[0];
+  if (!order) return json(404, { error: 'order not found' });
+  if (order.status === 'paid') return json(400, { error: 'already paid' });
+
+  const stores = await sbGet(env,
+    `stores?id=eq.${order.store_id}&select=id,slug,name,whish_enabled,is_active&limit=1`);
+  const store = stores[0];
+  if (!store || store.slug !== String(slug).toLowerCase()) return json(400, { error: 'store mismatch' });
+  if (!store.is_active || !store.whish_enabled) return json(400, { error: 'الدفع عبر Whish غير مفعّل لهذا المتجر' });
+
+  const w = await storeWhishFor(env, store.id);
+  if (!w) return json(400, { error: 'بيانات Whish غير مكتملة عند صاحب المتجر' });
+
+  const currency = order.currency_code === 'LBP' ? 'LBP' : (order.currency_code === 'USD' ? 'USD' : null);
+  if (!currency) return json(400, { error: 'Whish بيدعم فقط الدولار والليرة' });
+  const amount = Number(order.total);
+  if (!(amount > 0)) return json(400, { error: 'invalid amount' });
+
+  const site = env.WEBSITE_URL;
+  const reqUrl = new URL(request.url);
+  const back = isPlatformHost(reqUrl.hostname, env)
+    ? `${reqUrl.origin}/portal-store/${store.slug}` : reqUrl.origin;
+  const returnUrl = `${back}?paid=${encodeURIComponent(order.token)}`;
+
+  try {
+    const result = await w.client.createPayment({
+      amount, currency,
+      invoice: `${store.name} — ${order.order_no}`,
+      externalId: Number(order.id),
+      successCallbackUrl: `${site}/api/store/whish/callback-success`,
+      failureCallbackUrl: `${site}/api/store/whish/callback-failure`,
+      successRedirectUrl: returnUrl,
+      failureRedirectUrl: returnUrl
+    });
+    if (!result.success) {
+      return json(400, { error: (result.dialog && result.dialog.message) || 'payment rejected' });
+    }
+    await sbPatch(env, `store_orders?id=eq.${order.id}`, { status: 'awaiting_payment', whish_currency: currency });
+    return json(200, { collectUrl: result.collectUrl });
+  } catch (e) {
+    console.error('store whish create failed', e);
+    const d = (e && e.dialog && e.dialog.message) || (e && (e.code || e.message)) || '';
+    return json(502, { error: 'بوابة الدفع رفضت العملية: ' + d });
+  }
+}
+
+async function storeWhishSuccess(request, env) {
+  const parsed = parseCallbackUrl(request.url) || {};
+  const { externalId, currency } = parsed;
+  if (!externalId || !currency) return json(400, { error: 'malformed callback' });
+
+  const orders = await sbGet(env,
+    `store_orders?id=eq.${Number(externalId)}&select=id,store_id,total,currency_code,status&limit=1`);
+  const order = orders[0];
+  if (!order) return json(404, { error: 'unknown order' });
+  if (order.status === 'paid') return json(200, { ok: true, already: true });
+
+  const w = await storeWhishFor(env, order.store_id);
+  if (!w) return json(400, { error: 'no credentials' });
+
+  let status;
+  try { status = await w.client.getPaymentStatus(currency, Number(externalId)); }
+  catch (e) { console.error('store status check failed', e && (e.code || e.message)); return json(502, { error: 'status check failed' }); }
+  if (status.collectStatus !== 'success') return json(400, { error: 'not confirmed', status: status.collectStatus });
+
+  if (status.amount !== undefined && status.amount !== null) {
+    if (!w.client.validateAmount(Number(status.amount), Number(order.total), currency)) {
+      console.error('store amount mismatch', order.id, status.amount, order.total);
+      return json(400, { error: 'amount mismatch' });
+    }
+  }
+  await sbPatch(env, `store_orders?id=eq.${order.id}&status=neq.paid`, {
+    status: 'paid', paid_at: new Date().toISOString(),
+    whish_txn_id: status.transactionId || null, whish_currency: currency
+  });
+  return json(200, { ok: true });
+}
+
+async function storeWhishFailure(request, env) {
+  const { externalId } = parseCallbackUrl(request.url) || {};
+  if (!externalId) return json(400, { error: 'malformed callback' });
+  await sbPatch(env, `store_orders?id=eq.${Number(externalId)}&status=eq.awaiting_payment`, { status: 'failed' });
+  return json(200, { ok: true });
+}
+
+// ---------- الدومين الخاص (Cloudflare for SaaS — Custom Hostnames) ----------
+//  المتغيرات المطلوبة (Secrets): CF_API_TOKEN (صلاحية SSL and Certificates: Edit) + CF_ZONE_ID
+//  متغير عادي اختياري: STORE_CNAME_TARGET (الافتراضي stores.libanapps.com)
+async function cfApi(env, method, path, body) {
+  const r = await fetch(`https://api.cloudflare.com/client/v4/zones/${env.CF_ZONE_ID}${path}`, {
+    method,
+    headers: { Authorization: `Bearer ${env.CF_API_TOKEN}`, 'Content-Type': 'application/json' },
+    body: body ? JSON.stringify(body) : undefined
+  });
+  let j = {}; try { j = await r.json(); } catch (e) {}
+  return j;
+}
+function cfError(j) {
+  return (j && j.errors && j.errors[0] && j.errors[0].message) || 'Cloudflare error';
+}
+function normalizeDomain(v) {
+  let d = String(v || '').trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '').replace(/:\d+$/, '');
+  if (!/^(?=.{4,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,24}$/.test(d)) return '';
+  return d;
+}
+function mapCf(res) {
+  const st = res.status || '', ssl = (res.ssl && res.ssl.status) || '';
+  const active = st === 'active' && (!ssl || ssl === 'active');
+  const failed = ['blocked', 'moved', 'deleted'].includes(st) || ['deleted', 'validation_timed_out', 'issuance_timed_out'].includes(ssl);
+  return { status: active ? 'active' : (failed ? 'failed' : 'pending'), cf_status: st, ssl_status: ssl };
+}
+
+async function storeDomain(request, env) {
+  const me = await currentUser(request, env);
+  if (!me) return json(401, { error: 'سجّل دخولك أولاً' });
+  let body;
+  try { body = await request.json(); } catch { return json(400, { error: 'bad json' }); }
+  const storeId = String(body.store_id || '');
+  if (!/^[0-9a-f-]{36}$/i.test(storeId)) return json(400, { error: 'bad store' });
+
+  const stores = await sbGet(env, `stores?id=eq.${storeId}&select=id,client_id,slug&limit=1`);
+  const store = stores[0];
+  if (!store) return json(404, { error: 'store not found' });
+  const clients = await sbGet(env, `clients?id=eq.${store.client_id}&select=user_id&limit=1`);
+  let allowed = clients[0] && clients[0].user_id === me.id;
+  if (!allowed) {
+    const adm = await sbGet(env, `platform_admins?user_id=eq.${me.id}&select=user_id&limit=1`);
+    allowed = adm.length > 0;
+  }
+  if (!allowed) return json(403, { error: 'not allowed' });
+
+  const cfOn = !!(env.CF_API_TOKEN && env.CF_ZONE_ID);
+  const target = env.STORE_CNAME_TARGET || 'stores.libanapps.com';
+  const existing = (await sbGet(env, `store_domains?store_id=eq.${store.id}&select=*&limit=1`))[0];
+  const action = body.action;
+
+  if (action === 'add') {
+    if (existing) return json(400, { error: 'عندك دومين مربوط — احذفه أولاً' });
+    const domain = normalizeDomain(body.domain);
+    if (!domain) return json(400, { error: 'الدومين غير صالح — مثال: shop.mybrand.com' });
+    if (isPlatformHost(domain, env)) return json(400, { error: 'هذا الدومين محجوز للمنصة' });
+    const dup = await sbGet(env, `store_domains?domain=eq.${encodeURIComponent(domain)}&select=id&limit=1`);
+    if (dup.length) return json(400, { error: 'هذا الدومين مربوط بمتجر آخر' });
+
+    const info = { cname_target: target };
+    let cfId = null, mapped = { status: 'pending', cf_status: '', ssl_status: '' };
+    if (cfOn) {
+      const j = await cfApi(env, 'POST', '/custom_hostnames',
+        { hostname: domain, ssl: { method: 'http', type: 'dv', settings: { min_tls_version: '1.2' } } });
+      if (!j.success) return json(400, { error: cfError(j) });
+      cfId = j.result.id; mapped = mapCf(j.result);
+      const ov = j.result.ownership_verification;
+      if (ov && ov.name) { info.txt_name = ov.name; info.txt_value = ov.value; }
+    }
+    const ins = await fetch(`${env.SUPABASE_URL}/rest/v1/store_domains`, {
+      method: 'POST',
+      headers: { ...sbHeaders(env), 'Content-Type': 'application/json', Prefer: 'return=representation' },
+      body: JSON.stringify({ store_id: store.id, domain, cf_hostname_id: cfId, info, ...mapped })
+    });
+    if (!ins.ok) return json(500, { error: 'تعذّر حفظ الدومين: ' + (await ins.text()).slice(0, 120) });
+    const row = (await ins.json())[0];
+    return json(200, { ok: true, domain: row, cname_target: target, manual: !cfOn,
+      message: cfOn ? undefined : 'تم تسجيل طلبك — رح يتفعّل الدومين من قبل الدعم بعد ما تضيف سجل CNAME.' });
+  }
+
+  if (!existing) return json(404, { error: 'ما في دومين مربوط' });
+
+  if (action === 'refresh') {
+    if (!(cfOn && existing.cf_hostname_id)) return json(200, { ok: true, domain: existing, cname_target: target });
+    const j = await cfApi(env, 'GET', `/custom_hostnames/${existing.cf_hostname_id}`);
+    if (!j.success) return json(400, { error: cfError(j) });
+    const m = mapCf(j.result);
+    const upd = { ...m, verified_at: m.status === 'active' ? (existing.verified_at || new Date().toISOString()) : null };
+    await sbPatch(env, `store_domains?id=eq.${existing.id}`, upd);
+    return json(200, { ok: true, domain: { ...existing, ...upd }, cname_target: target });
+  }
+
+  if (action === 'remove') {
+    if (cfOn && existing.cf_hostname_id) await cfApi(env, 'DELETE', `/custom_hostnames/${existing.cf_hostname_id}`);
+    await fetch(`${env.SUPABASE_URL}/rest/v1/store_domains?id=eq.${existing.id}`, { method: 'DELETE', headers: sbHeaders(env) });
+    domCache.delete(existing.domain);
+    return json(200, { ok: true });
+  }
+  return json(400, { error: 'unknown action' });
+}
+
+// ---------- خدمة متجر على دومين الزبون ----------
+const domCache = new Map();
+async function resolveDomain(env, ctx, host) {
+  const c = domCache.get(host);
+  if (c && c.exp > Date.now()) return c.slug;
+  let row;
+  try {
+    const rows = await sbGet(env, `store_domains?domain=eq.${encodeURIComponent(host)}&select=id,status,stores(slug)&limit=1`);
+    row = rows[0];
+  } catch (e) { return undefined; }            // خطأ مؤقت — ما منخزّنه
+  const slug = (row && row.stores && row.stores.slug) || null;
+  // وصلنا طلب على هالدومين = Cloudflare فعّله؛ منحدّث الحالة تلقائياً
+  if (row && row.status === 'pending' && ctx && ctx.waitUntil) {
+    ctx.waitUntil(sbPatch(env, `store_domains?id=eq.${row.id}`, { status: 'active', verified_at: new Date().toISOString() }));
+  }
+  domCache.set(host, { slug, exp: Date.now() + 60000 });
+  return slug;
+}
+async function serveStore(env, url, slug) {
+  const res = await env.ASSETS.fetch(new URL('/store.html', url.origin));
+  let html = await res.text();
+  html = html.replace('<!--STORE_BOOT-->', '<script>window.__STORE_SLUG__=' + JSON.stringify(slug) + ';</script>');
+  return new Response(html, {
+    status: 200,
+    headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' }
+  });
+}
+
 // ---------- سياسة التخزين المؤقت ----------
 //  HTML: المتصفح يسأل السيرفر كل مرة (no-cache) — التعديلات تصل فوراً
 //  الصور والخطوط: تُخزَّن طويلاً — لا تتغيّر عادةً
@@ -897,6 +1150,9 @@ function pageFor(pathname) {
   if (p === '/account')       return '/account.html';
   if (p === '/alum')          return '/app-alum.html';
   if (p === '/trade')         return '/app-trade.html';
+  if (p === '/store-info' || p === '/portal-store') return '/product-store.html';
+  if (/^\/portal-store\/[^/]+\/admin\/?$/.test(p)) return '/store-admin.html';
+  if (/^\/portal-store\/[^/]+\/?$/.test(p)) return '/store.html';
   if (p.startsWith('/i/'))    return '/invoice.html';
   // رابط لوحة تحكم مطعم محدد: /اسم-المحل/admin
   if (/^\/[^/]+\/admin\/?$/.test(p)) return '/admin.html';
@@ -941,6 +1197,16 @@ export default {
         }
         if (url.pathname === '/api/whish/callback-success') return await whishSuccess(request, env);
         if (url.pathname === '/api/whish/callback-failure') return await whishFailure(request, env);
+        if (url.pathname === '/api/store/whish/create') {
+          if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
+          return await storeWhishCreate(request, env);
+        }
+        if (url.pathname === '/api/store/whish/callback-success') return await storeWhishSuccess(request, env);
+        if (url.pathname === '/api/store/whish/callback-failure') return await storeWhishFailure(request, env);
+        if (url.pathname === '/api/store/domain') {
+          if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
+          return await storeDomain(request, env);
+        }
         if (url.pathname === '/api/buy/create') {
           if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
           return await buyCreate(request, env);
@@ -983,6 +1249,23 @@ export default {
           where: url.pathname
         });
       }
+    }
+
+    // 1.5) دومين خاص بمتجر زبون — أي مسار غير الـAPI والصور بيعرض متجره
+    if (!isPlatformHost(url.hostname, env)) {
+      const slug = await resolveDomain(env, ctx, url.hostname.toLowerCase());
+      if (slug === undefined) return new Response('Temporary error, try again', { status: 503 });
+      if (!slug) {
+        return new Response('This domain is not connected to any store.', {
+          status: 404, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
+      }
+      if (url.pathname.replace(/\/+$/, '').endsWith('/admin')) {
+        return Response.redirect(`${env.WEBSITE_URL}/portal-store/${slug}/admin`, 302);
+      }
+      if (/\.[a-z0-9]{2,5}$/i.test(url.pathname)) {
+        return new Response('Not found', { status: 404, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
+      }
+      return await serveStore(env, url, slug);
     }
 
     // 2) طلب لملف حقيقي (فيه امتداد صريح متل .css / .js / .png) — نخدمه متل ما هو
