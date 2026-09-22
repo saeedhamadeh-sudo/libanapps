@@ -564,6 +564,7 @@ body.login-page .credit .credit-tel{color:#E08A2B}
       <h3>اشتراكك</h3>
       <div id="subBox"><p class="muted">عم نحمّل…</p></div>
     </div>
+    <div class="panel" id="subDlv"><p class="muted">عم نحمّل…</p></div>
     <div class="panel">
       <h3>حسابك على LibanApps</h3>
       <p class="muted">من صفحة حسابك بتشوف كل اشتراكاتك وفواتيرك وبتشتري برامج تانية.</p>
@@ -613,6 +614,8 @@ window.LIBANAPPS = {
 </script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.0/dist/umd/supabase.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="/assets/lang-engine.js"></script>
+<script src="/assets/admin-i18n.js"></script>
 <script src="/assets/delivery-admin.js"></script>
 <script>
 (function(){
@@ -694,6 +697,7 @@ async function boot(){
   await licBadge(); siteHelp();
   paintLock();
   await loadCats(); await loadItems(); fillSettings(); loadSub(); loadPay(); loadBanners(); loadPromos();
+  if(window.DLV) window.DLV.boot();   // اشتراك التوصيل + رجوع من صفحة الدفع
 }
 async function siteHelp(){
   var r=await sb.rpc('public_settings');
@@ -1473,38 +1477,18 @@ var ADMIN_EN = {"لوحة التحكم": "Dashboard", "البريد الإلكت
 var ADMIN_LANG='ar';
 var ORIG = (typeof WeakMap!=='undefined') ? new WeakMap() : null;
 
+var LANG_ENG=null;
 function applyAdminLang(l){
   ADMIN_LANG = l;
-  var w=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT,{
-    acceptNode:function(n){
-      if(!n.nodeValue||!n.nodeValue.trim()) return NodeFilter.FILTER_REJECT;
-      var p=n.parentNode&&n.parentNode.nodeName;
-      if(p==='SCRIPT'||p==='STYLE') return NodeFilter.FILTER_REJECT;
-      return NodeFilter.FILTER_ACCEPT;
-    }});
-  var n;
-  while((n=w.nextNode())){
-    // النص العربي الأصلي بينحفظ مرة وحدة لكل عقدة
-    if(ORIG && !ORIG.has(n)) ORIG.set(n, n.nodeValue);
-    var ar = ORIG ? ORIG.get(n) : n.nodeValue;
-    var key = ar.trim();
-    var want = (l==='en' && ADMIN_EN[key]) ? ar.replace(key, ADMIN_EN[key]) : ar;
-    if(n.nodeValue !== want) n.nodeValue = want;   // ما منلمس العقدة إذا مش لازم
-  }
-  Array.prototype.forEach.call(document.querySelectorAll('[placeholder]'),function(el){
-    if(!el.dataset.phAr) el.dataset.phAr=el.placeholder;
-    var k=el.dataset.phAr.trim();
-    var want=(l==='en'&&ADMIN_EN[k])?ADMIN_EN[k]:el.dataset.phAr;
-    if(el.placeholder!==want) el.placeholder=want;
-  });
-  document.documentElement.lang=l;
-  document.documentElement.dir=(l==='ar')?'rtl':'ltr';
+  // محرّك مشترك: بيترجم كمان النصوص اللي بتنرسم بعدين، الأرقام، الرسائل والقوائم
+  if(!LANG_ENG) LANG_ENG = window.LAEngine({ dicts: { en: Object.assign({}, ADMIN_EN, window.ADMIN_EN_EXTRA||{}) } });
+  LANG_ENG.apply(l);
   var b=document.getElementById('langBtn');
   if(b) b.textContent=(l==='ar')?'English':'عربي';
   try{ localStorage.setItem('la_admin_lang',l); }catch(e){}
 }
 // تُستدعى بعد كل إعادة رسم — بدون مراقب وبدون حلقات
-function relang(){ if(ADMIN_LANG==='en') applyAdminLang('en'); }
+function relang(){ if(ADMIN_LANG==='en' && LANG_ENG) LANG_ENG.relang(); }
 
 $('#langBtn').addEventListener('click',function(){
   applyAdminLang(ADMIN_LANG==='ar'?'en':'ar');
