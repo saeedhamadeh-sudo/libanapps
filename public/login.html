@@ -209,6 +209,14 @@ footer.site .bottom b{color:#fff}
         <button class="btn btn-p full" id="doLogin" style="margin-top:18px">دخول</button>
       </div>
 
+      <div id="form2fa" class="hidden">
+        <p style="font-size:14px;color:var(--muted);margin:0 0 14px">حسابك محمي بالتحقق بخطوتين. أدخل الرمز من تطبيق المصادقة على موبايلك.</p>
+        <label id="twoLbl">رمز التحقق (٦ أرقام)</label>
+        <input type="text" id="twoCode" inputmode="numeric" maxlength="12" autocomplete="one-time-code" placeholder="000000" style="text-align:center;letter-spacing:3px;font-size:20px">
+        <button class="btn btn-p full" id="doTwo" style="margin-top:18px">تأكيد</button>
+        <p style="text-align:center;margin:14px 0 0"><a href="#" id="toggleBackup" style="color:var(--sky);font-size:13.5px;font-weight:700">ضاع مني تطبيق المصادقة؟ استخدم رمز احتياطي</a></p>
+      </div>
+
       <div class="msg" id="sMsg"></div>
       <p style="text-align:center;font-size:14px;color:var(--muted);margin:16px 0 0">
         ما عندك حساب؟ <a href="/signup" style="color:var(--sky);font-weight:700">افتح حساب جديد</a></p>
@@ -322,6 +330,19 @@ if(sb) sb.auth.getSession().then(function(r){
   }
 
 
+  var twoFactorId=null, useBackup=false;
+  async function checkStep2(){
+    var lvl=await sb.auth.mfa.getAuthenticatorAssuranceLevel();
+    if(lvl.data && lvl.data.nextLevel==='aal2' && lvl.data.currentLevel!=='aal2'){
+      var f=(await sb.auth.mfa.listFactors()).data;
+      var totp=(f&&f.totp||[]).filter(function(x){return x.status==='verified'});
+      twoFactorId=totp[0]&&totp[0].id;
+      $('#formOld').classList.add('hidden'); $('#form2fa').classList.remove('hidden');
+      msg(''); $('#twoCode').focus();
+      return true;
+    }
+    return false;
+  }
   $('#doLogin').addEventListener('click',async function(){
     var mail=$('#lMail').value.trim().toLowerCase(), pass=$('#lPass').value;
     if(!mail||!pass) return msg('عبّي الحقول',false);
@@ -329,12 +350,45 @@ if(sb) sb.auth.getSession().then(function(r){
     var r=await sb.auth.signInWithPassword({email:mail,password:pass});
     this.disabled=false;
     if(r.error) return msg('بيانات الدخول غير صحيحة',false);
+    if(await checkStep2()) return;
     go();
   });
   $('#lPass').addEventListener('keydown',function(e){
     if(e.key==='Enter') $('#doLogin').click(); });
 
-  if(sb) sb.auth.getSession().then(function(r){ if(r.data.session) go(); });
+  $('#toggleBackup').addEventListener('click',function(e){
+    e.preventDefault(); useBackup=!useBackup;
+    $('#twoLbl').textContent = useBackup ? 'الرمز الاحتياطي' : 'رمز التحقق (٦ أرقام)';
+    $('#twoCode').placeholder = useBackup ? 'XXXX-XXXX' : '000000';
+    $('#twoCode').value=''; $('#twoCode').focus();
+    this.textContent = useBackup ? 'رجاع لرمز تطبيق المصادقة' : 'ضاع مني تطبيق المصادقة؟ استخدم رمز احتياطي';
+  });
+  $('#doTwo').addEventListener('click',async function(){
+    var code=$('#twoCode').value.trim();
+    if(!code) return msg('اكتب الرمز',false);
+    this.disabled=true; msg('عم نتحقق…');
+    try{
+      if(useBackup){
+        var ses=await sb.auth.getSession();
+        var res=await fetch('/api/mfa/backup-codes/verify',{method:'POST',
+          headers:{'Content-Type':'application/json','Authorization':'Bearer '+ses.data.session.access_token},
+          body:JSON.stringify({code:code.toUpperCase()})});
+        var j=await res.json();
+        if(!j.ok){ this.disabled=false; return msg(j.error||'الرمز غير صحيح',false); }
+      } else {
+        if(!twoFactorId){ this.disabled=false; return msg('تعذّر تحديد عامل التحقق، جرّب تسجيل الدخول مجدداً',false); }
+        var ch=await sb.auth.mfa.challenge({factorId:twoFactorId});
+        if(ch.error){ this.disabled=false; return msg(ch.error.message,false); }
+        var vf=await sb.auth.mfa.verify({factorId:twoFactorId,challengeId:ch.data.id,code:code});
+        if(vf.error){ this.disabled=false; return msg('الرمز غير صحيح',false); }
+      }
+    }catch(err){ this.disabled=false; return msg(String(err.message||err),false); }
+    this.disabled=false; go();
+  });
+  $('#twoCode').addEventListener('keydown',function(e){
+    if(e.key==='Enter') $('#doTwo').click(); });
+
+  if(sb) sb.auth.getSession().then(async function(r){ if(r.data.session){ if(await checkStep2()) return; go(); } });
 })();
 </script>
 
@@ -394,7 +448,7 @@ window.SITE_I18N = { en: {"البرامج": "Products", "منيو المطاعم
     var saved=null;
     try{ saved=localStorage.getItem('la_site_lang'); }catch(e){}
     if(saved==='en'||saved==='fr') window.setSiteLang(saved);
-    else { window.setSiteLang('ar'); if(sel) sel.value='ar'; }
+    else { window.setSiteLang('ar'); }
   });
 })();
 </script>
