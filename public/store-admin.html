@@ -1214,8 +1214,26 @@ async function runImport(){
   imp.running=false; var b=$('#impGo'); if(b) b.disabled=false;
 }
 function isExtUrl(u){return !!u&&/^https?:\/\//i.test(u)&&String(u).indexOf('/storage/v1/object/public/')<0;}
+function sleep(ms){ return new Promise(function(res){setTimeout(res,ms)}); }
+var REASON_L={blocked:['محظور من المصدر (403)','Blocked by source (403)'],rate_limited:['المصدر رفض الكمية (429)','Source throttled us (429)'],not_found:['الرابط مش موجود (404)','Link not found (404)'],
+  timeout:['انتهت المهلة','Timed out'],network:['تعذّر الاتصال','Connection failed'],not_image:['الرابط مش صورة','Not an image'],too_large:['أكبر من 8MB','Over 8MB'],
+  storage:['تعذّر الحفظ بالمخزن','Storage save failed'],empty:['ملف فارغ','Empty file'],bad_url:['رابط غير صالح','Invalid URL']};
+var RETRYABLE={blocked:1,rate_limited:1,timeout:1,network:1};
+// المصدر (خصوصاً استضافات مشتركة صغيرة) بيحظر بسرعة إذا حسّ فيه طلبات كتيرة سريعة —
+// نحاول مرتين إضافيتين بفواصل متزايدة قبل ما نستسلم لهيك صورة
 async function copyOneImage(u){
-  try{ var tok=await accessToken(); var r=await fetch('/api/store/import-image',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok},body:JSON.stringify({store_id:ST.id,url:u})}); var j=await r.json(); return (r.ok&&j.url)?j.url:null; }catch(e){ return null; }
+  for(var attempt=0;attempt<3;attempt++){
+    if(attempt>0) await sleep(attempt===1?1500:4500);
+    try{
+      var tok=await accessToken();
+      var r=await fetch('/api/store/import-image',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok},body:JSON.stringify({store_id:ST.id,url:u})});
+      var j=await r.json();
+      if(r.ok&&j.url) return {url:j.url};
+      var reason=j.reason||'other';
+      if(!RETRYABLE[reason]||attempt===2) return {error:reason};
+    }catch(e){ if(attempt===2) return {error:'network'}; }
+  }
+  return {error:'other'};
 }
 async function runCopyImages(){
   imp.copying=true; imp.copyStop.stop=false; $('#impCopy').disabled=true; $('#impStop').disabled=false;
@@ -1225,23 +1243,40 @@ async function runCopyImages(){
     var todo=PRODS.filter(function(p){return isExtUrl(p.image_url)||(p.images||[]).some(isExtUrl)||(p.colors||[]).some(function(c){return isExtUrl(c.img)});});
     if(!todo.length){ msg.className='msg s'; msg.textContent=L('ما في صور خارجية — كل شي منسوخ ✓','No external images — everything is already copied ✓'); }
     else{
-      var cache={}, pos=0, done=0, ok=0, fail=0;
+      var cache={}, pos=0, done=0, ok=0, fail=0, reasons={};
+      function reasonLine(){
+        var parts=Object.keys(reasons).map(function(k){return pick(REASON_L[k]||[k,k])+': '+reasons[k]});
+        return parts.length?' ('+parts.join(' · ')+')':'';
+      }
+      // ماشيين بروية (وحدتين بالتوازي + فاصل صغير بين كل طلب) لأنو الاستضافات الصغيرة
+      // بتحظر أو بترفض الطلبات لو حسّت فيه دفعة كبيرة بنفس الوقت — هيك أنجح وأخفّ عالمصدر
       async function worker(){
         while(pos<todo.length&&!imp.copyStop.stop){
           var p=todo[pos++];
           try{
             var urls=uniq([p.image_url].concat(p.images||[]).concat((p.colors||[]).map(function(c){return c.img})).filter(isExtUrl)), map={};
-            for(var k=0;k<urls.length;k++){ var u=urls[k]; if(cache[u]===undefined){ cache[u]=await copyOneImage(u); if(cache[u]) ok++; else fail++; } map[u]=cache[u]; }
+            for(var k=0;k<urls.length;k++){
+              var u=urls[k];
+              if(cache[u]===undefined){
+                var res=await copyOneImage(u); await sleep(180);
+                if(res.url){ cache[u]=res.url; ok++; } else { cache[u]=null; fail++; reasons[res.error]=(reasons[res.error]||0)+1; }
+              }
+              map[u]=cache[u];
+            }
             var upd={}, im=isExtUrl(p.image_url)&&map[p.image_url]?map[p.image_url]:p.image_url; if(im!==p.image_url) upd.image_url=im;
             var ims=(p.images||[]).map(function(u){return map[u]||u}); if(JSON.stringify(ims)!==JSON.stringify(p.images||[])) upd.images=ims;
             var cols=(p.colors||[]).map(function(c){return (c.img&&map[c.img])?Object.assign({},c,{img:map[c.img]}):c}); if(JSON.stringify(cols)!==JSON.stringify(p.colors||[])) upd.colors=cols;
             if(Object.keys(upd).length){ var r=await sb.from('store_products').update(upd).eq('id',p.id); if(r.error) throw r.error; Object.assign(p,upd); }
-          }catch(e){ fail++; }
+          }catch(e){ fail++; reasons.other=(reasons.other||0)+1; }
           done++; bar.style.width=(done/todo.length*100)+'%'; msg.className='msg'; msg.textContent=L('عم ننسخ… ','Copying… ')+done+' / '+todo.length+L(' منتج — ',' products — ')+ok+L(' صورة تم نسخها',' images copied')+(fail?' · '+fail+L(' فشلت',' failed'):'');
         }
       }
-      await Promise.all([worker(),worker(),worker(),worker()]);
-      msg.className='msg '+(fail?'e':'s'); msg.textContent=(imp.copyStop.stop?L('تم الإيقاف — ','Stopped — '):L('انتهى ✓ — ','Done ✓ — '))+ok+L(' صورة نُسخت',' images copied')+(fail?' · '+fail+L(' فشلت (رابط مكسور أو محظور). اضغط نسخ مجدداً لإعادة المحاولة.',' failed (broken or blocked link). Press copy again to retry.'):'');
+      await Promise.all([worker(),worker()]);
+      var blockedDominant=((reasons.blocked||0)+(reasons.rate_limited||0))>fail*0.5;
+      msg.className='msg '+(fail?'e':'s');
+      msg.textContent=(imp.copyStop.stop?L('تم الإيقاف — ','Stopped — '):L('انتهى ✓ — ','Done ✓ — '))+ok+L(' صورة نُسخت',' images copied')+(fail?' · '+fail+L(' فشلت','  failed')+reasonLine():'')+
+        (fail&&blockedDominant?L(' — الموقع القديم عم يحظر النسخ (على الأغلب لأنو حسّ فيه طلبات كتير بوقت قصير). استنى شوي (ساعة أو أكتر) وجرّب «نسخ» مجدداً.',' — the old site is blocking the copier (likely rate-limiting). Wait a while (an hour or more) then press Copy again.'):
+          (fail?L(' اضغط نسخ مجدداً لإعادة محاولة الباقي.',' Press Copy again to retry the rest.'):''));
     }
   }catch(e){ msg.className='msg e'; msg.textContent=errTxt(e); }
   imp.copying=false; var b1=$('#impCopy'); if(b1) b1.disabled=false; var b2=$('#impStop'); if(b2) b2.disabled=true;
