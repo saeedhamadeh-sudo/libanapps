@@ -762,7 +762,7 @@ function catAncestorCollapsed(c){
 }
 function renderCats(){
   var tree=catTree();
-  viewEl().innerHTML='<div class="card"><div class="tools"><b>'+CATS.length+' '+L('تصنيف','categories')+'</b><span class="muted">'+L('الأسهم بترتّب بين إخوة نفس المستوى — التصنيفات الرئيسية بالأحمر والفرعية بالأسود','Arrows reorder within the same level — top categories in red, sub-categories in black')+'</span><button class="btn sp" id="cNew">+ '+L('تصنيف جديد','New category')+'</button></div>'+
+  viewEl().innerHTML='<div class="card"><div class="tools"><b>'+CATS.length+' '+L('تصنيف','categories')+'</b><span class="muted">'+L('الأسهم بترتّب بين إخوة نفس المستوى — التصنيفات الرئيسية بالأحمر والفرعية بالأسود','Arrows reorder within the same level — top categories in red, sub-categories in black')+'</span>'+(CATS.length?'<button class="btn dg sm" id="catDelAll">'+L('حذف الكل','Delete all')+'</button>':'')+'<button class="btn sp" id="cNew">+ '+L('تصنيف جديد','New category')+'</button></div>'+
     (CATS.length?'<div class="wrapx"><table class="tbl"><thead><tr><th></th><th>'+L('الاسم','Name')+'</th><th>'+L('المنتجات','Products')+'</th><th>'+L('الترتيب','Order')+'</th><th>'+L('الحالة','Status')+'</th><th></th></tr></thead><tbody>'+
     tree.filter(function(x){return !catAncestorCollapsed(x.c)}).map(function(x){ var c=x.c, sibs=tree.filter(function(y){return (y.c.parent_id||'')===(c.parent_id||'')}), si=sibs.findIndex(function(y){return y.c.id===c.id});
       var n=PRODS.filter(function(p){return pcatsA(p).indexOf(c.id)>=0}).length, kids=kidsOf(c.id), collapsed=!!CAT_COLLAPSE[c.id];
@@ -810,7 +810,7 @@ function renderProds(){
     if(q&&(p.name_ar+' '+p.name_en+' '+(p.brand||'')+' '+(p.sku||'')).toLowerCase().indexOf(q)<0) return false; return true;});
   viewEl().innerHTML='<div class="card"><div class="tools"><input type="search" id="pQ" placeholder="'+L('بحث بالاسم أو الماركة أو الرمز…','Search name, brand or SKU…')+'" value="'+esc(pQ)+'">'+
     '<select id="pCatF"><option value="all">'+L('كل التصنيفات','All categories')+'</option>'+catOpts(pCat)+'</select>'+
-    (pCat!=='all'&&!q?'<span class="chip info">'+L('رتّب المنتجات بالأسهم ▲▼','Reorder with ▲▼')+'</span>':'')+'<span class="muted">'+list.length+' '+L('منتج','products')+'</span><button class="btn sp" id="pNew">+ '+L('منتج جديد','New product')+'</button></div>'+
+    (pCat!=='all'&&!q?'<span class="chip info">'+L('رتّب المنتجات بالأسهم ▲▼','Reorder with ▲▼')+'</span>':'')+'<span class="muted">'+list.length+' '+L('منتج','products')+'</span>'+(PRODS.length?'<button class="btn dg sm" id="prodDelAll">'+L('حذف الكل','Delete all')+'</button>':'')+'<button class="btn sp" id="pNew">+ '+L('منتج جديد','New product')+'</button></div>'+
     (list.length?'<div class="wrapx"><table class="tbl"><thead><tr><th>'+L('المنتج','Product')+'</th><th>'+L('السعر','Price')+'</th><th>'+L('المخزون','Stock')+'</th><th>'+L('الحالة','Status')+'</th><th></th></tr></thead><tbody>'+
     list.map(function(p,pi){
       var sale=Number(p.compare_price)>Number(p.price), mv=(pCat!=='all'&&!q);
@@ -1258,7 +1258,7 @@ async function ensureBrands(force){
 }
 LOADERS.brands=async function(){ try{await ensureBrands(true);}catch(e){return pageErr(e);} renderBrands(); };
 function renderBrands(){
-  viewEl().innerHTML='<div class="card"><div class="tools"><b>'+BRANDS.length+' '+L('ماركة','brands')+'</b><span class="muted">'+L('رتّب بالأسهم — هيك بيصير ترتيبها بقائمة الاختيار بمحرر المنتج','Reorder with the arrows — this is the order shown when picking a brand on a product')+'</span><button class="btn sp" id="brNew">+ '+L('ماركة جديدة','New brand')+'</button></div>'+
+  viewEl().innerHTML='<div class="card"><div class="tools"><b>'+BRANDS.length+' '+L('ماركة','brands')+'</b><span class="muted">'+L('رتّب بالأسهم — هيك بيصير ترتيبها بقائمة الاختيار بمحرر المنتج','Reorder with the arrows — this is the order shown when picking a brand on a product')+'</span>'+(BRANDS.length?'<button class="btn dg sm" id="brDelAll">'+L('حذف الكل','Delete all')+'</button>':'')+'<button class="btn sp" id="brNew">+ '+L('ماركة جديدة','New brand')+'</button></div>'+
     (BRANDS.length?'<div class="wrapx"><table class="tbl"><thead><tr><th>'+L('الاسم','Name')+'</th><th>'+L('عدد المنتجات','Products')+'</th><th>'+L('الحالة','Status')+'</th><th></th></tr></thead><tbody>'+
     BRANDS.map(function(b,i){ var n=PRODS.some(function(p){return p.brand===b.name})?PRODS.filter(function(p){return p.brand===b.name}).length:'—';
       return '<tr><td><b>'+esc(b.name)+'</b></td><td>'+n+'</td><td>'+(b.is_active?'<span class="tag">'+L('ظاهرة بالقائمة','Listed')+'</span>':'<span class="tag off">'+L('مخفية','Hidden')+'</span>')+'</td>'+
@@ -1805,12 +1805,20 @@ document.addEventListener('click',function(e){
   if(t.closest('#cNew')){catModal();return;}
   if((el=t.closest('[data-ce]'))){catModal(el.dataset.ce);return;}
   if((el=t.closest('[data-cmv]'))){moveCat(el.dataset.id,el.dataset.cmv);return;}
+  if(t.closest('#catDelAll')){
+    if(confirmBox(L('حذف كل التصنيفات ('+CATS.length+')؟ المنتجات بتضل موجودة بس بتصير بدون تصنيف. ما في تراجع.','Delete all categories ('+CATS.length+')? Products stay but become uncategorized. This cannot be undone.'))){
+      sb.from('store_categories').delete().eq('store_id',ST.id).then(function(r){ if(r.error){alert(errTxt(r.error));return;} CATS=[]; loaded.cats=0; toast(L('تم حذف كل التصنيفات','All categories deleted')); LOADERS.categories(); });
+    } return;}
   if((el=t.closest('[data-catfold]'))){CAT_COLLAPSE[el.dataset.catfold]=!CAT_COLLAPSE[el.dataset.catfold];renderCats();return;}
   if((el=t.closest('[data-cd]'))){if(confirmBox(L('حذف التصنيف؟ المنتجات بتبقى بدون تصنيف.','Delete this category? Its products will become uncategorized.'))) sb.from('store_categories').delete().eq('id',el.dataset.cd).then(function(r){if(r.error)alert(errTxt(r.error));else{loaded.cats=0;LOADERS.categories();}});return;}
   // brands
   if(t.closest('#brNew')){brandModal();return;}
   if((el=t.closest('[data-bre]'))){brandModal(el.dataset.bre);return;}
   if((el=t.closest('[data-brmv]'))){moveBrand(el.dataset.id,el.dataset.brmv);return;}
+  if(t.closest('#brDelAll')){
+    if(confirmBox(L('حذف كل الماركات ('+BRANDS.length+')؟ المنتجات بتحتفظ باسم الماركة كنص. ما في تراجع.','Delete all brands ('+BRANDS.length+')? Products keep the brand name as text. This cannot be undone.'))){
+      sb.from('store_brands').delete().eq('store_id',ST.id).then(function(r){ if(r.error){alert(errTxt(r.error));return;} BRANDS=[]; loaded.brands=0; toast(L('تم حذف كل الماركات','All brands deleted')); LOADERS.brands(); });
+    } return;}
   if((el=t.closest('[data-brd]'))){if(confirmBox(L('حذف الماركة؟ المنتجات التي تحمل هذا الاسم بتحتفظ فيه كنص.','Delete this brand? Products keeping this name still keep it as text.'))) sb.from('store_brands').delete().eq('id',el.dataset.brd).then(function(r){if(r.error)alert(errTxt(r.error));else{loaded.brands=0;LOADERS.brands();}});return;}
   if(t.closest('#peBrandNew')){
     var nm=prompt(L('اسم الماركة الجديدة:','New brand name:')); if(!nm) return;
@@ -1818,6 +1826,10 @@ document.addEventListener('click',function(e){
     return;}
   // products list
   if(t.closest('#pNew')){pe=newProduct();renderEditor();window.scrollTo(0,0);return;}
+  if(t.closest('#prodDelAll')){
+    if(confirmBox(L('حذف كل المنتجات ('+PRODS.length+')؟ هذا الإجراء نهائي ولا يمكن التراجع عنه.','Delete all products ('+PRODS.length+')? This is permanent and cannot be undone.')) && confirmBox(L('تأكيد أخير: متأكد إنك بدك تحذف كل المنتجات؟','Final check: are you sure you want to delete every product?'))){
+      sb.from('store_products').delete().eq('store_id',ST.id).then(function(r){ if(r.error){alert(errTxt(r.error));return;} PRODS=[]; loaded.prods=0; pe=null; toast(L('تم حذف كل المنتجات','All products deleted')); LOADERS.products(); });
+    } return;}
   if((el=t.closest('[data-pe]'))){editProduct(el.dataset.pe);window.scrollTo(0,0);return;}
   if((el=t.closest('[data-pdup]'))){var src=PRODS.filter(function(x){return x.id===el.dataset.pdup})[0]; if(src){var o=JSON.parse(JSON.stringify(src)); delete o.id; delete o.created_at; o.name_ar=(o.name_ar||'')+L(' (نسخة)',' (copy)'); o.is_active=false; sb.from('store_products').insert(o).then(function(r){if(r.error)alert(errTxt(r.error));else{toast(L('تم النسخ — المنتج مخفي لحد ما تعدّله','Duplicated — hidden until you edit it'));LOADERS.products();}});} return;}
   if((el=t.closest('[data-pd]'))){if(confirmBox(L('حذف المنتج نهائياً؟','Delete this product permanently?'))) sb.from('store_products').delete().eq('id',el.dataset.pd).then(function(r){if(r.error)alert(errTxt(r.error));else LOADERS.products();});return;}
