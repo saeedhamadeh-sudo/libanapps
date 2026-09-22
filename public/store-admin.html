@@ -1238,11 +1238,13 @@ async function copyOneImage(u){
 async function runCopyImages(){
   imp.copying=true; imp.copyStop.stop=false; $('#impCopy').disabled=true; $('#impStop').disabled=false;
   var msg=$('#copyMsg'), bar=$('#copyBar');
+  msg.className='msg'; msg.textContent=L('عم نحضّر لائحة الصور…','Preparing the image list…'); bar.style.width='0%';
   try{
     await ensureProds(true);
     var todo=PRODS.filter(function(p){return isExtUrl(p.image_url)||(p.images||[]).some(isExtUrl)||(p.colors||[]).some(function(c){return isExtUrl(c.img)});});
     if(!todo.length){ msg.className='msg s'; msg.textContent=L('ما في صور خارجية — كل شي منسوخ ✓','No external images — everything is already copied ✓'); }
     else{
+      msg.textContent=L('عم ننسخ… ','Copying… ')+'0 / '+todo.length+L(' منتج',' products');
       var cache={}, pos=0, done=0, ok=0, fail=0, reasons={};
       function reasonLine(){
         var parts=Object.keys(reasons).map(function(k){return pick(REASON_L[k]||[k,k])+': '+reasons[k]});
@@ -1258,6 +1260,7 @@ async function runCopyImages(){
             for(var k=0;k<urls.length;k++){
               var u=urls[k];
               if(cache[u]===undefined){
+                msg.textContent=L('عم ننسخ… ','Copying… ')+done+' / '+todo.length+L(' منتج — جارٍ فحص صورة «','  products — checking an image for “')+pName(p)+'»…';
                 var res=await copyOneImage(u); await sleep(180);
                 if(res.url){ cache[u]=res.url; ok++; } else { cache[u]=null; fail++; reasons[res.error]=(reasons[res.error]||0)+1; }
               }
