@@ -1604,12 +1604,23 @@ var THEMES=[
  ['bloom',['Bloom — ناعم','Bloom — Soft'],['وردي وعنابي، حواف مدوّرة وألوان باستيل.','Blush & plum, rounded shapes and pastel tiles.'],['تجميل · عطور · أطفال · هدايا','Beauty · Fragrance · Kids · Gifts']],
  ['atelier',['Atelier — مينيمال','Atelier — Minimal'],['أبيض تحريري ومساحات واسعة وخط خفيف.','Editorial white, generous space and light type.'],['أثاث · ديكور · متاجر عامة','Furniture · Decor · General']]
 ];
-var pickedTheme=null, uspList=[];
+var pickedTheme=null, uspList=[], secList=[], pickedShape='soft', pickedDensity='comfortable', pickedFont='';
 var USP_ICONS=['truck','shield','refresh','headset','gift','lock','tag','box'];
 var USP_L={truck:['توصيل','Delivery'],shield:['أمان','Secure'],refresh:['إرجاع','Returns'],headset:['دعم','Support'],gift:['هدايا','Gifts'],lock:['دفع آمن','Safe pay'],tag:['عروض','Deals'],box:['شحن','Shipping']};
+var DEFAULT_HOME_SECTIONS=[{k:'hero',on:true},{k:'banners',on:true},{k:'usp',on:true},{k:'categories',on:true},{k:'hot',on:true},{k:'new',on:true},{k:'latest',on:true}];
+var SECTION_L={hero:['السلايدر الرئيسي','Hero slider'],banners:['البنرات تحت السلايدر (ثيم Electro)','Banners under slider (Electro theme)'],usp:['شريط المزايا','Trust strip'],categories:['تصنيفات الصفحة الرئيسية','Homepage categories'],hot:['Hot Sale','Hot Sale'],'new':['وصل حديثاً (New Arrivals)','New Arrivals'],latest:['أحدث المنتجات (ثيم Electro)','Latest products (Electro theme)']};
+var SHAPES=[['sharp',['حاد','Sharp']],['soft',['ناعم (افتراضي الثيم)','Soft (theme default)']],['round',['مدوّر','Round']]];
+var DENSITIES=[['comfortable',['مريح','Comfortable']],['compact',['مضغوط','Compact']]];
+var FONT_OPTS=[['',['افتراضي الثيم','Theme default']],['sans',['Sans نظيف','Clean sans']],['serif',['Serif فخم','Elegant serif']],['rounded',['مدوّر ودود','Rounded friendly']],['mono',['تقني','Technical']],['classic',['كلاسيكي','Classic']]];
 LOADERS.design=function(){
-  pickedTheme=ST.theme; uspList=JSON.parse(JSON.stringify(ST.usps||[])); renderDesign();
+  pickedTheme=ST.theme; uspList=JSON.parse(JSON.stringify(ST.usps||[]));
+  secList=(ST.home_sections&&ST.home_sections.length)?JSON.parse(JSON.stringify(ST.home_sections)):JSON.parse(JSON.stringify(DEFAULT_HOME_SECTIONS));
+  pickedShape=ST.shape||'soft'; pickedDensity=ST.density||'comfortable'; pickedFont=ST.font_pair||'';
+  renderDesign();
 };
+function secRows(){
+  return secList.map(function(s,i){return '<div class="r us" style="grid-template-columns:auto 1fr auto auto" data-sec="'+i+'"><label class="sw" style="margin:0"><input type="checkbox" data-seco'+(s.on!==false?' checked':'')+'></label><b style="font-weight:500">'+esc(pick(SECTION_L[s.k]||[s.k,s.k]))+'</b><button type="button" class="btn alt ic sm" data-secmv="up" data-i="'+i+'"'+(i===0?' disabled':'')+'>▲</button><button type="button" class="btn alt ic sm" data-secmv="down" data-i="'+i+'"'+(i===secList.length-1?' disabled':'')+'>▼</button></div>'}).join('');
+}
 function uspRows(){
   return uspList.map(function(u,i){return '<div class="r us" data-us="'+i+'"><select data-usi>'+USP_ICONS.map(function(k){return '<option value="'+k+'"'+(u.i===k?' selected':'')+'>'+esc(pick(USP_L[k]))+'</option>'}).join('')+'</select><input type="text" data-ust value="'+esc(u.t||'')+'" placeholder="'+L('العنوان (مثال: توصيل سريع)','Title (e.g. Fast delivery)')+'"><input type="text" data-usd value="'+esc(u.d||'')+'" placeholder="'+L('وصف قصير (اختياري)','Short note (optional)')+'"><button type="button" class="btn dg ic sm" data-usrm="'+i+'">×</button></div>'}).join('');
 }
@@ -1626,6 +1637,11 @@ function renderDesign(){
   '<label class="f"><span>'+L('شريط إعلان أعلى المتجر','Announcement bar')+'</span><input type="text" id="dAnn" value="'+esc(ST.announcement||'')+'" placeholder="'+L('مثال: شحن مجاني للطلبات فوق 100$','e.g. Free shipping over $100')+'"></label></div>'+
   '<div class="card"><h3>'+L('شريط المزايا','Trust strip')+' <small>'+L('حتى 4','up to 4')+'</small></h3><p class="sub">'+L('نقاط قوة بتظهر تحت الهيرو وبصفحة المنتج (توصيل، إرجاع، دعم…).','Selling points shown under the hero and on product pages (delivery, returns, support…).')+'</p>'+
   '<div class="rows" id="uspRows">'+uspRows()+'</div>'+(uspList.length<4?'<button class="btn alt sm" id="uspAdd" style="margin-top:10px">+ '+L('إضافة ميزة','Add point')+'</button>':'')+'</div>'+
+  '<div class="card"><h3>'+L('أقسام الصفحة الرئيسية','Homepage sections')+'</h3><p class="sub">'+L('فعّل/أخفِ أي قسم ورتّبهم بالأسهم — هيك بيصير ترتيب ظهورهم بمتجرك.','Turn sections on/off and reorder them with the arrows — this becomes their order on your store.')+'</p><div class="rows" id="secRows">'+secRows()+'</div></div>'+
+  '<div class="card"><h3>'+L('الشكل والتباعد','Shape & spacing')+'</h3><p class="sub">'+L('يطبّق فوق أي ثيم — بيغيّر استدارة الحواف وكثافة المسافات.','Applies on top of any theme — changes corner roundness and spacing density.')+'</p>'+
+  '<div style="margin-bottom:16px"><b style="display:block;margin-bottom:8px;font-size:13.5px">'+L('استدارة الحواف','Corner shape')+'</b><div class="pills" id="shapePills">'+SHAPES.map(function(x){return '<button type="button" class="pill'+(pickedShape===x[0]?' on':'')+'" data-shape2="'+x[0]+'">'+esc(pick(x[1]))+'</button>'}).join('')+'</div></div>'+
+  '<div><b style="display:block;margin-bottom:8px;font-size:13.5px">'+L('كثافة التباعد','Spacing density')+'</b><div class="pills" id="densPills">'+DENSITIES.map(function(x){return '<button type="button" class="pill'+(pickedDensity===x[0]?' on':'')+'" data-dens="'+x[0]+'">'+esc(pick(x[1]))+'</button>'}).join('')+'</div></div></div>'+
+  '<div class="card"><h3>'+L('الخط','Typography')+'</h3><p class="sub">'+L('اختياري — بيتخطّى خط الثيم الافتراضي. الأزواج مصمّمة لتشتغل بالعربي والإنكليزي مع بعض.','Optional — overrides the theme’s default font. Pairs are designed to work well in both Arabic and English.')+'</p><div class="pills" id="fontPills">'+FONT_OPTS.map(function(x){return '<button type="button" class="pill'+(pickedFont===x[0]?' on':'')+'" data-font2="'+x[0]+'">'+esc(pick(x[1]))+'</button>'}).join('')+'</div></div>'+
   '<div class="stbar"><span class="msg" id="dMsg"></span><button class="btn" id="dSave">'+L('حفظ المظهر','Save look')+'</button></div>';
 }
 
@@ -1986,12 +2002,16 @@ document.addEventListener('click',function(e){
   if((el=t.closest('[data-pgd]'))){if(confirmBox(L('حذف الصفحة؟','Delete this page?'))) sb.from('store_pages').delete().eq('id',el.dataset.pgd).then(function(r){if(r.error)alert(errTxt(r.error));else LOADERS.pages();});return;}
   // design
   if((el=t.closest('.tcard[data-theme]'))){ if(t.closest('.pvl')) return; pickedTheme=el.dataset.theme; $$('.tcard').forEach(function(b){b.setAttribute('aria-pressed',String(b===el))}); return;}
+  if((el=t.closest('[data-secmv]'))){var i=Number(el.dataset.i),j=el.dataset.secmv==='up'?i-1:i+1; if(j<0||j>=secList.length){return;} var t0=secList[i];secList[i]=secList[j];secList[j]=t0;$('#secRows').innerHTML=secRows();return;}
+  if((el=t.closest('[data-shape2]'))){pickedShape=el.dataset.shape2;$$('#shapePills .pill').forEach(function(b){b.classList.toggle('on',b===el)});return;}
+  if((el=t.closest('[data-dens]'))){pickedDensity=el.dataset.dens;$$('#densPills .pill').forEach(function(b){b.classList.toggle('on',b===el)});return;}
+  if((el=t.closest('[data-font2]'))){pickedFont=el.dataset.font2;$$('#fontPills .pill').forEach(function(b){b.classList.toggle('on',b===el)});return;}
   if(t.closest('#uspAdd')){readUsp();uspList.push({i:'truck',t:'',d:''});$('#uspRows').innerHTML=uspRows();if(uspList.length>=4)t.closest('#uspAdd').remove();return;}
   if((el=t.closest('[data-usrm]'))){readUsp();uspList.splice(Number(el.dataset.usrm),1);renderDesign();return;}
   if(t.closest('#dSave')){
     var b=t.closest('#dSave'); b.disabled=true; showMsg('dMsg',L('عم نحفظ…','Saving…')); readUsp();
     var col=$('#dCust').checked?$('#dColor').value:'';
-    var o={theme:pickedTheme,primary_color:col,default_lang:$('#dLang').value,announcement:$('#dAnn').value.trim(),usps:uspList.filter(function(u){return String(u.t||'').trim()}).map(function(u){return {i:u.i,t:String(u.t).trim(),d:String(u.d||'').trim()}})};
+    var o={theme:pickedTheme,primary_color:col,default_lang:$('#dLang').value,announcement:$('#dAnn').value.trim(),usps:uspList.filter(function(u){return String(u.t||'').trim()}).map(function(u){return {i:u.i,t:String(u.t).trim(),d:String(u.d||'').trim()}}),home_sections:secList,shape:pickedShape,density:pickedDensity,font_pair:pickedFont};
     sb.from('stores').update(o).eq('id',ST.id).then(function(r){ if(r.error) showMsg('dMsg',errTxt(r.error),false); else {Object.assign(ST,o);showMsg('dMsg',L('تم الحفظ ✓','Saved ✓'),true);toast(L('تم حفظ المظهر ✓','Look saved ✓'));} b.disabled=false; });
     return;}
   // settings
@@ -2028,6 +2048,7 @@ document.addEventListener('click',function(e){
 });
 document.addEventListener('change',function(e){
   var t=e.target;
+  if(t.matches('[data-seco]')){var r=t.closest('[data-sec]'); var i=Number(r.dataset.sec); if(secList[i]) secList[i].on=t.checked; return;}
   if(t.id==='impFile'){ if(t.files[0]) impLoadFile(t.files[0]); return; }
   if(t.id==='bkFile'){
     var f=t.files[0]; t.value=''; if(!f) return;
