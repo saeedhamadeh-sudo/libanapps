@@ -1075,6 +1075,17 @@ footer.ft{margin-top:clamp(50px,8vw,120px);background:var(--surface);border-top:
 .hsres .foot{display:block;width:100%;text-align:center;padding:11px;font-size:13px;font-weight:600;color:var(--brand);border-top:1px solid var(--line)}
 .hsres .foot:hover{background:var(--surface)}
 .hsres .none{padding:22px 14px;text-align:center;color:var(--muted);font-size:13.5px}
+
+/* ============================================================
+   المخصّص (Customizer): شكل الحواف + كثافة التباعد — فوق أي ثيم
+   ============================================================ */
+[data-shape="sharp"]{--r:0px!important;--r-lg:0px!important;--r-btn:0px!important}
+[data-shape="round"]{--r:16px!important;--r-lg:26px!important;--r-btn:999px!important}
+[data-density="compact"]{--gap:clamp(8px,1.2vw,14px)!important}
+[data-density="compact"] .sec{padding-top:clamp(18px,2.6vw,32px)}
+[data-density="compact"] .hot{padding:clamp(14px,2vw,22px) 0}
+[data-density="compact"] .usp-i{padding:12px 16px}
+[data-density="compact"] .card .cb{padding-top:8px}
 </style>
 </head>
 <body>
@@ -1217,6 +1228,15 @@ var FONTS={
  bloom:'family=DM+Serif+Display&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=El+Messiri:wght@500;700&family=Tajawal:wght@400;500;700',
  atelier:'family=DM+Sans:wght@300;400;500;600&family=IBM+Plex+Sans+Arabic:wght@300;400;500;600'
 };
+var FONT_PAIRS={
+ sans:{q:'family=Inter:wght@400;500;600;700;800&family=Cairo:wght@400;500;600;700',disp:"'Inter','Cairo',system-ui,sans-serif",body:"'Inter','Cairo',system-ui,sans-serif"},
+ serif:{q:'family=Playfair+Display:wght@500;600;700&family=Source+Serif+4:wght@400;500&family=Amiri:wght@400;700',disp:"'Playfair Display','Amiri',Georgia,serif",body:"'Source Serif 4','Amiri',Georgia,serif"},
+ rounded:{q:'family=Quicksand:wght@500;600;700&family=Nunito:wght@400;500;600&family=Tajawal:wght@400;500;700',disp:"'Quicksand','Tajawal',system-ui,sans-serif",body:"'Nunito','Tajawal',system-ui,sans-serif"},
+ mono:{q:'family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans+Arabic:wght@400;500;600',disp:"'Space Grotesk','IBM Plex Sans Arabic',monospace",body:"'IBM Plex Sans Arabic',system-ui,sans-serif"},
+ classic:{q:'family=Poppins:wght@400;500;600;700&family=Cairo:wght@400;500;600;700',disp:"'Poppins','Cairo',system-ui,sans-serif",body:"'Poppins','Cairo',system-ui,sans-serif"}
+};
+var DEFAULT_HOME_SECTIONS=[{k:'hero',on:true},{k:'banners',on:true},{k:'usp',on:true},{k:'categories',on:true},{k:'hot',on:true},{k:'new',on:true},{k:'latest',on:true}];
+var SECTION_DOM={hero:'hero',banners:'bnr',usp:'usp',categories:'catsec',hot:'hot','new':'newsec',latest:'latsec'};
 var BAR={electro:'#222529',nova:'#ffffff',aurum:'#0D1524',pulse:'#F3F5F9',bloom:'#FFF6F3',atelier:'#ffffff'};
 var SIZE_ORDER=['XXS','XS','S','M','L','XL','XXL','XXXL','2XL','3XL','4XL','5XL','6XL'];
 var TYPE_KEYS={
@@ -1432,6 +1452,14 @@ async function boot(){
   if(!lsGet('lang:'+slug)) setLang(S.default_lang==='en'?'en':'ar');
   var rs=document.documentElement.style;
   rs.setProperty('--logo-h',(S.logo_height||44)+'px');
+  var deh=document.documentElement;
+  if(S.shape&&S.shape!=='soft') deh.setAttribute('data-shape',S.shape); else deh.removeAttribute('data-shape');
+  if(S.density&&S.density!=='comfortable') deh.setAttribute('data-density',S.density); else deh.removeAttribute('data-density');
+  if(S.font_pair&&FONT_PAIRS[S.font_pair]){
+    var fp=FONT_PAIRS[S.font_pair];
+    if(!document.getElementById('fontlink2')){var lk2=document.createElement('link');lk2.id='fontlink2';lk2.rel='stylesheet';lk2.href='https://fonts.googleapis.com/css2?'+fp.q+'&display=swap';document.head.appendChild(lk2);}
+    rs.setProperty('--font-display',fp.disp); rs.setProperty('--font-body',fp.body);
+  }
   if(/^#[0-9a-f]{6}$/i.test(S.primary_color||'')){
     var c=S.primary_color,n=parseInt(c.slice(1),16),lum=(0.299*(n>>16)+0.587*((n>>8)&255)+0.114*(n&255))/255;
     rs.setProperty('--brand',c); rs.setProperty('--brand-ink',lum>0.6?'#111':'#fff');
@@ -1456,9 +1484,19 @@ async function boot(){
 /* ============================================================
    رسم الصفحة
    ============================================================ */
+function applyHomeOrder(){
+  var order=(S.home_sections&&S.home_sections.length)?S.home_sections:DEFAULT_HOME_SECTIONS;
+  var main=$('main'); if(!main) return;
+  order.forEach(function(item){
+    var el=document.getElementById(SECTION_DOM[item.k]); if(!el) return;
+    if(item.on===false) el.classList.add('hidden');
+    main.appendChild(el);
+  });
+  var shop=$('#shop'); if(shop) main.appendChild(shop);
+}
 function renderAll(){
   renderHeader(); renderMarquee(); renderHero(); renderBanners(); renderUsp(); renderCatSection(); renderHot(); renderNew(); renderLatest();
-  renderShop(); renderFoot(); syncCounts();
+  renderShop(); renderFoot(); syncCounts(); applyHomeOrder();
   var d=String(S.whatsapp||'').replace(/\D/g,''), wa=$('#waFab');
   if(d){wa.href='https://wa.me/'+d;wa.innerHTML=IC.wa;wa.classList.remove('hidden')}else wa.classList.add('hidden');
 }
