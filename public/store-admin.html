@@ -1295,6 +1295,104 @@ async function quickAddBrand(name){
 }
 
 /* ============================================================
+   نسخ احتياطي كامل (Backup / Restore) + فرمتة المتجر
+   الملف: صف واحد لكل سجل بأي جدول: table, id, data(JSON كامل للسجل).
+   بيغطّي: إعدادات المتجر، التصنيفات، المنتجات، السلايدر، البنرات،
+   الماركات، الصفحات، الكوبونات. الصور نفسها بتضل بمخزن Supabase —
+   الملف بيحفظ روابطها بس، مش الملفات الثنائية.
+   لا يشمل: الطلبات والتقييمات والمشتركين (بيانات زبائن، مش إعداد متجر)،
+   ولا مفاتيح بوابات الدفع (أسرار — ما بترجع للمتصفح أصلاً).
+   ============================================================ */
+var BACKUP_TABLES=['store_categories','store_products','store_slides','store_banners','store_brands','store_pages','store_coupons'];
+async function fetchAllRows(table){
+  var out=[], a=0;
+  for(;;){ var r=await sb.from(table).select('*').eq('store_id',ST.id).range(a,a+999); if(r.error) throw r.error;
+    out=out.concat(r.data||[]); if(!r.data||r.data.length<1000) break; a+=1000; }
+  return out;
+}
+async function runBackup(){
+  var rows=[['table','id','data']];
+  var st=await sb.from('stores').select('*').eq('id',ST.id).single(); if(st.error) throw st.error;
+  rows.push(['stores', ST.id, JSON.stringify(st.data)]);
+  for(var i=0;i<BACKUP_TABLES.length;i++){
+    var t=BACKUP_TABLES[i], list=await fetchAllRows(t);
+    list.forEach(function(r){ rows.push([t, r.id, JSON.stringify(r)]); });
+  }
+  downloadCsv('backup-'+ST.slug+'-'+new Date().toISOString().slice(0,10)+'.csv', rows);
+  return rows.length-1;
+}
+function groupBackupRows(text){
+  var rows=parseCSV(text); if(!rows.length||rows[0][0]!=='table') throw new Error(L('هذا مش ملف نسخة احتياطية صحيح','This is not a valid backup file'));
+  var by={}; rows.slice(1).forEach(function(r){ if(!r[0]) return; var d; try{d=JSON.parse(r[2]);}catch(e){return;} (by[r[0]]=by[r[0]]||[]).push(d); });
+  return by;
+}
+async function insertRowsPlain(table,list){
+  for(var i=0;i<list.length;i+=25){ var ch=list.slice(i,i+25).map(function(r){return Object.assign({},r,{store_id:ST.id})});
+    var r=await sb.from(table).insert(ch); if(r.error) throw r.error; }
+}
+async function insertCategoriesOrdered(list){
+  var byId={}; list.forEach(function(r){byId[r.id]=r});
+  var done={}, left=list.slice();
+  var guard=0;
+  while(left.length&&guard++<50){
+    var batch=left.filter(function(r){return !r.parent_id||done[r.parent_id]||!byId[r.parent_id];});
+    if(!batch.length) batch=left; // كسر أي حلقة غير متوقعة
+    await insertRowsPlain('store_categories', batch.map(function(r){return Object.assign({},r,{store_id:ST.id})}));
+    batch.forEach(function(r){done[r.id]=1});
+    var doneSet=done; left=left.filter(function(r){return !doneSet[r.id]});
+  }
+}
+async function runRestore(text){
+  var by=groupBackupRows(text);
+  // 1) الحذف بالكامل قبل الاستعادة
+  var delTables=BACKUP_TABLES.slice();
+  for(var i=0;i<delTables.length;i++){ var r=await sb.from(delTables[i]).delete().eq('store_id',ST.id); if(r.error) throw r.error; }
+  // 2) الاستعادة — التصنيفات أولاً (بترتيب يحترم الأب قبل الابن) لأن باقي الجداول بترجع لها
+  if(by.store_categories) await insertCategoriesOrdered(by.store_categories);
+  if(by.store_brands) await insertRowsPlain('store_brands', by.store_brands);
+  if(by.store_products) await insertRowsPlain('store_products', by.store_products);
+  if(by.store_slides) await insertRowsPlain('store_slides', by.store_slides);
+  if(by.store_banners) await insertRowsPlain('store_banners', by.store_banners);
+  if(by.store_pages) await insertRowsPlain('store_pages', by.store_pages);
+  if(by.store_coupons) await insertRowsPlain('store_coupons', by.store_coupons);
+  // 3) إعدادات المتجر — كل شي عدا هوية المتجر ذاتها
+  if(by.stores&&by.stores[0]){
+    var o=Object.assign({},by.stores[0]);
+    ['id','client_id','slug','created_at','order_seq'].forEach(function(k){delete o[k];});
+    var ru=await sb.from('stores').update(o).eq('id',ST.id); if(ru.error) throw ru.error;
+    Object.assign(ST,o);
+  }
+  loaded={}; CATS=[]; PRODS=[]; BRANDS=[]; pe=null;
+}
+async function runFormatSite(){
+  var tables=BACKUP_TABLES.concat(['store_subscribers','store_reviews','store_popups']);
+  for(var i=0;i<tables.length;i++){ var r=await sb.from(tables[i]).delete().eq('store_id',ST.id); if(r.error) throw r.error; }
+  loaded={}; CATS=[]; PRODS=[]; BRANDS=[]; pe=null;
+}
+function backupCard(){
+  return '<div class="card"><h3>'+L('نسخ احتياطي','Backup')+'</h3><p class="sub">'+L('بيصدّر ملف CSV واحد فيه كل شي: التصنيفات، المنتجات، السلايدر، البنرات، الماركات، الصفحات، الكوبونات، وإعدادات المتجر (بما فيها روابط الشعار والصور — الملفات نفسها بتضل محفوظة بمخزّن متجرك). ما بيشمل الطلبات أو التقييمات أو المشتركين أو مفاتيح بوابات الدفع.','Exports one CSV with everything: categories, products, slider, banners, brands, pages, coupons and store settings (including logo/image links — the files themselves stay in your store’s storage). Does not include orders, reviews, subscribers or payment gateway keys.')+'</p>'+
+    '<div class="tools"><button class="btn" id="bkGo">'+L('تنزيل نسخة احتياطية','Download backup')+'</button><button class="btn alt" id="bkRestoreBtn">'+L('استعادة من نسخة احتياطية','Restore from backup')+'</button><input type="file" id="bkFile" accept=".csv,text/csv" class="hidden"></div><div class="msg" id="bkMsg"></div></div>'+
+    '<div class="card"><h3 style="color:var(--bad)">'+L('منطقة الخطر','Danger zone')+'</h3><p class="sub">'+L('فرمتة المتجر بتحذف كل المنتجات والتصنيفات والماركات والسلايدر والبنرات والكوبونات والصفحات والمشتركين والتقييمات نهائياً. اسم متجرك وإعداداتك وبوابات الدفع والدومين والاشتراك وسجل الطلبات بيضلّوا محفوظين.','Formatting deletes all products, categories, brands, sliders, banners, coupons, pages, subscribers and reviews permanently. Your store name, settings, payment gateways, domain, subscription and order history stay untouched.')+'</p>'+
+    '<button class="btn dg" id="fmtOpen">'+L('فرمتة المتجر بالكامل','Format the entire store')+'</button></div>';
+}
+function formatModal(){
+  openModal(L('فرمتة المتجر بالكامل','Format the entire store'),
+    '<div class="warnl">'+L('رح ينحذف نهائياً: كل المنتجات والتصنيفات والماركات والسلايدر والبنرات والكوبونات والصفحات والمشتركين والتقييمات. اسم المتجر والإعدادات وبوابات الدفع والدومين والاشتراك وسجل الطلبات بتضل محفوظة. ما في أي تراجع بعد التنفيذ.','This will permanently delete: all products, categories, brands, sliders, banners, coupons, pages, subscribers and reviews. Your store name, settings, payment gateways, domain, subscription and order history stay untouched. There is no undo after this runs.')+'</div>'+
+    '<div style="text-align:center;margin-top:16px"><button class="btn dg" id="fmtGo" disabled style="min-width:240px">'+L('فرمتة الآن','Format now')+' (<span id="fmtCd">10</span>)</button></div>',
+    null);
+  var n=10, btn=$('#fmtGo');
+  var iv=setInterval(function(){
+    n--; var cd=$('#fmtCd'); if(cd) cd.textContent=n;
+    if(n<=0){ clearInterval(iv); if(btn){ btn.disabled=false; btn.textContent=L('فرمتة الآن','Format now'); } }
+  },1000);
+  btn.onclick=async function(){
+    btn.disabled=true; btn.textContent=L('عم ننفّذ…','Working…'); clearInterval(iv);
+    try{ await runFormatSite(); closeModal(); toast(L('تم تصفير المتجر بالكامل','Store fully reset')); goTab('dashboard'); }
+    catch(e){ btn.disabled=false; btn.textContent=L('فرمتة الآن','Format now'); showMsg('mMsg',errTxt(e),false); }
+  };
+}
+
+/* ============================================================
    السلايدر
    ============================================================ */
 var BANNERS=[];
@@ -1578,7 +1676,8 @@ function renderSettings(){
    '<label class="f"><span>'+L('صورة المشاركة (Facebook/WhatsApp)','Share image (Facebook/WhatsApp)')+'</span><input type="file" id="sOg" accept="image/*"></label></div>'+
    '<label class="f"><span>'+L('وصف محركات البحث','Search description')+'</span><textarea id="sSeoD" style="min-height:70px">'+esc(s.seo_desc||'')+'</textarea></label></div>'+
    '<div class="card"><label class="sw"><input type="checkbox" id="sAct"'+(s.is_active?' checked':'')+'>'+L('المتجر شغّال (إذا أطفأته بيظهر للزوار «متوقف مؤقتاً»)','Store is live (if off, visitors see “temporarily closed”)')+'</label></div>'+
-   '<div class="stbar"><span class="msg" id="sMsg"></span><button class="btn" id="sSave">'+L('حفظ الإعدادات','Save settings')+'</button></div>';
+   '<div class="stbar"><span class="msg" id="sMsg"></span><button class="btn" id="sSave">'+L('حفظ الإعدادات','Save settings')+'</button></div>'+
+   backupCard();
   function prev(){
     var code=$('#sCur').value, dec=(CUR[code]||['',2])[1], sym=$('#sSym').value||code;
     var t=(1250.5).toLocaleString('en-US',{minimumFractionDigits:dec,maximumFractionDigits:dec});
@@ -1900,6 +1999,13 @@ document.addEventListener('click',function(e){
   if(t.closest('#znAdd')){readZones();setZones.push({n:'',f:''});$('#znRows').innerHTML=zoneRows();return;}
   if((el=t.closest('[data-znrm]'))){readZones();setZones.splice(Number(el.dataset.znrm),1);$('#znRows').innerHTML=zoneRows();return;}
   if(t.closest('#sSave')){saveSettings();return;}
+  if(t.closest('#bkGo')){
+    var bb=t.closest('#bkGo'); bb.disabled=true; showMsg('bkMsg',L('عم نجهّز النسخة الاحتياطية…','Preparing the backup…'));
+    runBackup().then(function(n){ showMsg('bkMsg',L('تم تنزيل النسخة الاحتياطية ✓ (','Backup downloaded ✓ (')+n+L(' سجل)',' records)'),true); bb.disabled=false; })
+      .catch(function(e){ showMsg('bkMsg',errTxt(e),false); bb.disabled=false; });
+    return;}
+  if(t.closest('#bkRestoreBtn')){$('#bkFile').click();return;}
+  if(t.closest('#fmtOpen')){formatModal();return;}
   // payments
   if((el=t.closest('[data-gw]'))){gwModal(el.dataset.gw);return;}
   // serial
@@ -1923,6 +2029,17 @@ document.addEventListener('click',function(e){
 document.addEventListener('change',function(e){
   var t=e.target;
   if(t.id==='impFile'){ if(t.files[0]) impLoadFile(t.files[0]); return; }
+  if(t.id==='bkFile'){
+    var f=t.files[0]; t.value=''; if(!f) return;
+    if(!confirmBox(L('استعادة نسخة احتياطية بتستبدل كل التصنيفات والمنتجات والسلايدر والبنرات والماركات والصفحات والكوبونات وإعدادات المتجر الحالية بالكامل بمحتوى الملف. ما في تراجع بعدها. متابعة؟','Restoring a backup completely replaces all current categories, products, slider, banners, brands, pages, coupons and store settings with the file’s content. This cannot be undone. Continue?'))) return;
+    if(!confirmBox(L('تأكيد أخير: متأكد إنك بدك تستبدل كل بيانات المتجر الحالية؟','Final check: are you sure you want to replace all current store data?'))) return;
+    showMsg('bkMsg',L('عم نستعيد… لا تسكّر الصفحة','Restoring… do not close this page'));
+    var fr=new FileReader();
+    fr.onload=function(){ runRestore(String(fr.result)).then(function(){ toast(L('تمت استعادة النسخة الاحتياطية ✓','Backup restored ✓')); rerenderTab(); })
+      .catch(function(e){ showMsg('bkMsg',errTxt(e),false); }); };
+    fr.onerror=function(){ showMsg('bkMsg',L('تعذّرت قراءة الملف','Could not read the file'),false); };
+    fr.readAsText(f,'utf-8');
+    return;}
   if(t.matches('[data-ost]')){
     var id=Number(t.dataset.ost), st=t.value, o={status:st}; if(st==='paid') o.paid_at=new Date().toISOString();
     sb.from('store_orders').update(o).eq('id',id).then(function(r){ if(r.error){alert(errTxt(r.error));LOADERS.orders();return;} var x=ORDERS.filter(function(z){return z.id===id})[0]; if(x) x.status=st; paintNav(); toast(L('تم تحديث الحالة','Status updated')); });return;}
