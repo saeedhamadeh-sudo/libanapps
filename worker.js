@@ -414,6 +414,105 @@ async function currentUser(request, env) {
   return r.json();
 }
 
+// ============================================================
+//  التحقق بخطوتين (2FA) — الرمز نفسه (TOTP) مُدار من Supabase Auth مباشرة من المتصفح
+//  (sb.auth.mfa.*). هون بس الرموز الاحتياطية (backup codes) + تعطيل المشرف الطارئ.
+// ============================================================
+const BC_ALPHA = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // بدون أحرف/أرقام ملتبسة (0/O، 1/I/L)
+function genBackupCode() {
+  var out = '';
+  var r = crypto.getRandomValues(new Uint8Array(8));
+  for (var i = 0; i < 8; i++) { if (i === 4) out += '-'; out += BC_ALPHA[r[i] % BC_ALPHA.length]; }
+  return out;
+}
+async function sha256Hex(s) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+async function mfaBackupGenerate(request, env) {
+  const me = await currentUser(request, env);
+  if (!me) return json(401, { error: 'سجّل دخولك أولاً' });
+  const codes = Array.from({ length: 8 }, genBackupCode);
+  const hashes = await Promise.all(codes.map(sha256Hex));
+  // نمسح القديمة (مستعملة أو لأ) ونحط دفعة جديدة — تفعيل جديد بيلغي الرموز السابقة
+  const del = await fetch(`${env.SUPABASE_URL}/rest/v1/mfa_backup_codes?user_id=eq.${me.id}`, {
+    method: 'DELETE', headers: sbHeaders(env)
+  });
+  if (!del.ok) return json(500, { error: 'تعذّر تجديد الرموز الاحتياطية' });
+  const rows = hashes.map(h => ({ user_id: me.id, code_hash: h }));
+  const ins = await fetch(`${env.SUPABASE_URL}/rest/v1/mfa_backup_codes`, {
+    method: 'POST', headers: { ...sbHeaders(env), Prefer: 'return=minimal' }, body: JSON.stringify(rows)
+  });
+  if (!ins.ok) return json(500, { error: 'تعذّر حفظ الرموز الاحتياطية' });
+  return json(200, { ok: true, codes }); // بترجع نص واضح مرة وحدة بس — ما بتنخزن أبداً
+}
+async function mfaBackupStatus(request, env) {
+  const me = await currentUser(request, env);
+  if (!me) return json(401, { error: 'سجّل دخولك أولاً' });
+  const rows = await sbGet(env, `mfa_backup_codes?user_id=eq.${me.id}&used_at=is.null&select=id`);
+  return json(200, { ok: true, unused: rows.length });
+}
+async function mfaBackupVerify(request, env) {
+  const me = await currentUser(request, env);
+  if (!me) return json(401, { error: 'سجّل دخولك أولاً' });
+  let body; try { body = await request.json(); } catch { return json(400, { error: 'bad json' }); }
+  const code = String(body.code || '').trim().toUpperCase();
+  if (!code) return json(400, { error: 'اكتب الرمز' });
+  const hash = await sha256Hex(code);
+  const rows = await sbGet(env, `mfa_backup_codes?user_id=eq.${me.id}&code_hash=eq.${hash}&used_at=is.null&select=id&limit=1`);
+  if (!rows.length) return json(200, { ok: false, error: 'الرمز غير صحيح أو مستعمل من قبل' });
+  await sbPatch(env, `mfa_backup_codes?id=eq.${rows[0].id}`, { used_at: new Date().toISOString() });
+  const left = await sbGet(env, `mfa_backup_codes?user_id=eq.${me.id}&used_at=is.null&select=id`);
+  return json(200, { ok: true, remaining: left.length });
+}
+async function mfaBackupClear(request, env) {
+  const me = await currentUser(request, env);
+  if (!me) return json(401, { error: 'سجّل دخولك أولاً' });
+  await fetch(`${env.SUPABASE_URL}/rest/v1/mfa_backup_codes?user_id=eq.${me.id}`, { method: 'DELETE', headers: sbHeaders(env) });
+  return json(200, { ok: true });
+}
+async function requirePlatformAdmin(request, env) {
+  const auth = request.headers.get('Authorization') || '';
+  const token = auth.replace(/^Bearer\s+/i, '');
+  if (!token) return { err: json(401, { error: 'not signed in' }) };
+  const me = await fetch(`${env.SUPABASE_URL}/auth/v1/user`, { headers: { apikey: env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${token}` } });
+  if (!me.ok) return { err: json(401, { error: 'invalid session' }) };
+  const meData = await me.json();
+  const admins = await sbGet(env, `platform_admins?user_id=eq.${meData.id}&select=user_id&limit=1`);
+  if (!admins.length) return { err: json(403, { error: 'not allowed' }) };
+  return { me: meData };
+}
+async function adminMfaStatus(request, env) {
+  const g = await requirePlatformAdmin(request, env); if (g.err) return g.err;
+  const url = new URL(request.url), userId = url.searchParams.get('user_id');
+  if (!userId) return json(400, { error: 'missing user_id' });
+  const r = await fetch(`${env.SUPABASE_URL}/auth/v1/admin/users/${userId}/factors`, {
+    headers: { apikey: env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}` }
+  });
+  const factors = r.ok ? await r.json() : [];
+  const codes = await sbGet(env, `mfa_backup_codes?user_id=eq.${userId}&used_at=is.null&select=id`);
+  return json(200, { ok: true, factors: (factors || []).map(f => ({ id: f.id, status: f.status, created_at: f.created_at })), backup_unused: codes.length });
+}
+async function adminMfaDisable(request, env) {
+  const g = await requirePlatformAdmin(request, env); if (g.err) return g.err;
+  let body; try { body = await request.json(); } catch { return json(400, { error: 'bad json' }); }
+  const userId = body.user_id;
+  if (!userId) return json(400, { error: 'missing user_id' });
+  const r = await fetch(`${env.SUPABASE_URL}/auth/v1/admin/users/${userId}/factors`, {
+    headers: { apikey: env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}` }
+  });
+  const factors = r.ok ? await r.json() : [];
+  let removed = 0;
+  for (const f of (factors || [])) {
+    const d = await fetch(`${env.SUPABASE_URL}/auth/v1/admin/users/${userId}/factors/${f.id}`, {
+      method: 'DELETE', headers: { apikey: env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}` }
+    });
+    if (d.ok) removed++;
+  }
+  await fetch(`${env.SUPABASE_URL}/rest/v1/mfa_backup_codes?user_id=eq.${userId}`, { method: 'DELETE', headers: sbHeaders(env) });
+  return json(200, { ok: true, removed });
+}
+
 async function buyCreate(request, env) {
   const me = await currentUser(request, env);
   if (!me) return json(401, { error: 'سجّل دخولك أولاً' });
@@ -1241,29 +1340,38 @@ function isBlockedHost(h) {
 async function importImage(request, env) {
   let body; try { body = await request.json(); } catch { return json(400, { error: 'bad json' }); }
   const o = await ownerCheck(request, env, body.store_id); if (o.err) return o.err;
-  let u; try { u = new URL(String(body.url || '')); } catch { return json(400, { error: 'bad url' }); }
-  if (!/^https?:$/.test(u.protocol) || isBlockedHost(u.hostname)) return json(400, { error: 'url not allowed' });
+  let u; try { u = new URL(String(body.url || '')); } catch { return json(400, { error: 'bad url', reason: 'bad_url' }); }
+  if (!/^https?:$/.test(u.protocol) || isBlockedHost(u.hostname)) return json(400, { error: 'url not allowed', reason: 'bad_url' });
   const ctl = new AbortController(); const to = setTimeout(() => ctl.abort(), 20000);
   let r;
   try {
+    // UA و Accept-Language متل متصفح حقيقي — مواقع كتير (خصوصاً خلف Cloudflare) بتحظر أي طلب شكلو "بوت"
     r = await fetch(u.toString(), { signal: ctl.signal, redirect: 'follow', headers: {
-      'User-Agent': 'Mozilla/5.0 (compatible; LibanAppsImporter/1.0)', 'Accept': 'image/*,*/*;q=0.5', 'Referer': u.origin + '/' } });
-  } catch (e) { clearTimeout(to); return json(502, { error: 'fetch failed' }); }
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+      'Accept': 'image/avif,image/webp,image/*,*/*;q=0.8', 'Accept-Language': 'en-US,en;q=0.9,ar;q=0.8', 'Referer': u.origin + '/' } });
+  } catch (e) {
+    clearTimeout(to);
+    const reason = (e && e.name === 'AbortError') ? 'timeout' : 'network';
+    return json(502, { error: reason === 'timeout' ? 'انتهت المهلة (تعليق من المصدر)' : 'تعذّر الاتصال بالمصدر', reason });
+  }
   clearTimeout(to);
-  if (!r.ok) return json(502, { error: 'source returned ' + r.status });
+  if (!r.ok) {
+    const reason = r.status === 403 ? 'blocked' : r.status === 404 ? 'not_found' : r.status === 429 ? 'rate_limited' : 'http_' + r.status;
+    return json(502, { error: 'المصدر رجّع ' + r.status, reason, status: r.status });
+  }
   let ct = (r.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
   const extFromUrl = (u.pathname.match(/\.([a-z0-9]{3,4})$/i) || [])[1];
   const byExt = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif', avif: 'image/avif', svg: 'image/svg+xml' };
   if (!ct.startsWith('image/')) ct = byExt[(extFromUrl || '').toLowerCase()] || '';
-  if (!ct.startsWith('image/')) return json(415, { error: 'not an image' });
+  if (!ct.startsWith('image/')) return json(415, { error: 'الرابط مش صورة', reason: 'not_image' });
   const buf = await r.arrayBuffer();
-  if (buf.byteLength > 8 * 1024 * 1024) return json(413, { error: 'image too large' });
-  if (buf.byteLength < 200) return json(415, { error: 'empty image' });
+  if (buf.byteLength > 8 * 1024 * 1024) return json(413, { error: 'الصورة أكبر من 8MB', reason: 'too_large' });
+  if (buf.byteLength < 200) return json(415, { error: 'ملف فارغ', reason: 'empty' });
   const ext = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif', 'image/avif': 'avif', 'image/svg+xml': 'svg' }[ct] || 'jpg';
   const path = `st-${o.store.id}/imp-${Date.now().toString(36)}-${randId(6)}.${ext}`;
   const up = await fetch(`${env.SUPABASE_URL}/storage/v1/object/items/${path}`, { method: 'POST', body: buf,
     headers: { apikey: env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`, 'Content-Type': ct, 'x-upsert': 'false' } });
-  if (!up.ok) return json(502, { error: 'storage upload failed ' + up.status });
+  if (!up.ok) return json(502, { error: 'تعذّر الحفظ بمخزن المتجر (' + up.status + ')', reason: 'storage' });
   return json(200, { ok: true, url: `${env.SUPABASE_URL}/storage/v1/object/public/items/${path}`, bytes: buf.byteLength });
 }
 
@@ -1515,6 +1623,24 @@ export default {
         if (url.pathname === '/api/admin/extend-license') {
           if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
           return await adminExtendLicense(request, env);
+        }
+        if (url.pathname === '/api/mfa/backup-codes/generate') {
+          if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
+          return await mfaBackupGenerate(request, env);
+        }
+        if (url.pathname === '/api/mfa/backup-codes/status') return await mfaBackupStatus(request, env);
+        if (url.pathname === '/api/mfa/backup-codes/verify') {
+          if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
+          return await mfaBackupVerify(request, env);
+        }
+        if (url.pathname === '/api/mfa/backup-codes/clear') {
+          if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
+          return await mfaBackupClear(request, env);
+        }
+        if (url.pathname === '/api/admin/mfa-status') return await adminMfaStatus(request, env);
+        if (url.pathname === '/api/admin/mfa-disable') {
+          if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
+          return await adminMfaDisable(request, env);
         }
         if (url.pathname === '/api/admin/delete-client') {
           if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
