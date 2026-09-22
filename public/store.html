@@ -1621,11 +1621,13 @@ function renderUsp(){
   sec.classList.remove('hidden');
   $('#uspIn').innerHTML=u.map(function(x){return '<div class="usp-i"><span class="ic">'+(IC[x.i]||IC.truck)+'</span><div><b>'+esc(x.t)+'</b>'+(x.d?'<span style="color:var(--muted)">'+esc(x.d)+'</span>':'')+'</div></div>'}).join('');
 }
+function secCfg(k){ return (S.section_settings&&S.section_settings[k])||{}; }
 function renderCatSection(){
   var withP=topCats().map(function(c){var ids=catAndKids(c.id),ps=PRODS.filter(function(p){return inCat(p,ids)});return {c:c,n:ps.length,im:c.image_url||(ps[0]&&ps[0].image_url)||''}}).filter(function(x){return x.n});
   var sec=$('#catsec'); if(withP.length<2){sec.classList.add('hidden');return;}
-  sec.classList.remove('hidden'); $('#catT').textContent=T.cats;
-  var shown=withP.slice(0,8); $('#ct').style.setProperty('--n',Math.min(shown.length,S.theme==='aurum'?3:4));
+  var cfg=secCfg('categories'), cnt=Math.max(2,Math.min(16,Number(cfg.count)||8));
+  sec.classList.remove('hidden'); $('#catT').textContent=(cfg.title||'').trim()||T.cats;
+  var shown=withP.slice(0,cnt); $('#ct').style.setProperty('--n',Math.min(shown.length,S.theme==='aurum'?3:4));
   $('#ct').innerHTML=shown.map(function(x){
     var nm=tx(x.c,'name');
     return '<a class="tile" href="#shop" data-cat="'+esc(x.c.id)+'">'+(x.im?'<img alt="" loading="lazy" src="'+esc(img(x.im))+'">':'<div class="init">'+esc(nm.charAt(0))+'</div>')+
@@ -1657,20 +1659,22 @@ function renderLatest(){
   var sec=$('#latsec'); if(S.theme!=='electro'){sec.classList.add('hidden');return;}
   var l=PRODS.filter(function(p){return !p.is_new}).sort(function(a,b){return String(b.created_at).localeCompare(String(a.created_at))||((b.sort||0)-(a.sort||0))});
   if(!l.length){sec.classList.add('hidden');return;}
-  sec.classList.remove('hidden'); $('#latT').textContent=T.latestT; $('#latrow').innerHTML=l.slice(0,latShown).map(cardHTML).join('');
+  var cfg=secCfg('latest'); if(latShown===16&&cfg.count) latShown=Math.max(4,Math.min(48,Number(cfg.count)));
+  sec.classList.remove('hidden'); $('#latT').textContent=(cfg.title||'').trim()||T.latestT; $('#latrow').innerHTML=l.slice(0,latShown).map(cardHTML).join('');
   var mo=$('#latMore'); if(l.length>latShown){mo.classList.remove('hidden');mo.innerHTML='<button class="btn" type="button" data-lm2>'+esc(T.loadMore)+'</button>';} else mo.classList.add('hidden');
 }
 function renderNew(){
-  var l=PRODS.filter(function(p){return p.is_new}), sec=$('#newsec'), row=$('#newrow'), mo=$('#newMore');
+  var l=PRODS.filter(function(p){return p.is_new}), sec=$('#newsec'), row=$('#newrow'), mo=$('#newMore'), cfg=secCfg('new'), title=(cfg.title||'').trim()||T.newArr;
   if(S.theme==='electro'){
     if(!l.length){sec.classList.add('hidden');return;}
-    sec.classList.remove('hidden'); $('#newT').textContent=T.newArr; row.className='grid'; row.innerHTML=l.slice(0,newShown).map(cardHTML).join('');
+    if(newShown===16&&cfg.count) newShown=Math.max(4,Math.min(48,Number(cfg.count)));
+    sec.classList.remove('hidden'); $('#newT').textContent=title; row.className='grid'; row.innerHTML=l.slice(0,newShown).map(cardHTML).join('');
     if(l.length>newShown){mo.classList.remove('hidden');mo.innerHTML='<button class="btn" type="button" data-lm>'+esc(T.loadMore)+'</button>';} else mo.classList.add('hidden');
     return;
   }
-  mo.classList.add('hidden'); row.className='hrow'; l=l.slice(0,12);
+  mo.classList.add('hidden'); row.className='hrow'; l=l.slice(0,Math.max(2,Math.min(24,Number(cfg.count)||12)));
   if(l.length<2){sec.classList.add('hidden');return;}
-  sec.classList.remove('hidden'); $('#newT').textContent=T.newArr; row.innerHTML=l.map(cardHTML).join('');
+  sec.classList.remove('hidden'); $('#newT').textContent=title; row.innerHTML=l.map(cardHTML).join('');
 }
 /* ---------- كرت المنتج ---------- */
 
