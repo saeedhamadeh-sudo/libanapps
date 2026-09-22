@@ -717,6 +717,7 @@ async function loadClients(){
         '<td style="white-space:nowrap">'+
           '<button class="btn alt sm" data-edit="'+c.id+'">تعديل</button> '+
           '<button class="btn alt sm" data-linkacct="'+c.id+'">ربط حساب</button> '+
+          (c.user_id?'<button class="btn alt sm" data-mfa="'+c.user_id+'" data-mfaname="'+esc(c.name)+'">2FA</button> ':'')+
           '<button class="btn alt sm" data-stopall="'+c.id+'">إيقاف الكل</button> '+
           '<button class="btn alt sm" data-onall="'+c.id+'">تفعيل الكل</button> '+
           '<button class="btn dg sm" data-delc="'+c.id+'">حذف الزبون</button>'+
@@ -821,6 +822,30 @@ $('#subsTbl').addEventListener('click',async function(e){
 
 $('#clientsTbl').addEventListener('click',async function(e){
   var b=e.target.closest('button'); if(!b) return;
+
+  if(b.dataset.mfa){
+    var uid=b.dataset.mfa, nm=b.dataset.mfaname||'';
+    b.disabled=true;
+    try{
+      var ses9=await sb.auth.getSession(); var tok9=ses9.data.session&&ses9.data.session.access_token;
+      var r9=await fetch('/api/admin/mfa-status?user_id='+encodeURIComponent(uid),{headers:{'Authorization':'Bearer '+tok9}});
+      var j9=await r9.json();
+      if(!r9.ok||!j9.ok){ alert('تعذّر جلب الحالة: '+(j9.error||r9.status)); b.disabled=false; return; }
+      var verified=(j9.factors||[]).filter(function(f){return f.status==='verified'});
+      if(!verified.length){ alert('«'+nm+'» ما فعّل التحقق بخطوتين أصلاً.'); b.disabled=false; return; }
+      var txt='«'+nm+'» مفعّل عندو التحقق بخطوتين ('+verified.length+' جهاز موثّق)، وعندو '+j9.backup_unused+' رمز احتياطي غير مستعمل.\n\nتعطيله؟ الزبون رح يرجع يدخل بكلمة المرور بس، ولازم يفعّلها من جديد إذا بدو.';
+      if(!confirm(txt)){ b.disabled=false; return; }
+      var r10=await fetch('/api/admin/mfa-disable',{method:'POST',
+        headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok9},
+        body:JSON.stringify({user_id:uid})});
+      var j10=await r10.json();
+      if(!r10.ok||!j10.ok){ alert('ما نجح: '+(j10.error||r10.status)); }
+      else alert('تم تعطيل التحقق بخطوتين لـ«'+nm+'» ✓');
+    }catch(err){ alert(String(err.message||err)); }
+    b.disabled=false;
+    return;
+  }
+
   var id=b.dataset.stopall||b.dataset.onall||b.dataset.delc||b.dataset.edit||b.dataset.linkacct;
   var c=CLIENTS.find(function(x){return x.id===id}); if(!c) return;
 
