@@ -1522,6 +1522,88 @@ function withCache(res, pathname) {
   return new Response(res.body, { status: res.status, headers: h });
 }
 
+// ============================================================
+//  استقبال مواقع أجهزة التتبع
+//  بيقبل: تطبيق Traccar Client (القديم والجديد) · Traccar Server forward
+//         · أي جهاز GPS بيبعت HTTP بصيغة OsmAnd أو JSON
+// ============================================================
+function numOr(v) { const n = Number(v); return (v === null || v === undefined || v === '' || !isFinite(n)) ? null : n; }
+function parseFix(v) {
+  if (v === null || v === undefined || v === '') return null;
+  const n = Number(v);
+  let d;
+  if (isFinite(n)) d = new Date(n > 1e12 ? n : n * 1000);   // ثواني أو ميلي ثانية
+  else d = new Date(String(v));
+  return isNaN(d.getTime()) ? null : d.toISOString();
+}
+async function trackPush(request, env, url) {
+  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY) return json(500, { error: 'server not configured' });
+  const q = Object.fromEntries(url.searchParams);
+  let p = { ...q }, j = null;
+
+  if (request.method === 'POST') {
+    const ct = (request.headers.get('content-type') || '').toLowerCase();
+    const raw = await request.text();
+    if (raw.length > 20000) return json(413, { error: 'too large' });
+    if (ct.includes('json') || /^\s*[\[{]/.test(raw)) {
+      try { j = JSON.parse(raw); } catch { return json(400, { error: 'bad json' }); }
+      if (Array.isArray(j)) j = j[j.length - 1] || {};
+    } else if (raw) {
+      Object.assign(p, Object.fromEntries(new URLSearchParams(raw)));
+    }
+  }
+
+  let id, lat, lng, kmh = null, heading = null, battery = null, fix = null;
+
+  if (j && j.location && j.location.coords) {
+    // Traccar Client الجديد (v9+): السرعة بالمتر/ثانية
+    const c = j.location.coords;
+    id = j.device_id || j.id || p.id;
+    lat = numOr(c.latitude); lng = numOr(c.longitude);
+    const ms = numOr(c.speed); kmh = ms !== null && ms >= 0 ? ms * 3.6 : null;
+    heading = numOr(c.heading);
+    const lvl = j.location.battery && numOr(j.location.battery.level);
+    battery = lvl !== null && lvl !== undefined && lvl >= 0 ? (lvl <= 1 ? lvl * 100 : lvl) : null;
+    fix = parseFix(j.location.timestamp);
+  } else if (j && j.position) {
+    // Traccar Server forward (json): السرعة بالعقدة
+    const ps = j.position, dv = j.device || {};
+    id = dv.uniqueId || p.id;
+    lat = numOr(ps.latitude); lng = numOr(ps.longitude);
+    const kn = numOr(ps.speed); kmh = kn !== null ? kn * 1.852 : null;
+    heading = numOr(ps.course);
+    battery = ps.attributes ? numOr(ps.attributes.batteryLevel) : null;
+    fix = parseFix(ps.fixTime || ps.deviceTime);
+  } else {
+    // OsmAnd (Traccar Client القديم وأغلب الأجهزة): السرعة بالعقدة
+    const s = j ? { ...p, ...j } : p;
+    id = s.id || s.deviceid || s.device_id || s.imei;
+    lat = numOr(s.lat ?? s.latitude); lng = numOr(s.lon ?? s.lng ?? s.longitude);
+    if (s.speed_kmh !== undefined) kmh = numOr(s.speed_kmh);
+    else { const kn = numOr(s.speed); kmh = kn !== null ? kn * 1.852 : null; }
+    heading = numOr(s.bearing ?? s.heading ?? s.course);
+    battery = numOr(s.batt ?? s.battery);
+    fix = parseFix(s.timestamp ?? s.time ?? s.fixtime);
+  }
+
+  if (!id || lat === null || lng === null) return json(400, { error: 'missing id/lat/lon' });
+
+  const r = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/device_ping`, {
+    method: 'POST',
+    headers: { ...sbHeaders(env), 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      p_identifier: String(id).slice(0, 64), p_key: String(p.key || (j && j.key) || ''),
+      p_lat: lat, p_lng: lng,
+      p_speed_kmh: kmh === null ? null : Math.round(kmh * 10) / 10,
+      p_heading: heading, p_battery: battery, p_fix_at: fix
+    })
+  });
+  if (!r.ok) { console.error('device_ping', r.status, await r.text()); return json(500, { error: 'db error' }); }
+  const result = await r.json();
+  // منرجّع 200 دايماً لحتى التطبيق ما يضل يعيد نفس النقطة بلا نهاية
+  return json(200, { result });
+}
+
 // ---------- أي صفحة نعرض لأي مسار ----------
 function pageFor(pathname) {
   var p = pathname.replace(/\/+$/, '') || '/';
@@ -1539,6 +1621,8 @@ function pageFor(pathname) {
   if (/^\/portal-store\/[^/]+\/admin\/?$/.test(p)) return '/store-admin.html';
   if (/^\/portal-store\/[^/]+\/?$/.test(p)) return '/store.html';
   if (p.startsWith('/i/'))    return '/invoice.html';
+  if (p.startsWith('/t/'))    return '/track.html';    // رابط تتبع الطلب للزبون
+  if (p.startsWith('/d/'))    return '/driver.html';   // صفحة موظف التوصيل
   // رابط لوحة تحكم مطعم محدد: /اسم-المحل/admin
   if (/^\/[^/]+\/admin\/?$/.test(p)) return '/admin.html';
   // رابط برنامج ألمنيوم مخصص لزبون معيّن: /portal/اسم-محله
@@ -1572,6 +1656,9 @@ export default {
     // 1) الـAPI — أي مسار تحت /api/ يرجّع JSON دائماً، حتى لو صار خطأ داخلي
     if (url.pathname.startsWith('/api/')) {
       try {
+        if (url.pathname === '/api/track/osmand' || url.pathname === '/api/track/push') {
+          return await trackPush(request, env, url);
+        }
         if (url.pathname === '/api/store-invoice') {
           if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
           return await storeInvoice(request, env);
