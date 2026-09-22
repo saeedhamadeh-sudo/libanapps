@@ -890,7 +890,7 @@ footer.ft{margin-top:clamp(50px,8vw,120px);background:var(--surface);border-top:
 [data-theme="electro"] .hero>.wrap{padding-top:clamp(10px,1.4vw,18px)}
 [data-theme="electro"] .slides{border-radius:0}
 [data-theme="electro"] .slide{min-height:clamp(200px,30vw,420px);color:#fff;display:flex;align-items:center;background:#222529}
-@media(max-width:760px){[data-theme="electro"] .slide{min-height:0;aspect-ratio:1920/900;background:#111}[data-theme="electro"] .slide .s-img{background:#111}[data-theme="electro"] .slide .s-img img{object-fit:contain}}
+@media(max-width:760px){[data-theme="electro"] .slide{min-height:0;aspect-ratio:16/9}[data-theme="electro"] .slides{align-items:flex-start}}
 [data-theme="electro"] .s-img{position:absolute;inset:0}
 [data-theme="electro"] .slide:not(.notxt) .s-img::after{content:"";position:absolute;inset:0;background:linear-gradient(to right,rgba(20,22,26,.72),transparent 75%)}
 [dir="rtl"][data-theme="electro"] .slide:not(.notxt) .s-img::after{background:linear-gradient(to left,rgba(20,22,26,.72),transparent 75%)}
@@ -1548,7 +1548,19 @@ function renderHero(){
     b.setAttribute('aria-label',k==='p'?'previous':'next');b.innerHTML=IC.chev;wrap.appendChild(b);});
   var rm=window.matchMedia&&window.matchMedia('(prefers-reduced-motion:reduce)').matches;
   if(!rm) sliderTimer=setInterval(function(){goSlide(sliderIdx+1)},6000);
+  fitHeroMobile();
 }
+function fitHeroMobile(){
+  if(S.theme!=='electro') return;
+  var mob=window.matchMedia('(max-width:760px)').matches;
+  $$('#slides .slide').forEach(function(sl){
+    var im=sl.querySelector('.s-img img');
+    if(!mob||!im){ sl.style.aspectRatio=''; return; }
+    var go=function(){ if(im.naturalWidth&&im.naturalHeight) sl.style.aspectRatio=im.naturalWidth+'/'+im.naturalHeight; };
+    if(im.complete) go(); else im.addEventListener('load',go,{once:true});
+  });
+}
+var heroFitT; window.addEventListener('resize',function(){clearTimeout(heroFitT);heroFitT=setTimeout(function(){ if(S) fitHeroMobile(); },150)});
 function renderBanners(){
   var sec=$('#bnr'), bs=(BANNERS||[]).filter(function(x){return x.image_url}).slice(0,3);
   if(!bs.length){sec.classList.add('hidden');return;}
