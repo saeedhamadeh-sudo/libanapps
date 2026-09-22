@@ -305,6 +305,7 @@ body.login-page .credit .credit-tel{color:#E08A2B}
     <button class="tab" data-t="items" aria-pressed="true">المنتجات</button>
     <button class="tab" data-t="cats" aria-pressed="false">الأقسام</button>
     <button class="tab" data-t="orders" aria-pressed="false">الطلبات</button>
+    <button class="tab" data-t="delivery" aria-pressed="false">🏍️ التوصيل</button>
     <button class="tab" data-t="promo" aria-pressed="false">صور وعروض</button>
     <button class="tab" data-t="coupons" aria-pressed="false">الكوبونات</button>
     <button class="tab" data-t="set" aria-pressed="false">الإعدادات</button>
@@ -382,6 +383,9 @@ body.login-page .credit .credit-tel{color:#E08A2B}
       <div id="oList"></div>
     </div>
   </section>
+
+  <!-- DELIVERY — موتوسيكلات وتتبع (assets/delivery-admin.js) -->
+  <section data-p="delivery" class="hidden"><div id="dlvRoot"></div></section>
 
   <!-- PROMO -->
   <section data-p="promo" class="hidden">
@@ -609,6 +613,7 @@ window.LIBANAPPS = {
 </script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.0/dist/umd/supabase.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="/assets/delivery-admin.js"></script>
 <script>
 (function(){
 "use strict";
@@ -672,6 +677,7 @@ async function boot(){
   var r=await sb.from('restaurants').select('*').eq('id',rid).maybeSingle();
   if(!r.data){ $('#loginNote').textContent='ما قدرنا نجيب بيانات المطعم'; return; }
   R=r.data;
+  window.LA_ADMIN={sb:sb,R:R};   // لتبويب التوصيل
   document.body.classList.remove('login-page');
   $('#login').classList.add('hidden'); $('#app').classList.remove('hidden');
   if(IMPERSONATE){
@@ -711,6 +717,7 @@ $$('.tab').forEach(function(t){
     $$('[data-p]').forEach(function(p){p.classList.toggle('hidden',p.dataset.p!==t.dataset.t)});
     if(t.dataset.t==='orders') loadOrders();
     if(t.dataset.t==='coupons') loadCoupons();
+    if(window.DLV){ if(t.dataset.t==='delivery') window.DLV.open(); else window.DLV.close(); }
   });
 });
 

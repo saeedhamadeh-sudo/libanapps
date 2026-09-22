@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl" data-theme="flame">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#0A0A0A">
+<title>التوصيل — LibanApps</title>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;800&family=Lalezar&family=Tajawal:wght@400;700;800&family=Amiri:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/themes.css">
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);font-family:'Cairo',system-ui,sans-serif}
+body{padding:env(safe-area-inset-top,0) 0 calc(env(safe-area-inset-bottom,0) + 20px)}
+.wrap{max-width:560px;margin:0 auto;padding:12px}
+.top{display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--card);
+  border:1px solid var(--line);border-radius:var(--radius);position:sticky;top:env(safe-area-inset-top,0);z-index:5}
+.top img{width:40px;height:40px;border-radius:10px;object-fit:cover;background:var(--bg-2)}
+.top .n{flex:1;min-width:0}
+.top b{display:block;font-size:15px}
+.top small{color:var(--muted);font-size:12px}
+.gps{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);margin-top:2px}
+.dot{width:9px;height:9px;border-radius:50%;background:#777;flex:none}
+.dot.ok{background:#22C55E;box-shadow:0 0 0 4px rgba(34,197,94,.18)}
+.dot.warn{background:#F59E0B}.dot.bad{background:#EF4444}
+.btn{display:block;width:100%;border:0;border-radius:12px;padding:13px 14px;font:800 15px 'Cairo',sans-serif;
+  background:var(--brand);color:var(--brand-ink);cursor:pointer;text-align:center;text-decoration:none}
+.btn:disabled{opacity:.5}
+.btn.alt{background:var(--bg-2);color:var(--text);border:1px solid var(--line)}
+.btn.ok{background:#16A34A;color:#fff}
+.btn.go{background:#2563EB;color:#fff}
+.btn.sm{padding:9px 10px;font-size:13px;border-radius:10px;width:auto;display:inline-block}
+.duty{width:auto;padding:9px 14px;font-size:13px}
+.tabs{display:flex;gap:6px;margin:12px 0}
+.tab{flex:1;padding:10px;border-radius:12px;border:1px solid var(--line);background:var(--bg-2);
+  color:var(--text);font:700 14px 'Cairo';cursor:pointer}
+.tab[aria-pressed="true"]{background:var(--accent);color:#111;border-color:transparent}
+.tab .c{display:inline-block;min-width:20px;padding:0 6px;border-radius:10px;background:var(--brand);color:#fff;font-size:12px;margin-inline-start:4px}
+h3{font-size:14px;color:var(--muted);margin:16px 4px 8px;font-weight:700}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:14px;margin-bottom:10px}
+.card.new{animation:pulse 1.2s ease-in-out 3}
+@keyframes pulse{50%{box-shadow:0 0 0 4px var(--halo)}}
+.row{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.no{font-size:18px;font-weight:800;color:var(--accent)}
+.meta{color:var(--muted);font-size:13px;margin-top:4px;line-height:1.6}
+.amt{font-weight:800;font-size:16px;color:var(--price)}
+.chip{display:inline-block;padding:2px 9px;border-radius:20px;font-size:12px;font-weight:700;background:var(--bg-2);border:1px solid var(--line)}
+.chip.p{background:#14532D;color:#BBF7D0;border-color:transparent}
+.chip.w{background:#78350F;color:#FDE68A;border-color:transparent}
+.chip.b{background:#1E3A8A;color:#BFDBFE;border-color:transparent}
+.acts{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
+.acts .full{grid-column:1/-1}
+.lines{margin:10px 0 0;padding:10px;background:var(--bg-2);border-radius:10px;font-size:14px;line-height:1.8}
+.empty{text-align:center;color:var(--muted);padding:26px 10px;font-size:14px}
+.hidden{display:none!important}
+label{display:block;font-size:13px;color:var(--muted);margin:10px 0 4px}
+input{width:100%;padding:12px;border-radius:10px;border:1px solid var(--line);background:var(--bg-2);color:var(--text);font:600 15px 'Cairo';direction:ltr;text-align:left}
+.kv{display:flex;gap:8px;align-items:center;background:var(--bg-2);border:1px solid var(--line);border-radius:10px;padding:10px;margin-top:6px}
+.kv code{flex:1;direction:ltr;text-align:left;font-size:13px;word-break:break-all}
+.opt{border:1px solid var(--line);border-radius:14px;padding:12px;margin-top:10px}
+.opt b{font-size:15px}
+.opt p{margin:4px 0 0;color:var(--muted);font-size:13px;line-height:1.7}
+.msg{font-size:13px;margin-top:8px;min-height:18px}
+.msg.e{color:#F87171}.msg.s{color:#4ADE80}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0));transform:translateX(-50%);
+  background:#111;color:#fff;padding:10px 16px;border-radius:12px;font-size:14px;z-index:50;max-width:90%;
+  box-shadow:0 8px 24px rgba(0,0,0,.4)}
+.center{min-height:70vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:12px;padding:20px}
+ol{padding-inline-start:20px;margin:6px 0;color:var(--muted);font-size:13px;line-height:1.9}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div id="boot" class="center"><div class="meta">جاري التحميل…</div></div>
+
+  <div id="app" class="hidden">
+    <div class="top">
+      <img id="logo" alt="">
+      <div class="n">
+        <b id="dName">—</b>
+        <div class="gps"><span class="dot" id="gDot"></span><span id="gTxt">الموقع متوقف</span></div>
+      </div>
+      <button class="btn duty" id="dutyBtn">بدء الدوام</button>
+    </div>
+
+    <div class="tabs">
+      <button class="tab" data-t="orders" aria-pressed="true">الطلبات <span class="c hidden" id="wCount"></span></button>
+      <button class="tab" data-t="device" aria-pressed="false">جهاز التتبع</button>
+    </div>
+
+    <section data-p="orders">
+      <h3 id="mineH" class="hidden">طلباتي</h3>
+      <div id="mine"></div>
+      <h3>طلبات بانتظار موتوسيكل</h3>
+      <div id="waiting"></div>
+      <p class="meta" style="text-align:center" id="doneToday"></p>
+    </section>
+
+    <section data-p="device" class="hidden">
+      <div class="card">
+        <div class="row"><b>مصدر الموقع الحالي</b><span class="chip" id="srcChip">—</span></div>
+        <div class="meta" id="devNow"></div>
+        <button class="btn alt hidden" id="unlinkBtn" style="margin-top:10px">فك ربط الجهاز والرجوع لـGPS الهاتف</button>
+      </div>
+
+      <div class="card">
+        <div class="opt">
+          <b>📱 GPS الهاتف (الأسهل)</b>
+          <p>بيشتغل تلقائياً وقت تكون هالصفحة مفتوحة وبلّشت الدوام. خلّي الشاشة مفتوحة — على الآيفون الموقع بيوقف إذا قفلت الشاشة.</p>
+        </div>
+
+        <div class="opt">
+          <b>🛰️ تطبيق Traccar Client (بيشتغل والشاشة مقفولة)</b>
+          <p>تطبيق مجاني على الآيفون والأندرويد، بيبعت موقعك بالخلفية حتى لو سكّرت هالصفحة.</p>
+          <button class="btn alt" id="newAppBtn" style="margin-top:10px">جهّز لي رقم للتطبيق</button>
+          <div id="appCfg" class="hidden">
+            <label>Server URL</label>
+            <div class="kv"><code id="srvUrl"></code><button class="btn sm alt" data-copy="srvUrl">نسخ</button></div>
+            <label>Device identifier</label>
+            <div class="kv"><code id="devId"></code><button class="btn sm alt" data-copy="devId">نسخ</button></div>
+            <ol>
+              <li>نزّل <b>Traccar Client</b> من App Store أو Google Play</li>
+              <li>حط الـServer URL والـDevice identifier متل ما هني فوق</li>
+              <li>Location accuracy: <b>High</b> · Frequency: <b>10</b> ثواني</li>
+              <li>شغّل <b>Service status</b> واسمحلو بالموقع «دائماً / Always»</li>
+            </ol>
+          </div>
+        </div>
+
+        <div class="opt">
+          <b>📟 جهاز GPS على الموتوسيكل</b>
+          <p>إذا المطعم ركّب جهاز GPS على الموتوسيكل، اختارو من هون أو اكتب رقمو (IMEI / ID) المكتوب عليه.</p>
+          <div id="freeDevs"></div>
+          <label>رقم الجهاز</label>
+          <input id="linkId" placeholder="IMEI / Device ID" inputmode="text" autocomplete="off">
+          <button class="btn alt" id="linkBtn" style="margin-top:8px">ربط الجهاز فيي</button>
+          <div class="msg" id="linkMsg"></div>
+        </div>
+
+        <div class="opt">
+          <b>Apple AirTag</b>
+          <p>للأسف Apple ما بتسمح لأي برنامج خارجي يقرأ موقع الـAirTag — بيظهر بس جوّا تطبيق Find My. لهيك ما فينا نستعملو للتتبع المباشر. البديل الأوفر هو تطبيق Traccar على هاتفك، أو جهاز GPS صغير للموتوسيكل.</p>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.0/dist/umd/supabase.min.js"></script>
+<script src="/assets/config.js"></script>
+<script>
+(function(){
+"use strict";
+var $=function(s){return document.querySelector(s)};
+var $$=function(s){return Array.prototype.slice.call(document.querySelectorAll(s))};
+var esc=function(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){
+  return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})};
+var CFG=window.LIBANAPPS||{};
+var sb=window.supabase.createClient(CFG.SUPABASE_URL,CFG.SUPABASE_ANON_KEY,{auth:{persistSession:false}});
+var TOKEN=decodeURIComponent(location.pathname.split('/').filter(Boolean)[1]||'');
+var S=null, ME={lat:null,lng:null,at:0}, watchId=null, lastSent=0, seen={}, first=true, wake=null, busy=false;
+
+function toast(t){ var e=document.createElement('div'); e.className='toast'; e.textContent=t;
+  document.body.appendChild(e); setTimeout(function(){e.remove()},2600); }
+function errTxt(e){
+  var m=(e&&e.message)||'';
+  if(/already taken/.test(m)) return 'موظف تاني سبقك واستلم هالطلب';
+  if(/device linked to another/.test(m)) return 'هالجهاز مربوط بموظف تاني';
+  if(/device not found/.test(m)) return 'ما لقينا جهاز بهالرقم — اطلب من المطعم يضيفو';
+  if(/driver not found/.test(m)) return 'الرابط مش صالح أو الحساب موقوف';
+  return 'صار خطأ، جرّب مرة تانية';
+}
+function money(u,l){ return Number(u||0).toFixed(2)+' $'+(l?' · '+Number(l).toLocaleString('en-US')+' ل.ل':''); }
+function ago(t){ var m=Math.max(0,Math.round((Date.now()-new Date(t))/60000));
+  return m<1?'هلق':m<60?'من '+m+' د':'من '+Math.floor(m/60)+' س'; }
+function km(a,b,c,d){ if(a==null||c==null) return null;
+  var R=6371,x=(c-a)*Math.PI/180,y=(d-b)*Math.PI/180;
+  var h=Math.sin(x/2)*Math.sin(x/2)+Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180)*Math.sin(y/2)*Math.sin(y/2);
+  return 2*R*Math.asin(Math.sqrt(h)); }
+function waNum(p){ var d=String(p||'').replace(/\D/g,'');
+  if(d.indexOf('00')===0) d=d.slice(2);
+  if(d.indexOf('961')===0) return d;
+  if(d.charAt(0)==='0') d=d.slice(1);
+  return d.length<=8?'961'+d:d; }
+function trackUrl(o){ return location.origin+'/t/'+encodeURIComponent(o.token); }
+
+async function rpc(fn,args){ var r=await sb.rpc(fn,Object.assign({p_token:TOKEN},args||{}));
+  if(r.error) throw r.error; return r.data; }
+
+/* ---------- صوت تنبيه ---------- */
+var AC=null;
+function unlockAudio(){ try{ AC=AC||new (window.AudioContext||window.webkitAudioContext)(); AC.resume(); }catch(e){} }
+function beep(){
+  try{ if(!AC) return; [0,0.25,0.5].forEach(function(t){
+    var o=AC.createOscillator(), g=AC.createGain(); o.frequency.value=880; o.type='square';
+    g.gain.setValueAtTime(0.15,AC.currentTime+t); g.gain.exponentialRampToValueAtTime(0.001,AC.currentTime+t+0.2);
+    o.connect(g); g.connect(AC.destination); o.start(AC.currentTime+t); o.stop(AC.currentTime+t+0.2); }); }catch(e){}
+  if(navigator.vibrate) navigator.vibrate([200,100,200]);
+}
+
+/* ---------- الشاشة تضل مفتوحة ---------- */
+async function keepAwake(on){
+  try{
+    if(on && 'wakeLock' in navigator){ wake=await navigator.wakeLock.request('screen'); }
+    else if(!on && wake){ await wake.release(); wake=null; }
+  }catch(e){}
+}
+document.addEventListener('visibilitychange',function(){
+  if(document.visibilityState==='visible'){ if(S&&S.driver.on_duty) keepAwake(true); load(); }
+});
+
+/* ---------- GPS الهاتف ---------- */
+function startGps(){
+  if(watchId!==null || !navigator.geolocation) return;
+  watchId=navigator.geolocation.watchPosition(function(p){
+    ME={lat:p.coords.latitude,lng:p.coords.longitude,at:Date.now()};
+    paintGps();
+    if(Date.now()-lastSent<5000) return;
+    lastSent=Date.now();
+    var sp=p.coords.speed; sp=(sp!=null&&sp>=0)?Math.round(sp*36)/10:null;
+    rpc('driver_ping',{p_lat:ME.lat,p_lng:ME.lng,p_speed_kmh:sp,
+      p_heading:p.coords.heading!=null&&!isNaN(p.coords.heading)?Math.round(p.coords.heading):null,
+      p_accuracy:Math.round(p.coords.accuracy)}).catch(function(){});
+  },function(err){
+    $('#gDot').className='dot bad';
+    $('#gTxt').textContent=err.code===1?'ما في إذن للموقع — اسمح بالموقع من الإعدادات':'ما عم نقدر نحدد موقعك';
+  },{enableHighAccuracy:true,maximumAge:3000,timeout:20000});
+}
+function stopGps(){ if(watchId!==null){ navigator.geolocation.clearWatch(watchId); watchId=null; } paintGps(); }
+
+function linkedDev(){ return S&&S.devices.filter(function(d){return d.mine})[0]; }
+function paintGps(){
+  var dev=linkedDev(), dot=$('#gDot'), tx=$('#gTxt');
+  var devFresh=dev&&dev.pos_at&&(Date.now()-new Date(dev.pos_at))<120000;
+  if(devFresh){ dot.className='dot ok'; tx.textContent='الموقع من '+(dev.kind==='traccar_app'?'تطبيق Traccar':'جهاز GPS')+' · '+ago(dev.pos_at); return; }
+  if(watchId!==null && ME.at && Date.now()-ME.at<60000){ dot.className='dot ok'; tx.textContent='GPS الهاتف شغّال'; return; }
+  if(watchId!==null){ dot.className='dot warn'; tx.textContent='عم ندوّر على موقعك…'; return; }
+  if(dev){ dot.className='dot warn'; tx.textContent='الجهاز المربوط ما بعت موقع من فترة'; return; }
+  dot.className='dot'; tx.textContent='الموقع متوقف — كبس «بدء الدوام»';
+}
+
+/* ---------- الدوام ---------- */
+$('#dutyBtn').addEventListener('click',async function(){
+  unlockAudio();
+  var on=!S.driver.on_duty;
+  try{ await rpc('driver_duty',{p_on:on}); S.driver.on_duty=on; }catch(e){ return toast(errTxt(e)); }
+  if(on){ startGps(); keepAwake(true);
+    if(window.Notification&&Notification.permission==='default') Notification.requestPermission(); }
+  else { stopGps(); keepAwake(false); }
+  paintDuty();
+});
+function paintDuty(){
+  var b=$('#dutyBtn'), on=S.driver.on_duty;
+  b.textContent=on?'إنهاء الدوام':'بدء الدوام';
+  b.className='btn duty '+(on?'alt':'ok');
+}
+
+/* ---------- الطلبات ---------- */
+function paintOrders(){
+  var mine=S.mine||[], w=S.waiting||[];
+  $('#mineH').classList.toggle('hidden',!mine.length);
+  $('#mine').innerHTML=mine.map(function(o){
+    var st=o.dispatch==='on_the_way'
+      ?'<span class="chip b">في الطريق</span>':'<span class="chip w">مستلم — لسا ما طلعت</span>';
+    var pay=o.payment_method==='whish'
+      ?(o.status==='paid'?'<span class="chip p">مدفوع Whish</span>':'<span class="chip w">Whish — مش مدفوع</span>')
+      :'<span class="chip">نقداً عند التسليم</span>';
+    var nav=o.lat!=null
+      ?'<a class="btn alt" target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination='+o.lat+','+o.lng+'&travelmode=driving">🧭 Google Maps</a>'+
+       '<a class="btn alt" target="_blank" rel="noopener" href="https://waze.com/ul?ll='+o.lat+','+o.lng+'&navigate=yes">🚗 Waze</a>':'';
+    var d=km(ME.lat,ME.lng,o.lat,o.lng);
+    return '<div class="card">'+
+      '<div class="row"><span class="no">'+esc(o.order_no)+'</span>'+st+'</div>'+
+      '<div class="meta"><b style="color:var(--text)">'+esc(o.customer_name)+'</b> · '+
+        '<a href="tel:'+esc(o.customer_phone)+'" style="color:var(--accent)">'+esc(o.customer_phone)+'</a>'+
+        (o.address_text?'<br>📍 '+esc(o.address_text):'')+(d!=null?' · '+d.toFixed(1)+' كم':'')+
+        (o.customer_note?'<br>📝 '+esc(o.customer_note):'')+'</div>'+
+      '<div class="lines">'+(o.lines||[]).map(function(l){return l.qty+' × '+esc(l.name)}).join('<br>')+'</div>'+
+      '<div class="row" style="margin-top:10px"><span class="amt">'+money(o.total_usd,o.total_lbp)+'</span>'+pay+'</div>'+
+      '<div class="acts">'+nav+
+        '<a class="btn alt full" target="_blank" rel="noopener" data-share="'+o.id+'" href="https://wa.me/'+waNum(o.customer_phone)+
+          '?text='+encodeURIComponent('مرحبا '+o.customer_name+' 👋\nطلبك رقم '+o.order_no+' من '+S.restaurant.name_ar+
+          ' صار معي.\nفيك تتابع وين صار الموتوسيكل عالخريطة من هون:\n'+trackUrl(o))+'">💬 ابعت رابط التتبع للزبون</a>'+
+        (o.dispatch==='claimed'
+          ?'<button class="btn go full" data-act="depart" data-id="'+o.id+'">🏍️ في الطريق إليك</button>'+
+           '<button class="btn alt full" data-act="release" data-id="'+o.id+'">رجّع الطلب للباقين</button>'
+          :'<button class="btn ok full" data-act="deliver" data-id="'+o.id+'">✅ تم توصيل الطلب</button>')+
+      '</div></div>';
+  }).join('');
+
+  $('#waiting').innerHTML=w.length?w.map(function(o){
+    var d=km(ME.lat,ME.lng,o.lat,o.lng);
+    var isNew=!seen[o.id]&&!first;
+    return '<div class="card'+(isNew?' new':'')+'">'+
+      '<div class="row"><span class="no">'+esc(o.order_no)+'</span><span class="meta" style="margin:0">'+ago(o.created_at)+'</span></div>'+
+      '<div class="meta">'+(o.address_text?'📍 '+esc(o.address_text):'📍 موقع على الخريطة')+
+        (d!=null?' · <b style="color:var(--text)">'+d.toFixed(1)+' كم</b> منك':'')+
+        '<br>'+o.items+' صنف · '+(o.payment_method==='whish'?'Whish':'نقداً')+'</div>'+
+      '<div class="row" style="margin-top:8px"><span class="amt">'+money(o.total_usd,o.total_lbp)+'</span></div>'+
+      '<button class="btn" style="margin-top:12px" data-act="claim" data-id="'+o.id+'">✋ استلمت الطلب</button>'+
+      '</div>';
+  }).join(''):'<div class="empty">ما في طلبات منتظرة هلق 👌</div>';
+
+  var wc=$('#wCount'); wc.textContent=w.length; wc.classList.toggle('hidden',!w.length);
+  $('#doneToday').textContent=S.done_today?('وصّلت اليوم '+S.done_today+' طلب'):'';
+
+  var fresh=w.filter(function(o){return !seen[o.id]});
+  if(fresh.length && !first && S.driver.on_duty){
+    beep();
+    try{ if(window.Notification&&Notification.permission==='granted'&&document.visibilityState!=='visible')
+      new Notification('طلب توصيل جديد',{body:fresh[0].order_no+' — '+(fresh[0].address_text||'')}); }catch(e){}
+  }
+  w.forEach(function(o){seen[o.id]=1}); first=false;
+}
+
+document.addEventListener('click',async function(e){
+  var b=e.target.closest('[data-act]'); if(!b||b.disabled) return;
+  var id=Number(b.dataset.id), a=b.dataset.act;
+  if(a==='deliver' && !confirm('أكيد سلّمت الطلب للزبون؟ رح تنقطع مشاركة موقعك معو.')) return;
+  if(a==='release' && !confirm('ترجّع الطلب لباقي الموظفين؟')) return;
+  b.disabled=true;
+  try{
+    await rpc({claim:'driver_claim',depart:'driver_depart',deliver:'driver_deliver',release:'driver_release'}[a],{p_order:id});
+    if(a==='claim'){ toast('الطلب صار معك ✓'); if(!S.driver.on_duty){ S.driver.on_duty=true; startGps(); keepAwake(true); paintDuty(); } }
+    if(a==='depart') toast('الزبون صار يشوفك عالطريق 🏍️');
+    if(a==='deliver') toast('تم التوصيل ✓ يعطيك العافية');
+  }catch(err){ toast(errTxt(err)); }
+  await load();
+});
+
+/* ---------- جهاز التتبع ---------- */
+function paintDevice(){
+  var dev=linkedDev();
+  $('#srcChip').textContent=dev?(dev.kind==='traccar_app'?'تطبيق Traccar':'جهاز GPS'):'GPS الهاتف';
+  $('#devNow').innerHTML=dev
+    ?esc(dev.label||dev.identifier)+' · <span style="direction:ltr;display:inline-block">'+esc(dev.identifier)+'</span><br>'+
+      (dev.pos_at?'آخر موقع '+ago(dev.pos_at):'لسا ما وصل منو أي موقع')+(dev.battery!=null?' · 🔋 '+Math.round(dev.battery)+'%':'')
+    :'الموقع عم ينبعت من متصفح هاتفك وقت الصفحة مفتوحة.';
+  $('#unlinkBtn').classList.toggle('hidden',!dev);
+  if(dev&&dev.kind==='traccar_app'){ showAppCfg(dev.identifier); } else { $('#appCfg').classList.add('hidden'); }
+  var free=S.devices.filter(function(d){return !d.mine && d.kind!=='traccar_app'});
+  $('#freeDevs').innerHTML=free.map(function(d){
+    return '<button class="btn alt" style="margin-top:8px" data-link="'+esc(d.identifier)+'">ربط: '+esc(d.label||d.identifier)+'</button>';
+  }).join('');
+}
+function showAppCfg(id){
+  $('#srvUrl').textContent=location.origin+'/api/track/osmand';
+  $('#devId').textContent=id; $('#appCfg').classList.remove('hidden');
+}
+$('#newAppBtn').addEventListener('click',async function(){
+  var dev=linkedDev();
+  if(dev&&dev.kind==='traccar_app'){ showAppCfg(dev.identifier); return; }
+  try{ var id=await rpc('driver_new_app_device'); showAppCfg(id); await load(); }catch(e){ toast(errTxt(e)); }
+});
+async function linkIt(id){
+  var m=$('#linkMsg'); m.className='msg'; m.textContent='';
+  if(!id){ m.className='msg e'; m.textContent='اكتب رقم الجهاز'; return; }
+  try{ await rpc('driver_link_device',{p_identifier:id}); m.className='msg s'; m.textContent='تم ربط الجهاز ✓'; $('#linkId').value=''; await load(); }
+  catch(e){ m.className='msg e'; m.textContent=errTxt(e); }
+}
+$('#linkBtn').addEventListener('click',function(){ linkIt($('#linkId').value.trim()); });
+document.addEventListener('click',function(e){
+  var b=e.target.closest('[data-link]'); if(b) linkIt(b.dataset.link);
+  var c=e.target.closest('[data-copy]');
+  if(c){ var t=$('#'+c.dataset.copy).textContent;
+    (navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(function(){toast('انتسخ ✓')},function(){toast(t)}); }
+});
+$('#unlinkBtn').addEventListener('click',async function(){
+  if(!confirm('فك ربط الجهاز؟')) return;
+  try{ await rpc('driver_unlink_device'); await load(); }catch(e){ toast(errTxt(e)); }
+});
+
+$$('.tab').forEach(function(t){ t.addEventListener('click',function(){
+  $$('.tab').forEach(function(x){x.setAttribute('aria-pressed',x===t)});
+  $$('[data-p]').forEach(function(p){p.classList.toggle('hidden',p.dataset.p!==t.dataset.t)});
+}); });
+
+/* ---------- تحميل ---------- */
+async function load(){
+  if(busy) return; busy=true;
+  try{
+    S=await rpc('driver_session');
+    if($('#app').classList.contains('hidden')){
+      document.documentElement.dataset.theme=S.restaurant.theme||'flame';
+      $('#logo').src=S.restaurant.logo_url||''; if(!S.restaurant.logo_url) $('#logo').style.display='none';
+      document.title='التوصيل — '+S.restaurant.name_ar;
+      $('#boot').classList.add('hidden'); $('#app').classList.remove('hidden');
+      if(S.driver.on_duty) startGps();
+    }
+    $('#dName').textContent=S.driver.name+' · '+S.restaurant.name_ar;
+    paintDuty(); paintOrders(); paintDevice(); paintGps();
+  }catch(e){
+    if(!S){ $('#boot').innerHTML='<div style="font-size:42px">🔒</div><b>'+esc(errTxt(e))+'</b><div class="meta">اطلب رابط جديد من إدارة المطعم</div>'; }
+  }finally{ busy=false; }
+}
+document.addEventListener('touchstart',unlockAudio,{once:true});
+document.addEventListener('click',unlockAudio,{once:true});
+if(!TOKEN){ $('#boot').innerHTML='<b>الرابط ناقص</b>'; return; }
+load();
+setInterval(function(){ if(document.visibilityState==='visible') load(); },7000);
+setInterval(paintGps,15000);
+})();
+</script>
+</body>
+</html>

@@ -569,7 +569,7 @@ window.I18N = {
     invalidPhone:'رقم الهاتف غير صحيح', needLocation:'لازم تحدد موقعك للتوصيل',
     success:'تم استلام طلبك', orderNo:'رقم الطلب', openWhatsapp:'أرسل الطلب على واتساب',
     whatsappHint:'اضغط الزر وبعدين «إرسال» بواتساب ليوصل الطلب للمطعم',
-    invoice:'عرض الفاتورة', newOrder:'طلب جديد', closed:'المطعم مقفل حالياً',
+    invoice:'عرض الفاتورة', track:'🏍️ تتبّع طلبك عالخريطة', trackMsg:'تتبع الطلب', newOrder:'طلب جديد', closed:'المطعم مقفل حالياً',
     error:'صار خطأ، جرّب مرة تانية', demo:'وضع عرض تجريبي — الطلبات ما بتنبعت',
     items:'أصناف', currency:'$', lbp:'ل.ل.'
   },
@@ -606,7 +606,7 @@ window.I18N = {
     invalidPhone:'Invalid phone number', needLocation:'Location is required for delivery',
     success:'Order received', orderNo:'Order number', openWhatsapp:'Send order on WhatsApp',
     whatsappHint:'Tap the button, then press Send in WhatsApp',
-    invoice:'View invoice', newOrder:'New order', closed:'This restaurant is closed',
+    invoice:'View invoice', track:'🏍️ Track your order live', trackMsg:'Track order', newOrder:'New order', closed:'This restaurant is closed',
     error:'Something went wrong, please try again', demo:'Demo mode — orders are not sent',
     items:'items', currency:'$', lbp:'LBP'
   }
@@ -1220,6 +1220,7 @@ function waText(o){
   lines.push(T.payment+': '+(pay==='whish'?T.whish:T.cash));
   if($('#cNote').value.trim()) lines.push(T.note+': '+$('#cNote').value.trim());
   if(o.token) lines.push('🧾 '+location.origin+'/i/'+encodeURIComponent(o.token));
+  if(o.token && oType==='delivery') lines.push('🏍️ '+T.trackMsg+': '+location.origin+'/t/'+encodeURIComponent(o.token));
   return lines.join('\n');
 }
 
@@ -1275,6 +1276,7 @@ function done(o){
     '<p style="color:var(--muted);font-size:13px;margin-top:14px">'+T.whatsappHint+'</p>';
   $('#footDone').innerHTML=
     '<a class="btn wa" style="display:block;text-align:center;text-decoration:none" target="_blank" rel="noopener" href="'+esc(url)+'">'+T.openWhatsapp+'</a>'+
+    (o.token&&oType==='delivery'?'<a class="btn alt" style="display:block;text-align:center;text-decoration:none;margin-top:8px" href="/t/'+encodeURIComponent(o.token)+'">'+T.track+'</a>':'')+
     (o.token?'<a class="btn alt" style="display:block;text-align:center;text-decoration:none;margin-top:8px" href="/i/'+encodeURIComponent(o.token)+'">'+T.invoice+'</a>':'')+
     '<button class="btn alt" style="margin-top:8px" id="againBtn">'+T.newOrder+'</button>';
   $('#againBtn').addEventListener('click',function(){

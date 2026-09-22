@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl" data-theme="flame">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>تتبع الطلب</title>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;800&family=Lalezar&family=Tajawal:wght@400;700;800&family=Amiri:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/themes.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font-family:'Cairo',system-ui,sans-serif}
+#map{position:fixed;inset:0;bottom:0;z-index:1;background:var(--bg-2)}
+.leaflet-container{font-family:'Cairo',sans-serif}
+.head{position:fixed;top:calc(10px + env(safe-area-inset-top,0));left:10px;right:10px;z-index:5;
+  display:flex;align-items:center;gap:10px;background:var(--card);border:1px solid var(--line);
+  border-radius:var(--radius);padding:10px 12px;box-shadow:var(--shadow);max-width:560px;margin:0 auto}
+.head img{width:38px;height:38px;border-radius:10px;object-fit:cover}
+.head .n{flex:1;min-width:0}
+.head b{display:block;font-size:15px}
+.head small{color:var(--muted);font-size:12px}
+.lang{border:1px solid var(--line);background:var(--bg-2);color:var(--text);border-radius:10px;padding:6px 10px;font:700 12px 'Cairo'}
+.sheet{position:fixed;left:0;right:0;bottom:0;z-index:5;background:var(--card);border-top:1px solid var(--line);
+  border-radius:22px 22px 0 0;padding:14px 16px calc(16px + env(safe-area-inset-bottom,0));
+  box-shadow:0 -10px 30px rgba(0,0,0,.35);max-width:600px;margin:0 auto}
+.grab{width:42px;height:5px;border-radius:5px;background:var(--line);margin:0 auto 10px}
+.st{font-size:20px;font-weight:800;margin:0}
+.sub{color:var(--muted);font-size:14px;margin:4px 0 0}
+.eta{display:flex;gap:10px;margin-top:12px}
+.eta div{flex:1;background:var(--bg-2);border:1px solid var(--line);border-radius:14px;padding:10px;text-align:center}
+.eta b{display:block;font-size:20px;color:var(--accent)}
+.eta span{font-size:12px;color:var(--muted)}
+.steps{display:flex;gap:4px;margin-top:14px}
+.steps i{flex:1;height:5px;border-radius:5px;background:var(--line)}
+.steps i.on{background:var(--brand)}
+.steps i.now{background:linear-gradient(90deg,var(--brand),var(--accent));animation:bl 1.4s infinite}
+@keyframes bl{50%{opacity:.45}}
+.lbls{display:flex;gap:4px;margin-top:6px;font-size:11px;color:var(--muted)}
+.lbls span{flex:1;text-align:center}
+.btns{display:flex;gap:8px;margin-top:14px}
+.btn{flex:1;display:block;border:0;border-radius:12px;padding:12px;font:800 14px 'Cairo';text-align:center;text-decoration:none;
+  background:var(--bg-2);color:var(--text);border:1px solid var(--line)}
+.done{font-size:54px;text-align:center;margin:4px 0}
+.moto{font-size:30px;line-height:1;filter:drop-shadow(0 3px 4px rgba(0,0,0,.5));transition:transform .3s}
+.pin{font-size:30px;line-height:1;filter:drop-shadow(0 3px 4px rgba(0,0,0,.5))}
+.pulse{width:18px;height:18px;border-radius:50%;background:var(--brand);border:3px solid #fff;box-shadow:0 0 0 0 var(--halo);animation:pp 1.6s infinite}
+@keyframes pp{70%{box-shadow:0 0 0 18px rgba(0,0,0,0)}}
+.hidden{display:none!important}
+.center{position:fixed;inset:0;z-index:9;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;background:var(--bg);text-align:center;padding:20px}
+</style>
+</head>
+<body>
+<div class="center" id="boot"><div class="sub">…</div></div>
+<div id="map"></div>
+
+<div class="head">
+  <img id="logo" alt="">
+  <div class="n"><b id="rName">—</b><small id="oNo"></small></div>
+  <button class="lang" id="langBtn">English</button>
+</div>
+
+<div class="sheet">
+  <div class="grab"></div>
+  <div id="doneIcon" class="done hidden">✅</div>
+  <p class="st" id="stTitle">—</p>
+  <p class="sub" id="stSub"></p>
+  <div class="eta hidden" id="eta">
+    <div><b id="etaMin">—</b><span id="lMin"></span></div>
+    <div><b id="etaKm">—</b><span id="lKm"></span></div>
+  </div>
+  <div class="steps" id="steps"><i></i><i></i><i></i><i></i></div>
+  <div class="lbls" id="lbls"></div>
+  <div class="btns">
+    <a class="btn" id="callBtn">📞</a>
+    <a class="btn" id="invBtn"></a>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.0/dist/umd/supabase.min.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="/assets/config.js"></script>
+<script>
+(function(){
+"use strict";
+var $=function(s){return document.querySelector(s)};
+var CFG=window.LIBANAPPS||{};
+var sb=window.supabase.createClient(CFG.SUPABASE_URL,CFG.SUPABASE_ANON_KEY,{auth:{persistSession:false}});
+var TOKEN=decodeURIComponent(location.pathname.split('/').filter(Boolean)[1]||'');
+
+var TX={
+ ar:{order:'طلب رقم',call:'اتصل بالمطعم',inv:'الفاتورة',min:'دقيقة تقريباً',km:'كم',
+   new:'المطعم استلم طلبك',newS:'عم يتحضّر — رح يبين الموتوسيكل هون أول ما يستلمو الموظف',
+   waiting:'طلبك جاهز للتوصيل',waitingS:'عم ننتظر موظف التوصيل يستلمو',
+   claimed:'الطلب صار مع الموتوسيكل',claimedS:'{d} استلم طلبك وقريباً بيطلع لعندك',
+   way:'في الطريق إليك 🏍️',wayS:'{d} عالطريق — تابعو عالخريطة',
+   delivered:'تم توصيل الطلب',deliveredS:'صحتين وعافية! انقطع تتبع الموتوسيكل',
+   cancelled:'تم إلغاء التوصيل',cancelledS:'تواصل مع المطعم للتفاصيل',
+   stale:'آخر موقع للموتوسيكل قديم شوي — ممكن الإشارة ضعيفة',
+   noPos:'عم ننتظر موقع الموتوسيكل…', driver:'الموظف',
+   steps:['استلام','تجهيز','بالطريق','وصل'], notFound:'رابط التتبع مش صالح'},
+ en:{order:'Order',call:'Call restaurant',inv:'Invoice',min:'min approx.',km:'km',
+   new:'The restaurant received your order',newS:'Being prepared — the rider will appear here once assigned',
+   waiting:'Your order is ready for delivery',waitingS:'Waiting for a rider to pick it up',
+   claimed:'A rider has your order',claimedS:'{d} picked up your order and will leave shortly',
+   way:'On the way to you 🏍️',wayS:'{d} is on the road — follow on the map',
+   delivered:'Order delivered',deliveredS:'Enjoy your meal! Live tracking has ended',
+   cancelled:'Delivery cancelled',cancelledS:'Please contact the restaurant',
+   stale:'Last rider position is a bit old — signal may be weak',
+   noPos:'Waiting for the rider position…', driver:'Your rider',
+   steps:['Received','Ready','On the way','Delivered'], notFound:'This tracking link is not valid'}
+};
+var L='ar', T=TX.ar, D=null, MAP=null, mMoto=null, mDest=null, line=null, fitted=false, timer=null;
+
+function icon(html,cls,sz){ return L_.divIcon({html:html,className:cls||'',iconSize:[sz||34,sz||34],iconAnchor:[(sz||34)/2,(sz||34)/2]}); }
+var L_=window.L;
+function km(a,b,c,d){ var R=6371,x=(c-a)*Math.PI/180,y=(d-b)*Math.PI/180;
+  var h=Math.sin(x/2)*Math.sin(x/2)+Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180)*Math.sin(y/2)*Math.sin(y/2);
+  return 2*R*Math.asin(Math.sqrt(h)); }
+
+function initMap(){
+  if(MAP) return;
+  MAP=L_.map('map',{zoomControl:false,attributionControl:true}).setView([33.89,35.5],12);
+  L_.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(MAP);
+}
+function slide(marker,to){
+  var from=marker.getLatLng(), t0=performance.now(), dur=1200;
+  if(from.distanceTo(to)>3000){ marker.setLatLng(to); return; }
+  (function step(t){ var k=Math.min(1,(t-t0)/dur);
+    marker.setLatLng([from.lat+(to[0]-from.lat)*k, from.lng+(to[1]-from.lng)*k]);
+    if(k<1) requestAnimationFrame(step); })(t0);
+}
+
+function paint(){
+  var r=D.restaurant, st=D.dispatch, dn=(D.driver&&D.driver.name)||T.driver;
+  $('#rName').textContent=L==='en'?(r.name_en||r.name_ar):r.name_ar;
+  $('#oNo').textContent=T.order+' '+D.order_no;
+  $('#callBtn').textContent='📞 '+T.call; $('#callBtn').href='tel:'+(r.phone||'');
+  $('#invBtn').textContent='🧾 '+T.inv; $('#invBtn').href='/i/'+encodeURIComponent(TOKEN);
+  $('#langBtn').textContent=L==='ar'?'English':'عربي';
+  document.documentElement.lang=L; document.documentElement.dir=L==='ar'?'rtl':'ltr';
+
+  var key={new:'new',waiting:'waiting',claimed:'claimed',on_the_way:'way',delivered:'delivered',cancelled:'cancelled'}[st]||'new';
+  $('#stTitle').textContent=T[key];
+  $('#stSub').textContent=(T[key+'S']||'').replace('{d}',dn);
+  $('#doneIcon').classList.toggle('hidden',st!=='delivered');
+
+  var lvl={new:0,waiting:1,claimed:1,on_the_way:2,delivered:4,cancelled:0}[st]||0;
+  var ii=$('#steps').children;
+  for(var i=0;i<4;i++){ ii[i].className=i<lvl?'on':(i===lvl&&lvl<4?'now':''); }
+  if(st==='claimed'){ ii[1].className='on'; ii[2].className='now'; }
+  $('#lbls').innerHTML=T.steps.map(function(s){return '<span>'+s+'</span>'}).join('');
+  $('#lMin').textContent=T.min; $('#lKm').textContent=T.km;
+
+  initMap();
+  var dest=D.dest&&D.dest.lat!=null?[D.dest.lat,D.dest.lng]:null;
+  if(dest){ if(!mDest) mDest=L_.marker(dest,{icon:icon('<div class="pin">📍</div>')}).addTo(MAP); }
+  else if(mDest){ MAP.removeLayer(mDest); mDest=null; }
+
+  var p=D.pos, has=p&&p.lat!=null&&!p.stale;
+  if(has){
+    var to=[p.lat,p.lng];
+    if(!mMoto) mMoto=L_.marker(to,{icon:icon('<div class="moto">🏍️</div>'),zIndexOffset:1000}).addTo(MAP);
+    else slide(mMoto,to);
+    if(dest){
+      if(!line) line=L_.polyline([to,dest],{color:getComputedStyle(document.documentElement).getPropertyValue('--brand')||'#E4141B',weight:4,dashArray:'8 8',opacity:.8}).addTo(MAP);
+      else line.setLatLngs([to,dest]);
+      var d=km(to[0],to[1],dest[0],dest[1])*1.3;          // الطريق أطول من الخط المستقيم
+      var sp=Math.max(18,Math.min(45,Number(p.speed_kmh)||25));
+      $('#etaKm').textContent=d.toFixed(1);
+      $('#etaMin').textContent=Math.max(1,Math.round(d/sp*60));
+      $('#eta').classList.toggle('hidden',st!=='on_the_way');
+      if(!fitted){ MAP.fitBounds(L_.latLngBounds([to,dest]).pad(0.35),{paddingBottomRight:[0,220]}); fitted=true; }
+    } else if(!fitted){ MAP.setView(to,15); fitted=true; }
+  } else {
+    if(mMoto){ MAP.removeLayer(mMoto); mMoto=null; }
+    if(line){ MAP.removeLayer(line); line=null; }
+    $('#eta').classList.add('hidden');
+    if(p&&p.stale) $('#stSub').textContent=T.stale;
+    else if(st==='claimed'||st==='on_the_way') $('#stSub').textContent+=' · '+T.noPos;
+    if(dest&&!fitted){ MAP.setView(dest,15); fitted=true; }
+  }
+}
+
+async function load(){
+  var r=await sb.rpc('track_order',{p_token:TOKEN});
+  if(r.error||!r.data){
+    if(!D){ $('#boot').innerHTML='<div style="font-size:42px">🔍</div><b>'+T.notFound+'</b>'; }
+    return;
+  }
+  var firstLoad=!D; D=r.data;
+  if(firstLoad){
+    document.documentElement.dataset.theme=D.restaurant.theme||'flame';
+    L=(new URLSearchParams(location.search).get('lang'))||D.restaurant.default_lang||'ar';
+    if(!TX[L]) L='ar'; T=TX[L];
+    if(D.restaurant.logo_url) $('#logo').src=D.restaurant.logo_url; else $('#logo').style.display='none';
+    $('#boot').classList.add('hidden');
+  }
+  document.title=T.order+' '+D.order_no;
+  paint();
+  // بعد التوصيل أو الإلغاء منوقف التحديث — الاتصال انقطع
+  if(D.dispatch==='delivered'||D.dispatch==='cancelled'){ clearInterval(timer); timer=null; }
+}
+$('#langBtn').addEventListener('click',function(){ L=L==='ar'?'en':'ar'; T=TX[L]; if(D) paint(); });
+
+if(!TOKEN){ $('#boot').innerHTML='<b>'+T.notFound+'</b>'; return; }
+load();
+timer=setInterval(function(){ if(document.visibilityState==='visible') load(); },5000);
+document.addEventListener('visibilitychange',function(){ if(document.visibilityState==='visible'&&timer) load(); });
+})();
+</script>
+</body>
+</html>
