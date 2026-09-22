@@ -1523,6 +1523,126 @@ function withCache(res, pathname) {
 }
 
 // ============================================================
+//  اشتراك نظام التوصيل ومقاعد الموظفين — دفع Whish من لوحة المطعم
+//  أرقام العمليات (addon_purchases) بتبلّش من 900000001 = externalId
+// ============================================================
+async function addonRow(env, id) {
+  const rows = await sbGet(env, `addon_purchases?id=eq.${Number(id)}&select=*,restaurants(slug)&limit=1`);
+  return rows[0];
+}
+async function addonProvision(env, id, txn) {
+  const r = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/provision_addon`, {
+    method: 'POST',
+    headers: { ...sbHeaders(env), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ p_id: Number(id), p_txn: txn || null })
+  });
+  if (!r.ok) { const t = await r.text(); console.error('provision_addon failed', t); throw new Error(t.slice(0, 120)); }
+  return r.json();
+}
+function amountOk(w, got, want, cur) {
+  if (got === undefined || got === null || got === '') return true;   // Whish أحياناً ما بيرجّع المبلغ
+  const g = Number(got);
+  return w.client.validateAmount(g, want, cur || 'USD') || (isFinite(g) && g >= want - 0.01);
+}
+async function addonPay(request, env) {
+  const me = await currentUser(request, env);
+  if (!me) return json(401, { error: 'سجّل دخولك أولاً' });
+  let body; try { body = await request.json(); } catch { return json(400, { error: 'bad json' }); }
+  let p = await addonRow(env, body.id);
+  if (!p) return json(404, { error: 'purchase not found' });
+  if (p.user_id !== me.id) return json(403, { error: 'not allowed' });
+  if (p.status === 'paid') return json(400, { error: 'مدفوعة مسبقاً' });
+
+  // رابط Whish صالح لمرة وحدة — إعادة المحاولة بدها رقم عملية جديد
+  if (p.status === 'awaiting_payment') {
+    const clone = await fetch(`${env.SUPABASE_URL}/rest/v1/addon_purchases`, {
+      method: 'POST',
+      headers: { ...sbHeaders(env), 'Content-Type': 'application/json', Prefer: 'return=representation' },
+      body: JSON.stringify({ user_id: p.user_id, restaurant_id: p.restaurant_id, kind: p.kind, seat_id: p.seat_id,
+                             seat_ids: p.seat_ids, qty: p.qty, days: p.days, amount_usd: p.amount_usd })
+    });
+    if (clone.ok) {
+      const made = await clone.json();
+      if (made && made[0]) {
+        await sbPatch(env, `addon_purchases?id=eq.${p.id}`, { status: 'cancelled' });
+        made[0].restaurants = p.restaurants; p = made[0];
+      }
+    }
+  }
+
+  const w = await platformWhish(env);
+  if (!w) return json(400, { error: 'الدفع الإلكتروني غير مفعّل حالياً — تواصل معنا' });
+  const site = env.WEBSITE_URL;
+  const slug = (p.restaurants && p.restaurants.slug) || '';
+  const back = `${site}/${encodeURIComponent(slug)}/admin`;
+  const label = { delivery: 'Delivery system', seat_new: 'Driver seat', seat_renew: 'Driver seat renewal', renew_all: 'Delivery renewal' }[p.kind] || p.kind;
+  try {
+    const res = await w.client.createPayment({
+      amount: Number(p.amount_usd), currency: 'USD',
+      invoice: `LibanApps — ${label} #${p.id}`,
+      externalId: Number(p.id),
+      successCallbackUrl: `${site}/api/addon/callback-success`,
+      failureCallbackUrl: `${site}/api/addon/callback-failure`,
+      successRedirectUrl: `${back}?addon=${p.id}`,
+      failureRedirectUrl: `${back}?addon_failed=${p.id}`
+    });
+    if (!res.success) {
+      console.error('addon whish rejected', JSON.stringify(res));
+      return json(400, { error: (res.dialog && res.dialog.message) || 'رفضت بوابة الدفع العملية' });
+    }
+    await sbPatch(env, `addon_purchases?id=eq.${p.id}`, { status: 'awaiting_payment' });
+    return json(200, { collectUrl: res.collectUrl });
+  } catch (e) {
+    console.error('addon pay failed', JSON.stringify(e, Object.getOwnPropertyNames(e)));
+    return json(502, { error: 'بوابة الدفع: ' + ((e && e.dialog && e.dialog.message) || (e && (e.code || e.message)) || '') });
+  }
+}
+async function addonVerify(request, env) {
+  const me = await currentUser(request, env);
+  if (!me) return json(401, { error: 'سجّل دخولك أولاً' });
+  let body; try { body = await request.json(); } catch { return json(400, { error: 'bad json' }); }
+  const p = await addonRow(env, body.id);
+  if (!p) return json(404, { error: 'purchase not found' });
+  if (p.user_id !== me.id) {
+    const adm = await sbGet(env, `platform_admins?user_id=eq.${me.id}&select=user_id&limit=1`);
+    if (!adm.length) return json(403, { error: 'not allowed' });
+  }
+  if (p.status === 'paid') return json(200, { ok: true, already: true, kind: p.kind });
+  const w = await platformWhish(env);
+  if (!w) return json(400, { error: 'الدفع الإلكتروني غير مفعّل' });
+  let st;
+  try { st = await w.client.getPaymentStatus('USD', Number(p.id)); }
+  catch (e) { console.error('addon verify failed', e); return json(502, { error: 'ما قدرنا نتحقق من الدفعة عند Whish' }); }
+  if (st.collectStatus !== 'success') return json(200, { ok: false, status: st.collectStatus || 'pending' });
+  if (!amountOk(w, st.amount, Number(p.amount_usd), 'USD')) return json(400, { error: 'المبلغ غير مطابق' });
+  try { await addonProvision(env, p.id, st.transactionId); }
+  catch (e) { return json(500, { error: 'تعذّر التفعيل: ' + e.message }); }
+  return json(200, { ok: true, activated: true, kind: p.kind });
+}
+async function addonCallbackSuccess(request, env) {
+  const { externalId, currency } = parseCallbackUrl(request.url) || {};
+  if (!externalId) return json(400, { error: 'malformed callback' });
+  const p = await addonRow(env, externalId);
+  if (!p) return json(404, { error: 'unknown purchase' });
+  if (p.status === 'paid') return json(200, { ok: true, already: true });
+  const w = await platformWhish(env);
+  if (!w) return json(400, { error: 'no platform credentials' });
+  let st;
+  try { st = await w.client.getPaymentStatus(currency || 'USD', Number(externalId)); }
+  catch (e) { return json(502, { error: 'status check failed' }); }
+  if (st.collectStatus !== 'success') return json(400, { error: 'not confirmed' });
+  if (!amountOk(w, st.amount, Number(p.amount_usd), currency)) return json(400, { error: 'amount mismatch' });
+  try { await addonProvision(env, p.id, st.transactionId); } catch (e) { return json(500, { error: 'provision failed' }); }
+  return json(200, { ok: true });
+}
+async function addonCallbackFailure(request, env) {
+  const { externalId } = parseCallbackUrl(request.url) || {};
+  if (!externalId) return json(400, { error: 'malformed callback' });
+  await sbPatch(env, `addon_purchases?id=eq.${Number(externalId)}&status=eq.awaiting_payment`, { status: 'failed' });
+  return json(200, { ok: true });
+}
+
+// ============================================================
 //  استقبال مواقع أجهزة التتبع
 //  بيقبل: تطبيق Traccar Client (القديم والجديد) · Traccar Server forward
 //         · أي جهاز GPS بيبعت HTTP بصيغة OsmAnd أو JSON
@@ -1656,6 +1776,16 @@ export default {
     // 1) الـAPI — أي مسار تحت /api/ يرجّع JSON دائماً، حتى لو صار خطأ داخلي
     if (url.pathname.startsWith('/api/')) {
       try {
+        if (url.pathname === '/api/addon/pay') {
+          if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
+          return await addonPay(request, env);
+        }
+        if (url.pathname === '/api/addon/verify') {
+          if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
+          return await addonVerify(request, env);
+        }
+        if (url.pathname === '/api/addon/callback-success') return await addonCallbackSuccess(request, env);
+        if (url.pathname === '/api/addon/callback-failure') return await addonCallbackFailure(request, env);
         if (url.pathname === '/api/track/osmand' || url.pathname === '/api/track/push') {
           return await trackPush(request, env, url);
         }
