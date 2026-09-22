@@ -231,6 +231,24 @@ footer.site .bottom b{color:#fff}
         <div class="msg" id="pfMsg"></div>
       </div>
 
+      <div class="card" style="margin-bottom:18px" id="mfaCard">
+        <h3 style="font-size:19px">الأمان — التحقق بخطوتين (2FA)</h3>
+        <p style="color:var(--muted);font-size:14px;margin:4px 0 14px">طبقة حماية إضافية: بعد كلمة المرور، بيطلب منك رمز من تطبيق مصادقة على موبايلك.</p>
+        <div id="mfaOff">
+          <p style="font-size:14px;margin:0 0 10px"><b style="color:var(--bad)">غير مفعّل</b></p>
+          <button class="btn btn-o" id="mfaEnableBtn">تفعيل التحقق بخطوتين</button>
+        </div>
+        <div id="mfaOn" class="hidden">
+          <p style="font-size:14px;margin:0 0 10px"><b style="color:var(--ok)">مفعّل ✓</b></p>
+          <p style="color:var(--muted);font-size:13.5px;margin:0 0 12px" id="mfaBackupCount">…</p>
+          <div style="display:flex;gap:10px;flex-wrap:wrap">
+            <button class="btn btn-g sm" id="mfaRegenBtn">توليد رموز احتياطية جديدة</button>
+            <button class="btn btn-g sm" id="mfaDisableBtn" style="border-color:var(--bad);color:var(--bad)">تعطيل التحقق بخطوتين</button>
+          </div>
+        </div>
+        <div class="msg" id="mfaMsg"></div>
+      </div>
+
       <div class="card" style="margin-bottom:18px">
         <h3 style="font-size:19px">اشتراكاتي</h3>
         <div id="subs" style="margin-top:12px">
@@ -406,6 +424,7 @@ if(sb) sb.auth.getSession().then(function(r){
     await loadSubs();
     await loadPlans();
     await loadTrials();
+    await mfaBoot();
     if(qs.get('plan')) openPlan(qs.get('plan'));
     if(qs.get('renew')){
       var lic=(await sb.rpc('my_licenses')).data||[];
@@ -449,6 +468,97 @@ if(sb) sb.auth.getSession().then(function(r){
       return false;
     }catch(e){ if(!silent) alert(String(e.message||e)); return false; }
   }
+
+  /* ============================================================
+     الأمان — التحقق بخطوتين (2FA)
+     TOTP نفسو مُدار من Supabase Auth مباشرة (sb.auth.mfa.*).
+     الرموز الاحتياطية (backup codes) عبر الـWorker (service role) —
+     ما بتنخزن نص واضح، وما في وصول مباشر من المتصفح لجدولها.
+     ============================================================ */
+  var MFA_OFF_TPL = $('#mfaOff') ? $('#mfaOff').innerHTML : '';
+  function mfaMsg(t,ok){ var m=$('#mfaMsg'); if(!m) return; m.className='msg'+(ok===true?' s':ok===false?' e':''); m.textContent=t||''; }
+  async function mfaToken(){ var s=await sb.auth.getSession(); return s.data.session&&s.data.session.access_token; }
+  async function mfaApi(path,body){
+    var tok=await mfaToken();
+    var r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok},body:JSON.stringify(body||{})});
+    var j={}; try{ j=await r.json(); }catch(e){}
+    if(!r.ok||j.error) throw new Error(j.error||('خطأ ('+r.status+')'));
+    return j;
+  }
+  function mfaCodesHtml(codes){
+    return '<div class="card" style="background:#FBF6EC;border-color:var(--orange)"><h4 style="margin:0 0 6px;font-size:16px">الرموز الاحتياطية — احفظها هلق</h4>'+
+      '<p style="color:var(--muted);font-size:13.5px;margin:0 0 12px">كل رمز بيشتغل مرة وحدة بس، لو ضاع منك تطبيق المصادقة. ما رح تقدر تشوفها مرة ثانية بعد ما تسكّر هالصفحة.</p>'+
+      '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;font-family:monospace;font-size:15px;direction:ltr;text-align:center;margin-bottom:14px">'+
+      codes.map(function(c){return '<div style="background:#fff;border:1px solid var(--line);border-radius:8px;padding:8px">'+esc(c)+'</div>'}).join('')+'</div>'+
+      '<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-g sm" id="mfaCopyCodes">نسخ الرموز</button><button class="btn btn-p sm" id="mfaDoneCodes">حفظتها، متابعة</button></div></div>';
+  }
+  function wireCodesReveal(codes,onDone){
+    $('#mfaCopyCodes').addEventListener('click',function(){
+      try{ navigator.clipboard.writeText(codes.join('\n')); }catch(e){}
+      this.textContent='تم النسخ ✓';
+    });
+    $('#mfaDoneCodes').addEventListener('click',onDone);
+  }
+  async function mfaRenderStatus(){
+    var f=(await sb.auth.mfa.listFactors()).data;
+    var totp=(f&&f.totp||[]).filter(function(x){return x.status==='verified'});
+    var st=await mfaApi('/api/mfa/backup-codes/status').catch(function(){return {unused:0}});
+    if(totp.length){
+      $('#mfaOff').classList.add('hidden'); $('#mfaOn').classList.remove('hidden');
+      $('#mfaBackupCount').textContent = st.unused>0 ? ('باقي عندك '+st.unused+' رمز احتياطي غير مستعمل') : 'ما عندك رموز احتياطية — ولّد مجموعة جديدة';
+      $('#mfaOn').dataset.factorId=totp[0].id;
+    } else {
+      $('#mfaOn').classList.add('hidden'); $('#mfaOff').innerHTML=MFA_OFF_TPL; $('#mfaOff').classList.remove('hidden');
+      var eb=$('#mfaEnableBtn'); if(eb) eb.addEventListener('click',mfaStartEnroll);
+    }
+  }
+  async function mfaBoot(){ if(!sb) return; try{ await mfaRenderStatus(); }catch(e){} }
+
+  async function mfaStartEnroll(){
+    mfaMsg('عم نجهّز…');
+    var en=await sb.auth.mfa.enroll({factorType:'totp'});
+    if(en.error) return mfaMsg(en.error.message,false);
+    var factorId=en.data.id, qr=en.data.totp.qr_code, secret=en.data.totp.secret;
+    $('#mfaOff').innerHTML='<div style="text-align:center;margin-bottom:14px"><img src="'+qr+'" alt="QR" style="width:180px;height:180px;border:1px solid var(--line);border-radius:10px;padding:8px;background:#fff"></div>'+
+      '<p style="font-size:13.5px;color:var(--muted);text-align:center;margin:0 0 6px">افتح تطبيق مصادقة (Google Authenticator، Authy…) وامسح الرمز، أو أدخل هالمفتاح يدوياً:</p>'+
+      '<p style="text-align:center;font-family:monospace;direction:ltr;font-size:13px;background:#F4F8FB;border-radius:8px;padding:8px;word-break:break-all">'+esc(secret)+'</p>'+
+      '<label>أدخل الرمز المكوّن من ٦ أرقام</label><input type="text" id="mfaCode" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="000000" style="text-align:center;letter-spacing:4px;font-size:20px">'+
+      '<div style="display:flex;gap:8px;margin-top:12px"><button class="btn btn-g sm" id="mfaCancelEnroll">إلغاء</button><button class="btn btn-p" id="mfaConfirmEnroll" style="flex:1">تأكيد وتفعيل</button></div>';
+    $('#mfaCancelEnroll').addEventListener('click',async function(){ await sb.auth.mfa.unenroll({factorId:factorId}); location.reload(); });
+    $('#mfaConfirmEnroll').addEventListener('click',async function(){
+      var code=$('#mfaCode').value.trim(); if(code.length!==6) return mfaMsg('اكتب الرمز المكوّن من ٦ أرقام',false);
+      this.disabled=true; mfaMsg('عم نتحقق…');
+      var ch=await sb.auth.mfa.challenge({factorId:factorId});
+      if(ch.error){ this.disabled=false; return mfaMsg(ch.error.message,false); }
+      var vf=await sb.auth.mfa.verify({factorId:factorId,challengeId:ch.data.id,code:code});
+      if(vf.error){ this.disabled=false; return mfaMsg('الرمز غير صحيح',false); }
+      var g; try{ g=await mfaApi('/api/mfa/backup-codes/generate'); }catch(e){ mfaMsg(String(e.message||e),false); this.disabled=false; return; }
+      mfaMsg('');
+      $('#mfaOff').innerHTML=mfaCodesHtml(g.codes);
+      wireCodesReveal(g.codes,async function(){ await mfaRenderStatus(); });
+    });
+  }
+  async function mfaDisable(){
+    if(!confirm('تعطيل التحقق بخطوتين؟ حسابك رح يصير محمي بكلمة المرور بس.')) return;
+    mfaMsg('عم نعطّل…');
+    var f=(await sb.auth.mfa.listFactors()).data;
+    var all=(f&&f.all)||[];
+    for(var i=0;i<all.length;i++){ await sb.auth.mfa.unenroll({factorId:all[i].id}); }
+    try{ await mfaApi('/api/mfa/backup-codes/clear'); }catch(e){}
+    mfaMsg('تم التعطيل',true);
+    await mfaRenderStatus();
+  }
+  async function mfaRegen(){
+    if(!confirm('توليد رموز احتياطية جديدة رح يلغي أي رموز قديمة ما استُعملت. متابعة؟')) return;
+    mfaMsg('عم نولّد…');
+    var g; try{ g=await mfaApi('/api/mfa/backup-codes/generate'); }catch(e){ return mfaMsg(String(e.message||e),false); }
+    mfaMsg('');
+    var wrap=document.createElement('div'); wrap.innerHTML=mfaCodesHtml(g.codes);
+    var panel=wrap.firstChild; $('#mfaCard').appendChild(panel);
+    wireCodesReveal(g.codes,async function(){ panel.remove(); await mfaRenderStatus(); });
+  }
+  $('#mfaDisableBtn').addEventListener('click',mfaDisable);
+  $('#mfaRegenBtn').addEventListener('click',mfaRegen);
 
   async function loadSubs(){
     var lic=await sb.rpc('my_licenses');
@@ -829,9 +939,35 @@ window.SITE_I18N = { en: {"البرامج": "Products", "منيو المطاعم
     var saved=null;
     try{ saved=localStorage.getItem('la_site_lang'); }catch(e){}
     if(saved==='en'||saved==='fr') window.setSiteLang(saved);
-    else { window.setSiteLang('ar'); if(sel) sel.value='ar'; }
+    else { window.setSiteLang('ar'); }
   });
 })();
 </script>
+
+<div id="mfaModal" class="hidden" style="position:fixed;inset:0;z-index:90;background:rgba(14,36,56,.55);
+     display:grid;place-items:center;padding:18px">
+  <div class="card" style="max-width:420px;width:100%">
+    <div id="mfaStepQr">
+      <h3 style="font-size:20px">امسح رمز QR</h3>
+      <p style="color:var(--muted);font-size:14px;margin:4px 0 14px">بتطبيق مصادقة متل Google Authenticator أو Authy، وبعدها اكتب الرمز المكوّن من 6 أرقام.</p>
+      <div id="mfaQrBox" style="background:#fff;padding:14px;border-radius:12px;display:flex;justify-content:center"></div>
+      <p style="color:var(--muted);font-size:12.5px;margin:10px 0 4px">أو أدخل هالمفتاح يدوياً:</p>
+      <p id="mfaSecret" style="font-family:monospace;font-size:13px;background:var(--bg);padding:8px 10px;border-radius:8px;word-break:break-all"></p>
+      <label style="margin-top:14px">رمز التحقق (6 أرقام)</label>
+      <input type="text" id="mfaCodeIn" inputmode="numeric" maxlength="6" placeholder="123456" autocomplete="one-time-code">
+      <button class="btn btn-p full" id="mfaVerifyBtn" style="margin-top:14px">تأكيد وتفعيل</button>
+      <button class="btn btn-g full" id="mfaCancelBtn" style="margin-top:8px">إلغاء</button>
+      <div class="msg" id="mfaModalMsg"></div>
+    </div>
+    <div id="mfaStepCodes" class="hidden">
+      <h3 style="font-size:20px">احفظ رموزك الاحتياطية</h3>
+      <p style="color:var(--muted);font-size:14px;margin:4px 0 14px">إذا فقدت موبايلك، بتقدر تستعمل أي رمز من هدول (مرة وحدة لكل رمز) بدل رمز التطبيق. احفظهم بمكان آمن — ما رح تقدر تشوفهم مرة تانية.</p>
+      <div id="mfaCodesList" style="font-family:monospace;font-size:14.5px;line-height:2;background:var(--bg);padding:14px;border-radius:10px;text-align:center"></div>
+      <button class="btn btn-g full" id="mfaCopyBtn" style="margin-top:14px">نسخ الرموز</button>
+      <button class="btn btn-p full" id="mfaDoneBtn" style="margin-top:8px">تم، حفظتهم ✓</button>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
