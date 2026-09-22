@@ -681,7 +681,7 @@ async function orderDetails(id){
   var vb=$('#oVer'); if(vb) vb.onclick=async function(){
     this.disabled=true; showMsg('mMsg',L('عم نتحقق من البوابة…','Checking with the gateway…'));
     try{var rr=await fetch('/api/store/pay/verify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:this.dataset.tok})}); var j=await rr.json();
-      if(j.paid){showMsg('mMsg',L('تم تأكيد الدفع ✓','Payment confirmed ✓'),true); await loadOrders();} else showMsg('mMsg',j.error||L('لسا الدفع غير مؤكد عند البوابة','Payment not confirmed by the gateway yet'),false);
+      if(j.paid){showMsg('mMsg',L('تم تأكيد الدفع ✓','Payment confirmed ✓'),true); await loadOrders();} else showMsg('mMsg',j.error||L('الدفع ما تأكد بعد عند البوابة','Payment not confirmed by the gateway yet'),false);
     }catch(e){showMsg('mMsg',errTxt(e),false);} this.disabled=false;
   };
 }
@@ -1132,7 +1132,7 @@ function wooAnalyze(rows,opt){
 }
 
 var imp={plan:null,file:'',opt:{unpub:true,update:true,newest:0},running:false,log:'',copyStop:{stop:false},copying:false};
-LOADERS.import=async function(){ try{ await ensureCats(true); }catch(e){return pageErr(e);} renderImport(); };
+LOADERS.import=async function(){ try{ await ensureCats(true); await ensureProds(); }catch(e){return pageErr(e);} renderImport(); };
 function renderImport(){
   var p=imp.plan, s=p&&p.stats;
   viewEl().innerHTML=
@@ -1151,8 +1151,19 @@ function renderImport(){
      '<button class="btn" id="impGo"'+(imp.running?' disabled':'')+'>'+L('ابدأ الاستيراد','Start import')+'</button>'+
      '<div class="progress" style="margin-top:14px"><i id="impBar" style="width:0%"></i></div><div class="msg" id="impProg">'+esc(imp.log)+'</div></div>':'')+
    '<div class="card" id="impCopyCard"><h3>'+L('نسخ الصور لمتجرك','Copy images to your store')+'</h3><p class="sub">'+L('بعد الاستيراد الصور بتضل عم تُحمّل من موقع ووردبريس القديم. اضغط هون لتنسخها لتخزين متجرك (أسرع وبتضل حتى لو سكّرت الموقع القديم). ممكن توقف وتكمّل بأي وقت.','After importing, images are still loaded from your old WordPress site. Copy them to your own storage (faster, and they survive if the old site goes offline). You can stop and resume anytime.')+'</p>'+
+     copyStatusLine()+
    '<div class="tools"><button class="btn acc" id="impCopy"'+(imp.copying?' disabled':'')+'>'+L('نسخ الصور الخارجية','Copy external images')+'</button><button class="btn alt" id="impStop"'+(imp.copying?'':' disabled')+'>'+L('إيقاف','Stop')+'</button></div>'+
    '<div class="progress"><i id="copyBar" style="width:0%"></i></div><div class="msg" id="copyMsg"></div></div>';
+}
+/* حالة النسخ — محسوبة دايماً من بيانات المنتجات الفعلية بقاعدة البيانات، مش من ذاكرة الصفحة —
+   هيك لو الصفحة انسكّرت أو انعمللها Reload بمنتصف النسخ، أول ما ترجع فاتحها بتعرف بالضبط وين وصلت،
+   بدل ما تضل حائرة إذا كانت عم تنسخ أو لأ. */
+function extPending(){
+  return PRODS.reduce(function(a,p){return a+(isExtUrl(p.image_url)?1:0)+(p.images||[]).filter(isExtUrl).length+(p.colors||[]).filter(function(c){return isExtUrl(c.img)}).length},0);
+}
+function copyStatusLine(){
+  var n=extPending(); if(!n) return '<p class="note" style="margin:0 0 12px;color:var(--ok)">'+L('✓ كل الصور منسوخة لمتجرك — ما في صور خارجية باقية','✓ All images are copied to your store — none left external')+'</p>';
+  return '<p class="note" style="margin:0 0 12px;color:var(--warn)">'+L('بعد في ','There are still ')+n+L(' صورة خارجية ما انسخت — لو الصفحة انقفلت أو تحدّثت بنص النسخ، اضغط الزر تحت لتكمل من نفس المكان (ما بيعيد الصور المنسوخة).','more external images not copied — if the page closed or reloaded mid-copy, press the button below to continue from where it left off (already-copied images are skipped).')+'</p>';
 }
 function impProg(pct,msg){ var b=$('#impBar'); if(b) b.style.width=Math.max(0,Math.min(100,pct))+'%'; var m=$('#impProg'); if(m){m.className='msg';m.textContent=msg;} imp.log=msg; }
 async function impLoadFile(file){
@@ -1283,6 +1294,7 @@ async function runCopyImages(){
     }
   }catch(e){ msg.className='msg e'; msg.textContent=errTxt(e); }
   imp.copying=false; var b1=$('#impCopy'); if(b1) b1.disabled=false; var b2=$('#impStop'); if(b2) b2.disabled=true;
+  var cs=document.getElementById('impCopyCard'); if(cs){ var sl=cs.querySelector('.note'); if(sl) sl.outerHTML=copyStatusLine(); }
 }
 
 /* ============================================================
@@ -2096,7 +2108,7 @@ document.addEventListener('click',function(e){
   // domain
   if(t.closest('#dmAdd')){var d=$('#dmIn').value.trim(); if(!d){showMsg('dmMsg',L('اكتب الدومين','Enter the domain'),false);return;} showMsg('dmMsg',L('عم نربط…','Connecting…'));
     domainApi({action:'add',domain:d}).then(function(j){DOMAINS=[j.domain];renderDomain(j.info);}).catch(function(x){showMsg('dmMsg',errTxt(x),false)});return;}
-  if(t.closest('#dmChk')){showMsg('dmMsg',L('عم نتحقق…','Checking…')); domainApi({action:'check'}).then(function(j){DOMAINS=[j.domain];renderDomain(j.info);showMsg('dmMsg',j.domain.status==='active'?L('الدومين شغّال ✓','Domain is active ✓'):L('لسا ما تفعّل — جرّب بعد شوي','Not active yet — try again shortly'),j.domain.status==='active');}).catch(function(x){showMsg('dmMsg',errTxt(x),false)});return;}
+  if(t.closest('#dmChk')){showMsg('dmMsg',L('عم نتحقق…','Checking…')); domainApi({action:'check'}).then(function(j){DOMAINS=[j.domain];renderDomain(j.info);showMsg('dmMsg',j.domain.status==='active'?L('الدومين شغّال ✓','Domain is active ✓'):L('ما تفعّل بعد — جرّب بعد شوي','Not active yet — try again shortly'),j.domain.status==='active');}).catch(function(x){showMsg('dmMsg',errTxt(x),false)});return;}
   if(t.closest('#dmDel')){if(confirmBox(L('حذف الدومين الخاص؟','Remove the custom domain?'))) domainApi({action:'remove'}).then(function(){DOMAINS=[];renderDomain(null);}).catch(function(x){showMsg('dmMsg',errTxt(x),false)});return;}
 });
 document.addEventListener('change',function(e){
