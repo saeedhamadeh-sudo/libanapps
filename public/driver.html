@@ -80,6 +80,7 @@ ol{padding-inline-start:20px;margin:6px 0;color:var(--muted);font-size:13px;line
         <b id="dName">—</b>
         <div class="gps"><span class="dot" id="gDot"></span><span id="gTxt">الموقع متوقف</span></div>
       </div>
+      <button class="btn alt duty" id="langBtn" style="padding:9px 10px">EN</button>
       <button class="btn duty" id="dutyBtn">بدء الدوام</button>
     </div>
 
@@ -148,6 +149,8 @@ ol{padding-inline-start:20px;margin:6px 0;color:var(--muted);font-size:13px;line
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.0/dist/umd/supabase.min.js"></script>
 <script src="/assets/config.js"></script>
+<script src="/assets/lang-engine.js"></script>
+<script src="/assets/driver-i18n.js"></script>
 <script>
 (function(){
 "use strict";
@@ -168,6 +171,8 @@ function errTxt(e){
   if(/device linked to another/.test(m)) return 'هالجهاز مربوط بموظف تاني';
   if(/device not found/.test(m)) return 'ما لقينا جهاز بهالرقم — اطلب من المطعم يضيفو';
   if(/driver not found/.test(m)) return 'الرابط مش صالح أو الحساب موقوف';
+  if(/delivery not subscribed/.test(m)) return 'نظام التوصيل متوقف عند المطعم — اشتراك التوصيل منتهي';
+  if(/driver seat expired/.test(m)) return 'اشتراك هالموظف منتهي — راجع إدارة المطعم';
   return 'صار خطأ، جرّب مرة تانية';
 }
 function money(u,l){ return Number(u||0).toFixed(2)+' $'+(l?' · '+Number(l).toLocaleString('en-US')+' ل.ل':''); }
@@ -261,7 +266,7 @@ function paintOrders(){
   $('#mineH').classList.toggle('hidden',!mine.length);
   $('#mine').innerHTML=mine.map(function(o){
     var st=o.dispatch==='on_the_way'
-      ?'<span class="chip b">في الطريق</span>':'<span class="chip w">مستلم — لسا ما طلعت</span>';
+      ?'<span class="chip b">في الطريق</span>':'<span class="chip w">مستلم — يتم تجهيز الطلب</span>';
     var pay=o.payment_method==='whish'
       ?(o.status==='paid'?'<span class="chip p">مدفوع Whish</span>':'<span class="chip w">Whish — مش مدفوع</span>')
       :'<span class="chip">نقداً عند التسليم</span>';
@@ -334,7 +339,7 @@ function paintDevice(){
   $('#srcChip').textContent=dev?(dev.kind==='traccar_app'?'تطبيق Traccar':'جهاز GPS'):'GPS الهاتف';
   $('#devNow').innerHTML=dev
     ?esc(dev.label||dev.identifier)+' · <span style="direction:ltr;display:inline-block">'+esc(dev.identifier)+'</span><br>'+
-      (dev.pos_at?'آخر موقع '+ago(dev.pos_at):'لسا ما وصل منو أي موقع')+(dev.battery!=null?' · 🔋 '+Math.round(dev.battery)+'%':'')
+      (dev.pos_at?'آخر موقع '+ago(dev.pos_at):'ما وصل منو أي موقع بعد')+(dev.battery!=null?' · 🔋 '+Math.round(dev.battery)+'%':'')
     :'الموقع عم ينبعت من متصفح هاتفك وقت الصفحة مفتوحة.';
   $('#unlinkBtn').classList.toggle('hidden',!dev);
   if(dev&&dev.kind==='traccar_app'){ showAppCfg(dev.identifier); } else { $('#appCfg').classList.add('hidden'); }
@@ -393,6 +398,14 @@ async function load(){
     if(!S){ $('#boot').innerHTML='<div style="font-size:42px">🔒</div><b>'+esc(errTxt(e))+'</b><div class="meta">اطلب رابط جديد من إدارة المطعم</div>'; }
   }finally{ busy=false; }
 }
+/* ---------- اللغة ---------- */
+var ENG=window.LAEngine({dicts:{en:window.DRIVER_EN||{}}});
+var LNG=(function(){ try{ return localStorage.getItem('la_driver_lang')||'ar'; }catch(e){ return 'ar'; } })();
+function setLng(l){ LNG=l; ENG.apply(l); $('#langBtn').textContent=l==='ar'?'EN':'عربي';
+  try{ localStorage.setItem('la_driver_lang',l); }catch(e){} }
+$('#langBtn').addEventListener('click',function(){ setLng(LNG==='ar'?'en':'ar'); });
+setLng(LNG);
+
 document.addEventListener('touchstart',unlockAudio,{once:true});
 document.addEventListener('click',unlockAudio,{once:true});
 if(!TOKEN){ $('#boot').innerHTML='<b>الرابط ناقص</b>'; return; }
