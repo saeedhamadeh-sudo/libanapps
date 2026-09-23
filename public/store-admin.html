@@ -681,7 +681,7 @@ async function orderDetails(id){
   var vb=$('#oVer'); if(vb) vb.onclick=async function(){
     this.disabled=true; showMsg('mMsg',L('عم نتحقق من البوابة…','Checking with the gateway…'));
     try{var rr=await fetch('/api/store/pay/verify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:this.dataset.tok})}); var j=await rr.json();
-      if(j.paid){showMsg('mMsg',L('تم تأكيد الدفع ✓','Payment confirmed ✓'),true); await loadOrders();} else showMsg('mMsg',j.error||L('الدفع ما تأكد بعد عند البوابة','Payment not confirmed by the gateway yet'),false);
+      if(j.paid){showMsg('mMsg',L('تم تأكيد الدفع ✓','Payment confirmed ✓'),true); await loadOrders();} else showMsg('mMsg',j.error||L('لسا الدفع غير مؤكد عند البوابة','Payment not confirmed by the gateway yet'),false);
     }catch(e){showMsg('mMsg',errTxt(e),false);} this.disabled=false;
   };
 }
@@ -1132,10 +1132,92 @@ function wooAnalyze(rows,opt){
 }
 
 var imp={plan:null,file:'',opt:{unpub:true,update:true,newest:0},running:false,log:'',copyStop:{stop:false},copying:false};
+var zipState={fileName:'',running:false,stop:false};
+var FFLATE_SRC='https://cdn.jsdelivr.net/npm/fflate@0.8.2/umd/index.js';
+function loadFflate(){
+  if(window.fflate) return Promise.resolve();
+  return new Promise(function(res,rej){
+    var sc=document.createElement('script'); sc.src=FFLATE_SRC;
+    sc.onload=function(){res()}; sc.onerror=function(){rej(new Error(L('تعذّر تحميل أداة فك الأرشيف','Could not load the archive tool')))};
+    document.head.appendChild(sc);
+  });
+}
+function baseName(u){
+  try{ u=decodeURIComponent(String(u||'')); }catch(e){}
+  var n=u.split('?')[0].split('#')[0].split('/').pop()||'';
+  return n.toLowerCase();
+}
+function baseNameNoSize(n){ return n.replace(/-\d{2,5}x\d{2,5}(\.[a-z0-9]+)$/i,'$1'); }
+var ZIP_MIME={jpg:'image/jpeg',jpeg:'image/jpeg',png:'image/png',webp:'image/webp',gif:'image/gif',svg:'image/svg+xml',avif:'image/avif'};
+function zipMime(name){ var ext=(name.split('.').pop()||'').toLowerCase(); return ZIP_MIME[ext]||''; }
+function extPendingList(){
+  var out=[];
+  PRODS.forEach(function(p){
+    if(isExtUrl(p.image_url)) out.push({p:p,field:'image_url',url:p.image_url});
+    (p.images||[]).forEach(function(u,i){ if(isExtUrl(u)) out.push({p:p,field:'images',idx:i,url:u}); });
+    (p.colors||[]).forEach(function(c,i){ if(isExtUrl(c.img)) out.push({p:p,field:'colors',idx:i,url:c.img}); });
+  });
+  return out;
+}
+async function runZipImport(file){
+  zipState.running=true; zipState.stop=false; zipState.fileName=file.name;
+  var zb=$('#zipBar'), zm=$('#zipMsg'); var zbtn=$('#impZipFn'); if(zbtn) zbtn.textContent=file.name;
+  zm.className='msg'; zm.textContent=L('عم نفتح الأرشيف…','Opening the archive…'); zb.style.width='0%';
+  try{
+    await loadFflate();
+    var buf=await file.arrayBuffer();
+    var entries=await new Promise(function(res,rej){
+      window.fflate.unzip(new Uint8Array(buf),function(err,data){ if(err) rej(err); else res(data); });
+    });
+    var map={};
+    Object.keys(entries).forEach(function(path){
+      if(/\/$/.test(path)) return; var bn=baseName(path); if(bn&&!map[bn]) map[bn]=entries[path];
+    });
+    var count=Object.keys(map).length;
+    if(!count) throw new Error(L('ما لقينا أي صور جوا هالأرشيف','No images found inside this archive'));
+    await ensureProds(true);
+    var todo=extPendingList();
+    if(!todo.length){ zm.className='msg s'; zm.textContent=L('✓ ما في صور خارجية باقية أصلاً','✓ No external images left already'); zipState.running=false; return; }
+    zm.textContent=L('عم نطابق… 0 / ','Matching… 0 / ')+todo.length;
+    var byProd={}; var done=0, matched=0, uploaded=0, notFound=0, failed=0;
+    for(var i=0;i<todo.length;i++){
+      if(zipState.stop) break;
+      var it=todo[i]; done++;
+      var bn=baseName(it.url), data=map[bn]||map[baseNameNoSize(bn)];
+      zb.style.width=Math.round(done/todo.length*100)+'%';
+      zm.textContent=L('عم نطابق… ','Matching… ')+done+' / '+todo.length+L('منتج/صورة — ',' items — ')+matched+L(' وُجدت، ',' found, ')+uploaded+L(' انرفعت',' uploaded');
+      if(!data){ notFound++; continue; }
+      matched++;
+      try{
+        var mime=zipMime(bn)||'image/jpeg';
+        var blob=new Blob([data],{type:mime});
+        var url=await upload('items',blob,1600);
+        (byProd[it.p.id]=byProd[it.p.id]||{p:it.p,upd:{}});
+        var b=byProd[it.p.id];
+        if(it.field==='image_url') b.upd.image_url=url;
+        else if(it.field==='images'){ b.upd.images=(b.upd.images||it.p.images.slice()); b.upd.images[it.idx]=url; }
+        else if(it.field==='colors'){ b.upd.colors=(b.upd.colors||it.p.colors.slice().map(function(c){return Object.assign({},c)})); b.upd.colors[it.idx]=Object.assign({},b.upd.colors[it.idx],{img:url}); }
+        uploaded++;
+      }catch(e){ failed++; }
+    }
+    var pids=Object.keys(byProd);
+    for(var j=0;j<pids.length;j++){
+      var b2=byProd[pids[j]];
+      try{ var r=await sb.from('store_products').update(b2.upd).eq('id',pids[j]); if(r.error) throw r.error;
+        Object.assign(b2.p,b2.upd);
+      }catch(e){ failed++; }
+    }
+    zb.style.width='100%';
+    zm.className='msg '+(failed?'e':'s');
+    zm.textContent=(zipState.stop?L('تم الإيقاف — ','Stopped — '):L('انتهى ✓ — ','Done ✓ — '))+uploaded+L(' صورة انرفعت، ',' images uploaded, ')+notFound+L(' مش موجودة بالأرشيف',' not found in the archive')+(failed?' · '+failed+L(' فشلت',' failed'):'');
+    var cs=document.getElementById('impCopyCard'); if(cs){ var sl=cs.querySelector('.note'); if(sl) sl.outerHTML=copyStatusLine(); }
+  }catch(e){ zm.className='msg e'; zm.textContent=errTxt(e); }
+  zipState.running=false;
+}
 LOADERS.import=async function(){ try{ await ensureCats(true); await ensureProds(); }catch(e){return pageErr(e);} renderImport(); };
 function renderImport(){
   var p=imp.plan, s=p&&p.stats;
-  viewEl().innerHTML=
+  var html =
    '<div class="card"><h3>'+L('استيراد منتجات من WooCommerce (ووردبريس)','Import products from WooCommerce (WordPress)')+'</h3>'+
    '<p class="sub">'+L('من لوحة ووردبريس: المنتجات ← تصدير (Export) ← اختار كل الأعمدة والتصنيفات ← نزّل ملف CSV وارفعه هون. بنستورد المنتجات والتصنيفات (رئيسية وفرعية) والصور والأسعار والتخفيضات والألوان والمقاسات والمواصفات والوصف.','In WordPress: Products → Export → include all columns and categories → download the CSV and upload it here. We import products, categories (with sub-categories), images, prices, sales, colors, sizes, specs and descriptions.')+'</p>'+
    '<label class="imp-drop" style="display:block;cursor:pointer"><input type="file" id="impFile" accept=".csv,text/csv" style="display:none"><b>'+L('اضغط لاختيار ملف CSV','Click to choose a CSV file')+'</b><div class="muted" id="impFn">'+esc(imp.file||L('لم يتم اختيار ملف','No file chosen'))+'</div></label><div class="msg" id="impMsg"></div></div>'+
@@ -1154,6 +1236,11 @@ function renderImport(){
      copyStatusLine()+
    '<div class="tools"><button class="btn acc" id="impCopy"'+(imp.copying?' disabled':'')+'>'+L('نسخ الصور الخارجية','Copy external images')+'</button><button class="btn alt" id="impStop"'+(imp.copying?'':' disabled')+'>'+L('إيقاف','Stop')+'</button></div>'+
    '<div class="progress"><i id="copyBar" style="width:0%"></i></div><div class="msg" id="copyMsg"></div></div>';
+  html += '<div class="card" id="impZipCard"><h3>'+L('أسرع: ارفع أرشيف ZIP من موقعك القديم','Faster: upload a ZIP from your old site')+'</h3>'+
+    '<p class="sub">'+L('إذا موقع ووردبريس عم يحظر النسخ التلقائي، هاي أسرع بكتير وما بتتأثر بأي حظر — لأنها ما بترسل ولا طلب لموقعك القديم إطلاقاً. من استضافة ووردبريس (لوحة الاستضافة أو FTP)، اضغط على مجلد wp-content/uploads بالزر اليمين ← Compress/ضغط ← نزّل ملف ZIP واحد، وارفعه هون. رح نطابق كل صورة مع منتجها تلقائياً بالاسم.','If WordPress is blocking the automatic copier, this is much faster and immune to any block — it never sends a single request to your old site. From your hosting (control panel or FTP), right-click the wp-content/uploads folder → Compress/Zip → download one ZIP file, then upload it here. We’ll match every image to its product automatically by filename.')+'</p>'+
+    '<label class="imp-drop" style="display:block;cursor:pointer"><input type="file" id="impZip" accept=".zip" style="display:none"><b>'+L('اضغط لاختيار ملف ZIP','Click to choose a ZIP file')+'</b><div class="muted" id="impZipFn">'+esc(zipState.fileName||L('لم يتم اختيار ملف','No file chosen'))+'</div></label>'+
+    '<div class="progress"><i id="zipBar" style="width:0%"></i></div><div class="msg" id="zipMsg"></div></div>';
+  viewEl().innerHTML = html;
 }
 /* حالة النسخ — محسوبة دايماً من بيانات المنتجات الفعلية بقاعدة البيانات، مش من ذاكرة الصفحة —
    هيك لو الصفحة انسكّرت أو انعمللها Reload بمنتصف النسخ، أول ما ترجع فاتحها بتعرف بالضبط وين وصلت،
@@ -1163,7 +1250,7 @@ function extPending(){
 }
 function copyStatusLine(){
   var n=extPending(); if(!n) return '<p class="note" style="margin:0 0 12px;color:var(--ok)">'+L('✓ كل الصور منسوخة لمتجرك — ما في صور خارجية باقية','✓ All images are copied to your store — none left external')+'</p>';
-  return '<p class="note" style="margin:0 0 12px;color:var(--warn)">'+L('بعد في ','There are still ')+n+L(' صورة خارجية ما انسخت — لو الصفحة انقفلت أو تحدّثت بنص النسخ، اضغط الزر تحت لتكمل من نفس المكان (ما بيعيد الصور المنسوخة).','more external images not copied — if the page closed or reloaded mid-copy, press the button below to continue from where it left off (already-copied images are skipped).')+'</p>';
+  return '<p class="note" style="margin:0 0 12px;color:var(--warn)">'+L('لسا في ','There are still ')+n+L(' صورة خارجية ما انسخت — لو الصفحة انقفلت أو تحدّثت بنص النسخ، اضغط الزر تحت لتكمل من نفس المكان (ما بيعيد الصور المنسوخة).','more external images not copied — if the page closed or reloaded mid-copy, press the button below to continue from where it left off (already-copied images are skipped).')+'</p>';
 }
 function impProg(pct,msg){ var b=$('#impBar'); if(b) b.style.width=Math.max(0,Math.min(100,pct))+'%'; var m=$('#impProg'); if(m){m.className='msg';m.textContent=msg;} imp.log=msg; }
 async function impLoadFile(file){
@@ -1295,6 +1382,124 @@ async function runCopyImages(){
   }catch(e){ msg.className='msg e'; msg.textContent=errTxt(e); }
   imp.copying=false; var b1=$('#impCopy'); if(b1) b1.disabled=false; var b2=$('#impStop'); if(b2) b2.disabled=true;
   var cs=document.getElementById('impCopyCard'); if(cs){ var sl=cs.querySelector('.note'); if(sl) sl.outerHTML=copyStatusLine(); }
+}
+
+/* ============================================================
+   الماركات — قائمة نظيفة تُستعمل بمحرر المنتج
+   ============================================================ */
+var BRANDS=[];
+async function ensureBrands(force){
+  if(loaded.brands&&!force) return;
+  var r=await sb.from('store_brands').select('*').eq('store_id',ST.id).order('sort').order('name');
+  if(r.error) throw r.error; BRANDS=r.data||[]; loaded.brands=1;
+}
+LOADERS.brands=async function(){ try{await ensureBrands(true);}catch(e){return pageErr(e);} renderBrands(); };
+function renderBrands(){
+  viewEl().innerHTML='<div class="card"><div class="tools"><b>'+BRANDS.length+' '+L('ماركة','brands')+'</b><span class="muted">'+L('رتّب بالأسهم — هيك بيصير ترتيبها بقائمة الاختيار بمحرر المنتج','Reorder with the arrows — this is the order shown when picking a brand on a product')+'</span>'+(BRANDS.length?'<button class="btn dg sm" id="brDelAll">'+L('حذف الكل','Delete all')+'</button>':'')+'<button class="btn sp" id="brNew">+ '+L('ماركة جديدة','New brand')+'</button></div>'+
+    (BRANDS.length?'<div class="wrapx"><table class="tbl"><thead><tr><th>'+L('الاسم','Name')+'</th><th>'+L('عدد المنتجات','Products')+'</th><th>'+L('الحالة','Status')+'</th><th></th></tr></thead><tbody>'+
+    BRANDS.map(function(b,i){ var n=PRODS.some(function(p){return p.brand===b.name})?PRODS.filter(function(p){return p.brand===b.name}).length:'—';
+      return '<tr><td><b>'+esc(b.name)+'</b></td><td>'+n+'</td><td>'+(b.is_active?'<span class="tag">'+L('ظاهرة بالقائمة','Listed')+'</span>':'<span class="tag off">'+L('مخفية','Hidden')+'</span>')+'</td>'+
+        '<td class="acts"><button class="btn alt ic sm" data-brmv="up" data-id="'+b.id+'"'+(i===0?' disabled':'')+'>▲</button><button class="btn alt ic sm" data-brmv="down" data-id="'+b.id+'"'+(i===BRANDS.length-1?' disabled':'')+'>▼</button>'+
+        '<button class="btn alt sm" data-bre="'+b.id+'">'+L('تعديل','Edit')+'</button><button class="btn dg sm" data-brd="'+b.id+'">'+L('حذف','Delete')+'</button></td></tr>'}).join('')+'</tbody></table></div>'
+      :emptyBox('brands',L('ما في ماركات','No brands yet'),L('أضف ماركات لتظهر كخيارات جاهزة بمحرر المنتج','Add brands so they show as ready options in the product editor')))+'</div>';
+}
+function brandModal(id){
+  var b=BRANDS.filter(function(x){return x.id===id})[0]||{name:'',is_active:true,sort:(BRANDS.length?Math.max.apply(null,BRANDS.map(function(x){return x.sort}))+1:1)};
+  openModal(id?L('تعديل ماركة','Edit brand'):L('ماركة جديدة','New brand'),
+    '<label class="f"><span>'+L('اسم الماركة *','Brand name *')+'</span><input type="text" id="brNm" value="'+esc(b.name)+'"></label>'+
+    '<label class="sw"><input type="checkbox" id="brAct"'+(b.is_active?' checked':'')+'>'+L('تظهر بقائمة الاختيار','Shown in the picker list')+'</label>',
+    async function(){
+      var nm=$('#brNm').value.trim(); if(!nm){showMsg('mMsg',L('اكتب اسم الماركة','Enter the brand name'),false);return false;}
+      var o={store_id:ST.id,name:nm,is_active:$('#brAct').checked,sort:b.sort};
+      var r=id?await sb.from('store_brands').update(o).eq('id',id):await sb.from('store_brands').insert(o);
+      if(r.error){ if(/duplicate|unique/i.test(r.error.message)) throw new Error(L('هذه الماركة موجودة مسبقاً','This brand already exists')); throw r.error; }
+      await ensureBrands(true); renderBrands();
+    });
+}
+async function moveBrand(id,dir){
+  var i=BRANDS.findIndex(function(b){return b.id===id}), j=dir==='up'?i-1:i+1; if(i<0||j<0||j>=BRANDS.length) return;
+  var t=BRANDS[i]; BRANDS[i]=BRANDS[j]; BRANDS[j]=t; var ups=[];
+  BRANDS.forEach(function(b,n){ if(b.sort!==n+1){b.sort=n+1; ups.push(sb.from('store_brands').update({sort:n+1}).eq('id',b.id));} });
+  renderBrands();
+  try{ var rs=await Promise.all(ups); rs.forEach(function(r){if(r.error) throw r.error;}); }catch(e){ alert(errTxt(e)); await ensureBrands(true); renderBrands(); }
+}
+async function quickAddBrand(name){
+  name=String(name||'').trim(); if(!name) return null;
+  var ex=BRANDS.filter(function(b){return b.name.toLowerCase()===name.toLowerCase()})[0]; if(ex) return ex.name;
+  var r=await sb.from('store_brands').insert({store_id:ST.id,name:name,sort:(BRANDS.length?Math.max.apply(null,BRANDS.map(function(x){return x.sort}))+1:1)}).select().single();
+  if(!r.error&&r.data) BRANDS.push(r.data);
+  return name;
+}
+
+/* ============================================================
+   نسخ احتياطي كامل (Backup / Restore) + فرمتة المتجر
+   الملف: صف واحد لكل سجل بأي جدول: table, id, data(JSON كامل للسجل).
+   بيغطّي: إعدادات المتجر، التصنيفات، المنتجات، السلايدر، البنرات،
+   الماركات، الصفحات، الكوبونات. الصور نفسها بتضل بمخزن Supabase —
+   الملف بيحفظ روابطها بس، مش الملفات الثنائية.
+   لا يشمل: الطلبات والتقييمات والمشتركين (بيانات زبائن، مش إعداد متجر)،
+   ولا مفاتيح بوابات الدفع (أسرار — ما بترجع للمتصفح أصلاً).
+   ============================================================ */
+var BACKUP_TABLES=['store_categories','store_products','store_slides','store_banners','store_brands','store_pages','store_coupons'];
+async function fetchAllRows(table){
+  var out=[], a=0;
+  for(;;){ var r=await sb.from(table).select('*').eq('store_id',ST.id).range(a,a+999); if(r.error) throw r.error;
+    out=out.concat(r.data||[]); if(!r.data||r.data.length<1000) break; a+=1000; }
+  return out;
+}
+async function runBackup(){
+  var rows=[['table','id','data']];
+  var st=await sb.from('stores').select('*').eq('id',ST.id).single(); if(st.error) throw st.error;
+  rows.push(['stores', ST.id, JSON.stringify(st.data)]);
+  for(var i=0;i<BACKUP_TABLES.length;i++){
+    var t=BACKUP_TABLES[i], list=await fetchAllRows(t);
+    list.forEach(function(r){ rows.push([t, r.id, JSON.stringify(r)]); });
+  }
+  downloadCsv('backup-'+ST.slug+'-'+new Date().toISOString().slice(0,10)+'.csv', rows);
+  return rows.length-1;
+}
+function groupBackupRows(text){
+  var rows=parseCSV(text); if(!rows.length||rows[0][0]!=='table') throw new Error(L('هذا مش ملف نسخة احتياطية صحيح','This is not a valid backup file'));
+  var by={}; rows.slice(1).forEach(function(r){ if(!r[0]) return; var d; try{d=JSON.parse(r[2]);}catch(e){return;} (by[r[0]]=by[r[0]]||[]).push(d); });
+  return by;
+}
+async function insertRowsPlain(table,list){
+  for(var i=0;i<list.length;i+=25){ var ch=list.slice(i,i+25).map(function(r){return Object.assign({},r,{store_id:ST.id})});
+    var r=await sb.from(table).insert(ch); if(r.error) throw r.error; }
+}
+async function insertCategoriesOrdered(list){
+  var byId={}; list.forEach(function(r){byId[r.id]=r});
+  var done={}, left=list.slice();
+  var guard=0;
+  while(left.length&&guard++<50){
+    var batch=left.filter(function(r){return !r.parent_id||done[r.parent_id]||!byId[r.parent_id];});
+    if(!batch.length) batch=left; // كسر أي حلقة غير متوقعة
+    await insertRowsPlain('store_categories', batch.map(function(r){return Object.assign({},r,{store_id:ST.id})}));
+    batch.forEach(function(r){done[r.id]=1});
+    var doneSet=done; left=left.filter(function(r){return !doneSet[r.id]});
+  }
+}
+async function runRestore(text){
+  var by=groupBackupRows(text);
+  // 1) الحذف بالكامل قبل الاستعادة
+  var delTables=BACKUP_TABLES.slice();
+  for(var i=0;i<delTables.length;i++){ var r=await sb.from(delTables[i]).delete().eq('store_id',ST.id); if(r.error) throw r.error; }
+  // 2) الاستعادة — التصنيفات أولاً (بترتيب يحترم الأب قبل الابن) لأن باقي الجداول بترجع لها
+  if(by.store_categories) await insertCategoriesOrdered(by.store_categories);
+  if(by.store_brands) await insertRowsPlain('store_brands', by.store_brands);
+  if(by.store_products) await insertRowsPlain('store_products', by.store_products);
+  if(by.store_slides) await insertRowsPlain('store_slides', by.store_slides);
+  if(by.store_banners) await insertRowsPlain('store_banners', by.store_banners);
+  if(by.store_pages) await insertRowsPlain('store_pages', by.store_pages);
+  if(by.store_coupons) await insertRowsPlain('store_coupons', by.store_coupons);
+  // 3) إعدادات المتجر — كل شي عدا هوية المتجر ذاتها
+  if(by.stores&&by.stores[0]){
+    var o=Object.assign({},by.stores[0]);
+    ['id','client_id','slug','created_at','order_seq'].forEach(function(k){delete o[k];});
+    var ru=await sb.from('stores').update(o).eq('id',ST.id); if(ru.error) throw ru.error;
+    Object.assign(ST,o);
+  }
+  loaded={}; CATS=[]; PRODS=[]; BRANDS=[]; pe=null;
 }
 
 /* ============================================================
@@ -2108,13 +2313,14 @@ document.addEventListener('click',function(e){
   // domain
   if(t.closest('#dmAdd')){var d=$('#dmIn').value.trim(); if(!d){showMsg('dmMsg',L('اكتب الدومين','Enter the domain'),false);return;} showMsg('dmMsg',L('عم نربط…','Connecting…'));
     domainApi({action:'add',domain:d}).then(function(j){DOMAINS=[j.domain];renderDomain(j.info);}).catch(function(x){showMsg('dmMsg',errTxt(x),false)});return;}
-  if(t.closest('#dmChk')){showMsg('dmMsg',L('عم نتحقق…','Checking…')); domainApi({action:'check'}).then(function(j){DOMAINS=[j.domain];renderDomain(j.info);showMsg('dmMsg',j.domain.status==='active'?L('الدومين شغّال ✓','Domain is active ✓'):L('ما تفعّل بعد — جرّب بعد شوي','Not active yet — try again shortly'),j.domain.status==='active');}).catch(function(x){showMsg('dmMsg',errTxt(x),false)});return;}
+  if(t.closest('#dmChk')){showMsg('dmMsg',L('عم نتحقق…','Checking…')); domainApi({action:'check'}).then(function(j){DOMAINS=[j.domain];renderDomain(j.info);showMsg('dmMsg',j.domain.status==='active'?L('الدومين شغّال ✓','Domain is active ✓'):L('لسا ما تفعّل — جرّب بعد شوي','Not active yet — try again shortly'),j.domain.status==='active');}).catch(function(x){showMsg('dmMsg',errTxt(x),false)});return;}
   if(t.closest('#dmDel')){if(confirmBox(L('حذف الدومين الخاص؟','Remove the custom domain?'))) domainApi({action:'remove'}).then(function(){DOMAINS=[];renderDomain(null);}).catch(function(x){showMsg('dmMsg',errTxt(x),false)});return;}
 });
 document.addEventListener('change',function(e){
   var t=e.target;
   if(t.matches('[data-seco]')){var r=t.closest('[data-sec]'); var i=Number(r.dataset.sec); if(secList[i]) secList[i].on=t.checked; return;}
   if(t.id==='impFile'){ if(t.files[0]) impLoadFile(t.files[0]); return; }
+  if(t.id==='impZip'){ var zf=t.files[0]; t.value=''; if(zf) runZipImport(zf); return; }
   if(t.id==='bkFile'){
     var f=t.files[0]; t.value=''; if(!f) return;
     if(!confirmBox(L('استعادة نسخة احتياطية بتستبدل كل التصنيفات والمنتجات والسلايدر والبنرات والماركات والصفحات والكوبونات وإعدادات المتجر الحالية بالكامل بمحتوى الملف. ما في تراجع بعدها. متابعة؟','Restoring a backup completely replaces all current categories, products, slider, banners, brands, pages, coupons and store settings with the file’s content. This cannot be undone. Continue?'))) return;
