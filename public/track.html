@@ -41,6 +41,7 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font-famil
 .btns{display:flex;gap:8px;margin-top:14px}
 .btn{flex:1;display:block;border:0;border-radius:12px;padding:12px;font:800 14px 'Cairo';text-align:center;text-decoration:none;
   background:var(--bg-2);color:var(--text);border:1px solid var(--line)}
+.btn.wa{margin-top:14px;background:#25D366;color:#fff;border-color:transparent;font-size:15px}
 .done{font-size:54px;text-align:center;margin:4px 0}
 .moto{font-size:30px;line-height:1;filter:drop-shadow(0 3px 4px rgba(0,0,0,.5));transition:transform .3s}
 .pin{font-size:30px;line-height:1;filter:drop-shadow(0 3px 4px rgba(0,0,0,.5))}
@@ -71,6 +72,7 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font-famil
   </div>
   <div class="steps" id="steps"><i></i><i></i><i></i><i></i></div>
   <div class="lbls" id="lbls"></div>
+  <a class="btn wa hidden" id="drvBtn" target="_blank" rel="noopener"></a>
   <div class="btns">
     <a class="btn" id="callBtn">📞</a>
     <a class="btn" id="invBtn"></a>
@@ -89,7 +91,7 @@ var sb=window.supabase.createClient(CFG.SUPABASE_URL,CFG.SUPABASE_ANON_KEY,{auth
 var TOKEN=decodeURIComponent(location.pathname.split('/').filter(Boolean)[1]||'');
 
 var TX={
- ar:{order:'طلب رقم',call:'اتصل بالمطعم',inv:'الفاتورة',min:'دقيقة تقريباً',km:'كم',
+ ar:{order:'طلب رقم',call:'اتصل بالمطعم',waDrv:'تواصل مع سائق التوصيل',waMsg:'مرحبا، أنا صاحب الطلب رقم',inv:'الفاتورة',min:'دقيقة تقريباً',km:'كم',
    new:'المطعم استلم طلبك',newS:'عم يتحضّر — رح يبين الموتوسيكل هون أول ما يستلمو الموظف',
    waiting:'طلبك جاهز للتوصيل',waitingS:'عم ننتظر موظف التوصيل يستلمو',
    claimed:'الطلب صار مع الموتوسيكل',claimedS:'{d} استلم طلبك وقريباً بيطلع لعندك',
@@ -99,7 +101,7 @@ var TX={
    stale:'آخر موقع للموتوسيكل قديم شوي — ممكن الإشارة ضعيفة',
    noPos:'عم ننتظر موقع الموتوسيكل…', driver:'الموظف',
    steps:['استلام','تجهيز','بالطريق','وصل'], notFound:'رابط التتبع مش صالح'},
- en:{order:'Order',call:'Call restaurant',inv:'Invoice',min:'min approx.',km:'km',
+ en:{order:'Order',call:'Call restaurant',waDrv:'Chat with your rider',waMsg:'Hello, this is the customer for order',inv:'Invoice',min:'min approx.',km:'km',
    new:'The restaurant received your order',newS:'Being prepared — the rider will appear here once assigned',
    waiting:'Your order is ready for delivery',waitingS:'Waiting for a rider to pick it up',
    claimed:'A rider has your order',claimedS:'{d} picked up your order and will leave shortly',
@@ -118,6 +120,12 @@ function km(a,b,c,d){ var R=6371,x=(c-a)*Math.PI/180,y=(d-b)*Math.PI/180;
   var h=Math.sin(x/2)*Math.sin(x/2)+Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180)*Math.sin(y/2)*Math.sin(y/2);
   return 2*R*Math.asin(Math.sqrt(h)); }
 
+// رقم لبناني للواتساب: 03123456 ← 9613123456
+function waNum(p){ var d=String(p||'').replace(/\D/g,'');
+  if(d.indexOf('00')===0) d=d.slice(2);
+  if(d.indexOf('961')===0) return d;
+  if(d.charAt(0)==='0') d=d.slice(1);
+  return d.length<=8?'961'+d:d; }
 function initMap(){
   if(MAP) return;
   MAP=L_.map('map',{zoomControl:false,attributionControl:true}).setView([33.89,35.5],12);
@@ -135,6 +143,12 @@ function paint(){
   var r=D.restaurant, st=D.dispatch, dn=(D.driver&&D.driver.name)||T.driver;
   $('#rName').textContent=L==='en'?(r.name_en||r.name_ar):r.name_ar;
   $('#oNo').textContent=T.order+' '+D.order_no;
+  // واتساب السائق — بيظهر بس وقت الطلب مع الموتوسيكل
+  var dp=D.driver&&D.driver.phone&&(st==='claimed'||st==='on_the_way')?waNum(D.driver.phone):'';
+  var db=$('#drvBtn');
+  db.classList.toggle('hidden',!dp);
+  if(dp){ db.textContent='💬 '+T.waDrv+(D.driver.name?' — '+D.driver.name:'');
+    db.href='https://wa.me/'+dp+'?text='+encodeURIComponent(T.waMsg+' '+D.order_no); }
   $('#callBtn').textContent='📞 '+T.call; $('#callBtn').href='tel:'+(r.phone||'');
   $('#invBtn').textContent='🧾 '+T.inv; $('#invBtn').href='/i/'+encodeURIComponent(TOKEN);
   $('#langBtn').textContent=L==='ar'?'English':'عربي';
