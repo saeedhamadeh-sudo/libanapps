@@ -1476,6 +1476,172 @@ async function storeDomain(request, env) {
   return json(400, { error: 'unknown action' });
 }
 
+// ============================================================
+//  SEO — عنوان ووصف وبيانات منظّمة (JSON-LD) لكل صفحة متجر
+//  بتتحقن بالسيرفر مباشرة (قبل ما توصل لمتصفح الزائر) عشان محركات
+//  البحث تقرأها فوراً بدون ما تنتظر تنفيذ الجافاسكربت.
+// ============================================================
+function escHtml(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+function escXml(s) { return escHtml(s); }
+function escAttr(s) { return escHtml(s).replace(/\n/g, ' '); }
+function stripHtml(s, max) {
+  const t = String(s == null ? '' : s).replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
+  return max && t.length > max ? t.slice(0, max - 1).replace(/\s+\S*$/, '') + '…' : t;
+}
+function storeOrigin(env, url, store, domainRow) {
+  if (domainRow && domainRow.status === 'active') return `https://${domainRow.domain}`;
+  return isPlatformHost(url.hostname, env) ? `${url.origin}/portal-store/${store.slug}` : url.origin;
+}
+async function primaryDomainFor(env, storeId) {
+  try {
+    const rows = await sbGet(env, `store_domains?store_id=eq.${storeId}&status=eq.active&select=domain,status&limit=1`);
+    return rows[0] || null;
+  } catch (e) { return null; }
+}
+function ldOrgName(store) { return store.name || 'Store'; }
+function buildMeta(kind, store, base, extra) {
+  const lang = store.default_lang === 'en' ? 'en' : 'ar';
+  const storeName = ldOrgName(store);
+  const logo = extra && extra.img ? extra.img(store.logo_url) : store.logo_url;
+  let title, desc, canonical, ogType, image, jsonLd = [], breadcrumb = [{ name: storeName, url: base }];
+
+  if (kind === 'product') {
+    const p = extra.product;
+    const price = Number(p.price || 0);
+    const cmp = Number(p.compare_price || 0);
+    const onSale = cmp > price;
+    const plainDesc = stripHtml(lang === 'en' ? (p.desc_en || p.desc_ar) : (p.desc_ar || p.desc_en), 160);
+    const name = lang === 'en' ? (p.name_en || p.name_ar) : (p.name_ar || p.name_en);
+    title = `${name} — ${store.seo_title || storeName}`;
+    desc = plainDesc || (lang === 'en'
+      ? `${name} for ${store.currency_symbol || store.currency_code}${price} — shop online at ${storeName}, fast delivery in Lebanon.`
+      : `${name} بسعر ${price} ${store.currency_symbol || store.currency_code} — تسوّق أونلاين من ${storeName} وتوصيل سريع.`);
+    canonical = `${base}/p/${p.id}`;
+    ogType = 'product';
+    image = extra.img ? extra.img(p.image_url) : p.image_url;
+    if (extra.category) breadcrumb.push({ name: lang === 'en' ? (extra.category.name_en || extra.category.name_ar) : (extra.category.name_ar || extra.category.name_en), url: `${base}/c/${extra.category.id}` });
+    breadcrumb.push({ name, url: canonical });
+    const offer = {
+      '@type': 'Offer', url: canonical, priceCurrency: store.currency_code || 'USD',
+      price: price.toFixed(2), availability: (p.stock === 0 ? 'https://schema.org/OutOfStock' : 'https://schema.org/InStock'),
+      itemCondition: 'https://schema.org/NewCondition'
+    };
+    const prod = {
+      '@context': 'https://schema.org', '@type': 'Product', name, description: plainDesc || undefined,
+      sku: p.sku || undefined, brand: p.brand ? { '@type': 'Brand', name: p.brand } : undefined,
+      image: image ? [image] : undefined, offers: offer
+    };
+    if (p.rating_count > 0) prod.aggregateRating = { '@type': 'AggregateRating', ratingValue: p.rating_avg || 5, reviewCount: p.rating_count };
+    jsonLd.push(prod);
+  } else if (kind === 'category') {
+    const c = extra.category;
+    const name = lang === 'en' ? (c.name_en || c.name_ar) : (c.name_ar || c.name_en);
+    title = `${name} — ${store.seo_title || storeName}`;
+    desc = lang === 'en' ? `Shop ${name} at ${storeName} — great prices and fast delivery.` : `تسوّق ${name} من ${storeName} — أفضل الأسعار وتوصيل سريع.`;
+    canonical = `${base}/c/${c.id}`;
+    ogType = 'website';
+    image = extra.img ? extra.img(c.image_url || store.logo_url) : (c.image_url || store.logo_url);
+    breadcrumb.push({ name, url: canonical });
+    jsonLd.push({ '@context': 'https://schema.org', '@type': 'CollectionPage', name: title, url: canonical, description: desc });
+  } else {
+    title = store.seo_title || storeName;
+    desc = store.seo_desc || (lang === 'en' ? `Shop online at ${storeName} — quality products and fast delivery in Lebanon.` : `تسوّق أونلاين من ${storeName} — منتجات مميزة وتوصيل سريع لكل لبنان.`);
+    canonical = base;
+    ogType = 'website';
+    image = extra.img ? extra.img(store.og_image || store.logo_url) : (store.og_image || store.logo_url);
+    jsonLd.push({
+      '@context': 'https://schema.org', '@type': 'OnlineStore', name: storeName, url: base,
+      logo: logo || undefined, image: image || undefined,
+      telephone: store.phone || undefined,
+      address: store.address ? { '@type': 'PostalAddress', addressCountry: 'LB', streetAddress: store.address } : undefined
+    });
+    jsonLd.push({ '@context': 'https://schema.org', '@type': 'WebSite', name: storeName, url: base, potentialAction: { '@type': 'SearchAction', target: `${base}/?q={search_term_string}`, 'query-input': 'required name=search_term_string' } });
+  }
+  if (breadcrumb.length > 1) {
+    jsonLd.push({
+      '@context': 'https://schema.org', '@type': 'BreadcrumbList',
+      itemListElement: breadcrumb.map((b, i) => ({ '@type': 'ListItem', position: i + 1, name: b.name, item: b.url }))
+    });
+  }
+  return { title, desc, canonical, ogType, image, jsonLd, lang };
+}
+function injectMeta(html, meta, extraBoot) {
+  html = html.replace('<title>Store</title>', `<title>${escHtml(meta.title)}</title>`);
+  html = html.replace('<html lang="ar" dir="rtl" data-theme="nova">', `<html lang="${meta.lang === 'en' ? 'en' : 'ar'}" dir="${meta.lang === 'en' ? 'ltr' : 'rtl'}" data-theme="nova">`);
+  const jsonLdTag = `<script type="application/ld+json" id="ldMain">${JSON.stringify(meta.jsonLd).replace(/</g, '\\u003c')}</script>`;
+  const block = `<meta name="description" id="metaDesc" content="${escAttr(meta.desc)}">
+<link rel="canonical" id="linkCanon" href="${escAttr(meta.canonical)}">
+<meta property="og:type" id="ogType" content="${meta.ogType}">
+<meta property="og:title" id="ogTitle" content="${escAttr(meta.title)}">
+<meta property="og:description" id="ogDesc" content="${escAttr(meta.desc)}">
+<meta property="og:url" id="ogUrl" content="${escAttr(meta.canonical)}">
+${meta.image ? `<meta property="og:image" id="ogImage" content="${escAttr(meta.image)}">` : '<meta property="og:image" id="ogImage" content="">'}
+<meta name="twitter:card" content="summary_large_image">
+<meta name="robots" content="index, follow">
+${jsonLdTag}`;
+  html = html.replace('<meta name="theme-color" content="#ffffff">', `<meta name="theme-color" content="#ffffff">\n${block}`);
+  html = html.replace('<!--STORE_BOOT-->', `<script>${extraBoot}</script>`);
+  return html;
+}
+function parseStorePath(pathname) {
+  const m = pathname.replace(/\/+$/, '').match(/^(?:\/portal-store\/[^/]+)?\/(p|c)\/([^/]+)$/);
+  if (!m) return null;
+  return { kind: m[1] === 'p' ? 'product' : 'category', id: decodeURIComponent(m[2]) };
+}
+async function renderStorePage(env, url, slug, subpath, domainRow) {
+  const res = await env.ASSETS.fetch(new URL('/store.html', url.origin));
+  let html = await res.text();
+  const stores = await sbGet(env, `stores?slug=eq.${encodeURIComponent(slug)}&select=*&limit=1`);
+  const store = stores[0];
+  const bootBase = `window.__STORE_SLUG__=${JSON.stringify(slug)};`;
+  if (!store) { html = html.replace('<!--STORE_BOOT-->', `<script>${bootBase}</script>`); return html; }
+  const imgFn = (u) => { if (!u) return ''; const m = String(u).match(/\/storage\/v1\/object\/public\/(.+)$/); return m ? `${url.origin}/img/${m[1]}` : u; };
+  const dom = domainRow !== undefined ? domainRow : await primaryDomainFor(env, store.id);
+  const base = storeOrigin(env, url, store, dom);
+  const route = parseStorePath(subpath || url.pathname);
+  let meta, initPath = null;
+  try {
+    if (route && route.kind === 'product') {
+      const prods = await sbGet(env, `store_products?id=eq.${route.id}&store_id=eq.${store.id}&is_active=eq.true&select=*&limit=1`);
+      const p = prods[0];
+      if (p) {
+        let category = null;
+        if (p.category_id) { const cs = await sbGet(env, `store_categories?id=eq.${p.category_id}&select=id,name_ar,name_en&limit=1`); category = cs[0] || null; }
+        meta = buildMeta('product', store, base, { product: p, category, img: imgFn });
+        initPath = { type: 'p', id: p.id };
+      }
+    } else if (route && route.kind === 'category') {
+      const cats = await sbGet(env, `store_categories?id=eq.${route.id}&store_id=eq.${store.id}&is_active=eq.true&select=*&limit=1`);
+      const c = cats[0];
+      if (c) { meta = buildMeta('category', store, base, { category: c, img: imgFn }); initPath = { type: 'c', id: c.id }; }
+    }
+  } catch (e) { console.error('SEO meta build failed', e); }
+  if (!meta) meta = buildMeta('home', store, base, { img: imgFn });
+  html = injectMeta(html, meta, bootBase + (initPath ? `window.__INIT_PATH__=${JSON.stringify(initPath)};` : ''));
+  return html;
+}
+async function serveSitemap(env, url, slug, base) {
+  const stores = await sbGet(env, `stores?slug=eq.${encodeURIComponent(slug)}&select=id,is_active&limit=1`);
+  const store = stores[0];
+  if (!store || !store.is_active) return new Response('Not found', { status: 404 });
+  const [cats, prods] = await Promise.all([
+    sbGet(env, `store_categories?store_id=eq.${store.id}&is_active=eq.true&select=id,updated_at`).catch(() => []),
+    sbGet(env, `store_products?store_id=eq.${store.id}&is_active=eq.true&select=id,updated_at,created_at`).catch(() => [])
+  ]);
+  const urls = [{ loc: base, freq: 'daily', pri: '1.0' }]
+    .concat(cats.map(c => ({ loc: `${base}/c/${c.id}`, freq: 'weekly', pri: '0.7', lastmod: c.updated_at })))
+    .concat(prods.map(p => ({ loc: `${base}/p/${p.id}`, freq: 'weekly', pri: '0.8', lastmod: p.updated_at || p.created_at })));
+  const body = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n` +
+    urls.map(u => `<url><loc>${escXml(u.loc)}</loc>${u.lastmod ? `<lastmod>${new Date(u.lastmod).toISOString().slice(0, 10)}</lastmod>` : ''}<changefreq>${u.freq}</changefreq><priority>${u.pri}</priority></url>`).join('\n') +
+    `\n</urlset>`;
+  return new Response(body, { status: 200, headers: { 'Content-Type': 'application/xml; charset=utf-8', 'Cache-Control': 'public, max-age=3600' } });
+}
+function customDomainRobots(base) {
+  return new Response(`User-agent: *\nAllow: /\nDisallow: /admin\nSitemap: ${base}/sitemap.xml\n`, { status: 200, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
+}
+
 // ---------- خدمة متجر على دومين الزبون ----------
 const domCache = new Map();
 async function resolveDomain(env, ctx, host) {
@@ -1494,10 +1660,8 @@ async function resolveDomain(env, ctx, host) {
   domCache.set(host, { slug, exp: Date.now() + 60000 });
   return slug;
 }
-async function serveStore(env, url, slug) {
-  const res = await env.ASSETS.fetch(new URL('/store.html', url.origin));
-  let html = await res.text();
-  html = html.replace('<!--STORE_BOOT-->', '<script>window.__STORE_SLUG__=' + JSON.stringify(slug) + ';</script>');
+async function serveStore(env, url, slug, subpath, domainRow) {
+  const html = await renderStorePage(env, url, slug, subpath, domainRow);
   return new Response(html, {
     status: 200,
     headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' }
@@ -1522,208 +1686,6 @@ function withCache(res, pathname) {
   return new Response(res.body, { status: res.status, headers: h });
 }
 
-// ============================================================
-//  اشتراك نظام التوصيل ومقاعد الموظفين — دفع Whish من لوحة المطعم
-//  أرقام العمليات (addon_purchases) بتبلّش من 900000001 = externalId
-// ============================================================
-async function addonRow(env, id) {
-  const rows = await sbGet(env, `addon_purchases?id=eq.${Number(id)}&select=*,restaurants(slug)&limit=1`);
-  return rows[0];
-}
-async function addonProvision(env, id, txn) {
-  const r = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/provision_addon`, {
-    method: 'POST',
-    headers: { ...sbHeaders(env), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ p_id: Number(id), p_txn: txn || null })
-  });
-  if (!r.ok) { const t = await r.text(); console.error('provision_addon failed', t); throw new Error(t.slice(0, 120)); }
-  return r.json();
-}
-function amountOk(w, got, want, cur) {
-  if (got === undefined || got === null || got === '') return true;   // Whish أحياناً ما بيرجّع المبلغ
-  const g = Number(got);
-  return w.client.validateAmount(g, want, cur || 'USD') || (isFinite(g) && g >= want - 0.01);
-}
-async function addonPay(request, env) {
-  const me = await currentUser(request, env);
-  if (!me) return json(401, { error: 'سجّل دخولك أولاً' });
-  let body; try { body = await request.json(); } catch { return json(400, { error: 'bad json' }); }
-  let p = await addonRow(env, body.id);
-  if (!p) return json(404, { error: 'purchase not found' });
-  if (p.user_id !== me.id) return json(403, { error: 'not allowed' });
-  if (p.status === 'paid') return json(400, { error: 'مدفوعة مسبقاً' });
-
-  // رابط Whish صالح لمرة وحدة — إعادة المحاولة بدها رقم عملية جديد
-  if (p.status === 'awaiting_payment') {
-    const clone = await fetch(`${env.SUPABASE_URL}/rest/v1/addon_purchases`, {
-      method: 'POST',
-      headers: { ...sbHeaders(env), 'Content-Type': 'application/json', Prefer: 'return=representation' },
-      body: JSON.stringify({ user_id: p.user_id, restaurant_id: p.restaurant_id, kind: p.kind, seat_id: p.seat_id,
-                             seat_ids: p.seat_ids, qty: p.qty, days: p.days, amount_usd: p.amount_usd })
-    });
-    if (clone.ok) {
-      const made = await clone.json();
-      if (made && made[0]) {
-        await sbPatch(env, `addon_purchases?id=eq.${p.id}`, { status: 'cancelled' });
-        made[0].restaurants = p.restaurants; p = made[0];
-      }
-    }
-  }
-
-  const w = await platformWhish(env);
-  if (!w) return json(400, { error: 'الدفع الإلكتروني غير مفعّل حالياً — تواصل معنا' });
-  const site = env.WEBSITE_URL;
-  const slug = (p.restaurants && p.restaurants.slug) || '';
-  const back = `${site}/${encodeURIComponent(slug)}/admin`;
-  const label = { delivery: 'Delivery system', seat_new: 'Driver seat', seat_renew: 'Driver seat renewal', renew_all: 'Delivery renewal' }[p.kind] || p.kind;
-  try {
-    const res = await w.client.createPayment({
-      amount: Number(p.amount_usd), currency: 'USD',
-      invoice: `LibanApps — ${label} #${p.id}`,
-      externalId: Number(p.id),
-      successCallbackUrl: `${site}/api/addon/callback-success`,
-      failureCallbackUrl: `${site}/api/addon/callback-failure`,
-      successRedirectUrl: `${back}?addon=${p.id}`,
-      failureRedirectUrl: `${back}?addon_failed=${p.id}`
-    });
-    if (!res.success) {
-      console.error('addon whish rejected', JSON.stringify(res));
-      return json(400, { error: (res.dialog && res.dialog.message) || 'رفضت بوابة الدفع العملية' });
-    }
-    await sbPatch(env, `addon_purchases?id=eq.${p.id}`, { status: 'awaiting_payment' });
-    return json(200, { collectUrl: res.collectUrl });
-  } catch (e) {
-    console.error('addon pay failed', JSON.stringify(e, Object.getOwnPropertyNames(e)));
-    return json(502, { error: 'بوابة الدفع: ' + ((e && e.dialog && e.dialog.message) || (e && (e.code || e.message)) || '') });
-  }
-}
-async function addonVerify(request, env) {
-  const me = await currentUser(request, env);
-  if (!me) return json(401, { error: 'سجّل دخولك أولاً' });
-  let body; try { body = await request.json(); } catch { return json(400, { error: 'bad json' }); }
-  const p = await addonRow(env, body.id);
-  if (!p) return json(404, { error: 'purchase not found' });
-  if (p.user_id !== me.id) {
-    const adm = await sbGet(env, `platform_admins?user_id=eq.${me.id}&select=user_id&limit=1`);
-    if (!adm.length) return json(403, { error: 'not allowed' });
-  }
-  if (p.status === 'paid') return json(200, { ok: true, already: true, kind: p.kind });
-  const w = await platformWhish(env);
-  if (!w) return json(400, { error: 'الدفع الإلكتروني غير مفعّل' });
-  let st;
-  try { st = await w.client.getPaymentStatus('USD', Number(p.id)); }
-  catch (e) { console.error('addon verify failed', e); return json(502, { error: 'ما قدرنا نتحقق من الدفعة عند Whish' }); }
-  if (st.collectStatus !== 'success') return json(200, { ok: false, status: st.collectStatus || 'pending' });
-  if (!amountOk(w, st.amount, Number(p.amount_usd), 'USD')) return json(400, { error: 'المبلغ غير مطابق' });
-  try { await addonProvision(env, p.id, st.transactionId); }
-  catch (e) { return json(500, { error: 'تعذّر التفعيل: ' + e.message }); }
-  return json(200, { ok: true, activated: true, kind: p.kind });
-}
-async function addonCallbackSuccess(request, env) {
-  const { externalId, currency } = parseCallbackUrl(request.url) || {};
-  if (!externalId) return json(400, { error: 'malformed callback' });
-  const p = await addonRow(env, externalId);
-  if (!p) return json(404, { error: 'unknown purchase' });
-  if (p.status === 'paid') return json(200, { ok: true, already: true });
-  const w = await platformWhish(env);
-  if (!w) return json(400, { error: 'no platform credentials' });
-  let st;
-  try { st = await w.client.getPaymentStatus(currency || 'USD', Number(externalId)); }
-  catch (e) { return json(502, { error: 'status check failed' }); }
-  if (st.collectStatus !== 'success') return json(400, { error: 'not confirmed' });
-  if (!amountOk(w, st.amount, Number(p.amount_usd), currency)) return json(400, { error: 'amount mismatch' });
-  try { await addonProvision(env, p.id, st.transactionId); } catch (e) { return json(500, { error: 'provision failed' }); }
-  return json(200, { ok: true });
-}
-async function addonCallbackFailure(request, env) {
-  const { externalId } = parseCallbackUrl(request.url) || {};
-  if (!externalId) return json(400, { error: 'malformed callback' });
-  await sbPatch(env, `addon_purchases?id=eq.${Number(externalId)}&status=eq.awaiting_payment`, { status: 'failed' });
-  return json(200, { ok: true });
-}
-
-// ============================================================
-//  استقبال مواقع أجهزة التتبع
-//  بيقبل: تطبيق Traccar Client (القديم والجديد) · Traccar Server forward
-//         · أي جهاز GPS بيبعت HTTP بصيغة OsmAnd أو JSON
-// ============================================================
-function numOr(v) { const n = Number(v); return (v === null || v === undefined || v === '' || !isFinite(n)) ? null : n; }
-function parseFix(v) {
-  if (v === null || v === undefined || v === '') return null;
-  const n = Number(v);
-  let d;
-  if (isFinite(n)) d = new Date(n > 1e12 ? n : n * 1000);   // ثواني أو ميلي ثانية
-  else d = new Date(String(v));
-  return isNaN(d.getTime()) ? null : d.toISOString();
-}
-async function trackPush(request, env, url) {
-  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY) return json(500, { error: 'server not configured' });
-  const q = Object.fromEntries(url.searchParams);
-  let p = { ...q }, j = null;
-
-  if (request.method === 'POST') {
-    const ct = (request.headers.get('content-type') || '').toLowerCase();
-    const raw = await request.text();
-    if (raw.length > 20000) return json(413, { error: 'too large' });
-    if (ct.includes('json') || /^\s*[\[{]/.test(raw)) {
-      try { j = JSON.parse(raw); } catch { return json(400, { error: 'bad json' }); }
-      if (Array.isArray(j)) j = j[j.length - 1] || {};
-    } else if (raw) {
-      Object.assign(p, Object.fromEntries(new URLSearchParams(raw)));
-    }
-  }
-
-  let id, lat, lng, kmh = null, heading = null, battery = null, fix = null;
-
-  if (j && j.location && j.location.coords) {
-    // Traccar Client الجديد (v9+): السرعة بالمتر/ثانية
-    const c = j.location.coords;
-    id = j.device_id || j.id || p.id;
-    lat = numOr(c.latitude); lng = numOr(c.longitude);
-    const ms = numOr(c.speed); kmh = ms !== null && ms >= 0 ? ms * 3.6 : null;
-    heading = numOr(c.heading);
-    const lvl = j.location.battery && numOr(j.location.battery.level);
-    battery = lvl !== null && lvl !== undefined && lvl >= 0 ? (lvl <= 1 ? lvl * 100 : lvl) : null;
-    fix = parseFix(j.location.timestamp);
-  } else if (j && j.position) {
-    // Traccar Server forward (json): السرعة بالعقدة
-    const ps = j.position, dv = j.device || {};
-    id = dv.uniqueId || p.id;
-    lat = numOr(ps.latitude); lng = numOr(ps.longitude);
-    const kn = numOr(ps.speed); kmh = kn !== null ? kn * 1.852 : null;
-    heading = numOr(ps.course);
-    battery = ps.attributes ? numOr(ps.attributes.batteryLevel) : null;
-    fix = parseFix(ps.fixTime || ps.deviceTime);
-  } else {
-    // OsmAnd (Traccar Client القديم وأغلب الأجهزة): السرعة بالعقدة
-    const s = j ? { ...p, ...j } : p;
-    id = s.id || s.deviceid || s.device_id || s.imei;
-    lat = numOr(s.lat ?? s.latitude); lng = numOr(s.lon ?? s.lng ?? s.longitude);
-    if (s.speed_kmh !== undefined) kmh = numOr(s.speed_kmh);
-    else { const kn = numOr(s.speed); kmh = kn !== null ? kn * 1.852 : null; }
-    heading = numOr(s.bearing ?? s.heading ?? s.course);
-    battery = numOr(s.batt ?? s.battery);
-    fix = parseFix(s.timestamp ?? s.time ?? s.fixtime);
-  }
-
-  if (!id || lat === null || lng === null) return json(400, { error: 'missing id/lat/lon' });
-
-  const r = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/device_ping`, {
-    method: 'POST',
-    headers: { ...sbHeaders(env), 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      p_identifier: String(id).slice(0, 64), p_key: String(p.key || (j && j.key) || ''),
-      p_lat: lat, p_lng: lng,
-      p_speed_kmh: kmh === null ? null : Math.round(kmh * 10) / 10,
-      p_heading: heading, p_battery: battery, p_fix_at: fix
-    })
-  });
-  if (!r.ok) { console.error('device_ping', r.status, await r.text()); return json(500, { error: 'db error' }); }
-  const result = await r.json();
-  // منرجّع 200 دايماً لحتى التطبيق ما يضل يعيد نفس النقطة بلا نهاية
-  return json(200, { result });
-}
-
 // ---------- أي صفحة نعرض لأي مسار ----------
 function pageFor(pathname) {
   var p = pathname.replace(/\/+$/, '') || '/';
@@ -1741,8 +1703,6 @@ function pageFor(pathname) {
   if (/^\/portal-store\/[^/]+\/admin\/?$/.test(p)) return '/store-admin.html';
   if (/^\/portal-store\/[^/]+\/?$/.test(p)) return '/store.html';
   if (p.startsWith('/i/'))    return '/invoice.html';
-  if (p.startsWith('/t/'))    return '/track.html';    // رابط تتبع الطلب للزبون
-  if (p.startsWith('/d/'))    return '/driver.html';   // صفحة موظف التوصيل
   // رابط لوحة تحكم مطعم محدد: /اسم-المحل/admin
   if (/^\/[^/]+\/admin\/?$/.test(p)) return '/admin.html';
   // رابط برنامج ألمنيوم مخصص لزبون معيّن: /portal/اسم-محله
@@ -1776,19 +1736,6 @@ export default {
     // 1) الـAPI — أي مسار تحت /api/ يرجّع JSON دائماً، حتى لو صار خطأ داخلي
     if (url.pathname.startsWith('/api/')) {
       try {
-        if (url.pathname === '/api/addon/pay') {
-          if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
-          return await addonPay(request, env);
-        }
-        if (url.pathname === '/api/addon/verify') {
-          if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
-          return await addonVerify(request, env);
-        }
-        if (url.pathname === '/api/addon/callback-success') return await addonCallbackSuccess(request, env);
-        if (url.pathname === '/api/addon/callback-failure') return await addonCallbackFailure(request, env);
-        if (url.pathname === '/api/track/osmand' || url.pathname === '/api/track/push') {
-          return await trackPush(request, env, url);
-        }
         if (url.pathname === '/api/store-invoice') {
           if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
           return await storeInvoice(request, env);
@@ -1892,10 +1839,24 @@ export default {
       if (url.pathname.replace(/\/+$/, '').endsWith('/admin')) {
         return Response.redirect(`${env.WEBSITE_URL}/portal-store/${slug}/admin`, 302);
       }
+      if (url.pathname === '/robots.txt') return customDomainRobots(url.origin);
+      if (url.pathname === '/sitemap.xml') return await serveSitemap(env, url, slug, url.origin);
       if (/\.[a-z0-9]{2,5}$/i.test(url.pathname)) {
         return new Response('Not found', { status: 404, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
       }
-      return await serveStore(env, url, slug);
+      return await serveStore(env, url, slug, url.pathname);
+    }
+
+    // 1.7) متجر على مسار المنصة (/portal-store/<slug>) — صفحة المنتج/التصنيف وخريطة الموقع
+    //      لازم قبل فحص الامتداد لأن sitemap.xml إلها امتداد .xml
+    {
+      const mStore = url.pathname.replace(/\/+$/, '').match(/^\/portal-store\/([^/]+)(?:\/(p|c)\/([^/]+)|\/(sitemap\.xml))?$/);
+      if (mStore) {
+        const slug = decodeURIComponent(mStore[1]);
+        const base = `${url.origin}/portal-store/${slug}`;
+        if (mStore[4]) return await serveSitemap(env, url, slug, base);
+        return await serveStore(env, url, slug, mStore[2] ? `/${mStore[2]}/${mStore[3]}` : '/');
+      }
     }
 
     // 2) طلب لملف حقيقي (فيه امتداد صريح متل .css / .js / .png) — نخدمه متل ما هو
