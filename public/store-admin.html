@@ -1258,6 +1258,95 @@ async function runFolderImport(fileList){
   }catch(e){ zm.className='msg e'; zm.textContent=errTxt(e); }
   zipState.running=false;
 }
+
+/* ============================================================
+   استيراد إضافي من تصدير ووردبريس الكامل (XML) — صفحات وتقييمات
+   منستخدم نفس رقم المنتج القديم (ext_id) لمطابقة كل تقييم بمنتجو الصحيح.
+   ============================================================ */
+var wpXml={pages:[],reviews:[],fileName:'',pageSel:{},importing:false};
+var WP_SYSTEM_PAGES={cart:1,checkout:1,'my account':1,wishlist:1,shop:1,blog:1,'order tracking':1};
+function wpText(el,tag,ns){ var n=ns?el.getElementsByTagNameNS(ns,tag)[0]:el.getElementsByTagName(tag)[0]; return n?(n.textContent||''):''; }
+function parseWpXml(text){
+  var doc=new DOMParser().parseFromString(text,'text/xml');
+  if(doc.getElementsByTagName('parsererror').length) throw new Error(L('ملف XML غير صالح أو تالف','Invalid or corrupted XML file'));
+  var NSW='http://wordpress.org/export/1.2/', NSC='http://purl.org/rss/1.0/modules/content/';
+  var items=doc.getElementsByTagName('item'), pages=[], reviews=[];
+  var extToProd={}; PRODS.forEach(function(p){ if(p.ext_id) extToProd[String(p.ext_id)]=p; });
+  for(var i=0;i<items.length;i++){
+    var it=items[i], ptype=wpText(it,'post_type',NSW), title=(wpText(it,'title')||'').trim();
+    if(ptype==='page'){
+      var status=wpText(it,'status',NSW), body=wpText(it,'encoded',NSC);
+      var plain=body.replace(/<[^>]+>/g,'').trim();
+      if(!WP_SYSTEM_PAGES[title.toLowerCase()]&&plain.length>10){
+        pages.push({title:title,body:body,placeholder:/lorem ipsum/i.test(body),draft:status!=='publish'});
+      }
+    } else if(ptype==='product'){
+      var postId=wpText(it,'post_id',NSW), prod=extToProd[postId];
+      var comments=it.getElementsByTagNameNS(NSW,'comment');
+      for(var j=0;j<comments.length;j++){
+        var c=comments[j];
+        if(wpText(c,'comment_type',NSW)!=='review') continue;
+        var appr=wpText(c,'comment_approved',NSW); if(appr!=='1'&&appr!=='0') continue; // تخطّي السبام والمهمل
+        var rating=5, metas=c.getElementsByTagNameNS(NSW,'commentmeta');
+        for(var k=0;k<metas.length;k++){ if(wpText(metas[k],'meta_key',NSW)==='rating'){ rating=Number(wpText(metas[k],'meta_value',NSW))||5; break; } }
+        reviews.push({prod:prod,name:wpText(c,'comment_author',NSW)||L('زبون','Customer'),rating:Math.min(5,Math.max(1,rating)),
+          body:wpText(c,'comment_content',NSW)||'',approved:appr==='1',date:wpText(c,'comment_date',NSW)});
+      }
+    }
+  }
+  return {pages:pages,reviews:reviews};
+}
+function wpXmlCard(){
+  var wp=wpXml, matched=wp.reviews.filter(function(r){return r.prod}).length, unmatched=wp.reviews.length-matched;
+  return '<div class="card" id="impWpCard"><h3>'+L('استيراد إضافي من ووردبريس (صفحات وتقييمات)','Extra import from WordPress (pages & reviews)')+'</h3>'+
+    '<p class="sub">'+L('من لوحة ووردبريس: أدوات ← تصدير (Export) ← كل المحتوى ← نزّل ملف XML وارفعه هون. رح نجيبلك منّو صفحاتك (من نحن، تواصل معنا...) وتقييمات زبائنك الحقيقية، ونربط كل تقييم بمنتجو الصحيح تلقائياً.','In WordPress: Tools → Export → All content → download the XML file and upload it here. We’ll pull your pages (About, Contact…) and your customers’ real reviews, matching each review to its correct product automatically.')+'</p>'+
+    '<label class="imp-drop" style="display:block;cursor:pointer"><input type="file" id="impWpXml" accept=".xml" style="display:none"><b>'+L('اضغط لاختيار ملف XML','Click to choose an XML file')+'</b><div class="muted" id="impWpFn">'+esc(wp.fileName||L('لم يتم اختيار ملف','No file chosen'))+'</div></label>'+
+    '<div class="msg" id="impWpMsg"></div>'+
+    (wp.pages.length?'<h4 style="font-size:14px;margin:16px 0 8px">'+L('صفحات وُجدت — اختار يلي بدك تستوردها','Pages found — pick which to import')+'</h4><div class="rows" id="wpPagesRows">'+wpPagesRows()+'</div>':'')+
+    (wp.reviews.length?'<div style="margin-top:16px"><b>'+matched+'</b> '+L('تقييم جاهز للاستيراد (مرتبط بمنتج موجود)','reviews ready to import (matched to an existing product)')+(unmatched?' — '+unmatched+' '+L('تقييم لمنتج مش موجود عنا (تجاهلناهم)','reviews for a product we don’t have (skipped)'):'')+'</div>':'')+
+    ((wp.pages.length||wp.reviews.length)?'<button class="btn" id="impWpGo" style="margin-top:14px"'+(wp.importing?' disabled':'')+'>'+L('استيراد المحدد','Import selected')+'</button>':'')+
+    '</div>';
+}
+function wpPagesRows(){
+  return wpXml.pages.map(function(pg,i){
+    return '<label class="sw" style="align-items:flex-start;gap:10px"><input type="checkbox" data-wppg="'+i+'"'+(wpXml.pageSel[i]!==false?' checked':'')+'><span><b>'+esc(pg.title)+'</b>'+
+      (pg.placeholder?' <span class="tag off">'+L('نص تجريبي (Lorem Ipsum) — راجعو قبل النشر','Placeholder text (Lorem Ipsum) — review before publishing')+'</span>':'')+
+      (pg.draft?' <span class="tag off">'+L('مسودة','Draft')+'</span>':'')+'</span></label>';
+  }).join('');
+}
+async function loadWpXml(file){
+  wpXml.fileName=file.name; var m=$('#impWpMsg'); m.className='msg'; m.textContent=L('عم نقرأ الملف…','Reading the file…');
+  try{
+    var text=await file.text();
+    await ensureProds(true);
+    var r=parseWpXml(text);
+    wpXml.pages=r.pages; wpXml.reviews=r.reviews; wpXml.pageSel={};
+    m.textContent='';
+  }catch(e){ m.className='msg e'; m.textContent=errTxt(e); }
+  var cs=document.getElementById('impWpCard'); if(cs) cs.outerHTML=wpXmlCard();
+}
+async function runWpImport(){
+  wpXml.importing=true; var m=$('#impWpMsg'); m.className='msg'; m.textContent=L('عم نستورد…','Importing…');
+  var resultMsg='', resultOk=true;
+  try{
+    var selPages=wpXml.pages.filter(function(pg,i){return wpXml.pageSel[i]!==false});
+    if(selPages.length){
+      var base=PAGES?PAGES.length:0;
+      var rows=selPages.map(function(pg,i){ return {store_id:ST.id,title:pg.title,body:cleanHtml(pg.body),sort:base+i+1,is_active:!pg.draft}; });
+      var rp=await sb.from('store_pages').insert(rows); if(rp.error) throw rp.error;
+    }
+    var goodReviews=wpXml.reviews.filter(function(r){return r.prod});
+    if(goodReviews.length){
+      var rrows=goodReviews.map(function(r){ var d=Date.parse(r.date); return {store_id:ST.id,product_id:r.prod.id,name:r.name,rating:r.rating,body:cleanHtml(autopLite(r.body)),is_approved:r.approved,created_at:isNaN(d)?undefined:new Date(d).toISOString()}; });
+      for(var i=0;i<rrows.length;i+=50){ var rv=await sb.from('store_reviews').insert(rrows.slice(i,i+50)); if(rv.error) throw rv.error; }
+    }
+    resultMsg=L('تم ✓ استوردنا ','Done ✓ imported ')+selPages.length+L(' صفحة و',' pages and ')+goodReviews.length+L(' تقييم','reviews');
+    wpXml.pages=[]; wpXml.reviews=[];
+  }catch(e){ resultOk=false; resultMsg=errTxt(e); }
+  wpXml.importing=false;
+  var cs=document.getElementById('impWpCard'); if(cs) cs.outerHTML=wpXmlCard();
+  var m2=$('#impWpMsg'); if(m2){ m2.className='msg '+(resultOk?'s':'e'); m2.textContent=resultMsg; }
+}
 LOADERS.import=async function(){ try{ await ensureCats(true); await ensureProds(); }catch(e){return pageErr(e);} renderImport(); };
 function renderImport(){
   var p=imp.plan, s=p&&p.stats;
@@ -1287,6 +1376,7 @@ function renderImport(){
     '<b style="display:block;margin-bottom:6px;font-size:13.5px">'+L('٢. أو ارفع أرشيف ZIP واحد','2. Or upload a single ZIP archive')+'</b>'+
     '<label class="imp-drop" style="display:block;cursor:pointer"><input type="file" id="impZip" accept=".zip" style="display:none"><b>'+L('اضغط لاختيار ملف ZIP','Click to choose a ZIP file')+'</b><div class="muted" id="impZipFn">'+esc(zipState.fileName||L('لم يتم اختيار ملف','No file chosen'))+'</div></label>'+
     '<div class="progress" style="margin-top:14px"><i id="zipBar" style="width:0%"></i></div><div class="msg" id="zipMsg"></div></div>';
+  html += wpXmlCard();
   viewEl().innerHTML = html;
 }
 /* حالة النسخ — محسوبة دايماً من بيانات المنتجات الفعلية بقاعدة البيانات، مش من ذاكرة الصفحة —
@@ -2307,6 +2397,7 @@ document.addEventListener('click',function(e){
   // import
   if(t.closest('#impGo')){runImport();return;}
   if(t.closest('#impCopy')){runCopyImages();return;}
+  if(t.closest('#impWpGo')){runWpImport();return;}
   if(t.closest('#impStop')){imp.copyStop.stop=true;return;}
   // banners
   if(t.closest('#bNew')){bannerModal();return;}
@@ -2383,9 +2474,11 @@ document.addEventListener('click',function(e){
 document.addEventListener('change',function(e){
   var t=e.target;
   if(t.matches('[data-seco]')){var r=t.closest('[data-sec]'); var i=Number(r.dataset.sec); if(secList[i]) secList[i].on=t.checked; return;}
+  if(t.matches('[data-wppg]')){ wpXml.pageSel[Number(t.dataset.wppg)]=t.checked; return; }
   if(t.id==='impFile'){ if(t.files[0]) impLoadFile(t.files[0]); return; }
   if(t.id==='impZip'){ var zf=t.files[0]; t.value=''; if(zf) runZipImport(zf); return; }
   if(t.id==='impFolder'){ var ff=t.files; if(ff&&ff.length) runFolderImport(ff); t.value=''; return; }
+  if(t.id==='impWpXml'){ var wf=t.files[0]; t.value=''; if(wf) loadWpXml(wf); return; }
   if(t.id==='bkFile'){
     var f=t.files[0]; t.value=''; if(!f) return;
     if(!confirmBox(L('استعادة نسخة احتياطية بتستبدل كل التصنيفات والمنتجات والسلايدر والبنرات والماركات والصفحات والكوبونات وإعدادات المتجر الحالية بالكامل بمحتوى الملف. ما في تراجع بعدها. متابعة؟','Restoring a backup completely replaces all current categories, products, slider, banners, brands, pages, coupons and store settings with the file’s content. This cannot be undone. Continue?'))) return;
