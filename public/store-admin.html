@@ -1150,13 +1150,20 @@ function baseName(u){
 function baseNameNoSize(n){ return n.replace(/-\d{2,5}x\d{2,5}(\.[a-z0-9]+)$/i,'$1'); }
 var ZIP_MIME={jpg:'image/jpeg',jpeg:'image/jpeg',png:'image/png',webp:'image/webp',gif:'image/gif',svg:'image/svg+xml',avif:'image/avif'};
 function zipMime(name){ var ext=(name.split('.').pop()||'').toLowerCase(); return ZIP_MIME[ext]||''; }
+function descImgUrls(html){
+  var out=[], re=/<img[^>]+src=["']([^"']+)["']/gi, m;
+  while((m=re.exec(String(html||'')))) if(isExtUrl(m[1])) out.push(m[1]);
+  return out;
+}
 function extPendingList(){
   var out=[];
   PRODS.forEach(function(p){
     if(isExtUrl(p.image_url)) out.push({p:p,field:'image_url',url:p.image_url});
     (p.images||[]).forEach(function(u,i){ if(isExtUrl(u)) out.push({p:p,field:'images',idx:i,url:u}); });
     (p.colors||[]).forEach(function(c,i){ if(isExtUrl(c.img)) out.push({p:p,field:'colors',idx:i,url:c.img}); });
+    ['desc_ar','desc_en'].forEach(function(df){ descImgUrls(p[df]).forEach(function(u){ out.push({p:p,field:'desc',descField:df,url:u}); }); });
   });
+  (CATS||[]).forEach(function(c){ if(isExtUrl(c.image_url)) out.push({c:c,field:'cat_image',url:c.image_url}); });
   return out;
 }
 async function processImageMap(map,notFoundLabel){
@@ -1167,24 +1174,29 @@ async function processImageMap(map,notFoundLabel){
   var todo=extPendingList();
   if(!todo.length){ zm.className='msg s'; zm.textContent=L('✓ ما في صور خارجية باقية أصلاً','✓ No external images left already'); return; }
   zm.textContent=L('عم نطابق… 0 / ','Matching… 0 / ')+todo.length;
-  var byProd={}; var done=0, matched=0, uploaded=0, notFound=0, failed=0;
+  var byProd={}, byCat={}; var done=0, matched=0, uploaded=0, notFound=0, failed=0;
   for(var i=0;i<todo.length;i++){
     if(zipState.stop) break;
     var it=todo[i]; done++;
     var bn=baseName(it.url), data=map[bn]||map[baseNameNoSize(bn)];
     zb.style.width=Math.round(done/todo.length*100)+'%';
-    zm.textContent=L('عم نطابق… ','Matching… ')+done+' / '+todo.length+L('منتج/صورة — ',' items — ')+matched+L(' وُجدت، ',' found, ')+uploaded+L(' انرفعت',' uploaded');
+    zm.textContent=L('عم نطابق… ','Matching… ')+done+' / '+todo.length+L('عنصر — ',' items — ')+matched+L(' وُجدت، ',' found, ')+uploaded+L(' انرفعت',' uploaded');
     if(!data){ notFound++; continue; }
     matched++;
     try{
       var mime=zipMime(bn)||(data.type||'image/jpeg');
       var blob=(data instanceof Blob)?data:new Blob([data],{type:mime});
       var url=await upload('items',blob,1600);
-      (byProd[it.p.id]=byProd[it.p.id]||{p:it.p,upd:{}});
-      var b=byProd[it.p.id];
-      if(it.field==='image_url') b.upd.image_url=url;
-      else if(it.field==='images'){ b.upd.images=(b.upd.images||it.p.images.slice()); b.upd.images[it.idx]=url; }
-      else if(it.field==='colors'){ b.upd.colors=(b.upd.colors||it.p.colors.slice().map(function(c){return Object.assign({},c)})); b.upd.colors[it.idx]=Object.assign({},b.upd.colors[it.idx],{img:url}); }
+      if(it.field==='cat_image'){
+        (byCat[it.c.id]=byCat[it.c.id]||{c:it.c,upd:{}}); byCat[it.c.id].upd.image_url=url;
+      } else {
+        (byProd[it.p.id]=byProd[it.p.id]||{p:it.p,upd:{}});
+        var b=byProd[it.p.id];
+        if(it.field==='image_url') b.upd.image_url=url;
+        else if(it.field==='images'){ b.upd.images=(b.upd.images||it.p.images.slice()); b.upd.images[it.idx]=url; }
+        else if(it.field==='colors'){ b.upd.colors=(b.upd.colors||it.p.colors.slice().map(function(c){return Object.assign({},c)})); b.upd.colors[it.idx]=Object.assign({},b.upd.colors[it.idx],{img:url}); }
+        else if(it.field==='desc'){ var cur=(it.descField in b.upd)?b.upd[it.descField]:it.p[it.descField]; b.upd[it.descField]=String(cur||'').split(it.url).join(url); }
+      }
       uploaded++;
     }catch(e){ failed++; }
   }
@@ -1193,6 +1205,13 @@ async function processImageMap(map,notFoundLabel){
     var b2=byProd[pids[j]];
     try{ var r=await sb.from('store_products').update(b2.upd).eq('id',pids[j]); if(r.error) throw r.error;
       Object.assign(b2.p,b2.upd);
+    }catch(e){ failed++; }
+  }
+  var cids=Object.keys(byCat);
+  for(var k=0;k<cids.length;k++){
+    var c2=byCat[cids[k]];
+    try{ var rc=await sb.from('store_categories').update(c2.upd).eq('id',cids[k]); if(rc.error) throw rc.error;
+      Object.assign(c2.c,c2.upd);
     }catch(e){ failed++; }
   }
   zb.style.width='100%';
@@ -1274,7 +1293,7 @@ function renderImport(){
    هيك لو الصفحة انسكّرت أو انعمللها Reload بمنتصف النسخ، أول ما ترجع فاتحها بتعرف بالضبط وين وصلت،
    بدل ما تضل حائرة إذا كانت عم تنسخ أو لأ. */
 function extPending(){
-  return PRODS.reduce(function(a,p){return a+(isExtUrl(p.image_url)?1:0)+(p.images||[]).filter(isExtUrl).length+(p.colors||[]).filter(function(c){return isExtUrl(c.img)}).length},0);
+  return extPendingList().length;
 }
 function copyStatusLine(){
   var n=extPending(); if(!n) return '<p class="note" style="margin:0 0 12px;color:var(--ok)">'+L('✓ كل الصور منسوخة لمتجرك — ما في صور خارجية باقية','✓ All images are copied to your store — none left external')+'</p>';
