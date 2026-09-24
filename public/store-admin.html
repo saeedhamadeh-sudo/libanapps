@@ -1385,11 +1385,16 @@ async function runCopyImages(){
   var msg=$('#copyMsg'), bar=$('#copyBar');
   msg.className='msg'; msg.textContent=L('عم نحضّر لائحة الصور…','Preparing the image list…'); bar.style.width='0%';
   try{
-    await ensureProds(true);
-    var todo=PRODS.filter(function(p){return isExtUrl(p.image_url)||(p.images||[]).some(isExtUrl)||(p.colors||[]).some(function(c){return isExtUrl(c.img)});});
+    await ensureProds(true); await ensureCats(true);
+    // نفس اللائحة الشاملة يلي بتحسب عليها الحالة فوق (منتجات + تصنيفات + صور داخل الوصف)
+    // — هيك الزر هون وحالة "باقي X صورة" فوق دايماً متوافقين مع بعض
+    var items=extPendingList();
+    var prodTodo=uniq(items.filter(function(it){return it.p}).map(function(it){return it.p.id})).map(function(id){return {type:'p',obj:PRODS.filter(function(p){return p.id===id})[0]}});
+    var catTodo=uniq(items.filter(function(it){return it.c}).map(function(it){return it.c.id})).map(function(id){return {type:'c',obj:CATS.filter(function(c){return c.id===id})[0]}});
+    var todo=prodTodo.concat(catTodo);
     if(!todo.length){ msg.className='msg s'; msg.textContent=L('ما في صور خارجية — كل شي منسوخ ✓','No external images — everything is already copied ✓'); }
     else{
-      msg.textContent=L('عم ننسخ… ','Copying… ')+'0 / '+todo.length+L(' منتج',' products');
+      msg.textContent=L('عم ننسخ… ','Copying… ')+'0 / '+todo.length+L(' عنصر',' items');
       var cache={}, pos=0, done=0, ok=0, fail=0, reasons={};
       function reasonLine(){
         var parts=Object.keys(reasons).map(function(k){return pick(REASON_L[k]||[k,k])+': '+reasons[k]});
@@ -1397,26 +1402,38 @@ async function runCopyImages(){
       }
       // ماشيين بروية (وحدتين بالتوازي + فاصل صغير بين كل طلب) لأنو الاستضافات الصغيرة
       // بتحظر أو بترفض الطلبات لو حسّت فيه دفعة كبيرة بنفس الوقت — هيك أنجح وأخفّ عالمصدر
+      async function copyUrl(u){
+        if(cache[u]===undefined){
+          var res=await copyOneImage(u); await sleep(180);
+          if(res.url){ cache[u]=res.url; ok++; } else { cache[u]=null; fail++; reasons[res.error]=(reasons[res.error]||0)+1; }
+        }
+        return cache[u];
+      }
       async function worker(){
         while(pos<todo.length&&!imp.copyStop.stop){
-          var p=todo[pos++];
+          var item=todo[pos++];
           try{
-            var urls=uniq([p.image_url].concat(p.images||[]).concat((p.colors||[]).map(function(c){return c.img})).filter(isExtUrl)), map={};
-            for(var k=0;k<urls.length;k++){
-              var u=urls[k];
-              if(cache[u]===undefined){
-                msg.textContent=L('عم ننسخ… ','Copying… ')+done+' / '+todo.length+L(' منتج — جارٍ فحص صورة «','  products — checking an image for “')+pName(p)+'»…';
-                var res=await copyOneImage(u); await sleep(180);
-                if(res.url){ cache[u]=res.url; ok++; } else { cache[u]=null; fail++; reasons[res.error]=(reasons[res.error]||0)+1; }
+            if(item.type==='c'){
+              var c=item.obj;
+              msg.textContent=L('عم ننسخ… ','Copying… ')+done+' / '+todo.length+L(' عنصر — جارٍ فحص صورة تصنيف «','  items — checking category image “')+cName_(c)+'»…';
+              var nu=await copyUrl(c.image_url);
+              if(nu&&nu!==c.image_url){ var rc=await sb.from('store_categories').update({image_url:nu}).eq('id',c.id); if(rc.error) throw rc.error; c.image_url=nu; }
+            } else {
+              var p=item.obj;
+              var urls=uniq([p.image_url].concat(p.images||[]).concat((p.colors||[]).map(function(c){return c.img})).concat(descImgUrls(p.desc_ar)).concat(descImgUrls(p.desc_en)).filter(isExtUrl)), map={};
+              for(var k=0;k<urls.length;k++){
+                var u=urls[k];
+                if(cache[u]===undefined) msg.textContent=L('عم ننسخ… ','Copying… ')+done+' / '+todo.length+L(' عنصر — جارٍ فحص صورة «','  items — checking an image for “')+pName(p)+'»…';
+                map[u]=await copyUrl(u);
               }
-              map[u]=cache[u];
+              var upd={}, im=isExtUrl(p.image_url)&&map[p.image_url]?map[p.image_url]:p.image_url; if(im!==p.image_url) upd.image_url=im;
+              var ims=(p.images||[]).map(function(u){return map[u]||u}); if(JSON.stringify(ims)!==JSON.stringify(p.images||[])) upd.images=ims;
+              var cols=(p.colors||[]).map(function(c){return (c.img&&map[c.img])?Object.assign({},c,{img:map[c.img]}):c}); if(JSON.stringify(cols)!==JSON.stringify(p.colors||[])) upd.colors=cols;
+              ['desc_ar','desc_en'].forEach(function(df){ var cur=p[df], nd=cur; descImgUrls(cur).forEach(function(u){ if(map[u]) nd=nd.split(u).join(map[u]); }); if(nd!==cur) upd[df]=nd; });
+              if(Object.keys(upd).length){ var r=await sb.from('store_products').update(upd).eq('id',p.id); if(r.error) throw r.error; Object.assign(p,upd); }
             }
-            var upd={}, im=isExtUrl(p.image_url)&&map[p.image_url]?map[p.image_url]:p.image_url; if(im!==p.image_url) upd.image_url=im;
-            var ims=(p.images||[]).map(function(u){return map[u]||u}); if(JSON.stringify(ims)!==JSON.stringify(p.images||[])) upd.images=ims;
-            var cols=(p.colors||[]).map(function(c){return (c.img&&map[c.img])?Object.assign({},c,{img:map[c.img]}):c}); if(JSON.stringify(cols)!==JSON.stringify(p.colors||[])) upd.colors=cols;
-            if(Object.keys(upd).length){ var r=await sb.from('store_products').update(upd).eq('id',p.id); if(r.error) throw r.error; Object.assign(p,upd); }
           }catch(e){ fail++; reasons.other=(reasons.other||0)+1; }
-          done++; bar.style.width=(done/todo.length*100)+'%'; msg.className='msg'; msg.textContent=L('عم ننسخ… ','Copying… ')+done+' / '+todo.length+L(' منتج — ',' products — ')+ok+L(' صورة تم نسخها',' images copied')+(fail?' · '+fail+L(' فشلت',' failed'):'');
+          done++; bar.style.width=(done/todo.length*100)+'%'; msg.className='msg'; msg.textContent=L('عم ننسخ… ','Copying… ')+done+' / '+todo.length+L(' عنصر — ',' items — ')+ok+L(' صورة تم نسخها',' images copied')+(fail?' · '+fail+L(' فشلت',' failed'):'');
         }
       }
       await Promise.all([worker(),worker()]);
