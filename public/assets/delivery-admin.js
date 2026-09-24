@@ -20,7 +20,7 @@ function toast(t,ok){ var e=document.createElement('div');
   e.textContent=t; document.body.appendChild(e); setTimeout(function(){e.remove()},2600); }
 function copy(t){ (navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject())
   .then(function(){toast('انتسخ ✓')},function(){prompt('انسخ:',t)}); }
-var ST={waiting:['بانتظار موتوسيكل','w'],claimed:['مستلم — يتم تجهيز الطلب','b'],on_the_way:['بالطريق','b'],
+var ST={waiting:['بانتظار موتوسيكل','w'],claimed:['تم تكليف سائق','b'],ready_wait:['السائق بانتظار الطلب','w'],on_the_way:['بالطريق','b'],
         delivered:['وصل ✓','p'],cancelled:['ملغى','x']};
 var KIND={traccar_app:'تطبيق Traccar',gps_tracker:'جهاز GPS',other:'جهاز آخر',phone:'GPS الهاتف'};
 
@@ -157,7 +157,7 @@ function paint(){
   $('#dlvStats').innerHTML=
     '<div><b>'+live+'</b><span>موتوسيكل شغّال</span></div>'+
     '<div><b>'+cnt('waiting')+'</b><span>بانتظار موظف</span></div>'+
-    '<div><b>'+(cnt('claimed')+cnt('on_the_way'))+'</b><span>عالطريق</span></div>'+
+    '<div><b>'+(cnt('claimed')+cnt('ready_wait')+cnt('on_the_way'))+'</b><span>عالطريق</span></div>'+
     '<div><b>'+D.reduce(function(a,d){return a+Number(d.done_today||0)},0)+'</b><span>وصل اليوم</span></div>';
 
   // الطلبات
@@ -166,14 +166,14 @@ function paint(){
   $('#dlvOrders').innerHTML=O.length?O.map(function(o){
     var s=ST[o.dispatch]||['ما انبعت للتوصيل','x'], d=drvById(o.driver_id);
     var trk=location.origin+'/t/'+encodeURIComponent(o.token);
-    var open=['waiting','claimed','on_the_way'].indexOf(o.dispatch)>=0;
+    var open=['waiting','claimed','ready_wait','on_the_way'].indexOf(o.dispatch)>=0;
     return '<div class="row"><div class="t"><b>'+esc(o.order_no)+' · '+esc(o.customer_name)+'</b>'+
       '<span>'+esc(o.address_text||'')+' · '+o.total_usd+' $ · '+ago(o.created_at)+
       (d?' · 🏍️ '+esc(d.name):'')+'</span></div>'+
       '<div class="dlv-acts"><span class="chip '+s[1]+'">'+s[0]+'</span>'+
       (!o.dispatch||o.dispatch==='cancelled'?'<button class="btn sm" data-oa="send" data-id="'+o.id+'">أرسل للتوصيل</button>':'')+
       (open?'<select data-assign="'+o.id+'">'+opts(o.driver_id)+'</select>':'')+
-      (o.dispatch==='claimed'||o.dispatch==='on_the_way'?'<button class="btn alt sm" data-oa="unassign" data-id="'+o.id+'">سحب</button>'+
+      (o.dispatch==='claimed'||o.dispatch==='ready_wait'||o.dispatch==='on_the_way'?'<button class="btn alt sm" data-oa="unassign" data-id="'+o.id+'">سحب</button>'+
         '<button class="btn alt sm" data-oa="delivered" data-id="'+o.id+'">وصل</button>':'')+
       (o.dispatch==='waiting'?'<button class="btn dg sm" data-oa="cancel" data-id="'+o.id+'">إلغاء</button>':'')+
       '<button class="btn alt sm" data-copy="'+esc(trk)+'">رابط التتبع</button>'+
@@ -245,7 +245,7 @@ function paintMap(){
     else MK.drv[d.id]=L.marker([p.lat,p.lng],{icon:ic,zIndexOffset:1000}).bindPopup(pop).addTo(MAP);
   });
   (F.orders||[]).forEach(function(o){
-    if(o.lat==null||['waiting','claimed','on_the_way'].indexOf(o.dispatch)<0) return;
+    if(o.lat==null||['waiting','claimed','ready_wait','on_the_way'].indexOf(o.dispatch)<0) return;
     keep.ord[o.id]=1; pts.push([o.lat,o.lng]);
     var pop='<b>'+esc(o.order_no)+'</b> · '+esc(o.customer_name)+'<br>'+esc((ST[o.dispatch]||[''])[0]);
     if(!MK.ord[o.id]) MK.ord[o.id]=L.marker([o.lat,o.lng],{icon:L.divIcon({html:'<div class="dlv-pin">📍</div>',className:'',iconSize:[24,24],iconAnchor:[12,24]})}).bindPopup(pop).addTo(MAP);
