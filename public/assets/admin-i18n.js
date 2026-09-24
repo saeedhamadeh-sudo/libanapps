@@ -303,5 +303,7 @@ window.ADMIN_EN_EXTRA = {
 "تم الدفع والتفعيل ✓": "Paid and activated ✓",
 "استلمنا رجوعك من صفحة الدفع، بس ما تأكد الدفع بعد. إذا انخصم المبلغ تواصل معنا.": "You're back from the payment page, but the payment isn't confirmed yet. If you were charged, contact us.",
 "إذا الجهاز بيدعم إرسال HTTP (OsmAnd) بتحط الرابط فوق مباشرة. أغلب الأجهزة الصينية (GT06 / Sinotrack / Concox) بتحكي بس مع سيرفر Traccar، وهو بيحوّل لعنّا عبر رابط التحويل.": "if the device supports HTTP (OsmAnd), enter the URL above directly. Most Chinese trackers (GT06 / Sinotrack / Concox) only talk to a Traccar server, which forwards to us via the forward URL.",
-"كل موظف إضافي ${n}": "each extra rider ${n}"
+"كل موظف إضافي ${n}": "each extra rider ${n}",
+"تم تكليف سائق": "Rider assigned",
+"السائق بانتظار الطلب": "Rider waiting for the order"
 };
