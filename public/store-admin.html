@@ -1133,7 +1133,7 @@ function wooAnalyze(rows,opt){
 
 var imp={plan:null,file:'',opt:{unpub:true,update:true,newest:0},running:false,log:'',copyStop:{stop:false},copying:false};
 var zipState={fileName:'',running:false,stop:false};
-var FFLATE_SRC='https://cdn.jsdelivr.net/npm/fflate@0.8.2/umd/index.js';
+var FFLATE_SRC='https://cdn.jsdelivr.net/npm/fflate@0.8.3/umd/index.js';
 function loadFflate(){
   if(window.fflate) return Promise.resolve();
   return new Promise(function(res,rej){
@@ -1159,6 +1159,47 @@ function extPendingList(){
   });
   return out;
 }
+async function processImageMap(map,notFoundLabel){
+  var zb=$('#zipBar'), zm=$('#zipMsg');
+  var count=Object.keys(map).length;
+  if(!count) throw new Error(L('ما لقينا أي صور بالمصدر المختار','No images found in what you selected'));
+  await ensureProds(true);
+  var todo=extPendingList();
+  if(!todo.length){ zm.className='msg s'; zm.textContent=L('✓ ما في صور خارجية باقية أصلاً','✓ No external images left already'); return; }
+  zm.textContent=L('عم نطابق… 0 / ','Matching… 0 / ')+todo.length;
+  var byProd={}; var done=0, matched=0, uploaded=0, notFound=0, failed=0;
+  for(var i=0;i<todo.length;i++){
+    if(zipState.stop) break;
+    var it=todo[i]; done++;
+    var bn=baseName(it.url), data=map[bn]||map[baseNameNoSize(bn)];
+    zb.style.width=Math.round(done/todo.length*100)+'%';
+    zm.textContent=L('عم نطابق… ','Matching… ')+done+' / '+todo.length+L('منتج/صورة — ',' items — ')+matched+L(' وُجدت، ',' found, ')+uploaded+L(' انرفعت',' uploaded');
+    if(!data){ notFound++; continue; }
+    matched++;
+    try{
+      var mime=zipMime(bn)||(data.type||'image/jpeg');
+      var blob=(data instanceof Blob)?data:new Blob([data],{type:mime});
+      var url=await upload('items',blob,1600);
+      (byProd[it.p.id]=byProd[it.p.id]||{p:it.p,upd:{}});
+      var b=byProd[it.p.id];
+      if(it.field==='image_url') b.upd.image_url=url;
+      else if(it.field==='images'){ b.upd.images=(b.upd.images||it.p.images.slice()); b.upd.images[it.idx]=url; }
+      else if(it.field==='colors'){ b.upd.colors=(b.upd.colors||it.p.colors.slice().map(function(c){return Object.assign({},c)})); b.upd.colors[it.idx]=Object.assign({},b.upd.colors[it.idx],{img:url}); }
+      uploaded++;
+    }catch(e){ failed++; }
+  }
+  var pids=Object.keys(byProd);
+  for(var j=0;j<pids.length;j++){
+    var b2=byProd[pids[j]];
+    try{ var r=await sb.from('store_products').update(b2.upd).eq('id',pids[j]); if(r.error) throw r.error;
+      Object.assign(b2.p,b2.upd);
+    }catch(e){ failed++; }
+  }
+  zb.style.width='100%';
+  zm.className='msg '+(failed?'e':'s');
+  zm.textContent=(zipState.stop?L('تم الإيقاف — ','Stopped — '):L('انتهى ✓ — ','Done ✓ — '))+uploaded+L(' صورة انرفعت، ',' images uploaded, ')+notFound+(notFoundLabel||L(' مش موجودة',' not found'))+(failed?' · '+failed+L(' فشلت',' failed'):'');
+  var cs=document.getElementById('impCopyCard'); if(cs){ var sl=cs.querySelector('.note'); if(sl) sl.outerHTML=copyStatusLine(); }
+}
 async function runZipImport(file){
   zipState.running=true; zipState.stop=false; zipState.fileName=file.name;
   var zb=$('#zipBar'), zm=$('#zipMsg'); var zbtn=$('#impZipFn'); if(zbtn) zbtn.textContent=file.name;
@@ -1166,51 +1207,35 @@ async function runZipImport(file){
   try{
     await loadFflate();
     var buf=await file.arrayBuffer();
-    var entries=await new Promise(function(res,rej){
-      window.fflate.unzip(new Uint8Array(buf),function(err,data){ if(err) rej(err); else res(data); });
-    });
+    var entries;
+    try{
+      entries=await new Promise(function(res,rej){
+        try{ window.fflate.unzip(new Uint8Array(buf),function(err,data){ if(err) rej(err); else res(data); }); }
+        catch(syncErr){ rej(syncErr); }
+      });
+    }catch(e1){
+      try{ entries=window.fflate.unzipSync(new Uint8Array(buf)); }
+      catch(e2){ throw new Error(L('تعذّر فتح هالأرشيف بالمتصفح. جرّب بدل هيك خيار «اختيار المجلد مباشرة» تحت — أضمن وما بيعتمد على صيغة الأرشيف إطلاقاً.','Could not open this archive in the browser. Try the “Pick the folder directly” option below instead — it’s more reliable and doesn’t depend on the archive format at all.')); }
+    }
     var map={};
     Object.keys(entries).forEach(function(path){
       if(/\/$/.test(path)) return; var bn=baseName(path); if(bn&&!map[bn]) map[bn]=entries[path];
     });
-    var count=Object.keys(map).length;
-    if(!count) throw new Error(L('ما لقينا أي صور جوا هالأرشيف','No images found inside this archive'));
-    await ensureProds(true);
-    var todo=extPendingList();
-    if(!todo.length){ zm.className='msg s'; zm.textContent=L('✓ ما في صور خارجية باقية أصلاً','✓ No external images left already'); zipState.running=false; return; }
-    zm.textContent=L('عم نطابق… 0 / ','Matching… 0 / ')+todo.length;
-    var byProd={}; var done=0, matched=0, uploaded=0, notFound=0, failed=0;
-    for(var i=0;i<todo.length;i++){
-      if(zipState.stop) break;
-      var it=todo[i]; done++;
-      var bn=baseName(it.url), data=map[bn]||map[baseNameNoSize(bn)];
-      zb.style.width=Math.round(done/todo.length*100)+'%';
-      zm.textContent=L('عم نطابق… ','Matching… ')+done+' / '+todo.length+L('منتج/صورة — ',' items — ')+matched+L(' وُجدت، ',' found, ')+uploaded+L(' انرفعت',' uploaded');
-      if(!data){ notFound++; continue; }
-      matched++;
-      try{
-        var mime=zipMime(bn)||'image/jpeg';
-        var blob=new Blob([data],{type:mime});
-        var url=await upload('items',blob,1600);
-        (byProd[it.p.id]=byProd[it.p.id]||{p:it.p,upd:{}});
-        var b=byProd[it.p.id];
-        if(it.field==='image_url') b.upd.image_url=url;
-        else if(it.field==='images'){ b.upd.images=(b.upd.images||it.p.images.slice()); b.upd.images[it.idx]=url; }
-        else if(it.field==='colors'){ b.upd.colors=(b.upd.colors||it.p.colors.slice().map(function(c){return Object.assign({},c)})); b.upd.colors[it.idx]=Object.assign({},b.upd.colors[it.idx],{img:url}); }
-        uploaded++;
-      }catch(e){ failed++; }
+    await processImageMap(map,L(' مش موجودة بالأرشيف',' not found in the archive'));
+  }catch(e){ zm.className='msg e'; zm.textContent=errTxt(e); }
+  zipState.running=false;
+}
+async function runFolderImport(fileList){
+  zipState.running=true; zipState.stop=false; zipState.fileName=(fileList.length||0)+L(' ملف','files');
+  var zb=$('#zipBar'), zm=$('#zipMsg'); var fbtn=$('#impFolderFn'); if(fbtn) fbtn.textContent=fileList.length+L(' ملف من المجلد',' files from the folder');
+  zm.className='msg'; zm.textContent=L('عم نقرأ المجلد…','Reading the folder…'); zb.style.width='0%';
+  try{
+    var map={};
+    for(var i=0;i<fileList.length;i++){
+      var f=fileList[i]; var bn=baseName(f.webkitRelativePath||f.name);
+      if(bn&&!map[bn]) map[bn]=f;
     }
-    var pids=Object.keys(byProd);
-    for(var j=0;j<pids.length;j++){
-      var b2=byProd[pids[j]];
-      try{ var r=await sb.from('store_products').update(b2.upd).eq('id',pids[j]); if(r.error) throw r.error;
-        Object.assign(b2.p,b2.upd);
-      }catch(e){ failed++; }
-    }
-    zb.style.width='100%';
-    zm.className='msg '+(failed?'e':'s');
-    zm.textContent=(zipState.stop?L('تم الإيقاف — ','Stopped — '):L('انتهى ✓ — ','Done ✓ — '))+uploaded+L(' صورة انرفعت، ',' images uploaded, ')+notFound+L(' مش موجودة بالأرشيف',' not found in the archive')+(failed?' · '+failed+L(' فشلت',' failed'):'');
-    var cs=document.getElementById('impCopyCard'); if(cs){ var sl=cs.querySelector('.note'); if(sl) sl.outerHTML=copyStatusLine(); }
+    await processImageMap(map,L(' مش موجودة بالمجلد',' not found in the folder'));
   }catch(e){ zm.className='msg e'; zm.textContent=errTxt(e); }
   zipState.running=false;
 }
@@ -1236,10 +1261,13 @@ function renderImport(){
      copyStatusLine()+
    '<div class="tools"><button class="btn acc" id="impCopy"'+(imp.copying?' disabled':'')+'>'+L('نسخ الصور الخارجية','Copy external images')+'</button><button class="btn alt" id="impStop"'+(imp.copying?'':' disabled')+'>'+L('إيقاف','Stop')+'</button></div>'+
    '<div class="progress"><i id="copyBar" style="width:0%"></i></div><div class="msg" id="copyMsg"></div></div>';
-  html += '<div class="card" id="impZipCard"><h3>'+L('أسرع: ارفع أرشيف ZIP من موقعك القديم','Faster: upload a ZIP from your old site')+'</h3>'+
-    '<p class="sub">'+L('إذا موقع ووردبريس عم يحظر النسخ التلقائي، هاي أسرع بكتير وما بتتأثر بأي حظر — لأنها ما بترسل ولا طلب لموقعك القديم إطلاقاً. من استضافة ووردبريس (لوحة الاستضافة أو FTP)، اضغط على مجلد wp-content/uploads بالزر اليمين ← Compress/ضغط ← نزّل ملف ZIP واحد، وارفعه هون. رح نطابق كل صورة مع منتجها تلقائياً بالاسم.','If WordPress is blocking the automatic copier, this is much faster and immune to any block — it never sends a single request to your old site. From your hosting (control panel or FTP), right-click the wp-content/uploads folder → Compress/Zip → download one ZIP file, then upload it here. We’ll match every image to its product automatically by filename.')+'</p>'+
+  html += '<div class="card" id="impZipCard"><h3>'+L('أسرع: صوّر متجرك القديم مباشرة من جهازك','Faster: bring your old store’s images straight from your computer')+'</h3>'+
+    '<p class="sub">'+L('إذا موقع ووردبريس عم يحظر النسخ التلقائي، هاي أسرع بكتير وما بتتأثر بأي حظر إطلاقاً — ما بترسل ولا طلب لموقعك القديم. أولاً، نزّل مجلد wp-content/uploads لجهازك (من لوحة الاستضافة أو عبر FTP). بعدها اختار إحدى الطريقتين تحت. رح نطابق كل صورة مع منتجها تلقائياً بالاسم.','If WordPress is blocking the automatic copier, this is much faster and completely immune to any block — it never sends a request to your old site. First, download the wp-content/uploads folder to your computer (from your hosting panel or via FTP). Then use either option below. We’ll match every image to its product automatically by filename.')+'</p>'+
+    '<b style="display:block;margin-bottom:6px;font-size:13.5px">'+L('١. اختيار المجلد مباشرة (الأضمن — بلا أي مشاكل صيغة)','1. Pick the folder directly (most reliable — no format issues)')+'</b>'+
+    '<label class="imp-drop" style="display:block;cursor:pointer;margin-bottom:16px"><input type="file" id="impFolder" webkitdirectory directory multiple style="display:none"><b>'+L('اضغط لاختيار مجلد الصور','Click to choose the images folder')+'</b><div class="muted" id="impFolderFn">'+esc(L('لم يتم اختيار مجلد','No folder chosen'))+'</div></label>'+
+    '<b style="display:block;margin-bottom:6px;font-size:13.5px">'+L('٢. أو ارفع أرشيف ZIP واحد','2. Or upload a single ZIP archive')+'</b>'+
     '<label class="imp-drop" style="display:block;cursor:pointer"><input type="file" id="impZip" accept=".zip" style="display:none"><b>'+L('اضغط لاختيار ملف ZIP','Click to choose a ZIP file')+'</b><div class="muted" id="impZipFn">'+esc(zipState.fileName||L('لم يتم اختيار ملف','No file chosen'))+'</div></label>'+
-    '<div class="progress"><i id="zipBar" style="width:0%"></i></div><div class="msg" id="zipMsg"></div></div>';
+    '<div class="progress" style="margin-top:14px"><i id="zipBar" style="width:0%"></i></div><div class="msg" id="zipMsg"></div></div>';
   viewEl().innerHTML = html;
 }
 /* حالة النسخ — محسوبة دايماً من بيانات المنتجات الفعلية بقاعدة البيانات، مش من ذاكرة الصفحة —
@@ -2321,6 +2349,7 @@ document.addEventListener('change',function(e){
   if(t.matches('[data-seco]')){var r=t.closest('[data-sec]'); var i=Number(r.dataset.sec); if(secList[i]) secList[i].on=t.checked; return;}
   if(t.id==='impFile'){ if(t.files[0]) impLoadFile(t.files[0]); return; }
   if(t.id==='impZip'){ var zf=t.files[0]; t.value=''; if(zf) runZipImport(zf); return; }
+  if(t.id==='impFolder'){ var ff=t.files; if(ff&&ff.length) runFolderImport(ff); t.value=''; return; }
   if(t.id==='bkFile'){
     var f=t.files[0]; t.value=''; if(!f) return;
     if(!confirmBox(L('استعادة نسخة احتياطية بتستبدل كل التصنيفات والمنتجات والسلايدر والبنرات والماركات والصفحات والكوبونات وإعدادات المتجر الحالية بالكامل بمحتوى الملف. ما في تراجع بعدها. متابعة؟','Restoring a backup completely replaces all current categories, products, slider, banners, brands, pages, coupons and store settings with the file’s content. This cannot be undone. Continue?'))) return;
