@@ -1164,17 +1164,24 @@ function extPendingList(){
     ['desc_ar','desc_en'].forEach(function(df){ descImgUrls(p[df]).forEach(function(u){ out.push({p:p,field:'desc',descField:df,url:u}); }); });
   });
   (CATS||[]).forEach(function(c){ if(isExtUrl(c.image_url)) out.push({c:c,field:'cat_image',url:c.image_url}); });
+  (SLIDES||[]).forEach(function(s){ if(isExtUrl(s.image_url)) out.push({s:s,field:'slide_image',url:s.image_url}); });
+  (BANNERS||[]).forEach(function(b){ if(isExtUrl(b.image_url)) out.push({b:b,field:'banner_image',url:b.image_url}); });
+  if(ST){
+    if(isExtUrl(ST.logo_url)) out.push({store:1,field:'store_logo',url:ST.logo_url});
+    if(isExtUrl(ST.favicon_url)) out.push({store:1,field:'store_favicon',url:ST.favicon_url});
+    if(isExtUrl(ST.og_image)) out.push({store:1,field:'store_og',url:ST.og_image});
+  }
   return out;
 }
 async function processImageMap(map,notFoundLabel){
   var zb=$('#zipBar'), zm=$('#zipMsg');
   var count=Object.keys(map).length;
   if(!count) throw new Error(L('ما لقينا أي صور بالمصدر المختار','No images found in what you selected'));
-  await ensureProds(true);
+  await ensureProds(true); await ensureCats(true); await ensureSlidesBanners(true);
   var todo=extPendingList();
   if(!todo.length){ zm.className='msg s'; zm.textContent=L('✓ ما في صور خارجية باقية أصلاً','✓ No external images left already'); return; }
   zm.textContent=L('عم نطابق… 0 / ','Matching… 0 / ')+todo.length;
-  var byProd={}, byCat={}; var done=0, matched=0, uploaded=0, notFound=0, failed=0;
+  var byProd={}, byCat={}, bySlide={}, byBanner={}, storeUpd={}; var done=0, matched=0, uploaded=0, notFound=0, failed=0;
   for(var i=0;i<todo.length;i++){
     if(zipState.stop) break;
     var it=todo[i]; done++;
@@ -1189,6 +1196,13 @@ async function processImageMap(map,notFoundLabel){
       var url=await upload('items',blob,1600);
       if(it.field==='cat_image'){
         (byCat[it.c.id]=byCat[it.c.id]||{c:it.c,upd:{}}); byCat[it.c.id].upd.image_url=url;
+      } else if(it.field==='slide_image'){
+        (bySlide[it.s.id]=bySlide[it.s.id]||{s:it.s,upd:{}}); bySlide[it.s.id].upd.image_url=url;
+      } else if(it.field==='banner_image'){
+        (byBanner[it.b.id]=byBanner[it.b.id]||{b:it.b,upd:{}}); byBanner[it.b.id].upd.image_url=url;
+      } else if(it.field==='store_logo'){ storeUpd.logo_url=url;
+      } else if(it.field==='store_favicon'){ storeUpd.favicon_url=url;
+      } else if(it.field==='store_og'){ storeUpd.og_image=url;
       } else {
         (byProd[it.p.id]=byProd[it.p.id]||{p:it.p,upd:{}});
         var b=byProd[it.p.id];
@@ -1207,6 +1221,13 @@ async function processImageMap(map,notFoundLabel){
       Object.assign(b2.p,b2.upd);
     }catch(e){ failed++; }
   }
+  var cids2=Object.keys(byCat);
+  for(var k2=0;k2<cids2.length;k2++){ var c2=byCat[cids2[k2]]; try{ var rc2=await sb.from('store_categories').update(c2.upd).eq('id',cids2[k2]); if(rc2.error) throw rc2.error; Object.assign(c2.c,c2.upd); }catch(e){ failed++; } }
+  var slids=Object.keys(bySlide);
+  for(var s2=0;s2<slids.length;s2++){ var sl2=bySlide[slids[s2]]; try{ var rs2=await sb.from('store_slides').update(sl2.upd).eq('id',slids[s2]); if(rs2.error) throw rs2.error; Object.assign(sl2.s,sl2.upd); }catch(e){ failed++; } }
+  var bnids=Object.keys(byBanner);
+  for(var b3=0;b3<bnids.length;b3++){ var bn2=byBanner[bnids[b3]]; try{ var rb2=await sb.from('store_banners').update(bn2.upd).eq('id',bnids[b3]); if(rb2.error) throw rb2.error; Object.assign(bn2.b,bn2.upd); }catch(e){ failed++; } }
+  if(Object.keys(storeUpd).length){ try{ var rst2=await sb.from('stores').update(storeUpd).eq('id',ST.id); if(rst2.error) throw rst2.error; Object.assign(ST,storeUpd); }catch(e){ failed++; } }
   var cids=Object.keys(byCat);
   for(var k=0;k<cids.length;k++){
     var c2=byCat[cids[k]];
@@ -1347,7 +1368,7 @@ async function runWpImport(){
   var cs=document.getElementById('impWpCard'); if(cs) cs.outerHTML=wpXmlCard();
   var m2=$('#impWpMsg'); if(m2){ m2.className='msg '+(resultOk?'s':'e'); m2.textContent=resultMsg; }
 }
-LOADERS.import=async function(){ try{ await ensureCats(true); await ensureProds(); }catch(e){return pageErr(e);} renderImport(); };
+LOADERS.import=async function(){ try{ await ensureCats(true); await ensureProds(); await ensureSlidesBanners(); }catch(e){return pageErr(e);} renderImport(); };
 function renderImport(){
   var p=imp.plan, s=p&&p.stats;
   var html =
@@ -1475,13 +1496,16 @@ async function runCopyImages(){
   var msg=$('#copyMsg'), bar=$('#copyBar');
   msg.className='msg'; msg.textContent=L('عم نحضّر لائحة الصور…','Preparing the image list…'); bar.style.width='0%';
   try{
-    await ensureProds(true); await ensureCats(true);
-    // نفس اللائحة الشاملة يلي بتحسب عليها الحالة فوق (منتجات + تصنيفات + صور داخل الوصف)
+    await ensureProds(true); await ensureCats(true); await ensureSlidesBanners(true);
+    // نفس اللائحة الشاملة يلي بتحسب عليها الحالة فوق (منتجات + تصنيفات + سلايدر + بنرات + شعار المتجر + صور داخل الوصف)
     // — هيك الزر هون وحالة "باقي X صورة" فوق دايماً متوافقين مع بعض
     var items=extPendingList();
     var prodTodo=uniq(items.filter(function(it){return it.p}).map(function(it){return it.p.id})).map(function(id){return {type:'p',obj:PRODS.filter(function(p){return p.id===id})[0]}});
     var catTodo=uniq(items.filter(function(it){return it.c}).map(function(it){return it.c.id})).map(function(id){return {type:'c',obj:CATS.filter(function(c){return c.id===id})[0]}});
-    var todo=prodTodo.concat(catTodo);
+    var slideTodo=uniq(items.filter(function(it){return it.s}).map(function(it){return it.s.id})).map(function(id){return {type:'sl',obj:SLIDES.filter(function(s){return s.id===id})[0]}});
+    var bannerTodo=uniq(items.filter(function(it){return it.b}).map(function(it){return it.b.id})).map(function(id){return {type:'bn',obj:BANNERS.filter(function(b){return b.id===id})[0]}});
+    var storeTodo=items.some(function(it){return it.store})?[{type:'st',obj:ST}]:[];
+    var todo=prodTodo.concat(catTodo).concat(slideTodo).concat(bannerTodo).concat(storeTodo);
     if(!todo.length){ msg.className='msg s'; msg.textContent=L('ما في صور خارجية — كل شي منسوخ ✓','No external images — everything is already copied ✓'); }
     else{
       msg.textContent=L('عم ننسخ… ','Copying… ')+'0 / '+todo.length+L(' عنصر',' items');
@@ -1508,6 +1532,23 @@ async function runCopyImages(){
               msg.textContent=L('عم ننسخ… ','Copying… ')+done+' / '+todo.length+L(' عنصر — جارٍ فحص صورة تصنيف «','  items — checking category image “')+cName_(c)+'»…';
               var nu=await copyUrl(c.image_url,L('صورة تصنيف «','category image “')+cName_(c)+'»');
               if(nu&&nu!==c.image_url){ var rc=await sb.from('store_categories').update({image_url:nu}).eq('id',c.id); if(rc.error) throw rc.error; c.image_url=nu; }
+            } else if(item.type==='sl'){
+              var sl=item.obj;
+              msg.textContent=L('عم ننسخ… ','Copying… ')+done+' / '+todo.length+L(' عنصر — جارٍ فحص صورة سلايدر…','  items — checking a slide image…');
+              var nsl=await copyUrl(sl.image_url,L('صورة سلايدر','slide image'));
+              if(nsl&&nsl!==sl.image_url){ var rsl=await sb.from('store_slides').update({image_url:nsl}).eq('id',sl.id); if(rsl.error) throw rsl.error; sl.image_url=nsl; }
+            } else if(item.type==='bn'){
+              var bn=item.obj;
+              msg.textContent=L('عم ننسخ… ','Copying… ')+done+' / '+todo.length+L(' عنصر — جارٍ فحص صورة بنر…','  items — checking a banner image…');
+              var nbn=await copyUrl(bn.image_url,L('صورة بنر','banner image'));
+              if(nbn&&nbn!==bn.image_url){ var rbn=await sb.from('store_banners').update({image_url:nbn}).eq('id',bn.id); if(rbn.error) throw rbn.error; bn.image_url=nbn; }
+            } else if(item.type==='st'){
+              var stU={};
+              msg.textContent=L('عم ننسخ… ','Copying… ')+done+' / '+todo.length+L(' عنصر — جارٍ فحص شعار/أيقونة المتجر…','  items — checking the store logo/icon…');
+              if(isExtUrl(ST.logo_url)){ var l1=await copyUrl(ST.logo_url,L('شعار المتجر','store logo')); if(l1&&l1!==ST.logo_url) stU.logo_url=l1; }
+              if(isExtUrl(ST.favicon_url)){ var l2=await copyUrl(ST.favicon_url,L('أيقونة المتصفح','browser favicon')); if(l2&&l2!==ST.favicon_url) stU.favicon_url=l2; }
+              if(isExtUrl(ST.og_image)){ var l3=await copyUrl(ST.og_image,L('صورة المشاركة (OG)','share image (OG)')); if(l3&&l3!==ST.og_image) stU.og_image=l3; }
+              if(Object.keys(stU).length){ var rst=await sb.from('stores').update(stU).eq('id',ST.id); if(rst.error) throw rst.error; Object.assign(ST,stU); }
             } else {
               var p=item.obj;
               var fieldOf={}; [p.image_url].concat(p.images||[]).forEach(function(u){if(isExtUrl(u)&&!fieldOf[u])fieldOf[u]=L('الصورة الرئيسية/المعرض','main/gallery image');});
@@ -1815,9 +1856,14 @@ function formatModal(){
    السلايدر
    ============================================================ */
 var BANNERS=[];
+async function ensureSlidesBanners(force){
+  if(loaded.slides&&!force) return;
+  var r=await sb.from('store_slides').select('*').eq('store_id',ST.id).order('sort'); if(r.error) throw r.error; SLIDES=r.data||[];
+  var b=await sb.from('store_banners').select('*').eq('store_id',ST.id).order('sort'); if(b.error) throw b.error; BANNERS=b.data||[];
+  loaded.slides=1;
+}
 LOADERS.slides=async function(){
-  try{ await ensureCats(); var r=await sb.from('store_slides').select('*').eq('store_id',ST.id).order('sort'); if(r.error) throw r.error; SLIDES=r.data||[];
-    var b=await sb.from('store_banners').select('*').eq('store_id',ST.id).order('sort'); if(b.error) throw b.error; BANNERS=b.data||[]; }catch(e){return pageErr(e);}
+  try{ await ensureCats(); await ensureSlidesBanners(true); }catch(e){return pageErr(e);}
   renderSlides();
 };
 function catNameById(id){var c=CATS.filter(function(x){return x.id===id})[0]; return c?cName_(c):'';}
