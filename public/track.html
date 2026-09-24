@@ -94,23 +94,25 @@ var TX={
  ar:{order:'طلب رقم',call:'اتصل بالمطعم',waDrv:'تواصل مع سائق التوصيل',waMsg:'مرحبا، أنا صاحب الطلب رقم',inv:'الفاتورة',min:'دقيقة تقريباً',km:'كم',
    new:'المطعم استلم طلبك',newS:'عم يتحضّر — رح يبين الموتوسيكل هون أول ما يستلمو الموظف',
    waiting:'طلبك جاهز للتوصيل',waitingS:'عم ننتظر موظف التوصيل يستلمو',
-   claimed:'الطلب صار مع الموتوسيكل',claimedS:'{d} استلم طلبك وقريباً بيطلع لعندك',
+   claimed:'تم تكليف سائق لتوصيل طلبك',claimedS:'{d} رح يوصّلك طلبك — عم يتم تجهيزو',
+   ready:'السائق بانتظار طلبك',readyS:'{d} بالمطعم وناطر طلبك يجهز ليطلع فيه لعندك',
    way:'في الطريق إليك 🏍️',wayS:'{d} عالطريق — تابعو عالخريطة',
    delivered:'تم توصيل الطلب',deliveredS:'صحتين وعافية! انقطع تتبع الموتوسيكل',
    cancelled:'تم إلغاء التوصيل',cancelledS:'تواصل مع المطعم للتفاصيل',
    stale:'آخر موقع للموتوسيكل قديم شوي — ممكن الإشارة ضعيفة',
    noPos:'عم ننتظر موقع الموتوسيكل…', driver:'الموظف',
-   steps:['استلام','تجهيز','بالطريق','وصل'], notFound:'رابط التتبع مش صالح'},
+   steps:['استلام','تكليف سائق','تجهيز','بالطريق'], notFound:'رابط التتبع مش صالح'},
  en:{order:'Order',call:'Call restaurant',waDrv:'Chat with your rider',waMsg:'Hello, this is the customer for order',inv:'Invoice',min:'min approx.',km:'km',
    new:'The restaurant received your order',newS:'Being prepared — the rider will appear here once assigned',
    waiting:'Your order is ready for delivery',waitingS:'Waiting for a rider to pick it up',
-   claimed:'A rider has your order',claimedS:'{d} picked up your order and will leave shortly',
+   claimed:'A rider has been assigned to your order',claimedS:'{d} will deliver your order — it is being prepared',
+   ready:'Your rider is waiting for your order',readyS:'{d} is at the restaurant waiting for your order to be ready',
    way:'On the way to you 🏍️',wayS:'{d} is on the road — follow on the map',
    delivered:'Order delivered',deliveredS:'Enjoy your meal! Live tracking has ended',
    cancelled:'Delivery cancelled',cancelledS:'Please contact the restaurant',
    stale:'Last rider position is a bit old — signal may be weak',
    noPos:'Waiting for the rider position…', driver:'Your rider',
-   steps:['Received','Ready','On the way','Delivered'], notFound:'This tracking link is not valid'}
+   steps:['Received','Rider assigned','Preparing','On the way'], notFound:'This tracking link is not valid'}
 };
 var L='ar', T=TX.ar, D=null, MAP=null, mMoto=null, mDest=null, line=null, fitted=false, timer=null;
 
@@ -144,7 +146,7 @@ function paint(){
   $('#rName').textContent=L==='en'?(r.name_en||r.name_ar):r.name_ar;
   $('#oNo').textContent=T.order+' '+D.order_no;
   // واتساب السائق — بيظهر بس وقت الطلب مع الموتوسيكل
-  var dp=D.driver&&D.driver.phone&&(st==='claimed'||st==='on_the_way')?waNum(D.driver.phone):'';
+  var dp=D.driver&&D.driver.phone&&(st==='claimed'||st==='ready_wait'||st==='on_the_way')?waNum(D.driver.phone):'';
   var db=$('#drvBtn');
   db.classList.toggle('hidden',!dp);
   if(dp){ db.textContent='💬 '+T.waDrv+(D.driver.name?' — '+D.driver.name:'');
@@ -154,15 +156,16 @@ function paint(){
   $('#langBtn').textContent=L==='ar'?'English':'عربي';
   document.documentElement.lang=L; document.documentElement.dir=L==='ar'?'rtl':'ltr';
 
-  var key={new:'new',waiting:'waiting',claimed:'claimed',on_the_way:'way',delivered:'delivered',cancelled:'cancelled'}[st]||'new';
+  var key={new:'new',waiting:'waiting',claimed:'claimed',ready_wait:'ready',on_the_way:'way',delivered:'delivered',cancelled:'cancelled'}[st]||'new';
   $('#stTitle').textContent=T[key];
   $('#stSub').textContent=(T[key+'S']||'').replace('{d}',dn);
   $('#doneIcon').classList.toggle('hidden',st!=='delivered');
 
-  var lvl={new:0,waiting:1,claimed:1,on_the_way:2,delivered:4,cancelled:0}[st]||0;
+  // الشريط: استلام · تكليف سائق · تجهيز · بالطريق
+  var on={new:0,waiting:1,claimed:2,ready_wait:2,on_the_way:3,delivered:4,cancelled:0}[st]||0;
+  var now={new:0,waiting:1,claimed:2,ready_wait:2,on_the_way:3}[st];
   var ii=$('#steps').children;
-  for(var i=0;i<4;i++){ ii[i].className=i<lvl?'on':(i===lvl&&lvl<4?'now':''); }
-  if(st==='claimed'){ ii[1].className='on'; ii[2].className='now'; }
+  for(var i=0;i<4;i++){ ii[i].className=i<on?'on':(i===now?'now':''); }
   $('#lbls').innerHTML=T.steps.map(function(s){return '<span>'+s+'</span>'}).join('');
   $('#lMin').textContent=T.min; $('#lKm').textContent=T.km;
 
@@ -191,7 +194,7 @@ function paint(){
     if(line){ MAP.removeLayer(line); line=null; }
     $('#eta').classList.add('hidden');
     if(p&&p.stale) $('#stSub').textContent=T.stale;
-    else if(st==='claimed'||st==='on_the_way') $('#stSub').textContent+=' · '+T.noPos;
+    else if(st==='claimed'||st==='ready_wait'||st==='on_the_way') $('#stSub').textContent+=' · '+T.noPos;
     if(dest&&!fitted){ MAP.setView(dest,15); fitted=true; }
   }
 }
