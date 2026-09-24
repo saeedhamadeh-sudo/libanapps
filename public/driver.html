@@ -265,8 +265,9 @@ function paintOrders(){
   var mine=S.mine||[], w=S.waiting||[];
   $('#mineH').classList.toggle('hidden',!mine.length);
   $('#mine').innerHTML=mine.map(function(o){
-    var st=o.dispatch==='on_the_way'
-      ?'<span class="chip b">في الطريق</span>':'<span class="chip w">مستلم — يتم تجهيز الطلب</span>';
+    var st=o.dispatch==='on_the_way'?'<span class="chip b">في الطريق</span>'
+      :o.dispatch==='ready_wait'?'<span class="chip w">بانتظار الطلب ليصير جاهز</span>'
+      :'<span class="chip w">مستلم</span>';
     var pay=o.payment_method==='whish'
       ?(o.status==='paid'?'<span class="chip p">مدفوع Whish</span>':'<span class="chip w">Whish — مش مدفوع</span>')
       :'<span class="chip">نقداً عند التسليم</span>';
@@ -287,6 +288,10 @@ function paintOrders(){
           '?text='+encodeURIComponent('مرحبا '+o.customer_name+' 👋\nطلبك رقم '+o.order_no+' من '+S.restaurant.name_ar+
           ' صار معي.\nفيك تتابع وين صار الموتوسيكل عالخريطة من هون:\n'+trackUrl(o))+'">💬 ابعت رابط التتبع للزبون</a>'+
         (o.dispatch==='claimed'
+          ?'<button class="btn full" style="background:#F59E0B;color:#111" data-act="wait" data-id="'+o.id+'">⏳ بانتظار الطلب ليصير جاهز</button>'+
+           '<button class="btn go full" data-act="depart" data-id="'+o.id+'">🏍️ في الطريق إليك</button>'+
+           '<button class="btn alt full" data-act="release" data-id="'+o.id+'">رجّع الطلب للباقين</button>'
+          :o.dispatch==='ready_wait'
           ?'<button class="btn go full" data-act="depart" data-id="'+o.id+'">🏍️ في الطريق إليك</button>'+
            '<button class="btn alt full" data-act="release" data-id="'+o.id+'">رجّع الطلب للباقين</button>'
           :'<button class="btn ok full" data-act="deliver" data-id="'+o.id+'">✅ تم توصيل الطلب</button>')+
@@ -325,8 +330,9 @@ document.addEventListener('click',async function(e){
   if(a==='release' && !confirm('ترجّع الطلب لباقي الموظفين؟')) return;
   b.disabled=true;
   try{
-    await rpc({claim:'driver_claim',depart:'driver_depart',deliver:'driver_deliver',release:'driver_release'}[a],{p_order:id});
-    if(a==='claim'){ toast('الطلب صار معك ✓'); if(!S.driver.on_duty){ S.driver.on_duty=true; startGps(); keepAwake(true); paintDuty(); } }
+    await rpc({claim:'driver_claim',wait:'driver_wait',depart:'driver_depart',deliver:'driver_deliver',release:'driver_release'}[a],{p_order:id});
+    if(a==='wait') toast('الزبون صار يعرف إنك ناطر طلبو ⏳');
+    if(a==='claim'){ toast('تم تكليفك بالطلب ✓ — الزبون صار يعرف'); if(!S.driver.on_duty){ S.driver.on_duty=true; startGps(); keepAwake(true); paintDuty(); } }
     if(a==='depart') toast('الزبون صار يشوفك عالطريق 🏍️');
     if(a==='deliver') toast('تم التوصيل ✓ يعطيك العافية');
   }catch(err){ toast(errTxt(err)); }
