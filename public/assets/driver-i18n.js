@@ -90,5 +90,10 @@ window.DRIVER_EN = {
 "للأسف Apple ما بتسمح لأي برنامج خارجي يقرأ موقع الـAirTag — بيظهر بس جوّا تطبيق Find My. لهيك ما فينا نستعملو للتتبع المباشر. البديل الأوفر هو تطبيق Traccar على هاتفك، أو جهاز GPS صغير للموتوسيكل.": "Unfortunately Apple doesn't let outside software read an AirTag's location — it only shows inside Find My, so it can't be used for live tracking. The cheapest alternative is the Traccar app on your phone, or a small GPS tracker for the motorcycle.",
 "🔋 {n}%": "🔋 {n}%",
 "التوصيل": "Delivery",
-"{n} ل.ل": "{n} LBP"
+"{n} ل.ل": "{n} LBP",
+"مستلم": "Assigned",
+"بانتظار الطلب ليصير جاهز": "Waiting for the order to be ready",
+"⏳ بانتظار الطلب ليصير جاهز": "⏳ Waiting for the order to be ready",
+"الزبون صار يعرف إنك ناطر طلبو ⏳": "The customer now knows you're waiting for their order ⏳",
+"تم تكليفك بالطلب ✓ — الزبون صار يعرف": "You're assigned to the order ✓ — the customer has been told"
 };
