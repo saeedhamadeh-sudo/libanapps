@@ -429,6 +429,13 @@ async function sha256Hex(s) {
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
+// نص الخطأ الحقيقي من Supabase — حتى ما يضيع سبب الفشل (مثلاً: الجدول مش موجود)
+async function sbErrText(r) {
+  let t = ''; try { t = await r.text(); } catch (e) {}
+  let m = t; try { const j = JSON.parse(t); m = j.message || j.hint || j.code || t; } catch (e) {}
+  if (/mfa_backup_codes/.test(m) && /(not find|does not exist|PGRST205|42P01)/i.test(t)) m = 'mfa_backup_codes table missing — run db/upgrade-mfa-backup-codes.sql';
+  return `HTTP ${r.status}${m ? ': ' + String(m).slice(0, 160) : ''}`;
+}
 async function mfaBackupGenerate(request, env) {
   const me = await currentUser(request, env);
   if (!me) return json(401, { error: 'سجّل دخولك أولاً' });
@@ -438,12 +445,12 @@ async function mfaBackupGenerate(request, env) {
   const del = await fetch(`${env.SUPABASE_URL}/rest/v1/mfa_backup_codes?user_id=eq.${me.id}`, {
     method: 'DELETE', headers: sbHeaders(env)
   });
-  if (!del.ok) return json(500, { error: 'تعذّر تجديد الرموز الاحتياطية' });
+  if (!del.ok) return json(500, { error: 'تعذّر تجديد الرموز الاحتياطية — ' + await sbErrText(del) });
   const rows = hashes.map(h => ({ user_id: me.id, code_hash: h }));
   const ins = await fetch(`${env.SUPABASE_URL}/rest/v1/mfa_backup_codes`, {
     method: 'POST', headers: { ...sbHeaders(env), Prefer: 'return=minimal' }, body: JSON.stringify(rows)
   });
-  if (!ins.ok) return json(500, { error: 'تعذّر حفظ الرموز الاحتياطية' });
+  if (!ins.ok) return json(500, { error: 'تعذّر حفظ الرموز الاحتياطية — ' + await sbErrText(ins) });
   return json(200, { ok: true, codes }); // بترجع نص واضح مرة وحدة بس — ما بتنخزن أبداً
 }
 async function mfaBackupStatus(request, env) {
