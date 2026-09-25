@@ -448,7 +448,7 @@ async function mfaBackupGenerate(request, env) {
   if (!del.ok) return json(500, { error: 'تعذّر تجديد الرموز الاحتياطية — ' + await sbErrText(del) });
   const rows = hashes.map(h => ({ user_id: me.id, code_hash: h }));
   const ins = await fetch(`${env.SUPABASE_URL}/rest/v1/mfa_backup_codes`, {
-    method: 'POST', headers: { ...sbHeaders(env), Prefer: 'return=minimal' }, body: JSON.stringify(rows)
+    method: 'POST', headers: { ...sbHeaders(env), 'Content-Type': 'application/json', Prefer: 'return=minimal' }, body: JSON.stringify(rows)
   });
   if (!ins.ok) return json(500, { error: 'تعذّر حفظ الرموز الاحتياطية — ' + await sbErrText(ins) });
   return json(200, { ok: true, codes }); // بترجع نص واضح مرة وحدة بس — ما بتنخزن أبداً
