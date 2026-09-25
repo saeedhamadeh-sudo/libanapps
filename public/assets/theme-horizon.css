@@ -18,9 +18,11 @@ html[data-theme="horizon"] h1,html[data-theme="horizon"] h2,
 html[data-theme="horizon"] h3,html[data-theme="horizon"] h4,
 html[data-theme="horizon"] nav .brand,html[data-theme="horizon"] .plan .price,
 html[data-theme="horizon"] .hero .stats b{font-family:var(--hz-head);letter-spacing:-.02em}
+html[data-theme="horizon"] body{overflow-x:clip}
 html[data-theme="horizon"] ::selection{background:rgba(99,102,241,.22);color:inherit}
 html[data-theme="horizon"] .wrap{max-width:1160px}
 html[data-theme="horizon"] :focus-visible{outline:3px solid rgba(99,102,241,.55);outline-offset:3px;border-radius:10px}
+html[data-theme="horizon"] input:focus-visible,html[data-theme="horizon"] select:focus-visible,html[data-theme="horizon"] textarea:focus-visible{outline:none}
 
 /* ---------- شريط علوي عائم (زجاجي) ---------- */
 html[data-theme="horizon"] nav{top:12px;width:calc(100% - 24px);max-width:1180px;margin:12px auto 0;
@@ -200,7 +202,7 @@ html[data-theme="horizon"] .plan li{align-items:center;color:#3A4163}
 /* ---------- نماذج (دخول / تسجيل / حسابي) ---------- */
 html[data-theme="horizon"] .form{position:relative}
 html[data-theme="horizon"] .wrap.form{max-width:470px}
-html[data-theme="horizon"] .form::before{content:'';position:absolute;inset:40px -60px auto;height:340px;z-index:-1;filter:blur(50px);opacity:.55;
+html[data-theme="horizon"] .form::before{content:'';position:absolute;inset:40px 0 auto;height:340px;z-index:-1;filter:blur(50px);opacity:.55;
   background:radial-gradient(40% 50% at 30% 40%,rgba(99,102,241,.45),transparent 70%),
     radial-gradient(40% 50% at 75% 60%,rgba(34,211,238,.35),transparent 70%)}
 html[data-theme="horizon"] .form .card{border-radius:26px;padding:32px 26px;border:1px solid rgba(255,255,255,.8);
@@ -241,6 +243,210 @@ html[data-theme="horizon"] .wa-float::before{content:'';position:absolute;inset:
 html[data-theme="horizon"].hz-js .hz-rv{opacity:0;transform:translateY(22px);
   transition:opacity .7s cubic-bezier(.2,.8,.2,1),transform .7s cubic-bezier(.2,.8,.2,1);transition-delay:var(--hz-d,0s)}
 html[data-theme="horizon"].hz-js .hz-rv.hz-in{opacity:1;transform:none}
+
+/* =====================================================================
+   الحركة والانتقالات
+   ===================================================================== */
+@property --hz-ang{syntax:'<angle>';initial-value:0deg;inherits:false}
+@keyframes hzUp{from{opacity:0;transform:translateY(26px)}to{opacity:1;transform:none}}
+@keyframes hzFade{from{opacity:0}to{opacity:1}}
+@keyframes hzDrop{from{opacity:0;transform:translateY(-22px) scale(.98)}to{opacity:1;transform:none}}
+@keyframes hzShift{0%{background-position:0% 50%}100%{background-position:200% 50%}}
+@keyframes hzBar{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+@keyframes hzSpin{to{--hz-ang:360deg}}
+@keyframes hzFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-12px)}}
+@keyframes hzShake{10%,90%{transform:translateX(-2px)}20%,80%{transform:translateX(4px)}30%,50%,70%{transform:translateX(-8px)}40%,60%{transform:translateX(8px)}}
+@keyframes hzCardOpen{
+  0%{opacity:0;transform:perspective(1400px) rotateX(16deg) translateY(46px) scale(.93);filter:blur(10px)}
+  55%{filter:blur(0)}
+  100%{opacity:1;transform:none;filter:none}}
+@keyframes hzAsideIn{from{opacity:0;transform:scale(.96);clip-path:inset(8% 8% 8% 8% round 30px)}to{opacity:1;transform:none;clip-path:inset(0 0 0 0 round 30px)}}
+@keyframes hzSpinner{to{transform:rotate(360deg)}}
+@keyframes hzVtOut{to{opacity:0;transform:translateY(-10px) scale(.985);filter:blur(4px)}}
+@keyframes hzVtIn{from{opacity:0;transform:translateY(14px) scale(.985);filter:blur(4px)}}
+
+/* انتقال بين الصفحات (المتصفحات الحديثة) */
+@view-transition{navigation:auto}
+html[data-theme="horizon"]::view-transition-old(root){animation:hzVtOut .26s cubic-bezier(.4,0,1,1) both}
+html[data-theme="horizon"]::view-transition-new(root){animation:hzVtIn .5s cubic-bezier(.2,.8,.2,1) both}
+html[data-theme="horizon"] nav{view-transition-name:hz-nav}
+html[data-theme="horizon"] .hz-auth .form .card{view-transition-name:hz-auth-card}
+html[data-theme="horizon"] .hz-aside{view-transition-name:hz-auth-aside}
+html[data-theme="horizon"]::view-transition-group(hz-auth-card){animation-duration:.55s;animation-timing-function:cubic-bezier(.2,.8,.2,1)}
+
+/* دخول الصفحة */
+html[data-theme="horizon"] nav{animation:hzDrop .7s cubic-bezier(.2,.8,.2,1) both}
+html[data-theme="horizon"] header.hero{animation:hzFade .8s ease both}
+html[data-theme="horizon"] header.hero .inner>*{animation:hzUp .9s cubic-bezier(.2,.8,.2,1) both}
+html[data-theme="horizon"] header.hero .inner>:nth-child(1){animation-delay:.15s}
+html[data-theme="horizon"] header.hero .inner>:nth-child(2){animation-delay:.27s}
+html[data-theme="horizon"] header.hero .inner>:nth-child(3){animation-delay:.39s}
+html[data-theme="horizon"] header.hero .inner>:nth-child(4){animation-delay:.51s}
+html[data-theme="horizon"] header.hero .inner>:nth-child(5){animation-delay:.63s}
+html[data-theme="horizon"] .hero .stats>div{animation:hzUp .8s cubic-bezier(.2,.8,.2,1) both}
+html[data-theme="horizon"] .hero .stats>div:nth-child(1){animation-delay:.7s}
+html[data-theme="horizon"] .hero .stats>div:nth-child(2){animation-delay:.8s}
+html[data-theme="horizon"] .hero .stats>div:nth-child(3){animation-delay:.9s}
+html[data-theme="horizon"] .hero .stats>div:nth-child(4){animation-delay:1s}
+html[data-theme="horizon"] .hero .stats>div{transition:transform .3s cubic-bezier(.2,.8,.2,1),background .3s,border-color .3s}
+html[data-theme="horizon"] .hero .stats>div:hover{transform:translateY(-4px);border-color:rgba(255,255,255,.22);background:linear-gradient(180deg,rgba(255,255,255,.12),rgba(255,255,255,.04))}
+html[data-theme="horizon"] header.hero h1 b{background-size:200% auto;
+  background-image:linear-gradient(100deg,#FFB27A 0%,#FF6B3D 25%,#FF8FB1 50%,#FFB27A 75%,#FF6B3D 100%);
+  animation:hzShift 6s linear infinite}
+html[data-theme="horizon"] header.hero::after{translate:calc(var(--hz-px,0)*-40px) calc(var(--hz-py,0)*-30px);transition:translate .6s ease-out}
+html[data-theme="horizon"] header.hero::before{translate:calc(var(--hz-px,0)*14px) calc(var(--hz-py,0)*10px);transition:translate .6s ease-out}
+html[data-theme="horizon"] .wa-float{animation:hzUp .7s 1.2s cubic-bezier(.2,.8,.2,1) both}
+
+/* شريط تقدّم التمرير */
+html[data-theme="horizon"] .hz-prog{position:fixed;top:0;inset-inline:0;height:3px;z-index:100;pointer-events:none;
+  background:var(--hz-grad);transform:scaleX(0);transform-origin:left;transition:transform .12s linear}
+html[data-theme="horizon"][dir="rtl"] .hz-prog{transform-origin:right}
+
+/* لمعة الأزرار */
+html[data-theme="horizon"] .btn{position:relative;overflow:hidden;isolation:isolate}
+html[data-theme="horizon"] .btn::after{content:'';position:absolute;top:0;bottom:0;width:45%;left:-60%;z-index:-1;pointer-events:none;
+  background:linear-gradient(100deg,transparent,rgba(255,255,255,.35),transparent);transform:skewX(-20deg);transition:left .7s cubic-bezier(.2,.8,.2,1)}
+html[data-theme="horizon"] .btn:hover::after{left:120%}
+html[data-theme="horizon"] .btn-g::after,html[data-theme="horizon"] .pcard .btn-p::after{background:linear-gradient(100deg,transparent,rgba(99,102,241,.14),transparent)}
+
+/* ميلان ثلاثي الأبعاد لبطاقات البرامج */
+html[data-theme="horizon"] .pcard{transform-style:preserve-3d;will-change:transform}
+html[data-theme="horizon"] .pcard:hover{transform:perspective(900px) rotateX(var(--hz-rx,0deg)) rotateY(var(--hz-ry,0deg)) translateY(-6px);
+  transition:transform .15s ease-out,box-shadow .35s,border-color .35s}
+
+/* خط العنوان بيكبر لما يظهر القسم */
+html[data-theme="horizon"].hz-js .head.hz-rv h2::before{transform:scaleX(0)}
+html[data-theme="horizon"].hz-js .head.hz-in h2::before{animation:hzBar .8s .25s cubic-bezier(.2,.8,.2,1) both}
+
+/* الباقات بتطلع ورا بعض (حتى لما تنحمّل من قاعدة البيانات) */
+html[data-theme="horizon"] .plans>.plan{animation:hzUp .7s cubic-bezier(.2,.8,.2,1) both}
+html[data-theme="horizon"] .plans>.plan:nth-child(2){animation-delay:.1s}
+html[data-theme="horizon"] .plans>.plan:nth-child(3){animation-delay:.2s}
+html[data-theme="horizon"] .plans>.plan:nth-child(4){animation-delay:.3s}
+html[data-theme="horizon"] .plan.hot .badge{animation:hzFloat 3s ease-in-out infinite}
+
+/* صفحات بدون بطل (حسابي...) — البطاقات بتطلع بنعومة */
+html[data-theme="horizon"] body:not(:has(header.hero)) section:not(.hz-auth) .head,
+html[data-theme="horizon"] body:not(:has(header.hero)) section:not(.hz-auth) .card{animation:hzUp .6s cubic-bezier(.2,.8,.2,1) both}
+
+/* ---------- قائمة الموبايل ---------- */
+html[data-theme="horizon"] .hz-burger{display:none;width:40px;height:40px;border-radius:12px;background:rgba(14,18,48,.05);color:var(--ink);
+  place-items:center;flex-shrink:0;transition:background .2s}
+html[data-theme="horizon"] .hz-burger svg{width:22px;height:22px}
+html[data-theme="horizon"] .hz-burger:hover{background:rgba(99,102,241,.1)}
+@media(max-width:860px){
+  html[data-theme="horizon"] .hz-burger{display:grid}
+  html[data-theme="horizon"] nav .row{position:relative}
+  html[data-theme="horizon"] nav.hz-open .links{display:flex;flex-direction:column;gap:2px;position:absolute;top:calc(100% + 8px);inset-inline:0;
+    padding:8px;border-radius:18px;background:rgba(255,255,255,.96);border:1px solid var(--line);box-shadow:var(--hz-shadow-lg);
+    -webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);animation:hzDrop .35s cubic-bezier(.2,.8,.2,1) both;margin:0}
+  html[data-theme="horizon"] nav.hz-open .links a{padding:12px 14px;font-size:15.5px;color:var(--ink)}
+}
+
+/* =====================================================================
+   صفحات الدخول والتسجيل
+   ===================================================================== */
+html[data-theme="horizon"] section.hz-auth{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.05fr);gap:22px;align-items:stretch;
+  width:calc(100% - 24px);max-width:1240px;margin:16px auto 0;padding:0!important;min-height:calc(100vh - 110px)}
+html[data-theme="horizon"] .hz-auth .wrap.form{width:100%;max-width:470px;align-self:center;padding:40px 18px 30px}
+html[data-theme="horizon"] .hz-auth .form::before{inset:10% 0 auto;height:60%}
+html[data-theme="horizon"] .hz-auth .head{text-align:start;margin-bottom:24px!important;animation:hzUp .7s .1s cubic-bezier(.2,.8,.2,1) both}
+html[data-theme="horizon"] .hz-auth .head h2{font-size:clamp(28px,3.4vw,38px)}
+html[data-theme="horizon"] .hz-auth .head h2::before{margin:0 0 16px;animation:hzBar .8s .3s cubic-bezier(.2,.8,.2,1) both;transform-origin:var(--hz-org,right)}
+html[data-theme="horizon"][dir="ltr"] .hz-auth .head h2::before{--hz-org:left}
+html[data-theme="horizon"] .hz-auth .form .card{position:relative;padding:30px 26px 26px;animation:hzCardOpen .95s .12s cubic-bezier(.2,.8,.2,1) both;
+  transition:box-shadow .4s}
+html[data-theme="horizon"] .hz-auth .form .card::before{content:'';position:absolute;inset:-1.5px;border-radius:inherit;padding:1.5px;pointer-events:none;
+  background:conic-gradient(from var(--hz-ang),transparent 0 40%,#6366F1 55%,#22D3EE 70%,#FF6B3D 82%,transparent 95%);
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;
+  animation:hzSpin 5s linear infinite;opacity:.9}
+html[data-theme="horizon"] .hz-auth .form .card:focus-within{box-shadow:0 2px 4px rgba(14,18,48,.04),0 36px 70px -20px rgba(79,70,229,.40)}
+html[data-theme="horizon"] .hz-auth .form .card.hz-opened{animation:none}
+html[data-theme="horizon"] .hz-auth .form .card.hz-shake{animation:hzShake .5s cubic-bezier(.36,.07,.19,.97) both}
+html[data-theme="horizon"] .hz-auth .card.hz-ok{box-shadow:0 0 0 4px rgba(14,159,110,.18),0 30px 60px -24px rgba(14,159,110,.45)}
+html[data-theme="horizon"] .hz-stag{animation:hzUp .6s cubic-bezier(.2,.8,.2,1) both;animation-delay:calc(.45s + var(--hz-i,0) * .045s)}
+html[data-theme="horizon"] .hz-auth label{margin-top:16px;transition:color .2s}
+html[data-theme="horizon"] .hz-auth label:has(+ input:focus),html[data-theme="horizon"] .hz-auth label:has(+ .hz-pw input:focus){color:#4F46E5}
+html[data-theme="horizon"] .hz-auth .btn.full{padding:14px 22px;font-size:16px;margin-top:22px!important}
+html[data-theme="horizon"] .hz-auth .msg{min-height:22px;font-weight:500}
+html[data-theme="horizon"] .hz-auth .msg.e{animation:hzUp .35s both}
+
+/* أيقونات الحقول */
+html[data-theme="horizon"] .hz-auth input#lMail,html[data-theme="horizon"] .hz-auth input#sMail,
+html[data-theme="horizon"] .hz-auth input#lPass,html[data-theme="horizon"] .hz-auth input#sPass,
+html[data-theme="horizon"] .hz-auth input#sName,html[data-theme="horizon"] .hz-auth input#sBiz,
+html[data-theme="horizon"] .hz-auth input#sPhone{padding-inline-start:44px;background-repeat:no-repeat;background-size:18px;background-position:right 14px center}
+html[data-theme="horizon"][dir="ltr"] .hz-auth input#lMail,html[data-theme="horizon"][dir="ltr"] .hz-auth input#sMail,
+html[data-theme="horizon"][dir="ltr"] .hz-auth input#lPass,html[data-theme="horizon"][dir="ltr"] .hz-auth input#sPass,
+html[data-theme="horizon"][dir="ltr"] .hz-auth input#sName,html[data-theme="horizon"][dir="ltr"] .hz-auth input#sBiz,
+html[data-theme="horizon"][dir="ltr"] .hz-auth input#sPhone{background-position:left 14px center}
+html[data-theme="horizon"] .hz-auth input#lMail,html[data-theme="horizon"] .hz-auth input#sMail{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238A90B2' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='5' width='18' height='14' rx='3'/%3E%3Cpath d='M4 7l8 6 8-6'/%3E%3C/svg%3E")}
+html[data-theme="horizon"] .hz-auth input#lPass,html[data-theme="horizon"] .hz-auth input#sPass{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238A90B2' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='4' y='10' width='16' height='11' rx='3'/%3E%3Cpath d='M8 10V7a4 4 0 018 0v3'/%3E%3C/svg%3E")}
+html[data-theme="horizon"] .hz-auth input#sName{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238A90B2' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='8' r='4'/%3E%3Cpath d='M4 21a8 8 0 0116 0'/%3E%3C/svg%3E")}
+html[data-theme="horizon"] .hz-auth input#sBiz{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238A90B2' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 21h18M5 21V8l7-4 7 4v13'/%3E%3Cpath d='M9 21v-6h6v6'/%3E%3C/svg%3E")}
+html[data-theme="horizon"] .hz-auth input#sPhone{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238A90B2' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='7' y='2' width='10' height='20' rx='2.5'/%3E%3Cpath d='M11 18h2'/%3E%3C/svg%3E")}
+html[data-theme="horizon"] .hz-pw{position:relative}
+html[data-theme="horizon"] .hz-pw input{padding-inline-end:46px}
+html[data-theme="horizon"] .hz-eye{position:absolute;top:50%;inset-inline-end:8px;transform:translateY(-50%);width:34px;height:34px;border-radius:10px;
+  display:grid;place-items:center;background:transparent;color:#8A90B2;transition:background .2s,color .2s}
+html[data-theme="horizon"] .hz-eye:hover{background:rgba(99,102,241,.1);color:#4F46E5}
+html[data-theme="horizon"] .hz-eye svg{width:19px;height:19px}
+
+/* زر أثناء التحميل */
+html[data-theme="horizon"] .hz-auth .btn:disabled{opacity:.85;cursor:progress}
+html[data-theme="horizon"] .hz-auth .btn:disabled::before{content:'';width:16px;height:16px;border-radius:50%;
+  border:2.2px solid rgba(255,255,255,.35);border-top-color:#fff;animation:hzSpinner .7s linear infinite}
+
+/* اللوحة الجانبية */
+html[data-theme="horizon"] .hz-aside{position:relative;overflow:hidden;isolation:isolate;border-radius:30px;padding:40px 40px 34px;color:#E6E8FF;
+  display:flex;flex-direction:column;justify-content:space-between;gap:26px;min-height:620px;
+  background:radial-gradient(120% 80% at 50% 0%,#1D1E4D 0%,#0C0D24 60%,#090A1C 100%);box-shadow:0 40px 80px -40px rgba(20,16,80,.6);
+  animation:hzAsideIn 1s cubic-bezier(.2,.8,.2,1) both;align-self:start;position:sticky;top:92px;height:calc(100vh - 112px);min-height:600px;max-height:860px}
+html[data-theme="horizon"] .hz-aside::before{content:'';position:absolute;inset:0;z-index:-1;pointer-events:none;
+  background-image:linear-gradient(rgba(255,255,255,.05) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.05) 1px,transparent 1px);
+  background-size:40px 40px;-webkit-mask-image:radial-gradient(80% 70% at 50% 40%,#000 10%,transparent 75%);mask-image:radial-gradient(80% 70% at 50% 40%,#000 10%,transparent 75%)}
+html[data-theme="horizon"] .hz-orb{position:absolute;z-index:-1;border-radius:50%;filter:blur(50px);opacity:.75;
+  translate:calc(var(--hz-px,0)*-30px) calc(var(--hz-py,0)*-24px);transition:translate .7s ease-out}
+html[data-theme="horizon"] .hz-orb.a{width:340px;height:340px;background:#6366F1;top:-120px;inset-inline-start:-80px;animation:hzFloat 9s ease-in-out infinite}
+html[data-theme="horizon"] .hz-orb.b{width:260px;height:260px;background:#22D3EE;opacity:.45;bottom:10%;inset-inline-end:-90px;animation:hzFloat 11s ease-in-out infinite reverse}
+html[data-theme="horizon"] .hz-orb.c{width:220px;height:220px;background:#FF6B3D;opacity:.4;bottom:-90px;inset-inline-start:20%;animation:hzFloat 13s ease-in-out infinite}
+html[data-theme="horizon"] .hz-logo{font-family:var(--hz-head);font-weight:700;font-size:22px;color:#fff;direction:ltr;display:inline-block}
+html[data-theme="horizon"] .hz-logo b{background:var(--hz-grad);-webkit-background-clip:text;background-clip:text;color:transparent;font-weight:700}
+html[data-theme="horizon"] .hz-aside h3{font-size:clamp(28px,3.2vw,40px);line-height:1.15;color:#fff;margin-bottom:12px;animation:hzUp .8s .35s both}
+html[data-theme="horizon"] .hz-aside-mid>p{color:#AAB0D6;font-size:16px;line-height:1.8;margin:0 0 22px;max-width:440px;animation:hzUp .8s .45s both}
+html[data-theme="horizon"] .hz-aside ul{list-style:none;margin:0;padding:0;display:grid;gap:12px}
+html[data-theme="horizon"] .hz-aside li{display:flex;align-items:center;gap:12px;font-size:15px;color:#DCE0FF;animation:hzUp .7s both}
+html[data-theme="horizon"] .hz-aside li:nth-child(1){animation-delay:.55s}
+html[data-theme="horizon"] .hz-aside li:nth-child(2){animation-delay:.63s}
+html[data-theme="horizon"] .hz-aside li:nth-child(3){animation-delay:.71s}
+html[data-theme="horizon"] .hz-aside li:nth-child(4){animation-delay:.79s}
+html[data-theme="horizon"] .hz-aside li i{flex:0 0 26px;height:26px;border-radius:9px;display:grid;place-items:center;color:#fff;
+  background:linear-gradient(135deg,rgba(99,102,241,.55),rgba(34,211,238,.45));border:1px solid rgba(255,255,255,.18)}
+html[data-theme="horizon"] .hz-aside li i svg{width:14px;height:14px}
+html[data-theme="horizon"] .hz-chips{position:relative;height:190px}
+html[data-theme="horizon"] .hz-chip{position:absolute;display:flex;align-items:center;gap:12px;padding:12px 16px 12px 14px;border-radius:16px;min-width:210px;
+  background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);
+  box-shadow:0 20px 40px -18px rgba(0,0,0,.6)}
+html[data-theme="horizon"] .hz-chip b{display:block;font-family:var(--hz-head);font-weight:600;font-size:14.5px;color:#fff}
+html[data-theme="horizon"] .hz-chip small{display:block;font-size:12.5px;color:#9EA5CF}
+html[data-theme="horizon"] .hz-chip i{flex:0 0 38px;height:38px;border-radius:12px;display:grid;place-items:center;color:#fff}
+html[data-theme="horizon"] .hz-chip i svg{width:19px;height:19px}
+html[data-theme="horizon"] .hz-chip i.o{background:var(--hz-warm)}
+html[data-theme="horizon"] .hz-chip i.g{background:linear-gradient(135deg,#10B981,#34D399)}
+html[data-theme="horizon"] .hz-chip i.b{background:var(--hz-grad)}
+html[data-theme="horizon"] .hz-chip.c1{top:0;inset-inline-start:0;animation:hzUp .8s .9s both,hzFloat 6s 1.7s ease-in-out infinite}
+html[data-theme="horizon"] .hz-chip.c2{top:66px;inset-inline-end:0;animation:hzUp .8s 1.05s both,hzFloat 7s 1.85s ease-in-out infinite}
+html[data-theme="horizon"] .hz-chip.c3{top:132px;inset-inline-start:12%;animation:hzUp .8s 1.2s both,hzFloat 8s 2s ease-in-out infinite}
+html[data-theme="horizon"] .hz-aside-foot{font-size:13px;color:#7B82AE;display:flex;align-items:center;gap:8px}
+html[data-theme="horizon"] .hz-aside-foot::before{content:'';width:8px;height:8px;border-radius:50%;background:#34D399;box-shadow:0 0 0 4px rgba(52,211,153,.18);
+  animation:hzPulse 2.2s ease-in-out infinite}
+@media(max-width:960px){
+  html[data-theme="horizon"] section.hz-auth{grid-template-columns:1fr;min-height:0}
+  html[data-theme="horizon"] .hz-aside{display:none}
+  html[data-theme="horizon"] .hz-auth .wrap.form{padding-top:34px}
+  html[data-theme="horizon"] .hz-auth .head{text-align:center}
+  html[data-theme="horizon"] .hz-auth .head h2::before{margin:0 auto 16px;transform-origin:center}
+}
 
 /* ---------- موبايل ---------- */
 @media(max-width:640px){
