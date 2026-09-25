@@ -67,6 +67,19 @@ window.LAEngine=function(opts){
     if(!text||!AR.test(text)) return null;
     var k=norm(text), hit=tCore(k,l);
     if(hit!=null) return hit;
+    // نص متعدد الأسطر (رسائل prompt/alert): كل سطر لحالو مع الحفاظ على الأسطر
+    if(/\n/.test(text)){
+      var ls=String(text).split('\n');
+      if(ls.filter(function(x){return AR.test(x)}).length>1 || ls.filter(function(x){return x.trim()}).length>1){
+        var anyL=false;
+        var oL=ls.map(function(x){
+          if(!AR.test(x)) return x;
+          var h=tr(x,l); if(h!=null){ anyL=true; return x.replace(x.trim(),h); }
+          return x;
+        });
+        if(anyL) return oL.join('\n');
+      }
+    }
     // مقاطع: · | — – : ، أسطر
     var parts=k.split(/(\s[·|—–-]\s|\s*\n\s*|،\s*|:\s+|\s\/\s)/);
     if(parts.length>1){
