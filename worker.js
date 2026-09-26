@@ -500,6 +500,267 @@ async function mfaBackupClear(request, env) {
   await fetch(`${env.SUPABASE_URL}/rest/v1/mfa_backup_codes?user_id=eq.${me.id}`, { method: 'DELETE', headers: sbHeaders(env) });
   return json(200, { ok: true });
 }
+// ============================================================
+//  الدخول / التسجيل بكود واتس اب
+//  المزوّد بيتحدد من متغيرات Cloudflare (WA_PROVIDER ...) — شوف WHATSAPP-SETUP.md
+// ============================================================
+const WA_CODE_TTL_MIN = 10;      // صلاحية الكود بالدقايق
+const WA_MAX_ATTEMPTS = 5;       // محاولات لكل كود
+const WA_RESEND_SEC   = 60;      // أقل مدة بين كودين لنفس الرقم
+const WA_PER_PHONE_H  = 5;       // أقصى عدد أكواد لنفس الرقم بالساعة
+const WA_PER_IP_H     = 20;      // أقصى عدد أكواد من نفس الجهاز/الشبكة بالساعة
+const WA_EMAIL_DOMAIN = 'wa.libanapps.com';
+
+// نفس منطق public.norm_phone() بقاعدة البيانات
+function normPhone(p) {
+  let d = String(p || '').replace(/\D/g, '');
+  if (!d) return '';
+  if (d.startsWith('00')) d = d.slice(2);
+  if (d.startsWith('961')) return d;
+  if (d.startsWith('0')) d = d.slice(1);
+  if (d.length >= 7 && d.length <= 8) return '961' + d;
+  return d;
+}
+function validPhone(d) {
+  if (!/^\d{9,15}$/.test(d)) return false;
+  if (d.startsWith('961')) return /^961(3\d{6}|7[0169]\d{6}|8[01]\d{6}|[1-9]\d{6})$/.test(d);
+  return true;
+}
+function waCode() {
+  const r = crypto.getRandomValues(new Uint32Array(1))[0] % 1000000;
+  return String(r).padStart(6, '0');
+}
+function waFill(tpl, v) {
+  return String(tpl).replace(/\{\{\s*(\w+)\s*\}\}/g, (_, k) => (v[k] != null ? String(v[k]) : ''));
+}
+function waMessage(env, code) {
+  const tpl = env.WA_MESSAGE ||
+    'رمز الدخول إلى LibanApps: *{{code}}*\nصالح لمدة ' + WA_CODE_TTL_MIN + ' دقائق. لا تشاركه مع أحد.\n\nYour LibanApps code: {{code}}';
+  return waFill(tpl, { code });
+}
+
+// بعت الرسالة — بيرجّع { ok, error? }
+async function sendWhatsApp(env, phoneDigits, code) {
+  const provider = String(env.WA_PROVIDER || '').toLowerCase();
+  const message = waMessage(env, code);
+  const vars = { phone: phoneDigits, phone_plus: '+' + phoneDigits, code, message };
+  try {
+    if (provider === 'meta') {
+      // WhatsApp Cloud API — قالب Authentication (نص فيه الكود + زر نسخ الكود)
+      const body = {
+        messaging_product: 'whatsapp', to: phoneDigits, type: 'template',
+        template: {
+          name: env.WA_TEMPLATE || 'login_code',
+          language: { code: env.WA_TEMPLATE_LANG || 'ar' },
+          components: [
+            { type: 'body', parameters: [{ type: 'text', text: code }] },
+            { type: 'button', sub_type: 'url', index: '0', parameters: [{ type: 'text', text: code }] }
+          ]
+        }
+      };
+      const r = await fetch(`https://graph.facebook.com/v21.0/${env.WA_PHONE_ID}/messages`, {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + env.WA_API_TOKEN, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      if (!r.ok) return { ok: false, error: 'Meta ' + r.status + ': ' + (await r.text()).slice(0, 200) };
+      return { ok: true };
+    }
+    if (provider === 'zavu') {
+      // Zavu — https://docs.zavu.dev/api-reference/send-a-message
+      // الأفضل قالب AUTHENTICATION (WA_TEMPLATE = tmpl_...) لأنو الرسالة العادية بتفشل
+      // إذا الزبون ما راسلك خلال ٢٤ ساعة (whatsapp_window_closed)
+      if (!env.WA_API_TOKEN) return { ok: false, error: 'WA_API_TOKEN missing' };
+      const headers = { Authorization: 'Bearer ' + env.WA_API_TOKEN, 'Content-Type': 'application/json' };
+      if (env.WA_SENDER_ID) headers['Zavu-Sender'] = env.WA_SENDER_ID;
+      const body = { to: '+' + phoneDigits, channel: 'whatsapp', fallbackEnabled: env.WA_SMS_FALLBACK === '1' };
+      if (env.WA_TEMPLATE) {
+        body.messageType = 'template';
+        body.content = { templateId: env.WA_TEMPLATE, templateVariables: { '1': code } };
+      } else {
+        body.messageType = 'text';
+        body.text = message;
+      }
+      const r = await fetch('https://api.zavu.dev/v1/messages', { method: 'POST', headers, body: JSON.stringify(body) });
+      const t = await r.text();
+      if (!r.ok) {
+        let m = t; try { const j = JSON.parse(t); m = (j.code ? j.code + ': ' : '') + (j.message || t); } catch (e) {}
+        return { ok: false, error: 'Zavu ' + r.status + ': ' + String(m).slice(0, 200) };
+      }
+      return { ok: true };
+    }
+    if (provider === 'generic') {
+      // أي مزوّد عندو HTTP API: الرابط + التوكن + شكل الطلب من المتغيرات
+      if (!env.WA_API_URL) return { ok: false, error: 'WA_API_URL missing' };
+      const type = String(env.WA_BODY_TYPE || 'json').toLowerCase();
+      const headers = {};
+      if (env.WA_API_TOKEN) {
+        headers[env.WA_AUTH_HEADER || 'Authorization'] =
+          (env.WA_AUTH_PREFIX != null ? env.WA_AUTH_PREFIX : 'Bearer ') + env.WA_API_TOKEN;
+      }
+      const tpl = env.WA_BODY || '{"phone":"{{phone}}","message":"{{message}}"}';
+      let body;
+      if (type === 'form') {
+        headers['Content-Type'] = 'application/x-www-form-urlencoded';
+        const obj = JSON.parse(tpl);
+        body = new URLSearchParams(Object.fromEntries(Object.entries(obj).map(([k, v]) => [k, waFill(v, vars)]))).toString();
+      } else {
+        headers['Content-Type'] = 'application/json';
+        // منعبّي القيم كـJSON آمن (الرسالة فيها أسطر وعلامات)
+        const safe = {}; for (const k in vars) safe[k] = JSON.stringify(String(vars[k])).slice(1, -1);
+        body = waFill(tpl, safe);
+      }
+      const url = waFill(env.WA_API_URL, Object.fromEntries(Object.entries(vars).map(([k, v]) => [k, encodeURIComponent(v)])));
+      const r = await fetch(url, { method: 'POST', headers, body });
+      const t = await r.text();
+      if (!r.ok) return { ok: false, error: 'HTTP ' + r.status + ': ' + t.slice(0, 200) };
+      // بعض المزوّدين بيرجّعو 200 مع خطأ بالجسم
+      if (/"(error|errors)"\s*:\s*(?!null|false|""|\[\])/.test(t) && !/"sent"\s*:\s*"?true/.test(t)) {
+        return { ok: false, error: t.slice(0, 200) };
+      }
+      return { ok: true };
+    }
+    if (provider === 'debug' && env.WA_DEBUG_ALLOW === '1') {
+      return { ok: true, debug: true };   // للتجربة بس: الكود بيرجع بالرد
+    }
+    return { ok: false, error: 'WhatsApp provider not configured (WA_PROVIDER)' };
+  } catch (e) {
+    return { ok: false, error: String(e && e.message || e).slice(0, 200) };
+  }
+}
+
+async function sbPost(env, path, body, prefer) {
+  return fetch(`${env.SUPABASE_URL}/rest/v1/${path}`, {
+    method: 'POST',
+    headers: { ...sbHeaders(env), 'Content-Type': 'application/json', Prefer: prefer || 'return=minimal' },
+    body: JSON.stringify(body)
+  });
+}
+async function waHash(env, phone, code) {
+  return sha256Hex(phone + ':' + code + ':' + String(env.SUPABASE_SERVICE_KEY || '').slice(-16));
+}
+
+// POST /api/otp/send  { phone }
+async function otpSend(request, env) {
+  let body; try { body = await request.json(); } catch { return json(400, { error: 'bad json' }); }
+  const phone = normPhone(body.phone);
+  if (!validPhone(phone)) return json(400, { error: 'رقم الهاتف غير صحيح' });
+  const ip = request.headers.get('CF-Connecting-IP') || '';
+  const hourAgo = new Date(Date.now() - 3600e3).toISOString();
+
+  const recent = await sbGet(env, `phone_otps?phone=eq.${phone}&created_at=gte.${hourAgo}&select=created_at&order=created_at.desc`);
+  if (recent.length) {
+    const wait = WA_RESEND_SEC - Math.floor((Date.now() - new Date(recent[0].created_at).getTime()) / 1000);
+    if (wait > 0) return json(429, { error: 'استنّى شوي قبل ما تطلب كود جديد', wait });
+  }
+  if (recent.length >= WA_PER_PHONE_H) return json(429, { error: 'طلبت أكواد كتير — جرّب بعد ساعة' });
+  if (ip) {
+    const byIp = await sbGet(env, `phone_otps?ip=eq.${encodeURIComponent(ip)}&created_at=gte.${hourAgo}&select=id`);
+    if (byIp.length >= WA_PER_IP_H) return json(429, { error: 'طلبت أكواد كتير — جرّب بعد ساعة' });
+  }
+
+  const code = waCode();
+  const sent = await sendWhatsApp(env, phone, code);
+  if (!sent.ok) {
+    console.error('WhatsApp send failed:', sent.error);
+    return json(502, { error: 'ما قدرنا نبعت الكود على الواتس اب — ' + sent.error });
+  }
+  const ins = await sbPost(env, 'phone_otps', {
+    phone, code_hash: await waHash(env, phone, code), ip,
+    expires_at: new Date(Date.now() + WA_CODE_TTL_MIN * 60e3).toISOString()
+  });
+  if (!ins.ok) return json(500, { error: 'تعذّر حفظ الكود — ' + await sbErrText(ins) });
+  const out = { ok: true, phone: '+' + phone, resend_in: WA_RESEND_SEC };
+  if (sent.debug) out.debug_code = code;
+  return json(200, out);
+}
+
+// توكن دخول لمستخدم موجود (نفس طريقة البرامج: generate_link ← verifyOtp magiclink)
+async function waSessionFor(env, userId) {
+  const u = await fetch(`${env.SUPABASE_URL}/auth/v1/admin/users/${userId}`, { headers: sbHeaders(env) });
+  if (!u.ok) return { error: 'الحساب مش موجود' };
+  const email = (await u.json()).email;
+  if (!email) return { error: 'الحساب المرتبط بلا إيميل' };
+  const l = await fetch(`${env.SUPABASE_URL}/auth/v1/admin/generate_link`, {
+    method: 'POST', headers: { ...sbHeaders(env), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ type: 'magiclink', email })
+  });
+  if (!l.ok) return { error: 'تعذّر توليد رمز الدخول: ' + (await l.text()).slice(0, 150) };
+  const d = await l.json();
+  const tok = d.hashed_token || (d.properties && d.properties.hashed_token);
+  return tok ? { token: tok } : { error: 'ما طلع رمز دخول من Supabase' };
+}
+
+// POST /api/otp/verify  { phone, code, name?, business? }
+async function otpVerify(request, env) {
+  let body; try { body = await request.json(); } catch { return json(400, { error: 'bad json' }); }
+  const phone = normPhone(body.phone);
+  const code = String(body.code || '').replace(/\D/g, '');
+  if (!validPhone(phone)) return json(400, { error: 'رقم الهاتف غير صحيح' });
+  if (code.length !== 6) return json(400, { error: 'اكتب الكود المكوّن من ٦ أرقام' });
+
+  const now = new Date().toISOString();
+  const rows = await sbGet(env, `phone_otps?phone=eq.${phone}&used_at=is.null&expires_at=gt.${now}&select=id,code_hash,attempts&order=created_at.desc&limit=1`);
+  if (!rows.length) return json(200, { ok: false, error: 'الكود منتهي — اطلب كود جديد' });
+  const otp = rows[0];
+  if (otp.attempts >= WA_MAX_ATTEMPTS) return json(200, { ok: false, error: 'محاولات كتير — اطلب كود جديد' });
+  if (await waHash(env, phone, code) !== otp.code_hash) {
+    await sbPatch(env, `phone_otps?id=eq.${otp.id}`, { attempts: otp.attempts + 1 });
+    const left = WA_MAX_ATTEMPTS - otp.attempts - 1;
+    return json(200, { ok: false, error: left > 0 ? 'الكود غير صحيح' : 'محاولات كتير — اطلب كود جديد', left });
+  }
+
+  // مين صاحب الرقم؟
+  let userId = null;
+  const map = await sbGet(env, `phone_logins?phone=eq.${phone}&select=user_id&limit=1`);
+  if (map.length) userId = map[0].user_id;
+  if (!userId) {
+    // زبون قديم سجّل بالإيميل وحاطط هالرقم — الكود أثبت إنو الرقم إلو، منربطهم
+    const f = await sbPost(env, 'rpc/find_client_users_by_phone', { p_phone: phone }, 'return=representation');
+    const found = f.ok ? await f.json() : [];
+    if (found.length > 1) return json(200, { ok: false, error: 'هالرقم مربوط بأكتر من حساب — ادخل بالإيميل وكلمة المرور' });
+    if (found.length === 1) {
+      userId = found[0].user_id;
+      await sbPost(env, 'phone_logins', { phone, user_id: userId }, 'resolution=ignore-duplicates,return=minimal');
+    }
+  }
+
+  let isNew = false;
+  if (!userId) {
+    // حساب جديد — منطلب الاسم قبل ما نستهلك الكود
+    const name = String(body.name || '').trim();
+    if (name.length < 2) return json(200, { ok: true, need_profile: true });
+    const email = `p${phone}@${WA_EMAIL_DOMAIN}`;
+    const pw = Array.from(crypto.getRandomValues(new Uint8Array(24)), b => b.toString(16).padStart(2, '0')).join('');
+    const cr = await fetch(`${env.SUPABASE_URL}/auth/v1/admin/users`, {
+      method: 'POST', headers: { ...sbHeaders(env), 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email, password: pw, email_confirm: true,
+        user_metadata: { signup_source: 'site', signup_method: 'whatsapp', name, phone: '+' + phone, business: String(body.business || '').trim() }
+      })
+    });
+    if (cr.ok) {
+      userId = (await cr.json()).id;
+    } else {
+      // الحساب الداخلي موجود من قبل (مثلاً انحذف الربط) — منرجع نلاقيه
+      const t = await cr.text();
+      if (!/already|exists|registered/i.test(t)) return json(500, { error: 'تعذّر إنشاء الحساب: ' + t.slice(0, 150) });
+      const lk = await fetch(`${env.SUPABASE_URL}/auth/v1/admin/users?filter=${encodeURIComponent(email)}`, { headers: sbHeaders(env) });
+      const lj = lk.ok ? await lk.json() : {};
+      const hit = (lj.users || []).find(u => String(u.email).toLowerCase() === email);
+      if (!hit) return json(500, { error: 'تعذّر إنشاء الحساب' });
+      userId = hit.id;
+    }
+    await sbPost(env, 'phone_logins', { phone, user_id: userId }, 'resolution=ignore-duplicates,return=minimal');
+    isNew = true;
+  }
+
+  const s = await waSessionFor(env, userId);
+  if (s.error) return json(500, { error: s.error });
+  await sbPatch(env, `phone_otps?id=eq.${otp.id}`, { used_at: new Date().toISOString() });
+  return json(200, { ok: true, hashed_token: s.token, is_new: isNew });
+}
+
 async function requirePlatformAdmin(request, env) {
   const auth = request.headers.get('Authorization') || '';
   const token = auth.replace(/^Bearer\s+/i, '');
@@ -1879,6 +2140,14 @@ export default {
         if (url.pathname === '/api/mfa/backup-codes/verify') {
           if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
           return await mfaBackupVerify(request, env);
+        }
+        if (url.pathname === '/api/otp/send') {
+          if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
+          return await otpSend(request, env);
+        }
+        if (url.pathname === '/api/otp/verify') {
+          if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
+          return await otpVerify(request, env);
         }
         if (url.pathname === '/api/auth/reset-with-backup') {
           if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
