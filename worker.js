@@ -295,7 +295,7 @@ async function generateActivationSerial(env, productCode, label, expMs) {
 //  بيناديها الزبون لما يرجع من صفحة الدفع، وبتناديها لوحتك كمان
 async function buyVerify(request, env) {
   const me = await currentUser(request, env);
-  if (!me) return json(401, { error: 'سجّل دخولك أولاً' });
+  if (!me) return json(401, { error: 'سجّل الدخول أولًا' });
 
   let body;
   try { body = await request.json(); } catch { return json(400, { error: 'bad json' }); }
@@ -322,12 +322,12 @@ async function buyVerify(request, env) {
   try { st = await w.client.getPaymentStatus('USD', Number(p.id)); }
   catch (e) {
     console.error('verify status failed', e);
-    return json(502, { error: 'ما قدرنا نتحقق من الدفعة عند Whish' });
+    return json(502, { error: 'تعذّر التحقق من الدفعة لدى Whish' });
   }
 
   if (st.collectStatus !== 'success') {
     return json(200, { ok: false, status: st.collectStatus || 'pending',
-                       message: 'ما تأكد الدفع بعد' });
+                       message: 'لم يُؤكَّد الدفع بعد' });
   }
   // ملاحظة: رد getPaymentStatus من Whish ما بيرجّع حقل amount أصلاً
   // (رجّع فقط collectStatus و payerPhoneNumber) — فالمبلغ انحدد فعلياً
@@ -438,7 +438,7 @@ async function sbErrText(r) {
 }
 async function mfaBackupGenerate(request, env) {
   const me = await currentUser(request, env);
-  if (!me) return json(401, { error: 'سجّل دخولك أولاً' });
+  if (!me) return json(401, { error: 'سجّل الدخول أولًا' });
   const codes = Array.from({ length: 8 }, genBackupCode);
   const hashes = await Promise.all(codes.map(sha256Hex));
   // نمسح القديمة (مستعملة أو لأ) ونحط دفعة جديدة — تفعيل جديد بيلغي الرموز السابقة
@@ -455,19 +455,19 @@ async function mfaBackupGenerate(request, env) {
 }
 async function mfaBackupStatus(request, env) {
   const me = await currentUser(request, env);
-  if (!me) return json(401, { error: 'سجّل دخولك أولاً' });
+  if (!me) return json(401, { error: 'سجّل الدخول أولًا' });
   const rows = await sbGet(env, `mfa_backup_codes?user_id=eq.${me.id}&used_at=is.null&select=id`);
   return json(200, { ok: true, unused: rows.length });
 }
 async function mfaBackupVerify(request, env) {
   const me = await currentUser(request, env);
-  if (!me) return json(401, { error: 'سجّل دخولك أولاً' });
+  if (!me) return json(401, { error: 'سجّل الدخول أولًا' });
   let body; try { body = await request.json(); } catch { return json(400, { error: 'bad json' }); }
   const code = String(body.code || '').trim().toUpperCase();
-  if (!code) return json(400, { error: 'اكتب الرمز' });
+  if (!code) return json(400, { error: 'أدخل الرمز' });
   const hash = await sha256Hex(code);
   const rows = await sbGet(env, `mfa_backup_codes?user_id=eq.${me.id}&code_hash=eq.${hash}&used_at=is.null&select=id&limit=1`);
-  if (!rows.length) return json(200, { ok: false, error: 'الرمز غير صحيح أو مستعمل من قبل' });
+  if (!rows.length) return json(200, { ok: false, error: 'الرمز غير صحيح أو سبق استخدامه' });
   await sbPatch(env, `mfa_backup_codes?id=eq.${rows[0].id}`, { used_at: new Date().toISOString() });
   const left = await sbGet(env, `mfa_backup_codes?user_id=eq.${me.id}&used_at=is.null&select=id`);
   return json(200, { ok: true, remaining: left.length });
@@ -476,15 +476,15 @@ async function mfaBackupVerify(request, env) {
 // (لما يكون ضايع تطبيق المصادقة). الشرطين: جلسة الاسترجاع من البريد + رمز احتياطي صالح.
 async function resetWithBackup(request, env) {
   const me = await currentUser(request, env);
-  if (!me) return json(401, { error: 'الرابط منتهي أو مستعمل من قبل — اطلب رابط جديد' });
+  if (!me) return json(401, { error: 'انتهت صلاحية الرابط أو سبق استخدامه — اطلب رابطًا جديدًا' });
   let body; try { body = await request.json(); } catch { return json(400, { error: 'bad json' }); }
   const code = String(body.code || '').trim().toUpperCase();
   const password = String(body.password || '');
-  if (!code) return json(400, { error: 'اكتب الرمز' });
+  if (!code) return json(400, { error: 'أدخل الرمز' });
   if (password.length < 6) return json(400, { error: 'كلمة المرور قصيرة (6 أحرف على الأقل)' });
   const hash = await sha256Hex(code);
   const rows = await sbGet(env, `mfa_backup_codes?user_id=eq.${me.id}&code_hash=eq.${hash}&used_at=is.null&select=id&limit=1`);
-  if (!rows.length) return json(200, { ok: false, error: 'الرمز غير صحيح أو مستعمل من قبل' });
+  if (!rows.length) return json(200, { ok: false, error: 'الرمز غير صحيح أو سبق استخدامه' });
   const up = await fetch(`${env.SUPABASE_URL}/auth/v1/admin/users/${me.id}`, {
     method: 'PUT',
     headers: { ...sbHeaders(env), 'Content-Type': 'application/json' },
@@ -496,7 +496,7 @@ async function resetWithBackup(request, env) {
 }
 async function mfaBackupClear(request, env) {
   const me = await currentUser(request, env);
-  if (!me) return json(401, { error: 'سجّل دخولك أولاً' });
+  if (!me) return json(401, { error: 'سجّل الدخول أولًا' });
   await fetch(`${env.SUPABASE_URL}/rest/v1/mfa_backup_codes?user_id=eq.${me.id}`, { method: 'DELETE', headers: sbHeaders(env) });
   return json(200, { ok: true });
 }
@@ -548,12 +548,12 @@ async function zavuTemplate(env, auth) {
   try {
     const r = await fetch('https://api.zavu.dev/v1/templates/' + encodeURIComponent(id), { headers: { Authorization: auth } });
     const t = await r.text();
-    if (r.status === 404) return { error: 'Zavu: القالب ' + id + ' مش موجود — تأكّد من WA_TEMPLATE' };
+    if (r.status === 404) return { error: 'Zavu: القالب ' + id + ' غير موجود — تأكّد من WA_TEMPLATE' };
     if (r.status === 401) return { error: 'Zavu 401: invalid_token — تأكّد من WA_API_TOKEN' };
     if (r.ok) { const j = JSON.parse(t); tpl = j.template || j; }
   } catch (e) {}
   if (tpl && tpl.status && String(tpl.status).toLowerCase() !== 'approved') {
-    return { error: 'Zavu: القالب «' + (tpl.name || id) + '» حالتو ' + tpl.status + ' — لازم يكون approved' };
+    return { error: 'Zavu: القالب «' + (tpl.name || id) + '» حالته ' + tpl.status + ' — يجب أن يكون approved' };
   }
   ZAVU_TPL = { id, at: Date.now(), tpl };
   return { tpl };
@@ -709,7 +709,7 @@ async function waHash(env, phone, code) {
 
 // POST /api/otp/send  { phone }
 async function otpSend(request, env) {
-  if (String(env.WA_ENABLED || '') !== '1') return json(503, { error: 'الدخول بالواتس اب متوقف حالياً — ادخل بالإيميل' });
+  if (String(env.WA_ENABLED || '') !== '1') return json(503, { error: 'تسجيل الدخول عبر واتساب متوقف حاليًا — سجّل الدخول بالبريد الإلكتروني' });
   let body; try { body = await request.json(); } catch { return json(400, { error: 'bad json' }); }
   const phone = normPhone(body.phone);
   if (!validPhone(phone)) return json(400, { error: 'رقم الهاتف غير صحيح' });
@@ -719,25 +719,25 @@ async function otpSend(request, env) {
   const recent = await sbGet(env, `phone_otps?phone=eq.${phone}&created_at=gte.${hourAgo}&select=created_at&order=created_at.desc`);
   if (recent.length) {
     const wait = WA_RESEND_SEC - Math.floor((Date.now() - new Date(recent[0].created_at).getTime()) / 1000);
-    if (wait > 0) return json(429, { error: 'انتظر قليلاً قبل طلب كود جديد', wait });
+    if (wait > 0) return json(429, { error: 'انتظر قليلًا قبل طلب رمز جديد', wait });
   }
-  if (recent.length >= WA_PER_PHONE_H) return json(429, { error: 'طلبت أكواد كتير — جرّب بعد ساعة' });
+  if (recent.length >= WA_PER_PHONE_H) return json(429, { error: 'طلبت رموزًا كثيرة — حاول بعد ساعة' });
   if (ip) {
     const byIp = await sbGet(env, `phone_otps?ip=eq.${encodeURIComponent(ip)}&created_at=gte.${hourAgo}&select=id`);
-    if (byIp.length >= WA_PER_IP_H) return json(429, { error: 'طلبت أكواد كتير — جرّب بعد ساعة' });
+    if (byIp.length >= WA_PER_IP_H) return json(429, { error: 'طلبت رموزًا كثيرة — حاول بعد ساعة' });
   }
 
   const code = waCode();
   const sent = await sendWhatsApp(env, phone, code);
   if (!sent.ok) {
     console.error('WhatsApp send failed:', sent.error);
-    return json(502, { error: 'ما قدرنا نبعت الكود على الواتس اب — ' + sent.error });
+    return json(502, { error: 'تعذّر إرسال الرمز عبر واتساب — ' + sent.error });
   }
   const ins = await sbPost(env, 'phone_otps', {
     phone, code_hash: await waHash(env, phone, code), ip,
     expires_at: new Date(Date.now() + WA_CODE_TTL_MIN * 60e3).toISOString()
   });
-  if (!ins.ok) return json(500, { error: 'تعذّر حفظ الكود — ' + await sbErrText(ins) });
+  if (!ins.ok) return json(500, { error: 'تعذّر حفظ الرمز — ' + await sbErrText(ins) });
   const out = { ok: true, phone: '+' + phone, resend_in: WA_RESEND_SEC };
   if (sent.debug) out.debug_code = code;
   return json(200, out);
@@ -746,9 +746,9 @@ async function otpSend(request, env) {
 // توكن دخول لمستخدم موجود (نفس طريقة البرامج: generate_link ← verifyOtp magiclink)
 async function waSessionFor(env, userId) {
   const u = await fetch(`${env.SUPABASE_URL}/auth/v1/admin/users/${userId}`, { headers: sbHeaders(env) });
-  if (!u.ok) return { error: 'الحساب مش موجود' };
+  if (!u.ok) return { error: 'الحساب غير موجود' };
   const email = (await u.json()).email;
-  if (!email) return { error: 'الحساب المرتبط بلا إيميل' };
+  if (!email) return { error: 'الحساب المرتبط ليس له بريد إلكتروني' };
   const l = await fetch(`${env.SUPABASE_URL}/auth/v1/admin/generate_link`, {
     method: 'POST', headers: { ...sbHeaders(env), 'Content-Type': 'application/json' },
     body: JSON.stringify({ type: 'magiclink', email })
@@ -756,7 +756,7 @@ async function waSessionFor(env, userId) {
   if (!l.ok) return { error: 'تعذّر توليد رمز الدخول: ' + (await l.text()).slice(0, 150) };
   const d = await l.json();
   const tok = d.hashed_token || (d.properties && d.properties.hashed_token);
-  return tok ? { token: tok } : { error: 'ما طلع رمز دخول من Supabase' };
+  return tok ? { token: tok } : { error: 'لم يصدر رمز دخول من Supabase' };
 }
 
 // POST /api/otp/verify  { phone, code, name?, business? }
@@ -765,17 +765,17 @@ async function otpVerify(request, env) {
   const phone = normPhone(body.phone);
   const code = String(body.code || '').replace(/\D/g, '');
   if (!validPhone(phone)) return json(400, { error: 'رقم الهاتف غير صحيح' });
-  if (code.length !== 6) return json(400, { error: 'اكتب الكود المكوّن من ٦ أرقام' });
+  if (code.length !== 6) return json(400, { error: 'أدخل الرمز المكوّن من ٦ أرقام' });
 
   const now = new Date().toISOString();
   const rows = await sbGet(env, `phone_otps?phone=eq.${phone}&used_at=is.null&expires_at=gt.${now}&select=id,code_hash,attempts&order=created_at.desc&limit=1`);
-  if (!rows.length) return json(200, { ok: false, error: 'الكود منتهي — اطلب كود جديد' });
+  if (!rows.length) return json(200, { ok: false, error: 'انتهت صلاحية الرمز — اطلب رمزًا جديدًا' });
   const otp = rows[0];
-  if (otp.attempts >= WA_MAX_ATTEMPTS) return json(200, { ok: false, error: 'محاولات كتير — اطلب كود جديد' });
+  if (otp.attempts >= WA_MAX_ATTEMPTS) return json(200, { ok: false, error: 'محاولات كثيرة — اطلب رمزًا جديدًا' });
   if (await waHash(env, phone, code) !== otp.code_hash) {
     await sbPatch(env, `phone_otps?id=eq.${otp.id}`, { attempts: otp.attempts + 1 });
     const left = WA_MAX_ATTEMPTS - otp.attempts - 1;
-    return json(200, { ok: false, error: left > 0 ? 'الكود غير صحيح' : 'محاولات كتير — اطلب كود جديد', left });
+    return json(200, { ok: false, error: left > 0 ? 'الرمز غير صحيح' : 'محاولات كثيرة — اطلب رمزًا جديدًا', left });
   }
 
   // مين صاحب الرقم؟
@@ -786,7 +786,7 @@ async function otpVerify(request, env) {
     // زبون قديم سجّل بالإيميل وحاطط هالرقم — الكود أثبت إنو الرقم إلو، منربطهم
     const f = await sbPost(env, 'rpc/find_client_users_by_phone', { p_phone: phone }, 'return=representation');
     const found = f.ok ? await f.json() : [];
-    if (found.length > 1) return json(200, { ok: false, error: 'هالرقم مربوط بأكتر من حساب — ادخل بالإيميل وكلمة المرور' });
+    if (found.length > 1) return json(200, { ok: false, error: 'هذا الرقم مرتبط بأكثر من حساب — سجّل الدخول بالبريد الإلكتروني وكلمة المرور' });
     if (found.length === 1) {
       userId = found[0].user_id;
       await sbPost(env, 'phone_logins', { phone, user_id: userId }, 'resolution=ignore-duplicates,return=minimal');
@@ -873,7 +873,7 @@ async function adminMfaDisable(request, env) {
 
 async function buyCreate(request, env) {
   const me = await currentUser(request, env);
-  if (!me) return json(401, { error: 'سجّل دخولك أولاً' });
+  if (!me) return json(401, { error: 'سجّل الدخول أولًا' });
 
   let body;
   try { body = await request.json(); } catch { return json(400, { error: 'bad json' }); }
@@ -908,7 +908,7 @@ async function buyCreate(request, env) {
   }
 
   const w = await platformWhish(env);
-  if (!w) return json(400, { error: 'الدفع الإلكتروني غير مفعّل حالياً — تواصل معنا' });
+  if (!w) return json(400, { error: 'الدفع الإلكتروني غير مفعّل حاليًا — تواصل معنا' });
 
   const site = env.WEBSITE_URL;
   try {
@@ -1040,7 +1040,7 @@ async function portalToken(request, env) {
   if (!userRes.ok) return json(500, { error: 'user lookup failed' });
   const userData = await userRes.json();
   const email = userData.email;
-  if (!email) return json(500, { error: 'الحساب المرتبط بلا إيميل' });
+  if (!email) return json(500, { error: 'الحساب المرتبط ليس له بريد إلكتروني' });
 
   const linkRes = await fetch(`${env.SUPABASE_URL}/auth/v1/admin/generate_link`, {
     method: 'POST',
@@ -1053,7 +1053,7 @@ async function portalToken(request, env) {
   }
   const linkData = await linkRes.json();
   const hashedToken = linkData.hashed_token || (linkData.properties && linkData.properties.hashed_token);
-  if (!hashedToken) return json(500, { error: 'ما طلع رمز دخول من Supabase' });
+  if (!hashedToken) return json(500, { error: 'لم يصدر رمز دخول من Supabase' });
 
   return json(200, { ok: true, hashed_token: hashedToken });
 }
@@ -1114,7 +1114,7 @@ async function createOwner(request, env) {
         const u = (list.users || []).find(x => (x.email || '').toLowerCase() === email);
         if (u) userId = u.id;
       }
-      if (!userId) return json(400, { error: 'الإيميل مستعمل ولم نتمكن من جلبه' });
+      if (!userId) return json(400, { error: 'البريد الإلكتروني مستخدم ولم نتمكن من جلبه' });
     } else {
       console.error('create user failed', txt);
       return json(400, { error: 'تعذّر إنشاء الحساب: ' + txt.slice(0, 140) });
@@ -1184,7 +1184,7 @@ async function adminDeleteClient(request, env) {
     return json(500, { error: 'تعذّر حذف سجل الزبون: ' + t.slice(0, 150) });
   }
   const deleted = await del.json();
-  if (!deleted.length) return json(500, { error: 'ما انحذف ولا صف' });
+  if (!deleted.length) return json(500, { error: 'لم يُحذف أي صف' });
 
   // 2) امسح حساب الدخول (auth) — بدون هذا، الزبون المحذوف بيضل يقدر يسجّل دخول
   let authDeleted = false, authError = null;
@@ -1598,7 +1598,7 @@ async function payCreate(request, env) {
   if (order.status === 'paid') return json(400, { error: 'already paid' });
   if (!['awaiting_payment', 'pending'].includes(order.status)) return json(400, { error: 'order not payable' });
   const adapter = GATEWAYS[order.payment_method];
-  if (!adapter) return json(400, { error: 'هذه الطلبية مش لدفع أونلاين' });
+  if (!adapter) return json(400, { error: 'هذا الطلب غير مخصص للدفع الإلكتروني' });
   try {
     const c = await gwContext(request, env, order);
     const r = await adapter.create(c);
@@ -1666,7 +1666,7 @@ async function storeWhishFailure(request, env) {
 // ---------- فحص المفاتيح من لوحة التحكم ----------
 async function ownerCheck(request, env, storeId) {
   const me = await currentUser(request, env);
-  if (!me) return { err: json(401, { error: 'سجّل دخولك أولاً' }) };
+  if (!me) return { err: json(401, { error: 'سجّل الدخول أولًا' }) };
   if (!/^[0-9a-f-]{36}$/i.test(String(storeId || ''))) return { err: json(400, { error: 'bad store' }) };
   const store = (await sbGet(env, `stores?id=eq.${storeId}&select=id,client_id,slug,name&limit=1`))[0];
   if (!store) return { err: json(404, { error: 'store not found' }) };
@@ -1681,9 +1681,9 @@ async function payTest(request, env) {
   const o = await ownerCheck(request, env, body.store_id); if (o.err) return o.err;
   const provider = String(body.provider || '');
   const gw = (await sbGet(env, `store_gateways?store_id=eq.${o.store.id}&provider=eq.${encodeURIComponent(provider)}&select=config&limit=1`))[0];
-  if (!gw) return json(400, { error: 'احفظ الإعدادات أولاً' });
+  if (!gw) return json(400, { error: 'احفظ الإعدادات أولًا' });
   const adapter = GATEWAYS[provider];
-  if (!adapter || !adapter.test) return json(200, { ok: true, note: 'ما في فحص تلقائي لهذه البوابة — جرّب طلب صغير.' });
+  if (!adapter || !adapter.test) return json(200, { ok: true, note: 'لا يوجد فحص تلقائي لهذه البوابة — جرّب بطلب صغير.' });
   try { return json(200, Object.assign({ ok: true }, await adapter.test({ env, cfg: gw.config || {}, store: o.store }))); }
   catch (e) { return json(200, { ok: false, error: String((e && e.message) || e) }); }
 }
@@ -1715,13 +1715,13 @@ async function importImage(request, env) {
   clearTimeout(to);
   if (!r.ok) {
     const reason = r.status === 403 ? 'blocked' : r.status === 404 ? 'not_found' : r.status === 429 ? 'rate_limited' : 'http_' + r.status;
-    return json(502, { error: 'المصدر رجّع ' + r.status, reason, status: r.status });
+    return json(502, { error: 'أعاد المصدر ' + r.status, reason, status: r.status });
   }
   let ct = (r.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
   const extFromUrl = (u.pathname.match(/\.([a-z0-9]{3,4})$/i) || [])[1];
   const byExt = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif', avif: 'image/avif', svg: 'image/svg+xml' };
   if (!ct.startsWith('image/')) ct = byExt[(extFromUrl || '').toLowerCase()] || '';
-  if (!ct.startsWith('image/')) return json(415, { error: 'الرابط مش صورة', reason: 'not_image' });
+  if (!ct.startsWith('image/')) return json(415, { error: 'الرابط ليس صورة', reason: 'not_image' });
   const buf = await r.arrayBuffer();
   if (buf.byteLength > 8 * 1024 * 1024) return json(413, { error: 'الصورة أكبر من 8MB', reason: 'too_large' });
   if (buf.byteLength < 200) return json(415, { error: 'ملف فارغ', reason: 'empty' });
@@ -1762,7 +1762,7 @@ function mapCf(res) {
 
 async function storeDomain(request, env) {
   const me = await currentUser(request, env);
-  if (!me) return json(401, { error: 'سجّل دخولك أولاً' });
+  if (!me) return json(401, { error: 'سجّل الدخول أولًا' });
   let body;
   try { body = await request.json(); } catch { return json(400, { error: 'bad json' }); }
   const storeId = String(body.store_id || '');
@@ -1785,12 +1785,12 @@ async function storeDomain(request, env) {
   const action = body.action;
 
   if (action === 'add') {
-    if (existing) return json(400, { error: 'عندك دومين مربوط — احذفه أولاً' });
+    if (existing) return json(400, { error: 'لديك نطاق مرتبط — احذفه أولًا' });
     const domain = normalizeDomain(body.domain);
-    if (!domain) return json(400, { error: 'الدومين غير صالح — مثال: shop.mybrand.com' });
-    if (isPlatformHost(domain, env)) return json(400, { error: 'هذا الدومين محجوز للمنصة' });
+    if (!domain) return json(400, { error: 'النطاق غير صالح — مثال: shop.mybrand.com' });
+    if (isPlatformHost(domain, env)) return json(400, { error: 'هذا النطاق محجوز للمنصة' });
     const dup = await sbGet(env, `store_domains?domain=eq.${encodeURIComponent(domain)}&select=id&limit=1`);
-    if (dup.length) return json(400, { error: 'هذا الدومين مربوط بمتجر آخر' });
+    if (dup.length) return json(400, { error: 'هذا النطاق مرتبط بمتجر آخر' });
 
     const info = { cname_target: target };
     let cfId = null, mapped = { status: 'pending', cf_status: '', ssl_status: '' };
@@ -1807,13 +1807,13 @@ async function storeDomain(request, env) {
       headers: { ...sbHeaders(env), 'Content-Type': 'application/json', Prefer: 'return=representation' },
       body: JSON.stringify({ store_id: store.id, domain, cf_hostname_id: cfId, info, ...mapped })
     });
-    if (!ins.ok) return json(500, { error: 'تعذّر حفظ الدومين: ' + (await ins.text()).slice(0, 120) });
+    if (!ins.ok) return json(500, { error: 'تعذّر حفظ النطاق: ' + (await ins.text()).slice(0, 120) });
     const row = (await ins.json())[0];
     return json(200, { ok: true, domain: row, cname_target: target, manual: !cfOn,
-      message: cfOn ? undefined : 'تم تسجيل طلبك — رح يتفعّل الدومين من قبل الدعم بعد ما تضيف سجل CNAME.' });
+      message: cfOn ? undefined : 'تم تسجيل طلبك — سيُفعِّل فريق الدعم النطاق بعد أن تضيف سجل CNAME.' });
   }
 
-  if (!existing) return json(404, { error: 'ما في دومين مربوط' });
+  if (!existing) return json(404, { error: 'لا يوجد نطاق مرتبط' });
 
   if (action === 'refresh') {
     if (!(cfOn && existing.cf_hostname_id)) return json(200, { ok: true, domain: existing, cname_target: target });
@@ -1904,7 +1904,7 @@ function amountOk(w, got, want, cur) {
 }
 async function addonPay(request, env) {
   const me = await currentUser(request, env);
-  if (!me) return json(401, { error: 'سجّل دخولك أولاً' });
+  if (!me) return json(401, { error: 'سجّل الدخول أولًا' });
   let body; try { body = await request.json(); } catch { return json(400, { error: 'bad json' }); }
   let p = await addonRow(env, body.id);
   if (!p) return json(404, { error: 'purchase not found' });
@@ -1929,7 +1929,7 @@ async function addonPay(request, env) {
   }
 
   const w = await platformWhish(env);
-  if (!w) return json(400, { error: 'الدفع الإلكتروني غير مفعّل حالياً — تواصل معنا' });
+  if (!w) return json(400, { error: 'الدفع الإلكتروني غير مفعّل حاليًا — تواصل معنا' });
   const site = env.WEBSITE_URL;
   const slug = (p.restaurants && p.restaurants.slug) || '';
   const back = `${site}/${encodeURIComponent(slug)}/admin`;
@@ -1957,7 +1957,7 @@ async function addonPay(request, env) {
 }
 async function addonVerify(request, env) {
   const me = await currentUser(request, env);
-  if (!me) return json(401, { error: 'سجّل دخولك أولاً' });
+  if (!me) return json(401, { error: 'سجّل الدخول أولًا' });
   let body; try { body = await request.json(); } catch { return json(400, { error: 'bad json' }); }
   const p = await addonRow(env, body.id);
   if (!p) return json(404, { error: 'purchase not found' });
@@ -1970,7 +1970,7 @@ async function addonVerify(request, env) {
   if (!w) return json(400, { error: 'الدفع الإلكتروني غير مفعّل' });
   let st;
   try { st = await w.client.getPaymentStatus('USD', Number(p.id)); }
-  catch (e) { console.error('addon verify failed', e); return json(502, { error: 'ما قدرنا نتحقق من الدفعة عند Whish' }); }
+  catch (e) { console.error('addon verify failed', e); return json(502, { error: 'تعذّر التحقق من الدفعة لدى Whish' }); }
   if (st.collectStatus !== 'success') return json(200, { ok: false, status: st.collectStatus || 'pending' });
   if (!amountOk(w, st.amount, Number(p.amount_usd), 'USD')) return json(400, { error: 'المبلغ غير مطابق' });
   try { await addonProvision(env, p.id, st.transactionId); }
