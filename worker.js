@@ -709,6 +709,7 @@ async function waHash(env, phone, code) {
 
 // POST /api/otp/send  { phone }
 async function otpSend(request, env) {
+  if (String(env.WA_ENABLED || '') !== '1') return json(503, { error: 'الدخول بالواتس اب متوقف حالياً — ادخل بالإيميل' });
   let body; try { body = await request.json(); } catch { return json(400, { error: 'bad json' }); }
   const phone = normPhone(body.phone);
   if (!validPhone(phone)) return json(400, { error: 'رقم الهاتف غير صحيح' });
@@ -2207,6 +2208,10 @@ export default {
         if (url.pathname === '/api/mfa/backup-codes/verify') {
           if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
           return await mfaBackupVerify(request, env);
+        }
+        if (url.pathname === '/api/otp/config') {
+          // الصفحة بتسأل: تبويب الواتس اب ظاهر أو لأ؟ (WA_ENABLED=1 بلوحة Cloudflare أو wrangler.toml)
+          return json(200, { enabled: String(env.WA_ENABLED || '') === '1' && !!String(env.WA_PROVIDER || '').trim() });
         }
         if (url.pathname === '/api/otp/send') {
           if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
