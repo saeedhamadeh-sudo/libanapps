@@ -1019,8 +1019,12 @@ if(sb) sb.auth.getSession().then(function(r){
   if(!sb){ msg('الموقع مش مربوط بقاعدة البيانات',false); return; }
 
   // هل وصلنا من رابط البريد؟ (Supabase بيحط type=recovery بالرابط)
-  var fromLink = /type=recovery/.test(location.hash) || /type=recovery/.test(location.search) ||
-                 /[?&]code=/.test(location.search);
+  // الطريقة الأساسية: الإيميل فيه token_hash، ومنستعملو بس لما الزبون يضغط «حفظ»
+  // (هيك ما بيضيع الرابط إذا برنامج البريد فتحو للفحص قبل الزبون)
+  var QS=new URLSearchParams(location.search);
+  var tokenHash=QS.get('token_hash'), verified=false;
+  var fromLink = !tokenHash && (/type=recovery/.test(location.hash) || /type=recovery/.test(location.search) ||
+                 /[?&]code=/.test(location.search));
   var linkErr = (location.hash.match(/error_description=([^&]+)/)||[])[1];
   if(linkErr){
     msg('الرابط منتهي أو مستعمل من قبل — اطلب رابط جديد',false);
@@ -1040,6 +1044,25 @@ if(sb) sb.auth.getSession().then(function(r){
   sb.auth.onAuthStateChange(function(ev){
     if(ev==='PASSWORD_RECOVERY') toNew();
   });
+  if(tokenHash){
+    $('#pgTitle').textContent='كلمة مرور جديدة';
+    $('#pgSub').textContent='اختار كلمة مرور جديدة لحسابك.';
+    show('#stepNew'); $('#lPass').focus();
+    // منشيل الرمز من شريط العنوان حتى ما ينحفظ بالسجل أو ينشارك بالغلط
+    try{ history.replaceState(null,'',location.pathname); }catch(e){}
+  }
+  async function ensureVerified(){
+    if(!tokenHash || verified) return true;
+    var v=await sb.auth.verifyOtp({token_hash:tokenHash,type:'recovery'});
+    if(v.error){
+      msg(/expired|invalid/i.test(v.error.message)?'الرابط منتهي أو مستعمل من قبل — اطلب رابط جديد':v.error.message,false);
+      return false;
+    }
+    verified=true;
+    var em=v.data && v.data.user && v.data.user.email;
+    if(em){ $('#newFor').textContent='الحساب: '+em; $('#newFor').setAttribute('dir','auto'); }
+    return true;
+  }
   if(fromLink && !linkErr){
     // احتياط: إذا الحدث فات قبل ما نسجّل المستمع
     setTimeout(async function(){
@@ -1089,6 +1112,7 @@ if(sb) sb.auth.getSession().then(function(r){
     if(p1!==p2) return msg('كلمتا المرور مش متطابقتين',false);
     pendingPass=p1;
     this.disabled=true; msg('عم نحفظ…');
+    if(!(await ensureVerified())){ this.disabled=false; return; }
     if(await needs2fa()){ this.disabled=false; return to2fa(); }
     var u=await sb.auth.updateUser({password:p1});
     this.disabled=false;
