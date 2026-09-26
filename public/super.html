@@ -360,7 +360,8 @@ body.login-page .credit .credit-tel{color:#E08A2B}
       <div class="msg" id="cMsg"></div>
     </div>
     <div class="panel">
-      <h3>الزبائن</h3>
+      <h3>الزبائن <span class="muted" id="cCount" style="font-size:13px;font-weight:600"></span></h3>
+      <input type="text" id="cQ" placeholder="بحث بالاسم أو الإيميل أو الهاتف…" style="margin-bottom:12px">
       <div style="overflow-x:auto"><table id="clientsTbl"><tbody></tbody></table></div>
     </div>
   </section>
@@ -710,19 +711,36 @@ async function loadClients(){
   CLIENTS=r.data||[];
   $('#nClient').innerHTML=CLIENTS.map(function(c){
     return '<option value="'+c.id+'">'+esc(c.name)+(c.business?' — '+esc(c.business):'')+'</option>'}).join('');
+  paintClients();
+}
+function paintClients(){
+  var q=($('#cQ')&&$('#cQ').value||'').trim().toLowerCase();
+  var list=CLIENTS.filter(function(c){
+    if(!q) return true;
+    return ((c.name||'')+' '+(c.business||'')+' '+(c.email||'')+' '+(c.phone||'')).toLowerCase().indexOf(q)>=0;
+  });
+  var withMail=CLIENTS.filter(function(c){return c.email}).length;
+  if($('#cCount')) $('#cCount').textContent='('+CLIENTS.length+' زبون · '+withMail+' بإيميل)';
   var b=$('#clientsTbl').querySelector('tbody');
-  b.innerHTML='<tr><th>الاسم</th><th>المؤسسة</th><th>الهاتف</th><th>اشتراكات</th><th></th></tr>'+
-    CLIENTS.map(function(c){
+  b.innerHTML='<tr><th>الاسم</th><th>المؤسسة</th><th>الإيميل</th><th>الهاتف</th><th>تاريخ التسجيل</th><th>اشتراكات</th><th></th></tr>'+
+    (list.length?'':'<tr><td colspan="7" class="muted" style="padding:20px">ما في نتائج</td></tr>')+
+    list.map(function(c){
       var mine=SUBS.filter(function(s){return s.client_id===c.id});
       var act=mine.filter(function(s){return s.status==='active'}).length;
       return '<tr'+(c.is_active===false?' style="opacity:.5"':'')+'>'+
         '<td>'+esc(c.name)+(c.is_active===false?' <span class="tag bad">معطّل</span>':'')+'</td>'+
         '<td>'+esc(c.business||'—')+'</td>'+
-        '<td style="direction:ltr">'+esc(c.phone||'—')+'</td>'+
+        '<td style="direction:ltr;text-align:start">'+(c.email
+          ? '<a href="mailto:'+esc(c.email)+'" style="color:inherit">'+esc(c.email)+'</a>'+
+            (c.user_id?'':' <span class="tag warn">غير مربوط</span>')
+          : '<span class="muted">—</span>')+'</td>'+
+        '<td style="direction:ltr;white-space:nowrap">'+esc(c.phone||'—')+'</td>'+
+        '<td class="muted" style="white-space:nowrap">'+(c.created_at?new Date(c.created_at).toLocaleDateString('en-GB'):'—')+'</td>'+
         '<td>'+act+' سارية من '+mine.length+'</td>'+
         '<td style="white-space:nowrap">'+
           '<button class="btn alt sm" data-edit="'+c.id+'">تعديل</button> '+
           '<button class="btn alt sm" data-linkacct="'+c.id+'">ربط حساب</button> '+
+          (c.email&&c.user_id?'<button class="btn alt sm" data-resetpw="'+c.id+'">رابط كلمة المرور</button> ':'')+
           (c.user_id?'<button class="btn alt sm" data-mfa="'+c.user_id+'" data-mfaname="'+esc(c.name)+'">2FA</button> ':'')+
           '<button class="btn alt sm" data-stopall="'+c.id+'">إيقاف الكل</button> '+
           '<button class="btn alt sm" data-onall="'+c.id+'">تفعيل الكل</button> '+
@@ -788,6 +806,7 @@ function paintSubs(){
         '</td></tr>';
     }).join('') : '<tr><td colspan="6" class="muted" style="padding:20px">ما في نتائج</td></tr>');
 }
+$('#cQ').addEventListener('input',paintClients);
 ['#fProd','#fState','#fQ'].forEach(function(s){
   $(s).addEventListener('input',paintSubs); $(s).addEventListener('change',paintSubs);
 });
@@ -852,8 +871,19 @@ $('#clientsTbl').addEventListener('click',async function(e){
     return;
   }
 
-  var id=b.dataset.stopall||b.dataset.onall||b.dataset.delc||b.dataset.edit||b.dataset.linkacct;
+  var id=b.dataset.stopall||b.dataset.onall||b.dataset.delc||b.dataset.edit||b.dataset.linkacct||b.dataset.resetpw;
   var c=CLIENTS.find(function(x){return x.id===id}); if(!c) return;
+
+  if(b.dataset.resetpw){
+    if(!c.email) return alert('ما في إيميل لهذا الزبون');
+    if(!confirm('نبعت رابط تغيير كلمة المرور على:\n'+c.email+'\n\nالزبون بيفتح الرابط من بريده وبيختار كلمة مرور جديدة.')) return;
+    b.disabled=true;
+    var rp=await sb.auth.resetPasswordForEmail(c.email,{redirectTo:location.origin+'/reset'});
+    b.disabled=false;
+    if(rp.error) alert('ما انبعت: '+rp.error.message);
+    else alert('انبعت الرابط على '+c.email+' ✓');
+    return;
+  }
 
   if(b.dataset.linkacct){
     var em=prompt('إيميل حساب الدخول تبع "'+c.name+'"\n\n'+
