@@ -541,7 +541,7 @@ function waMessage(env, code) {
 
 // بعت الرسالة — بيرجّع { ok, error? }
 async function sendWhatsApp(env, phoneDigits, code) {
-  const provider = String(env.WA_PROVIDER || '').toLowerCase();
+  const provider = String(env.WA_PROVIDER || '').trim().toLowerCase();
   const message = waMessage(env, code);
   const vars = { phone: phoneDigits, phone_plus: '+' + phoneDigits, code, message };
   try {
@@ -570,7 +570,7 @@ async function sendWhatsApp(env, phoneDigits, code) {
       // Zavu — https://docs.zavu.dev/api-reference/send-a-message
       // الأفضل قالب AUTHENTICATION (WA_TEMPLATE = tmpl_...) لأنو الرسالة العادية بتفشل
       // إذا الزبون ما راسلك خلال ٢٤ ساعة (whatsapp_window_closed)
-      if (!env.WA_API_TOKEN) return { ok: false, error: 'WA_API_TOKEN missing' };
+      if (!env.WA_API_TOKEN) return { ok: false, error: 'WA_API_TOKEN missing — add it as a Secret in Cloudflare' };
       const headers = { Authorization: 'Bearer ' + env.WA_API_TOKEN, 'Content-Type': 'application/json' };
       if (env.WA_SENDER_ID) headers['Zavu-Sender'] = env.WA_SENDER_ID;
       const body = { to: '+' + phoneDigits, channel: 'whatsapp', fallbackEnabled: env.WA_SMS_FALLBACK === '1' };
@@ -623,7 +623,7 @@ async function sendWhatsApp(env, phoneDigits, code) {
     if (provider === 'debug' && env.WA_DEBUG_ALLOW === '1') {
       return { ok: true, debug: true };   // للتجربة بس: الكود بيرجع بالرد
     }
-    return { ok: false, error: 'WhatsApp provider not configured (WA_PROVIDER)' };
+    return { ok: false, error: 'WhatsApp provider not configured — WA_PROVIDER=' + JSON.stringify(env.WA_PROVIDER == null ? null : String(env.WA_PROVIDER)) };
   } catch (e) {
     return { ok: false, error: String(e && e.message || e).slice(0, 200) };
   }
