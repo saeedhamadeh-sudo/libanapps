@@ -539,6 +539,47 @@ function waMessage(env, code) {
   return waFill(tpl, { code });
 }
 
+// قالب Zavu — منخزّنو بالذاكرة ١٠ دقايق
+let ZAVU_TPL = { id: null, at: 0, tpl: null };
+async function zavuTemplate(env, auth) {
+  const id = String(env.WA_TEMPLATE).trim();
+  if (ZAVU_TPL.id === id && Date.now() - ZAVU_TPL.at < 600e3) return { tpl: ZAVU_TPL.tpl };
+  let tpl = null;
+  try {
+    const r = await fetch('https://api.zavu.dev/v1/templates/' + encodeURIComponent(id), { headers: { Authorization: auth } });
+    const t = await r.text();
+    if (r.status === 404) return { error: 'Zavu: القالب ' + id + ' مش موجود — تأكّد من WA_TEMPLATE' };
+    if (r.status === 401) return { error: 'Zavu 401: invalid_token — تأكّد من WA_API_TOKEN' };
+    if (r.ok) { const j = JSON.parse(t); tpl = j.template || j; }
+  } catch (e) {}
+  if (tpl && tpl.status && String(tpl.status).toLowerCase() !== 'approved') {
+    return { error: 'Zavu: القالب «' + (tpl.name || id) + '» حالتو ' + tpl.status + ' — لازم يكون approved' };
+  }
+  ZAVU_TPL = { id, at: Date.now(), tpl };
+  return { tpl };
+}
+function zavuTemplateContent(id, tpl, code) {
+  const content = { templateId: String(id).trim(), templateVariables: { '1': code } };
+  if (!tpl) return content;
+  // المتغيّر: مرقّم ({{1}}) أو باسم ({{code}})
+  let names = Array.isArray(tpl.variables) ? tpl.variables.map(v => (v && typeof v === 'object') ? (v.name || v.key) : v).filter(Boolean).map(String) : [];
+  if (!names.length && tpl.body) names = [...String(tpl.body).matchAll(/\{\{\s*([^}\s]+)\s*\}\}/g)].map(m => m[1]);
+  names = [...new Set(names)];
+  if (names.length) {
+    content.templateVariables = {};
+    for (const n of names) content.templateVariables[n] = code;   // قالب الكود فيه متغيّر واحد عادة
+  }
+  // زر نسخ الكود / زر رابط: بدو الكود كمان
+  const btns = Array.isArray(tpl.buttons) ? tpl.buttons : [];
+  const bv = {};
+  btns.forEach((b, i) => {
+    const t = String((b && (b.type || b.otpType || b.otp_type || b.subType)) || '').toLowerCase();
+    if (/otp|copy|url/.test(t)) bv[String(i)] = code;
+  });
+  if (Object.keys(bv).length) content.templateButtonVariables = bv;
+  return content;
+}
+
 // بعت الرسالة — بيرجّع { ok, error? }
 async function sendWhatsApp(env, phoneDigits, code) {
   const provider = String(env.WA_PROVIDER || '').trim().toLowerCase();
@@ -575,8 +616,11 @@ async function sendWhatsApp(env, phoneDigits, code) {
       if (env.WA_SENDER_ID) headers['Zavu-Sender'] = env.WA_SENDER_ID;
       const body = { to: '+' + phoneDigits, channel: 'whatsapp', fallbackEnabled: env.WA_SMS_FALLBACK === '1' };
       if (env.WA_TEMPLATE) {
+        // منقرا القالب من Zavu حتى نعبّي متغيراتو وأزرارو بالشكل الصح (خطأ Meta #100 = شكل غلط)
+        const tp = await zavuTemplate(env, headers.Authorization);
+        if (tp.error) return { ok: false, error: tp.error };
         body.messageType = 'template';
-        body.content = { templateId: env.WA_TEMPLATE, templateVariables: { '1': code } };
+        body.content = zavuTemplateContent(env.WA_TEMPLATE, tp.tpl, code);
       } else {
         body.messageType = 'text';
         body.text = message;
