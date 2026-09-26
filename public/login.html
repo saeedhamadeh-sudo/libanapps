@@ -1143,8 +1143,14 @@ if(sb) sb.auth.getSession().then(function(r){
     msg(''); try{ localStorage.setItem(K,m); }catch(e){}
   }
   tabs.addEventListener('click',function(e){ var b=e.target.closest('button[data-mode]'); if(b) setMode(b.dataset.mode); });
-  var saved=null; try{ saved=localStorage.getItem(K); }catch(e){}
-  setMode(saved==='mail'?'mail':'wa');
+  // التبويب مخفي لحد ما الخادم يأكّد إنو الواتس اب مفعّل (WA_ENABLED=1)
+  tabs.classList.add('hidden'); box.classList.add('hidden'); if(mailForm) mailForm.classList.remove('hidden');
+  fetch('/api/otp/config').then(function(r){ return r.json(); }).then(function(c){
+    if(!c || !c.enabled) return;
+    tabs.classList.remove('hidden');
+    var saved=null; try{ saved=localStorage.getItem(K); }catch(e){}
+    setMode(saved==='mail'?'mail':'wa');
+  }).catch(function(){});
 
   function countdown(sec){
     clearInterval(timer);
