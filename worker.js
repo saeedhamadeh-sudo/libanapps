@@ -472,6 +472,28 @@ async function mfaBackupVerify(request, env) {
   const left = await sbGet(env, `mfa_backup_codes?user_id=eq.${me.id}&used_at=is.null&select=id`);
   return json(200, { ok: true, remaining: left.length });
 }
+// تغيير كلمة المرور بعد رابط الاسترجاع لحساب محمي بالتحقق بخطوتين، بس بالرمز الاحتياطي
+// (لما يكون ضايع تطبيق المصادقة). الشرطين: جلسة الاسترجاع من البريد + رمز احتياطي صالح.
+async function resetWithBackup(request, env) {
+  const me = await currentUser(request, env);
+  if (!me) return json(401, { error: 'الرابط منتهي أو مستعمل من قبل — اطلب رابط جديد' });
+  let body; try { body = await request.json(); } catch { return json(400, { error: 'bad json' }); }
+  const code = String(body.code || '').trim().toUpperCase();
+  const password = String(body.password || '');
+  if (!code) return json(400, { error: 'اكتب الرمز' });
+  if (password.length < 6) return json(400, { error: 'كلمة المرور قصيرة (6 أحرف على الأقل)' });
+  const hash = await sha256Hex(code);
+  const rows = await sbGet(env, `mfa_backup_codes?user_id=eq.${me.id}&code_hash=eq.${hash}&used_at=is.null&select=id&limit=1`);
+  if (!rows.length) return json(200, { ok: false, error: 'الرمز غير صحيح أو مستعمل من قبل' });
+  const up = await fetch(`${env.SUPABASE_URL}/auth/v1/admin/users/${me.id}`, {
+    method: 'PUT',
+    headers: { ...sbHeaders(env), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password })
+  });
+  if (!up.ok) return json(500, { error: 'تعذّر تغيير كلمة المرور — ' + await sbErrText(up) });
+  await sbPatch(env, `mfa_backup_codes?id=eq.${rows[0].id}`, { used_at: new Date().toISOString() });
+  return json(200, { ok: true });
+}
 async function mfaBackupClear(request, env) {
   const me = await currentUser(request, env);
   if (!me) return json(401, { error: 'سجّل دخولك أولاً' });
@@ -1741,6 +1763,7 @@ function pageFor(pathname) {
   if (p === '/trade-info')    return '/product-trade.html';
   if (p === '/signup')        return '/signup.html';
   if (p === '/login')         return '/login.html';
+  if (p === '/reset')         return '/reset.html';
   if (p === '/account')       return '/account.html';
   if (p === '/alum')          return '/app-alum.html';
   if (p === '/trade')         return '/app-trade.html';
@@ -1856,6 +1879,10 @@ export default {
         if (url.pathname === '/api/mfa/backup-codes/verify') {
           if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
           return await mfaBackupVerify(request, env);
+        }
+        if (url.pathname === '/api/auth/reset-with-backup') {
+          if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
+          return await resetWithBackup(request, env);
         }
         if (url.pathname === '/api/mfa/backup-codes/clear') {
           if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
