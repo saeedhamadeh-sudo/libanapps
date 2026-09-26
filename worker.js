@@ -587,7 +587,30 @@ async function sendWhatsApp(env, phoneDigits, code) {
         let m = t; try { const j = JSON.parse(t); m = (j.code ? j.code + ': ' : '') + (j.message || t); } catch (e) {}
         return { ok: false, error: 'Zavu ' + r.status + ': ' + String(m).slice(0, 200) };
       }
-      return { ok: true };
+      // Zavu بيقبل الرسالة أول (queued) وبيبعتها بعدين — منتأكد من حالتها ثواني قليلة
+      // حتى إذا فشلت (قالب مش موافق عليه، رقم مش على واتس اب…) يبيّن السبب الحقيقي
+      let msgId = null; try { const j = JSON.parse(t); msgId = (j.message && j.message.id) || j.id || null; } catch (e) {}
+      if (!msgId) return { ok: true };
+      const waits = [1000, 1500, 2000];
+      for (const w of waits) {
+        await new Promise(res => setTimeout(res, w));
+        let m = null;
+        try {
+          const g = await fetch('https://api.zavu.dev/v1/messages/' + encodeURIComponent(msgId), { headers: { Authorization: headers.Authorization } });
+          if (g.ok) { const gj = await g.json(); m = gj.message || gj; }
+        } catch (e) {}
+        if (!m) continue;
+        if (m.status === 'failed') {
+          console.error('Zavu message failed', msgId, m.errorCode, m.errorMessage);
+          return { ok: false, error: 'Zavu: ' + [m.errorCode, m.errorMessage].filter(Boolean).join(' — ').slice(0, 220) + ' (' + msgId + ')' };
+        }
+        if (['sent', 'delivered', 'read'].includes(m.status)) {
+          if (m.channel && m.channel !== 'whatsapp') console.log('Zavu fallback channel used:', m.channel);
+          return { ok: true, id: msgId };
+        }
+      }
+      console.log('Zavu message still pending', msgId);
+      return { ok: true, id: msgId };
     }
     if (provider === 'generic') {
       // أي مزوّد عندو HTTP API: الرابط + التوكن + شكل الطلب من المتغيرات
@@ -651,7 +674,7 @@ async function otpSend(request, env) {
   const recent = await sbGet(env, `phone_otps?phone=eq.${phone}&created_at=gte.${hourAgo}&select=created_at&order=created_at.desc`);
   if (recent.length) {
     const wait = WA_RESEND_SEC - Math.floor((Date.now() - new Date(recent[0].created_at).getTime()) / 1000);
-    if (wait > 0) return json(429, { error: 'استنّى شوي قبل ما تطلب كود جديد', wait });
+    if (wait > 0) return json(429, { error: 'انتظر قليلاً قبل طلب كود جديد', wait });
   }
   if (recent.length >= WA_PER_PHONE_H) return json(429, { error: 'طلبت أكواد كتير — جرّب بعد ساعة' });
   if (ip) {
