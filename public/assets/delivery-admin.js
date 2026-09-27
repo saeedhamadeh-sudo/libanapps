@@ -186,8 +186,11 @@ function paint(){
     var link=location.origin+'/d/'+d.token, p=d.pos;
     var src=p?(KIND[p.src]||p.src)+' · '+ago(p.pos_at):'لا يوجد موقع بعد';
     var dot=!d.is_active?'⚫':!d.allowed?'🔴':d.on_duty&&fresh(p)?'🟢':d.on_duty?'🟡':'⚪';
-    var msg='مرحبا '+d.name+'، هذا رابط صفحة التوصيل الخاصة بك لدى '+A.R.name_ar+
-      '. افتحه على هاتفك واضغط «بدء الدوام»:\n'+link;
+    var msg=document.documentElement.lang==='en'
+      ? 'Hi '+d.name+', this is your delivery page link for '+(A.R.name_en||A.R.name_ar)+
+        '. Open it on your phone and tap “Start shift”:\n'+link
+      : 'مرحبا '+d.name+'، هذا رابط صفحة التوصيل الخاصة بك لدى '+A.R.name_ar+
+        '. افتحه على هاتفك واضغط «بدء الدوام»:\n'+link;
     return '<div class="row"><div class="t"><b>'+dot+' '+esc(d.name)+(d.phone?' · <span style="direction:ltr;display:inline">'+esc(d.phone)+'</span>':'')+'</b>'+
       '<span>'+(!d.allowed&&d.is_active?'<b style="color:#FF7A7E">اشتراك هذا الموظف منتهٍ</b> · ':'')+(d.on_duty?'في الدوام':'خارج الدوام')+' · '+src+
         (d.device?' · '+esc(KIND[d.device.kind])+': '+esc(d.device.label||d.device.identifier)+(d.device.battery!=null?' 🔋'+Math.round(d.device.battery)+'%':''):'')+

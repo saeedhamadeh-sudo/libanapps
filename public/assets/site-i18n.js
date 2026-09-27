@@ -7,6 +7,14 @@
 window.SITE_I18N = {
 "en": {
 /* صياغة الفصحى */
+"منيو رقمي للمطاعم، ومحاسبة للصناعيين، ومحاسبة للتجارة. برامج جاهزة تعمل في لبنان بالدولار والليرة.": "Digital menus for restaurants, accounting for manufacturers and retailers. Ready-made software for Lebanon, in USD and LBP.",
+"أنشئ حسابًا على LibanApps واشترك في برامج المطاعم والمحاسبة.": "Create a LibanApps account and subscribe to restaurant and accounting software.",
+"استرجع حسابك على LibanApps واختر كلمة مرور جديدة.": "Recover your LibanApps account and choose a new password.",
+"اشتراكاتك ومفاتيح التفعيل وشراء البرامج.": "Your subscriptions, activation keys and software purchases.",
+"برنامج محاسبة للصناعيين في لبنان — فواتير، وكشوف حساب، وحساب المساحة تلقائيًا.": "Accounting software for manufacturers in Lebanon — invoices, statements, and automatic area calculation.",
+"منيو QR رقمي للمطاعم في لبنان — طلبات عبر واتساب، وخريطة توصيل، وأسعار بالدولار والليرة.": "QR digital menu for restaurants in Lebanon — WhatsApp orders, delivery map, prices in USD and LBP.",
+"برنامج محاسبة ونقطة بيع للمحلات في لبنان — مستودع، وصلاحيات، وطباعة حرارية.": "Accounting and point-of-sale software for shops in Lebanon — inventory, user permissions, and thermal printing.",
+"متجر إلكتروني جاهز لمحلك في لبنان — منتجات، وطلبات، ودفع إلكتروني، وقسائم خصم.": "A ready-made online store for your shop in Lebanon — products, orders, online payment, and discount coupons.",
 "لديك اشتراك أو تجربة سابقة لهذا البرنامج": "You already have a subscription or a previous trial for this product",
 "يجب أن يكون الرابط بأحرف إنكليزية وأرقام وشَرطة، بطول بين 2 و31 حرفًا": "The link must use English letters, numbers and hyphens, 2 to 31 characters long",
 "مدفوعة — لا يمكن إلغاؤها": "Paid — it can't be cancelled",
@@ -524,6 +532,14 @@ window.SITE_I18N = {
 },
 "fr": {
 /* صياغة الفصحى */
+"منيو رقمي للمطاعم، ومحاسبة للصناعيين، ومحاسبة للتجارة. برامج جاهزة تعمل في لبنان بالدولار والليرة.": "Menus numériques pour restaurants, comptabilité pour industriels et commerçants. Des logiciels prêts à l'emploi au Liban, en USD et en LBP.",
+"أنشئ حسابًا على LibanApps واشترك في برامج المطاعم والمحاسبة.": "Créez un compte LibanApps et abonnez-vous aux logiciels de restauration et de comptabilité.",
+"استرجع حسابك على LibanApps واختر كلمة مرور جديدة.": "Récupérez votre compte LibanApps et choisissez un nouveau mot de passe.",
+"اشتراكاتك ومفاتيح التفعيل وشراء البرامج.": "Vos abonnements, clés d'activation et achats de logiciels.",
+"برنامج محاسبة للصناعيين في لبنان — فواتير، وكشوف حساب، وحساب المساحة تلقائيًا.": "Logiciel de comptabilité pour les industriels au Liban — factures, relevés de compte et calcul automatique des surfaces.",
+"منيو QR رقمي للمطاعم في لبنان — طلبات عبر واتساب، وخريطة توصيل، وأسعار بالدولار والليرة.": "Menu numérique QR pour restaurants au Liban — commandes via WhatsApp, carte de livraison, prix en USD et en LBP.",
+"برنامج محاسبة ونقطة بيع للمحلات في لبنان — مستودع، وصلاحيات، وطباعة حرارية.": "Logiciel de comptabilité et de caisse pour les commerces au Liban — stock, permissions et impression thermique.",
+"متجر إلكتروني جاهز لمحلك في لبنان — منتجات، وطلبات، ودفع إلكتروني، وقسائم خصم.": "Une boutique en ligne prête pour votre commerce au Liban — produits, commandes, paiement en ligne et coupons de réduction.",
 "لديك اشتراك أو تجربة سابقة لهذا البرنامج": "Vous avez déjà un abonnement ou un essai précédent pour ce produit",
 "يجب أن يكون الرابط بأحرف إنكليزية وأرقام وشَرطة، بطول بين 2 و31 حرفًا": "Le lien doit contenir des lettres latines, des chiffres et des tirets, entre 2 et 31 caractères",
 "مدفوعة — لا يمكن إلغاؤها": "Payée — impossible de l'annuler",

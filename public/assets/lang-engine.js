@@ -163,6 +163,12 @@ window.LAEngine=function(opts){
     var n; while((n=w.nextNode())) doText(n);
     Array.prototype.forEach.call(root.querySelectorAll('[placeholder],[title],[aria-label],[alt],input[type=button],input[type=submit]'),doAttrs);
   }
+  function doMeta(){
+    Array.prototype.forEach.call(document.querySelectorAll('meta[name="description"],meta[property="og:title"],meta[property="og:description"],meta[name="twitter:title"],meta[name="twitter:description"]'),function(m){
+      if(m.dataset.i18nc===undefined){ var c=m.getAttribute('content')||''; if(!AR.test(c)) return; m.dataset.i18nc=c; }
+      var ar=m.dataset.i18nc; m.setAttribute('content', cur==='ar'?ar:(tr(ar,cur)||ar));
+    });
+  }
   function doTitle(){
     if(titleAr===null||(AR.test(document.title)&&document.title!==titleAr&&document.title!==WROTE.get(document))) titleAr=document.title;
     var want=cur==='ar'?titleAr:(tr(titleAr,cur)||titleAr);
@@ -206,7 +212,7 @@ window.LAEngine=function(opts){
       cur=l||'ar';
       document.documentElement.lang=cur;
       document.documentElement.dir=cur==='ar'?'rtl':'ltr';
-      walk(document.body); doTitle();
+      walk(document.body); doTitle(); doMeta();
       if(cur!=='ar') observe();
       else if(obs){ obs.disconnect(); obs=null; }   // بالعربي ما في شي نترجمو
     },
