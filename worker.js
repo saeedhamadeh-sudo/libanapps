@@ -558,6 +558,15 @@ async function zavuTemplate(env, auth) {
   ZAVU_TPL = { id, at: Date.now(), tpl };
   return { tpl };
 }
+// ملخص القالب + شو بعتنا — بيطلع مع رسالة الخطأ حتى نعرف شو ما بيطابق (بدون أي مفتاح سري)
+function zavuDiag(tpl, content) {
+  const t = tpl || {};
+  const btns = (Array.isArray(t.buttons) ? t.buttons : []).map(b => (b && (b.type || b.otpType || b.otp_type)) || '?').join(',');
+  const vars = Array.isArray(t.variables) ? t.variables.map(v => (v && typeof v === 'object') ? (v.name || v.key) : v).join(',') : '';
+  const body = String(t.body || '').replace(/\s+/g, ' ').slice(0, 80);
+  const sent = content ? Object.keys(content.templateVariables || {}).join(',') + (content.templateButtonVariables ? ' +btn:' + Object.keys(content.templateButtonVariables).join(',') : '') : '';
+  return ` [tpl: ${t.category || '?'}/${t.language || '?'}/${t.status || '?'} · vars=${vars || '-'} · buttons=${btns || '-'} · header=${t.headerType || '-'} · body="${body}" · sent=${sent || '-'}]`;
+}
 function zavuTemplateContent(id, tpl, code) {
   const content = { templateId: String(id).trim(), templateVariables: { '1': code } };
   if (!tpl) return content;
@@ -615,12 +624,14 @@ async function sendWhatsApp(env, phoneDigits, code) {
       const headers = { Authorization: 'Bearer ' + env.WA_API_TOKEN, 'Content-Type': 'application/json' };
       if (env.WA_SENDER_ID) headers['Zavu-Sender'] = env.WA_SENDER_ID;
       const body = { to: '+' + phoneDigits, channel: 'whatsapp', fallbackEnabled: env.WA_SMS_FALLBACK === '1' };
+      let diag = '';
       if (env.WA_TEMPLATE) {
         // منقرا القالب من Zavu حتى نعبّي متغيراتو وأزرارو بالشكل الصح (خطأ Meta #100 = شكل غلط)
         const tp = await zavuTemplate(env, headers.Authorization);
         if (tp.error) return { ok: false, error: tp.error };
         body.messageType = 'template';
         body.content = zavuTemplateContent(env.WA_TEMPLATE, tp.tpl, code);
+        diag = zavuDiag(tp.tpl, body.content);
       } else {
         body.messageType = 'text';
         body.text = message;
@@ -629,7 +640,7 @@ async function sendWhatsApp(env, phoneDigits, code) {
       const t = await r.text();
       if (!r.ok) {
         let m = t; try { const j = JSON.parse(t); m = (j.code ? j.code + ': ' : '') + (j.message || t); } catch (e) {}
-        return { ok: false, error: 'Zavu ' + r.status + ': ' + String(m).slice(0, 200) };
+        return { ok: false, error: 'Zavu ' + r.status + ': ' + String(m).slice(0, 200) + diag };
       }
       // Zavu بيقبل الرسالة أول (queued) وبيبعتها بعدين — منتأكد من حالتها ثواني قليلة
       // حتى إذا فشلت (قالب مش موافق عليه، رقم مش على واتس اب…) يبيّن السبب الحقيقي
@@ -646,7 +657,7 @@ async function sendWhatsApp(env, phoneDigits, code) {
         if (!m) continue;
         if (m.status === 'failed') {
           console.error('Zavu message failed', msgId, m.errorCode, m.errorMessage);
-          return { ok: false, error: 'Zavu: ' + [m.errorCode, m.errorMessage].filter(Boolean).join(' — ').slice(0, 220) + ' (' + msgId + ')' };
+          return { ok: false, error: 'Zavu: ' + [m.errorCode, m.errorMessage].filter(Boolean).join(' — ').slice(0, 220) + ' (' + msgId + ')' + diag };
         }
         if (['sent', 'delivered', 'read'].includes(m.status)) {
           if (m.channel && m.channel !== 'whatsapp') console.log('Zavu fallback channel used:', m.channel);
