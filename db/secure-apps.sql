@@ -15,13 +15,13 @@
 --  المؤسسات غير المفعّل لها الوضع الآمن تبقى كما هي تماماً.
 --  شغّله مرة واحدة على مشروع LibanApps — آمن للتكرار.
 -- ============================================================
-create extension if not exists pgcrypto;
+create extension if not exists pgcrypto;   -- في Supabase موجودة في مخطط extensions
 
 -- ---------- 1) مفتاح الوضع الآمن لكل مؤسسة ----------
 alter table public.clients add column if not exists secure_apps boolean not null default false;
 
 create or replace function public.app_secure(cid uuid)
-returns boolean language sql stable security definer set search_path = public as $$
+returns boolean language sql stable security definer set search_path = public, extensions as $$
   select coalesce((select secure_apps from public.clients where id = cid), false);
 $$;
 
@@ -57,7 +57,7 @@ returns uuid language sql stable as $$
 $$;
 
 create or replace function public.app_cur(p_product text)
-returns public.app_sessions language sql stable security definer set search_path = public as $$
+returns public.app_sessions language sql stable security definer set search_path = public, extensions as $$
   select * from public.app_sessions
    where sid = public.app_sid() and product = p_product and uid = auth.uid()
    limit 1;
@@ -90,7 +90,7 @@ $$;
 
 --  هل يُسمح بقراءة هذا السطر؟  p_tbl مثل 'alum_invoices'، p_row فيه id / customer_id / worker_id
 create or replace function public.app_can_read(p_tbl text, p_cid uuid, p_row jsonb)
-returns boolean language plpgsql stable security definer set search_path = public as $$
+returns boolean language plpgsql stable security definer set search_path = public, extensions as $$
 declare prod text := split_part(p_tbl, '_', 1);
         t    text := substr(p_tbl, length(split_part(p_tbl, '_', 1)) + 2);
         s    public.app_sessions;
@@ -116,7 +116,7 @@ begin
 end $$;
 
 create or replace function public.app_can_write(p_tbl text, p_cid uuid)
-returns boolean language plpgsql stable security definer set search_path = public as $$
+returns boolean language plpgsql stable security definer set search_path = public, extensions as $$
 declare prod text := split_part(p_tbl, '_', 1);
         t    text := substr(p_tbl, length(split_part(p_tbl, '_', 1)) + 2);
         s    public.app_sessions; p text;
@@ -176,7 +176,7 @@ alter table public.app_account_secrets enable row level security;   -- بلا س
 revoke all on public.app_account_secrets from anon, authenticated;
 
 create or replace function public.app_protect_secrets()
-returns trigger language plpgsql security definer set search_path = public as $$
+returns trigger language plpgsql security definer set search_path = public, extensions as $$
 declare j jsonb := to_jsonb(new); pw text := j->>'password'; ts text := j->>'totp_secret';
         sec boolean := public.app_secure(new.client_id);
 begin
@@ -203,7 +203,7 @@ begin
 end $$;
 
 create or replace function public.app_drop_secrets()
-returns trigger language plpgsql security definer set search_path = public as $$
+returns trigger language plpgsql security definer set search_path = public, extensions as $$
 begin
   delete from public.app_account_secrets where tbl = TG_TABLE_NAME and client_id = old.client_id and id = old.id;
   return old;
@@ -245,7 +245,7 @@ begin
 end $$;
 
 create or replace function public.app_totp_ok(p_secret text, p_code text)
-returns boolean language plpgsql stable as $$
+returns boolean language plpgsql stable set search_path = public, extensions as $$
 declare key bytea := public.app_base32_decode(p_secret); w int; ctr bigint; msg bytea; h bytea; off int; bin bigint;
 begin
   if p_code is null or p_code !~ '^\d{6}$' or length(key) = 0 then return false; end if;
@@ -263,7 +263,7 @@ end $$;
 
 -- ---------- 7) تسجيل الدخول والخروج ----------
 create or replace function public.app_pw_ok(p_tbl text, p_row jsonb, p_password text)
-returns boolean language plpgsql stable security definer set search_path = public as $$
+returns boolean language plpgsql stable security definer set search_path = public, extensions as $$
 declare h text;
 begin
   select password_hash into h from public.app_account_secrets
@@ -273,7 +273,7 @@ begin
 end $$;
 
 create or replace function public.app_login(p_product text, p_username text, p_password text, p_totp text default null)
-returns jsonb language plpgsql security definer set search_path = public as $$
+returns jsonb language plpgsql security definer set search_path = public, extensions as $$
 declare v_cid uuid := public.my_client_id(); v_sid uuid := public.app_sid();
         r jsonb; ok boolean; fails int; u text := lower(trim(coalesce(p_username,''))); t text; secret text;
 begin
@@ -338,19 +338,19 @@ begin
 end $$;
 
 create or replace function public.app_logout(p_product text)
-returns void language sql security definer set search_path = public as $$
+returns void language sql security definer set search_path = public, extensions as $$
   delete from public.app_sessions where sid = public.app_sid() and product = p_product;
 $$;
 
 -- هل المؤسسة الحالية بالوضع الآمن؟ (يقرأها البرنامج عند الفتح)
 create or replace function public.app_mode()
-returns jsonb language sql stable security definer set search_path = public as $$
+returns jsonb language sql stable security definer set search_path = public, extensions as $$
   select jsonb_build_object('secure', public.app_secure(public.my_client_id()));
 $$;
 
 -- تفعيل/إيقاف الوضع الآمن من لوحة /super
 create or replace function public.set_secure_apps(p_client uuid, p_on boolean)
-returns jsonb language plpgsql security definer set search_path = public as $$
+returns jsonb language plpgsql security definer set search_path = public, extensions as $$
 declare t text;
 begin
   if not public.is_admin() then raise exception 'not allowed'; end if;
