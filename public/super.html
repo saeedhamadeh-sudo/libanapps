@@ -302,7 +302,13 @@ body.login-page .credit .credit-tel{color:#E08A2B}
   <div class="bar">
     <h1>لوحة التحكم الرئيسية</h1>
     <span class="muted" id="who"></span>
+    <button class="btn alt sm" id="mfaSetBtn">🔐 التحقق بخطوتين</button>
     <button class="btn alt sm" id="outBtn">خروج</button>
+  </div>
+  <div class="panel hidden" id="mfaPanel" style="max-width:460px;margin:0 auto 18px">
+    <h3>🔐 التحقق بخطوتين لحساب المشرف</h3>
+    <div id="mfaBody"></div>
+    <div class="msg" id="mfaMsg"></div>
   </div>
 
   <div class="tabs">
@@ -711,6 +717,59 @@ $('#loginBtn').addEventListener('click',async function(){
 });
 $('#pw').addEventListener('keydown',function(e){ if(e.key==='Enter') $('#loginBtn').click(); });
 $('#outBtn').addEventListener('click',async function(){ await sb.auth.signOut(); location.reload(); });
+
+/* ---------- التحقق بخطوتين لحساب المشرف ---------- */
+function mfaSay(t,ok){ var m=$('#mfaMsg'); m.className='msg'+(ok===false?' e':ok===true?' s':''); m.textContent=t||''; }
+async function mfaPaint(){
+  var f=(await sb.auth.mfa.listFactors()).data||{};
+  var on=(f.totp||[]).filter(function(x){return x.status==='verified'});
+  var b=$('#mfaBody');
+  if(on.length){
+    b.innerHTML='<p><b style="color:#12B76A">مفعّل ✓</b> — عند كل دخول إلى هذه اللوحة يُطلب الرمز من تطبيق المصادقة على هاتفك.</p>'+
+      '<p class="muted" style="font-size:12.5px">إذا فقدت الهاتف: من Supabase ← Authentication ← Users ← حسابك ← احذف عامل MFA، ثم فعّله من جديد هنا.</p>'+
+      '<div class="acts"><button class="btn dg sm" id="mfaOffBtn">تعطيل التحقق بخطوتين</button></div>';
+    $('#mfaOffBtn').addEventListener('click',async function(){
+      if(!confirm('تعطيل التحقق بخطوتين لحساب المشرف؟ ستصبح اللوحة محمية بكلمة المرور فقط.')) return;
+      var all=((await sb.auth.mfa.listFactors()).data||{}).all||[];
+      for(var i=0;i<all.length;i++){ var u=await sb.auth.mfa.unenroll({factorId:all[i].id}); if(u.error) return mfaSay('تعذّر التعطيل: '+u.error.message,false); }
+      mfaSay('تم التعطيل',true); mfaPaint();
+    });
+  } else {
+    b.innerHTML='<p><b style="color:#D92D20">غير مفعّل</b> — حساب المشرف يفتح كل المؤسسات. ننصح بشدة بتفعيل التحقق بخطوتين.</p>'+
+      '<div class="acts"><button class="btn sm" id="mfaOnBtn">تفعيل الآن</button></div>';
+    $('#mfaOnBtn').addEventListener('click',mfaEnroll);
+  }
+}
+async function mfaEnroll(){
+  mfaSay('جارٍ التجهيز…');
+  // نحذف أي محاولة تفعيل سابقة لم تكتمل
+  var old=((await sb.auth.mfa.listFactors()).data||{}).all||[];
+  for(var i=0;i<old.length;i++){ if(old[i].status!=='verified') await sb.auth.mfa.unenroll({factorId:old[i].id}); }
+  var en=await sb.auth.mfa.enroll({factorType:'totp',friendlyName:'LibanApps Super '+Date.now()});
+  if(en.error) return mfaSay(en.error.message,false);
+  var fid=en.data.id;
+  $('#mfaBody').innerHTML='<div style="text-align:center;margin-bottom:10px"><img src="'+en.data.totp.qr_code+'" alt="QR" style="width:180px;height:180px;background:#fff;border-radius:10px;padding:8px"></div>'+
+    '<p class="muted" style="font-size:13px;text-align:center">امسح الرمز بتطبيق مصادقة (Google Authenticator أو Authy…) أو أدخل المفتاح يدوياً:</p>'+
+    '<p style="text-align:center;font-family:monospace;direction:ltr;word-break:break-all">'+esc(en.data.totp.secret)+'</p>'+
+    '<label>الرمز المكوّن من ٦ أرقام</label><input type="text" id="mfaNewCode" inputmode="numeric" maxlength="6" autocomplete="one-time-code">'+
+    '<div class="acts"><button class="btn alt sm" id="mfaCancel">إلغاء</button><button class="btn sm" id="mfaConfirm">تأكيد وتفعيل</button></div>';
+  mfaSay('');
+  $('#mfaCancel').addEventListener('click',async function(){ await sb.auth.mfa.unenroll({factorId:fid}); mfaSay(''); mfaPaint(); });
+  $('#mfaConfirm').addEventListener('click',async function(){
+    var code=$('#mfaNewCode').value.trim(); if(!/^\d{6}$/.test(code)) return mfaSay('أدخل الرمز المكوّن من ٦ أرقام',false);
+    this.disabled=true; mfaSay('جارٍ التحقق…');
+    var ch=await sb.auth.mfa.challenge({factorId:fid});
+    if(ch.error){ this.disabled=false; return mfaSay(ch.error.message,false); }
+    var vf=await sb.auth.mfa.verify({factorId:fid,challengeId:ch.data.id,code:code});
+    if(vf.error){ this.disabled=false; return mfaSay('الرمز غير صحيح',false); }
+    mfaSay('تم التفعيل ✓ — من الآن يُطلب الرمز عند كل دخول',true);
+    mfaPaint();
+  });
+}
+$('#mfaSetBtn').addEventListener('click',function(){
+  var p=$('#mfaPanel'); p.classList.toggle('hidden');
+  if(!p.classList.contains('hidden')){ mfaSay(''); mfaPaint(); }
+});
 
 /* ---------- tabs ---------- */
 $$('.tab').forEach(function(t){
