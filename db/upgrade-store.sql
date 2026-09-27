@@ -365,15 +365,15 @@ begin
   if cid is null then raise exception 'complete your profile first'; end if;
 
   if exists (select 1 from public.subscriptions where client_id = cid and product_code = 'store') then
-    return jsonb_build_object('ok', false, 'reason', 'عندك اشتراك أو تجربة سابقة لهذا البرنامج');
+    return jsonb_build_object('ok', false, 'reason', 'لديك اشتراك أو تجربة سابقة لهذا البرنامج');
   end if;
 
   v_slug := lower(trim(coalesce(p_slug,'')));
   if v_slug !~ '^[a-z0-9][a-z0-9-]{1,30}$' then
-    return jsonb_build_object('ok', false, 'reason', 'الرابط لازم يكون إنكليزي (أحرف وأرقام وشرطة) بين 2 و31 حرف');
+    return jsonb_build_object('ok', false, 'reason', 'يجب أن يكون الرابط بأحرف إنكليزية وأرقام وشَرطة، بطول بين 2 و31 حرفًا');
   end if;
   if not public.store_slug_available(v_slug) then
-    return jsonb_build_object('ok', false, 'reason', 'هذا الرابط محجوز — اختار غيره');
+    return jsonb_build_object('ok', false, 'reason', 'هذا الرابط محجوز — اختر رابطًا آخر');
   end if;
 
   select coalesce(trial_days, 5) into d from public.products where code = 'store';

@@ -639,6 +639,16 @@ html[data-theme="horizon"] .hz-aside-foot::before{content:'';width:8px;height:8p
 }
 /* ===== HORIZON THEME END ===== */
 </style>
+<script>
+/* رسائل قديمة ترجع من قاعدة البيانات بالعامية — تُعرض بالفصحى (وتُترجم عبر القاموس) */
+window.dbMsg=function(m){ var M={
+ 'عندك اشتراك أو تجربة سابقة لهذا البرنامج':'لديك اشتراك أو تجربة سابقة لهذا البرنامج',
+ 'الرابط لازم يكون إنكليزي (أحرف وأرقام وشرطة) بين 2 و31 حرف':'يجب أن يكون الرابط بأحرف إنكليزية وأرقام وشَرطة، بطول بين 2 و31 حرفًا',
+ 'هذا الرابط محجوز — اختار غيره':'هذا الرابط محجوز — اختر رابطًا آخر',
+ 'مدفوعة — ما فينا نلغيها':'مدفوعة — لا يمكن إلغاؤها',
+ 'مدفوعة أصلاً':'مدفوعة مسبقاً' };
+ return m&&M[m]||m; };
+</script>
 <script>/* ===== HORIZON JS START — مبدّل ثيم الموقع + تحسينات ثيم «أفق» (المصدر: assets/theme-horizon.js) ===== */
 (function(){
   var K='la_site_theme', d=document.documentElement, t=null, isReady=false;
@@ -1321,7 +1331,7 @@ if(sb) sb.auth.getSession().then(function(r){
       cn.disabled=true;
       var r=await sb.rpc('cancel_purchase',{p_id:Number(cn.dataset.cancel)});
       if(r.error){ alert('لم ينجح: '+r.error.message); cn.disabled=false; return; }
-      if(r.data && r.data.ok===false){ alert(r.data.reason||'لا يمكن إلغاؤها'); cn.disabled=false; return; }
+      if(r.data && r.data.ok===false){ alert(dbMsg(r.data.reason)||'لا يمكن إلغاؤها'); cn.disabled=false; return; }
       await loadSubs();
       return;
     }
@@ -1408,7 +1418,7 @@ if(sb) sb.auth.getSession().then(function(r){
       b.disabled=false; b.textContent='ابدأ التجربة'; return;
     }
     if(r.data && r.data.ok===false){
-      alert(r.data.reason||'لم تنجح التجربة');
+      alert(dbMsg(r.data.reason)||'لم تنجح التجربة');
       b.disabled=false; b.textContent='ابدأ التجربة'; return;
     }
     alertBox('فُعِّلت تجربتك المجانية لمدة '+(prod==='store'?(r.data.days||5):TRIAL_DAYS)+' أيام ✓ '+

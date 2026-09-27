@@ -47,7 +47,7 @@ begin
   if not public.is_admin() then raise exception 'not allowed'; end if;
   select id into uid from auth.users where lower(email) = lower(trim(p_email)) limit 1;
   if uid is null then
-    return jsonb_build_object('ok', false, 'reason', 'ما في حساب بهذا الإيميل');
+    return jsonb_build_object('ok', false, 'reason', 'لا يوجد حساب بهذا البريد الإلكتروني');
   end if;
   update public.clients set user_id = uid where id = p_client;
   return jsonb_build_object('ok', true, 'user_id', uid);

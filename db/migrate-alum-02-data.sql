@@ -19,7 +19,7 @@ declare
   n integer;
 begin
   if not exists (select 1 from public.clients where id = cid) then
-    raise exception 'هوية الزبون غير موجودة — بدّل cid أولاً';
+    raise exception 'هوية الزبون غير موجودة — غيّر cid أولاً';
   end if;
 
   foreach t in array array[

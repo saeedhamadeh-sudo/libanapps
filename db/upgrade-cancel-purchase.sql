@@ -13,7 +13,7 @@ begin
   if not found then raise exception 'not found'; end if;
   if p.user_id <> auth.uid() and not public.is_admin() then raise exception 'not allowed'; end if;
   if p.status = 'paid' then
-    return jsonb_build_object('ok', false, 'reason', 'مدفوعة — ما فينا نلغيها');
+    return jsonb_build_object('ok', false, 'reason', 'مدفوعة — لا يمكن إلغاؤها');
   end if;
 
   delete from public.purchases where id = p_id;

@@ -35,7 +35,7 @@ begin
 
   -- تجربة واحدة لكل برنامج لكل زبون
   if exists (select 1 from public.subscriptions where client_id = cid and product_code = p_product) then
-    return jsonb_build_object('ok', false, 'reason', 'عندك اشتراك أو تجربة سابقة لهذا البرنامج');
+    return jsonb_build_object('ok', false, 'reason', 'لديك اشتراك أو تجربة سابقة لهذا البرنامج');
   end if;
 
   select trial_days into d from public.platform_settings where id = 1;
@@ -47,7 +47,7 @@ begin
   if p_product = 'menu' then
     if v_slug !~ '^[a-z0-9][a-z0-9-]{1,30}$' then raise exception 'invalid slug'; end if;
     if exists (select 1 from public.restaurants where slug = v_slug) then
-      return jsonb_build_object('ok', false, 'reason', 'هذا الرابط محجوز — اختار غيره');
+      return jsonb_build_object('ok', false, 'reason', 'هذا الرابط محجوز — اختر رابطًا آخر');
     end if;
 
     insert into public.restaurants (client_id, slug, name_ar, name_en, phone, whatsapp)

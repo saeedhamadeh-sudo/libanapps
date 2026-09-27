@@ -91,7 +91,7 @@ begin
   if not found then raise exception 'not found'; end if;
   if p.user_id <> auth.uid() and not public.is_admin() then raise exception 'not allowed'; end if;
   if p.status = 'paid' then
-    return jsonb_build_object('ok', false, 'reason', 'مدفوعة أصلاً');
+    return jsonb_build_object('ok', false, 'reason', 'مدفوعة مسبقاً');
   end if;
 
   insert into public.purchases (user_id, client_id, plan_id, product_code, amount_usd,

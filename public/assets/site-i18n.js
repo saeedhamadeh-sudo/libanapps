@@ -7,6 +7,9 @@
 window.SITE_I18N = {
 "en": {
 /* صياغة الفصحى */
+"لديك اشتراك أو تجربة سابقة لهذا البرنامج": "You already have a subscription or a previous trial for this product",
+"يجب أن يكون الرابط بأحرف إنكليزية وأرقام وشَرطة، بطول بين 2 و31 حرفًا": "The link must use English letters, numbers and hyphens, 2 to 31 characters long",
+"مدفوعة — لا يمكن إلغاؤها": "Paid — it can't be cancelled",
 "اسم المحل/المصنع بالعربية": "Shop/factory name in Arabic",
 "اسم المطعم بالعربية": "Restaurant name in Arabic",
 "أهلاً بك من جديد": "Welcome back",
@@ -521,6 +524,9 @@ window.SITE_I18N = {
 },
 "fr": {
 /* صياغة الفصحى */
+"لديك اشتراك أو تجربة سابقة لهذا البرنامج": "Vous avez déjà un abonnement ou un essai précédent pour ce produit",
+"يجب أن يكون الرابط بأحرف إنكليزية وأرقام وشَرطة، بطول بين 2 و31 حرفًا": "Le lien doit contenir des lettres latines, des chiffres et des tirets, entre 2 et 31 caractères",
+"مدفوعة — لا يمكن إلغاؤها": "Payée — impossible de l'annuler",
 "اسم المحل/المصنع بالعربية": "Nom du commerce/de l'atelier en arabe",
 "اسم المطعم بالعربية": "Nom du restaurant en arabe",
 "أهلاً بك من جديد": "Bon retour parmi nous",
