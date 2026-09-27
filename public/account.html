@@ -1058,8 +1058,9 @@ if(sb) sb.rpc('public_settings').then(function(r){
 });
 
 // زر الحساب حسب حالة الدخول
+function isPortalUser(u){ return !!u && (/@portal\.libanapps\.local$/i.test(u.email||'') || !!(u.user_metadata&&u.user_metadata.portal)); }
 if(sb) sb.auth.getSession().then(function(r){
-  if(r.data.session){ $('#navJoin').classList.add('hidden');
+  if(r.data.session && !isPortalUser(r.data.session.user)){ $('#navJoin').classList.add('hidden');
     $('#navAcct').textContent='حسابي'; $('#navAcct').href='/account'; }
   else { $('#navAcct').textContent='تسجيل الدخول'; $('#navAcct').href='/login'; }
 });
@@ -1079,6 +1080,10 @@ if(sb) sb.auth.getSession().then(function(r){
   async function boot(){
     if(!sb) return;
     var ses=await sb.auth.getSession();
+    // حساب رابط البرنامج (/portal) ليس حساباً على المنصة — لا يفتح صفحة الحساب
+    if(ses.data.session && isPortalUser(ses.data.session.user)){
+      await sb.auth.signOut(); ses={data:{session:null}};
+    }
     if(!ses.data.session){ $('#guest').classList.remove('hidden'); return; }
     $('#app').classList.remove('hidden');
     $('#mail').textContent=ses.data.session.user.email;

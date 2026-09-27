@@ -1118,7 +1118,11 @@ if(sb) sb.auth.getSession().then(function(r){
   $('#twoCode').addEventListener('keydown',function(e){
     if(e.key==='Enter') $('#doTwo').click(); });
 
-  if(sb) sb.auth.getSession().then(async function(r){ if(r.data.session){ if(await checkStep2()) return; go(); } });
+  if(sb) sb.auth.getSession().then(async function(r){
+    var u=r.data.session&&r.data.session.user;
+    // جلسة رابط البرنامج (/portal) لا تُعتبر دخولاً إلى المنصة
+    if(u && (/@portal\.libanapps\.local$/i.test(u.email||'') || (u.user_metadata&&u.user_metadata.portal))){ await sb.auth.signOut(); return; }
+    if(r.data.session){ if(await checkStep2()) return; go(); } });
 })();
 </script>
 
