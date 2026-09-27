@@ -1993,6 +1993,7 @@ function bindLoginEvents(){
         }
         const again = (DB.users||[]).find(x=>String(x.username||'').toLowerCase()===u.toLowerCase() && x.password===p);
         if(again){
+          if(again.totpEnabled){ pendingTotpUser = again; pendingTotpUser.__pw = p; render(); return; }
           authenticated = true; currentUser = again;
           currentCustomerSession = null; currentWorkerSession = null;
           go('#/'); render(); return;

@@ -256,7 +256,15 @@ async function imageProxy(request, env, ctx, url) {
   const res = await fetch(target, { cf: { cacheEverything: true, cacheTtl: 604800 } });
   if (!res.ok) return new Response('not found', { status: 404 });
 
+  // صور نقطية فقط (وPDF) — لا SVG ولا HTML من نطاق الموقع، حتى لا يُنفَّذ سكربت مرفوع باسم صورة
+  const ctype = (res.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+  const OK_TYPES = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif', 'image/avif', 'image/x-icon', 'image/vnd.microsoft.icon', 'application/pdf'];
+  if (!OK_TYPES.includes(ctype)) return new Response('unsupported file type', { status: 415 });
+
   const out = new Response(res.body, res);
+  out.headers.set('Content-Type', ctype);
+  out.headers.set('X-Content-Type-Options', 'nosniff');
+  if (ctype !== 'application/pdf') out.headers.set('Content-Security-Policy', "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; sandbox");
   out.headers.set('Cache-Control', 'public, max-age=604800, immutable');  // أسبوع
   out.headers.set('X-LibanApps-Cache', 'MISS');
   out.headers.delete('set-cookie');
@@ -1751,6 +1759,8 @@ async function importImage(request, env) {
   const byExt = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif', avif: 'image/avif', svg: 'image/svg+xml' };
   if (!ct.startsWith('image/')) ct = byExt[(extFromUrl || '').toLowerCase()] || '';
   if (!ct.startsWith('image/')) return json(415, { error: 'الرابط ليس صورة', reason: 'not_image' });
+  // SVG قد يحتوي سكربتات — نقبل الصور النقطية فقط
+  if (!['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/avif'].includes(ct)) return json(415, { error: 'نوع الصورة غير مدعوم (المسموح: JPG وPNG وWebP وGIF وAVIF)', reason: 'not_image' });
   const buf = await r.arrayBuffer();
   if (buf.byteLength > 8 * 1024 * 1024) return json(413, { error: 'الصورة أكبر من 8MB', reason: 'too_large' });
   if (buf.byteLength < 200) return json(415, { error: 'ملف فارغ', reason: 'empty' });

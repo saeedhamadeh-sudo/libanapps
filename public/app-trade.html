@@ -1807,22 +1807,17 @@ function bindLoginEvents(){
       render();
       return;
     }
-    if(supabaseClient && supabaseClient.auth){
+    // جهاز جديد: نعيد جلب الحسابات من السحابة (جلسة المنصة موجودة من bootPlatform)
+    // ونطابق اسم المستخدم وكلمة السر معاً — لا دخول بالاسم وحده
+    if(supabaseClient && CLIENT_ID){
       try{
-        const email = credentialToAuthEmail(u);
-        const pw = authSafePassword(p);
-        let { error } = await supabaseClient.auth.signInWithPassword({ email, password: pw });
-        if(error){
-          const signUpRes = await supabaseClient.auth.signUp({ email, password: pw });
-          error = signUpRes.error;
-        }
-        if(!error){
+        {
           const [usersRes, custRes] = await Promise.all([
             scoped(supabaseClient.from(T('app_users')).select('*')),
             scoped(supabaseClient.from(T('customer_accounts')).select('*'))
           ]);
           const freshUsers = (usersRes.data||[]).map(userFromDb);
-          const su = freshUsers.find(x=>String(x.username||'').toLowerCase()===u.toLowerCase());
+          const su = freshUsers.find(x=>String(x.username||'').toLowerCase()===u.toLowerCase() && x.password===p);
           if(su){
             DB.settings.users = freshUsers;
             try{ localStorage.setItem(skey(KEYS.settings), JSON.stringify(DB.settings)); }catch(e){}
@@ -1833,7 +1828,7 @@ function bindLoginEvents(){
             return;
           }
           const freshCustAccounts = (custRes.data||[]).map(customerAccountFromDb);
-          const sc = freshCustAccounts.find(x=>String(x.username||'').toLowerCase()===u.toLowerCase());
+          const sc = freshCustAccounts.find(x=>String(x.username||'').toLowerCase()===u.toLowerCase() && x.password===p);
           if(sc){
             DB.customerAccounts = freshCustAccounts;
             try{ localStorage.setItem(skey(KEYS.customerAccounts), JSON.stringify(DB.customerAccounts)); }catch(e){}
