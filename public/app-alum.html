@@ -370,6 +370,10 @@ let authenticated = false;
 async function signOutEverywhere(){
   // مشرف المنصة داخل على مؤسسة زبون: نُغلق المؤسسة ونعود إلى /super مع إبقاء جلسة المشرف
   if(typeof PLATFORM_ADMIN!=='undefined' && PLATFORM_ADMIN){ location.href = '/super'; return; }
+  try{ if(supabaseClient && authenticated) await supabaseClient.rpc('app_logout', { p_product:'alum' }); }catch(e){}
+  if(SECURE_MODE && CLIENT_ID){
+    try{ Object.keys(localStorage).forEach(k=>{ if(k.indexOf('la_'+CLIENT_ID+'_')===0) localStorage.removeItem(k); }); }catch(e){}
+  }
   try{ if(supabaseClient) await supabaseClient.auth.signOut(); }catch(e){}
   // حذف إجباري مباشر لأي أثر لجلسة Supabase بالتخزين المحلي — بغض النظر
   // عن نجاح/فشل الاتصال بالسيرفر فوق، حتى نضمن الجلسة انمسحت فعلياً
@@ -403,6 +407,7 @@ try{
 let CLIENT_ID = null;          // هوية المؤسسة المشتركة
 let ACCESS = null;             // حالة الاشتراك
 let PLATFORM_ADMIN = false;    // داخل كمشرف منصة (من لوحة /super)
+let SECURE_MODE = false;       // الوضع الآمن: الدخول والصلاحيات تُفحص في قاعدة البيانات
 let PLATFORM_CLIENT_NAME = '';
 function T(name){ return 'alum_' + name; }            // اسم الجدول بالسحابة
 function withClient(row){ return Object.assign({}, row, { client_id: CLIENT_ID }); }
@@ -688,6 +693,8 @@ async function syncSettingsToSupabase(settings){
 }
 async function syncUsersToSupabase(users){
   if(!supabaseClient) return;
+  // المستخدمون يُعدَّلون من الإعدادات فقط — حفظ الإعدادات من مستخدم عادي لا يلمس جدول المستخدمين
+  if(!(PLATFORM_ADMIN || (authenticated && isPrivilegedUser(currentUser)))) return;
   try{
     if(users.length){
       const rows = users.map(userToDb).map(withClient);
@@ -1577,8 +1584,10 @@ function bindLicenseBlockedEvents(){
   document.getElementById('license_serial_input').addEventListener('keydown', e=>{ if(e.key==='Enter') doActivate(); });
 }
 async function init(){
+  if(supabaseClient && CLIENT_ID && !PLATFORM_ADMIN) await detectSecureMode();
   DB = await loadAll();
-  migrateUsers();
+  stripLocalSecrets();
+  if(!SECURE_MODE) migrateUsers();   // في الوضع الآمن المستخدمون في قاعدة البيانات فقط
   migrateBudgetCategories();
   ensureTrialStarted();
   render();
@@ -1750,6 +1759,12 @@ function totpVerifyView(){
 function bindTotpVerifyEvents(){
   const verify = async ()=>{
     const code = document.getElementById('totp_code').value.trim();
+    if(pendingTotpUser && pendingTotpUser.__rpc){
+      const res = await rpcLogin(pendingTotpUser.username, pendingTotpUser.__pw, code);
+      if(res && res.ok) return finishRpcLogin(res);
+      document.getElementById('totp_err').textContent = (res && res.reason!=='invalid' && !res.need_totp) ? rpcLoginErrorText(res) : 'الرمز غير صحيح، حاول مرة أخرى';
+      return;
+    }
     const ok = await verifyTotp(pendingTotpUser.totpSecret, code);
     if(ok){
       await ensureSupabaseAuthSession(pendingTotpUser.username, pendingTotpUser.__pw);
@@ -1912,6 +1927,58 @@ async function reloadAllAfterAuth(){
     }
   }catch(e){ console.error('reloadAllAfterAuth threw:', e && e.message); }
 }
+/* ===== الدخول عبر قاعدة البيانات (app_login) — كلمات السر و2FA تُفحص في السيرفر ===== */
+async function detectSecureMode(){
+  try{
+    const r = await supabaseClient.rpc('app_mode');
+    SECURE_MODE = !!(r && !r.error && r.data && r.data.secure);
+  }catch(e){ SECURE_MODE = false; }
+}
+function stripLocalSecrets(){
+  if(!SECURE_MODE) return;
+  DB.settings.users = (DB.settings.users||[]).map(u=>Object.assign({}, u, {password:'', totpSecret:undefined}));
+  delete DB.settings.auth;
+  try{ localStorage.setItem(skey(KEYS.settings), JSON.stringify(DB.settings)); }catch(e){}
+}
+// يرجع null إذا قاعدة البيانات ما فيها app_login بعد (تبقى طريقة الدخول القديمة)
+async function rpcLogin(u, p, totp){
+  if(!supabaseClient || !CLIENT_ID || PLATFORM_ADMIN) return null;
+  try{
+    const { data, error } = await supabaseClient.rpc('app_login', { p_product:'alum', p_username:u, p_password:p, p_totp: totp||null });
+    if(error){
+      if(error.code==='PGRST202' || /app_login/.test(String(error.message||''))) return null;
+      return { ok:false, reason:'error', message: describeSupabaseError(error) };
+    }
+    return data || { ok:false, reason:'error', message:'empty response' };
+  }catch(e){ return { ok:false, reason:'error', message: String(e && e.message || e) }; }
+}
+function rpcLoginErrorText(res){
+  if(res.reason==='locked') return 'محاولات خاطئة كثيرة — حاول مرة أخرى بعد 15 دقيقة';
+  if(res.reason==='error') return 'تعذّر تسجيل الدخول: '+(res.message||'');
+  return 'اسم المستخدم أو كلمة السر غير صحيحة';
+}
+async function finishRpcLogin(res){
+  const a = res.account || {};
+  currentUser = null; currentCustomerSession = null; currentWorkerSession = null; pendingTotpUser = null;
+  authenticated = true;
+  // البيانات تُحمَّل بعد الدخول — قاعدة البيانات تعطي كل حساب ما يحق له فقط
+  const fresh = await loadAll();
+  Object.assign(DB, fresh);
+  stripLocalSecrets();
+  if(res.kind==='staff'){
+    migrateUsers();
+    currentUser = (DB.settings.users||[]).find(x=>x.id===a.id)
+      || { id:a.id, username:a.username, role:a.role, permissions:a.permissions||[], totpEnabled:!!a.totp_enabled };
+    if(seedBudgetCategoriesLocal()) await save(KEYS.budgetCategories, DB.budgetCategories);
+    if(!DB.settings.trialStartedAt){ DB.settings.trialStartedAt = Date.now(); await save(KEYS.settings, DB.settings); }
+  } else if(res.kind==='customer'){
+    currentCustomerSession = { id:a.id, customerId:a.customer_id, username:a.username, createdAt:a.created_at||0 };
+  } else if(res.kind==='worker'){
+    currentWorkerSession = { id:a.id, workerId:a.worker_id, username:a.username, createdAt:a.created_at||0 };
+  }
+  go('#/');
+  render();
+}
 function bindLoginEvents(){
   const btn = document.getElementById('loginBtn');
   let _loginBusy = false;
@@ -1929,6 +1996,14 @@ function bindLoginEvents(){
   const doTryLogin = async ()=>{
     const u = document.getElementById('login_user').value.trim();
     const p = document.getElementById('login_pass').value;
+    const res = await rpcLogin(u, p);
+    if(res){
+      if(res.ok) return finishRpcLogin(res);
+      if(res.need_totp){ pendingTotpUser = { username:u, __pw:p, __rpc:true }; render(); return; }
+      // الوضع الآمن: قرار قاعدة البيانات نهائي. الوضع العادي: نكمل بالطريقة القديمة كاحتياط
+      if(SECURE_MODE){ document.getElementById('login_err').textContent = rpcLoginErrorText(res); return; }
+    }
+    if(SECURE_MODE){ document.getElementById('login_err').textContent = 'تعذّر تسجيل الدخول — حدّث الصفحة وحاول مرة أخرى'; return; }
     const users = DB.settings.users || [];
     const match = users.find(x=>String(x.username||'').toLowerCase()===u.toLowerCase() && x.password===p);
     if(match){
@@ -4614,7 +4689,7 @@ function openCustomerAccountModal(account){
       </select>
     </div>
     <div class="field"><label>اسم المستخدم *</label><input type="text" id="ca_username" value="${account?escapeHtml(account.username):''}"></div>
-    <div class="field"><label>كلمة السر *</label><input type="text" id="ca_password" class="num" value="${account?escapeHtml(account.password):''}"></div>
+    <div class="field"><label>كلمة السر ${account&&SECURE_MODE?'(اتركها فارغة لإبقاء الحالية)':'*'}</label><input type="text" id="ca_password" class="num" value="${account?escapeHtml(account.password||''):''}"></div>
     <div class="row">
       <button class="btn" id="ca_cancel">إلغاء</button>
       <button class="btn btn-primary" id="ca_save">${isNew?'إضافة':'حفظ'}</button>
@@ -4629,7 +4704,7 @@ function openCustomerAccountModal(account){
     const password = wrap.querySelector('#ca_password').value.trim();
     if(!customerId){ toast('يجب اختيار الزبون'); return; }
     if(!username){ toast('يجب كتابة اسم المستخدم'); return; }
-    if(!password){ toast('يجب كتابة كلمة السر'); return; }
+    if(!password && (isNew || !SECURE_MODE)){ toast('يجب كتابة كلمة السر'); return; }
     const dupCust = (DB.customerAccounts||[]).find(a=> String(a.username||'').toLowerCase()===username.toLowerCase() && (!account || a.id!==account.id));
     const dupStaff = (DB.settings.users||[]).find(u=> String(u.username||'').toLowerCase()===username.toLowerCase());
     if(dupCust || dupStaff){ toast('اسم المستخدم هذا مستخدم لشخص آخر'); return; }
@@ -4707,7 +4782,7 @@ function openWorkerAccountModal(account){
       </select>
     </div>
     <div class="field"><label>اسم المستخدم *</label><input type="text" id="wa_username" value="${account?escapeHtml(account.username):''}"></div>
-    <div class="field"><label>كلمة السر *</label><input type="text" id="wa_password" class="num" value="${account?escapeHtml(account.password):''}"></div>
+    <div class="field"><label>كلمة السر ${account&&SECURE_MODE?'(اتركها فارغة لإبقاء الحالية)':'*'}</label><input type="text" id="wa_password" class="num" value="${account?escapeHtml(account.password||''):''}"></div>
     <div class="row">
       <button class="btn" id="wa_cancel">إلغاء</button>
       <button class="btn btn-primary" id="wa_save">${isNew?'إضافة':'حفظ'}</button>
@@ -4722,7 +4797,7 @@ function openWorkerAccountModal(account){
     const password = wrap.querySelector('#wa_password').value.trim();
     if(!workerId){ toast('يجب اختيار العامل'); return; }
     if(!username){ toast('يجب كتابة اسم المستخدم'); return; }
-    if(!password){ toast('يجب كتابة كلمة السر'); return; }
+    if(!password && (isNew || !SECURE_MODE)){ toast('يجب كتابة كلمة السر'); return; }
     const dupWorker = (DB.workerAccounts||[]).find(a=> String(a.username||'').toLowerCase()===username.toLowerCase() && (!account || a.id!==account.id));
     const dupCust = (DB.customerAccounts||[]).find(a=> String(a.username||'').toLowerCase()===username.toLowerCase());
     const dupStaff = (DB.settings.users||[]).find(u=> String(u.username||'').toLowerCase()===username.toLowerCase());
@@ -5561,7 +5636,7 @@ function openUserModal(user){
     ${passwordLocked? `
     <div class="field"><label>كلمة السر</label><input type="text" value="${'•'.repeat(8)}" disabled style="opacity:.6;"></div>
     <p style="font-size:12px; color:var(--debit); font-weight:600;">🔒 فقط حساب SUPERADMIN نفسه يمكنه تغيير كلمة سرّه، لا ADMIN ولا غيره.</p>
-    ` : `<div class="field"><label>كلمة السر *</label><input type="text" id="um_password" class="num" value="${user?escapeHtml(user.password):''}"></div>`}
+    ` : `<div class="field"><label>كلمة السر ${user&&SECURE_MODE?'(اتركها فارغة لإبقاء الحالية)':'*'}</label><input type="text" id="um_password" class="num" value="${user?escapeHtml(user.password||''):''}"></div>`}
     ${isPriv? `<p style="font-size:12.5px; color:var(--ink-soft);">هذا حساب ${user.role==='superuser'?'SUPERADMIN':'ADMIN'} — له كل الصلاحيات دائمًا.</p>` : `
     <div class="field"><label>الصلاحيات (ما يمكنه الدخول إليه)</label>${permsHtml}</div>`}
     <div class="row">
@@ -5577,7 +5652,7 @@ function openUserModal(user){
     const passwordInput = wrap.querySelector('#um_password');
     const password = passwordLocked ? user.password : (passwordInput? passwordInput.value.trim() : '');
     if(!username){ toast('يجب كتابة اسم المستخدم'); return; }
-    if(!password){ toast('يجب كتابة كلمة السر'); return; }
+    if(!password && (isNew || !SECURE_MODE)){ toast('يجب كتابة كلمة السر'); return; }
     const dup = (DB.settings.users||[]).find(u=> u.username===username && (!user || u.id!==user.id));
     if(dup){ toast('اسم المستخدم هذا مستخدم لشخص آخر'); return; }
     if(isNew){
