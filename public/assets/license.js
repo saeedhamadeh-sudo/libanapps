@@ -95,7 +95,7 @@
       var k = document.getElementById('lk').value.trim().toUpperCase();
       var m = document.getElementById('lm');
       if (!k) { m.textContent = 'أدخل المفتاح'; return; }
-      m.style.color = '#6B7280'; m.textContent = 'عم نتحقق…';
+      m.style.color = '#6B7280'; m.textContent = 'جارٍ التحقق…';
       try {
         var r = await verify(k, product);
         if (r.ok) {
@@ -108,7 +108,7 @@
         }
       } catch (e) {
         m.style.color = '#DC2626';
-        m.textContent = 'ما في اتصال بالإنترنت';
+        m.textContent = 'لا يوجد اتصال بالإنترنت';
       }
     };
     document.getElementById('lk').onkeydown = function (e) {
@@ -162,7 +162,7 @@
         if (typeof opts.onValid === 'function') opts.onValid(c.data);
         banner(Math.ceil((new Date(c.data.expires_at) - new Date()) / 86400000));
       } else {
-        screen('<h2>ما في اتصال</h2><p style="color:#6B7280;font-size:14px">' +
+        screen('<h2>لا يوجد اتصال</h2><p style="color:#6B7280;font-size:14px">' +
                'البرنامج بحاجة لاتصال بالإنترنت للتحقق من الاشتراك.</p>' +
                '<button onclick="location.reload()" style="margin-top:10px;padding:10px 20px;' +
                'border:0;border-radius:10px;background:#111827;color:#fff;cursor:pointer">إعادة المحاولة</button>');

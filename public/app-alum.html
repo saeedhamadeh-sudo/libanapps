@@ -337,7 +337,7 @@ async function loadCustomers(){
       try{ localStorage.setItem(skey(KEYS.customers), JSON.stringify(remote)); }catch(e){}
       return remote;
     }
-    toast('ما قدرنا نوصل لقاعدة البيانات السحابية — عم نستخدم آخر نسخة محفوظة عالجهاز');
+    toast('تعذّر الوصول إلى قاعدة البيانات السحابية — يتم استخدام آخر نسخة محفوظة على الجهاز');
   }
   return safeGet(KEYS.customers, []);
 }
@@ -467,8 +467,8 @@ async function saveCustomerRemote(customer){
   if(supabaseClient){
     const ok = await supabaseUpsertCustomer(customer);
     if(!ok){
-      toast('تم الحفظ محليًا بس صار خطأ بالمزامنة مع السحابة');
-      setTimeout(()=>{ if(lastSupabaseError) alert('تفاصيل خطأ المزامنة (خذ لقطة شاشة وابعتها):\n\n'+lastSupabaseError); }, 400);
+      toast('تم الحفظ محليًا لكن حدث خطأ في المزامنة مع السحابة');
+      setTimeout(()=>{ if(lastSupabaseError) alert('تفاصيل خطأ المزامنة (التقط لقطة شاشة وأرسلها):\n\n'+lastSupabaseError); }, 400);
     }
     return ok;
   }
@@ -478,7 +478,7 @@ async function deleteCustomerRemote(id){
   try{ localStorage.setItem(skey(KEYS.customers), JSON.stringify(DB.customers)); }catch(e){}
   if(supabaseClient){
     const ok = await supabaseDeleteCustomer(id);
-    if(!ok) toast('تم الحذف محليًا بس صار خطأ بالمزامنة مع السحابة');
+    if(!ok) toast('تم الحذف محليًا لكن حدث خطأ في المزامنة مع السحابة');
     return ok;
   }
   return true;
@@ -674,14 +674,14 @@ async function syncSettingsToSupabase(settings){
     if(error){
       lastSupabaseError = describeSupabaseError(error);
       console.error('app_settings upsert error:', lastSupabaseError);
-      toast('تم الحفظ محليًا بس صار خطأ بمزامنة الإعدادات مع السحابة');
-      setTimeout(()=>{ if(lastSupabaseError) alert('تفاصيل خطأ مزامنة الإعدادات (خذ لقطة شاشة وابعتها):\n\n'+lastSupabaseError); }, 400);
+      toast('تم الحفظ محليًا لكن حدث خطأ في مزامنة الإعدادات مع السحابة');
+      setTimeout(()=>{ if(lastSupabaseError) alert('تفاصيل خطأ مزامنة الإعدادات (التقط لقطة شاشة وأرسلها):\n\n'+lastSupabaseError); }, 400);
     }
   }catch(e){
     lastSupabaseError = 'threw: '+(e && e.message);
     console.error('app_settings sync threw:', e && e.message);
-    toast('تم الحفظ محليًا بس صار خطأ بمزامنة الإعدادات مع السحابة');
-    setTimeout(()=>{ if(lastSupabaseError) alert('تفاصيل خطأ مزامنة الإعدادات (خذ لقطة شاشة وابعتها):\n\n'+lastSupabaseError); }, 400);
+    toast('تم الحفظ محليًا لكن حدث خطأ في مزامنة الإعدادات مع السحابة');
+    setTimeout(()=>{ if(lastSupabaseError) alert('تفاصيل خطأ مزامنة الإعدادات (التقط لقطة شاشة وأرسلها):\n\n'+lastSupabaseError); }, 400);
   }
 }
 async function syncUsersToSupabase(users){
@@ -693,8 +693,8 @@ async function syncUsersToSupabase(users){
       if(error){
         lastSupabaseError = describeSupabaseError(error);
         console.error('app_users upsert error:', lastSupabaseError);
-        toast('تم الحفظ محليًا بس صار خطأ بمزامنة المستخدمين مع السحابة');
-        setTimeout(()=>{ if(lastSupabaseError) alert('تفاصيل خطأ مزامنة المستخدمين (خذ لقطة شاشة وابعتها):\n\n'+lastSupabaseError); }, 400);
+        toast('تم الحفظ محليًا لكن حدث خطأ في مزامنة المستخدمين مع السحابة');
+        setTimeout(()=>{ if(lastSupabaseError) alert('تفاصيل خطأ مزامنة المستخدمين (التقط لقطة شاشة وأرسلها):\n\n'+lastSupabaseError); }, 400);
         return;
       }
     }
@@ -715,8 +715,8 @@ async function syncUsersToSupabase(users){
   }catch(e){
     lastSupabaseError = 'threw: '+(e && e.message);
     console.error('app_users sync threw:', e && e.message);
-    toast('تم الحفظ محليًا بس صار خطأ بمزامنة المستخدمين مع السحابة');
-    setTimeout(()=>{ if(lastSupabaseError) alert('تفاصيل خطأ مزامنة المستخدمين (خذ لقطة شاشة وابعتها):\n\n'+lastSupabaseError); }, 400);
+    toast('تم الحفظ محليًا لكن حدث خطأ في مزامنة المستخدمين مع السحابة');
+    setTimeout(()=>{ if(lastSupabaseError) alert('تفاصيل خطأ مزامنة المستخدمين (التقط لقطة شاشة وأرسلها):\n\n'+lastSupabaseError); }, 400);
   }
 }
 async function loadSettings(defaults){
@@ -766,8 +766,8 @@ async function syncArrayToSupabase(localKey, arr){
       if(error){
         lastSupabaseError = describeSupabaseError(error);
         console.error(cfg.table+' upsert error:', lastSupabaseError);
-        toast('تم الحفظ محليًا بس صار خطأ بمزامنة '+cfg.label+' مع السحابة');
-        setTimeout(()=>{ if(lastSupabaseError) alert('تفاصيل خطأ مزامنة '+cfg.label+' (خذ لقطة شاشة وابعتها):\n\n'+lastSupabaseError); }, 400);
+        toast('تم الحفظ محليًا لكن حدث خطأ في المزامنة '+cfg.label+' مع السحابة');
+        setTimeout(()=>{ if(lastSupabaseError) alert('تفاصيل خطأ مزامنة '+cfg.label+' (التقط لقطة شاشة وأرسلها):\n\n'+lastSupabaseError); }, 400);
         return;
       }
     }
@@ -781,8 +781,8 @@ async function syncArrayToSupabase(localKey, arr){
   }catch(e){
     lastSupabaseError = 'threw: '+(e && e.message);
     console.error(cfg.table+' sync threw:', e && e.message);
-    toast('تم الحفظ محليًا بس صار خطأ بمزامنة '+cfg.label+' مع السحابة');
-    setTimeout(()=>{ if(lastSupabaseError) alert('تفاصيل خطأ مزامنة '+cfg.label+' (خذ لقطة شاشة وابعتها):\n\n'+lastSupabaseError); }, 400);
+    toast('تم الحفظ محليًا لكن حدث خطأ في المزامنة '+cfg.label+' مع السحابة');
+    setTimeout(()=>{ if(lastSupabaseError) alert('تفاصيل خطأ مزامنة '+cfg.label+' (التقط لقطة شاشة وأرسلها):\n\n'+lastSupabaseError); }, 400);
   }
 }
 async function loadSyncedArray(localKey, fallback){
@@ -801,7 +801,7 @@ async function loadSyncedArray(localKey, fallback){
       lastSupabaseError = 'threw: '+(e && e.message);
       console.error(cfg.table+' list threw:', e && e.message);
     }
-    toast('ما قدرنا نوصل لقاعدة بيانات '+cfg.label+' — عم نستخدم آخر نسخة محفوظة عالجهاز');
+    toast('تعذّر الوصول إلى قاعدة بيانات '+cfg.label+' — نستخدم آخر نسخة محفوظة على الجهاز');
   }
   return safeGet(localKey, fallback);
 }
@@ -928,7 +928,7 @@ function downloadBackupFile(){
 async function handleBackupImportFile(inputEl){
   const file = inputEl.files[0];
   if(!file) return;
-  if(!confirm('استيراد النسخة الاحتياطية رح يستبدل كل بيانات مؤسستك بالكامل (الزبائن، الفواتير، الإيصالات...) — محلياً وبالسحابة.\n\nملاحظة: اسم شركتك، شعارها، رقم هاتفها، وحسابات الدخول المحلية ما رح يتغيّروا — بيضلّوا متل ما هنّي حالياً.\n\nمتأكد؟')) { inputEl.value=''; return; }
+  if(!confirm('استيراد النسخة الاحتياطية سيستبدل جميع بيانات مؤسستك بالكامل (الزبائن، الفواتير، الإيصالات...) — محلياً وفي السحابة.\n\nملاحظة: اسم شركتك وشعارها ورقم هاتفها وحسابات الدخول المحلية لن تتغيّر — ستبقى كما هي حالياً.\n\nهل أنت متأكد؟')) { inputEl.value=''; return; }
   try{
     const text = await file.text();
     const data = JSON.parse(text);
@@ -968,12 +968,12 @@ async function handleBackupImportFile(inputEl){
     if(supabaseClient && DB.customers.length){
       const rows = DB.customers.map(customerToDb);
       const { error } = await supabaseClient.from(T('customers')).upsert(rows.map(withClient));
-      if(error) toast('استُرجعت النسخة محليًا بس صار خطأ بمزامنة الزبائن للسحابة');
+      if(error) toast('استُرجعت النسخة محليًا لكن حدث خطأ في مزامنة الزبائن مع السحابة');
     }
     toast('تم استرجاع النسخة الاحتياطية بنجاح');
     go('#/');
   }catch(e){
-    toast('صار خطأ: الملف مش نسخة احتياطية صالحة');
+    toast('حدث خطأ: الملف ليس نسخة احتياطية صالحة');
   }
   inputEl.value='';
 }
@@ -1549,7 +1549,7 @@ function licenseBlockedView(){
     <div class="login-card">
       <h2 style="justify-content:center; text-align:center;"><span class="dot"></span> انتهت فترة التجربة</h2>
       <p style="font-size:13.5px; color:var(--ink-soft); text-align:center; line-height:1.7; margin-bottom:14px;">
-        انتهت فترة التجربة المجانية (${TRIAL_DAYS} أيام). لتفعيل البرنامج لمدة سنة كاملة، تواصل مع المزوّد واحصل على رقم تفعيل، وحطو تحت:
+        انتهت فترة التجربة المجانية (${TRIAL_DAYS} أيام). لتفعيل البرنامج لمدة سنة كاملة، تواصل مع المزوّد واحصل على رقم تفعيل، ثم أدخله أدناه:
       </p>
       <div class="field"><label>رقم التفعيل</label><input type="text" id="license_serial_input" placeholder="HMDH1...." style="direction:ltr; text-align:left;"></div>
       <div id="license_err" style="color:var(--debit); font-size:12.5px; min-height:16px; margin-bottom:6px;"></div>
@@ -1563,12 +1563,12 @@ function bindLicenseBlockedEvents(){
   const doActivate = async ()=>{
     const serial = document.getElementById('license_serial_input').value.trim();
     const errEl = document.getElementById('license_err');
-    if(!serial){ errEl.textContent = 'لازم تكتب رقم التفعيل'; return; }
+    if(!serial){ errEl.textContent = 'يجب إدخال رقم التفعيل'; return; }
     errEl.textContent = '';
     const res = await activateLicenseSerial(serial);
     if(res.ok){ render(); }
     else{
-      errEl.textContent = res.reason==='expired' ? 'رقم التفعيل هاد منتهي الصلاحية' : (res.reason==='invalid' ? 'رقم التفعيل غلط' : 'صار خطأ بالتفعيل، جرب كمان');
+      errEl.textContent = res.reason==='expired' ? 'رقم التفعيل هذا منتهي الصلاحية' : (res.reason==='invalid' ? 'رقم التفعيل غير صحيح' : 'حدث خطأ أثناء التفعيل، حاول مرة أخرى');
     }
   };
   btn.addEventListener('click', doActivate);
@@ -1621,7 +1621,7 @@ function customerPortalHome(cust){
   </div>
   <div class="card">
     <h2><span class="dot"></span> كشف الحساب (فواتيري وإيصالاتي)</h2>
-    <div style="font-size:12px; color:var(--ink-soft); margin-bottom:10px;">اضغط على أي حركة تحتها لتشوفها أو تطبعها.</div>
+    <div style="font-size:12px; color:var(--ink-soft); margin-bottom:10px;">اضغط على أي حركة أدناه لعرضها أو طباعتها.</div>
     ${ledgerTable(ledger)}
   </div>
   ${appFooter()}`;
@@ -1630,7 +1630,7 @@ function renderCustomerPortal(){
   const parts = currentRoute();
   const cust = DB.customers.find(c=>c.id===currentCustomerSession.customerId);
   if(!cust){
-    root().innerHTML = `<div class="topbar"><div class="brand"><div class="name">حسابك</div></div><div class="topbar-actions"><button class="btn btn-ghost btn-sm" id="customerLogoutBtn">🔒 خروج</button></div></div>` + emptyState('صار خطأ بحسابك، تواصل مع الإدارة');
+    root().innerHTML = `<div class="topbar"><div class="brand"><div class="name">حسابك</div></div><div class="topbar-actions"><button class="btn btn-ghost btn-sm" id="customerLogoutBtn">🔒 خروج</button></div></div>` + emptyState('حدث خطأ في حسابك، تواصل مع الإدارة');
     const btn = document.getElementById('customerLogoutBtn');
     if(btn) btn.addEventListener('click', signOutEverywhere);
     return;
@@ -1640,10 +1640,10 @@ function renderCustomerPortal(){
     inner = customerPortalHome(cust);
   } else if(parts[0]==='invoice' && parts[1]){
     const inv = DB.invoices.find(i=>i.id===parts[1] && i.customerId===cust.id && !i.deleted);
-    inner = inv ? (crumbs([['كشف حسابي','#/'],['فاتورة #'+inv.number,null]]) + invoicePrintView(inv)) : emptyState('ما لقينا هيدي الفاتورة');
+    inner = inv ? (crumbs([['كشف حسابي','#/'],['فاتورة #'+inv.number,null]]) + invoicePrintView(inv)) : emptyState('لم يتم العثور على هذه الفاتورة');
   } else if(parts[0]==='receipt' && parts[1]){
     const rec = DB.receipts.find(r=>r.id===parts[1] && r.customerId===cust.id && !r.deleted);
-    inner = rec ? (crumbs([['كشف حسابي','#/'],['إيصال #'+rec.number,null]]) + receiptPrintView(rec)) : emptyState('ما لقينا هيدا الإيصال');
+    inner = rec ? (crumbs([['كشف حسابي','#/'],['إيصال #'+rec.number,null]]) + receiptPrintView(rec)) : emptyState('لم يتم العثور على هذا الإيصال');
   } else {
     inner = customerPortalHome(cust);
   }
@@ -1683,7 +1683,7 @@ function workerPortalHome(wk){
   </div>
   <div class="card">
     <h2><span class="dot"></span> كشف الحساب (يومياتي ودفعاتي)</h2>
-    <div style="font-size:12px; color:var(--ink-soft); margin-bottom:10px;">اضغط على أي حركة تحتها لتشوفها أو تطبعها.</div>
+    <div style="font-size:12px; color:var(--ink-soft); margin-bottom:10px;">اضغط على أي حركة أدناه لعرضها أو طباعتها.</div>
     ${ledgerTable(ledger)}
   </div>
   ${appFooter()}`;
@@ -1692,7 +1692,7 @@ function renderWorkerPortal(){
   const parts = currentRoute();
   const wk = DB.workers.find(w=>w.id===currentWorkerSession.workerId);
   if(!wk){
-    root().innerHTML = `<div class="topbar"><div class="brand"><div class="name">حسابك</div></div><div class="topbar-actions"><button class="btn btn-ghost btn-sm" id="workerLogoutBtn">🔒 خروج</button></div></div>` + emptyState('صار خطأ بحسابك، تواصل مع الإدارة');
+    root().innerHTML = `<div class="topbar"><div class="brand"><div class="name">حسابك</div></div><div class="topbar-actions"><button class="btn btn-ghost btn-sm" id="workerLogoutBtn">🔒 خروج</button></div></div>` + emptyState('حدث خطأ في حسابك، تواصل مع الإدارة');
     const btn = document.getElementById('workerLogoutBtn');
     if(btn) btn.addEventListener('click', signOutEverywhere);
     return;
@@ -1702,10 +1702,10 @@ function renderWorkerPortal(){
     inner = workerPortalHome(wk);
   } else if(parts[0]==='workentry' && parts[1]){
     const e = DB.workEntries.find(x=>x.id===parts[1] && x.workerId===wk.id && !x.deleted);
-    inner = e ? (crumbs([['كشف حسابي','#/'],['يومية #'+e.number,null]]) + workEntryPrintView(e)) : emptyState('ما لقينا هيدي اليومية');
+    inner = e ? (crumbs([['كشف حسابي','#/'],['يومية #'+e.number,null]]) + workEntryPrintView(e)) : emptyState('لم يتم العثور على هذه اليومية');
   } else if(parts[0]==='workerpay' && parts[1]){
     const p = DB.workerPayments.find(x=>x.id===parts[1] && x.workerId===wk.id && !x.deleted);
-    inner = p ? (crumbs([['كشف حسابي','#/'],['دفعة #'+p.number,null]]) + workerPaymentPrintView(p)) : emptyState('ما لقينا هيدي الدفعة');
+    inner = p ? (crumbs([['كشف حسابي','#/'],['دفعة #'+p.number,null]]) + workerPaymentPrintView(p)) : emptyState('لم يتم العثور على هذه الدفعة');
   } else {
     inner = workerPortalHome(wk);
   }
@@ -1736,8 +1736,8 @@ function totpVerifyView(){
   <div style="min-height:70vh; display:flex; flex-direction:column; align-items:center; justify-content:center;">
     <div class="card" style="max-width:340px; width:100%;">
       <h2 style="justify-content:center; text-align:center;"><span class="dot"></span> رمز التحقق (2FA)</h2>
-      <p style="font-size:13px; color:var(--ink-soft); text-align:center; margin-bottom:14px;">افتح Google Authenticator واكتب الكود يلي طالع لحساب <b>${escapeHtml(pendingTotpUser.username)}</b></p>
-      <div class="field"><label>الكود المكوّن من 6 أرقام</label><input type="text" id="totp_code" inputmode="numeric" maxlength="6" autocomplete="one-time-code"></div>
+      <p style="font-size:13px; color:var(--ink-soft); text-align:center; margin-bottom:14px;">افتح Google Authenticator وأدخل الرمز الظاهر لحساب <b>${escapeHtml(pendingTotpUser.username)}</b></p>
+      <div class="field"><label>الرمز المكوّن من 6 أرقام</label><input type="text" id="totp_code" inputmode="numeric" maxlength="6" autocomplete="one-time-code"></div>
       <div id="totp_err" style="color:var(--debit); font-size:12.5px; min-height:16px; margin-bottom:6px;"></div>
       <button class="btn btn-primary" id="totpVerifyBtn" style="width:100%; justify-content:center;">تأكيد</button>
       <button class="btn" id="totpBackBtn" style="width:100%; justify-content:center; margin-top:8px;">رجوع</button>
@@ -1761,7 +1761,7 @@ function bindTotpVerifyEvents(){
       go('#/');
       render();
     } else {
-      document.getElementById('totp_err').textContent = 'الكود غلط، جرب كمان';
+      document.getElementById('totp_err').textContent = 'الرمز غير صحيح، حاول مرة أخرى';
     }
   };
   document.getElementById('totpVerifyBtn').addEventListener('click', verify);
@@ -1843,7 +1843,7 @@ async function bootPlatform(){
         return ACCESS;
       }
     }
-    return { ok:false, reason:'error', message:'ما فيك تفتح مؤسسة هذا الزبون' };
+    return { ok:false, reason:'error', message:'لا يمكنك فتح مؤسسة هذا الزبون' };
   }
 
   const acc = await supabaseClient.rpc('app_access', { p_product: 'alum' });
@@ -1866,8 +1866,8 @@ function platformAdminBar(){
   bar.style.cssText = 'position:fixed;inset-inline:0;top:0;z-index:99999;padding:7px 12px;'+
     'text-align:center;font-family:system-ui;font-size:13px;font-weight:700;'+
     'color:#fff;background:#E08A2B';
-  bar.innerHTML = 'أنت داخل كمشرف المنصة — مؤسسة: ' + (PLATFORM_CLIENT_NAME||'—') +
-    ' &nbsp;<a href="/super" style="color:#fff;text-decoration:underline">رجوع للوحتك</a>';
+  bar.innerHTML = 'أنت مسجّل الدخول بصفة مشرف المنصة — مؤسسة: ' + (PLATFORM_CLIENT_NAME||'—') +
+    ' &nbsp;<a href="/super" style="color:#fff;text-decoration:underline">العودة إلى لوحتك</a>';
   document.body.appendChild(bar);
   document.body.style.paddingTop = '32px';
 }
@@ -1883,11 +1883,11 @@ function platformBlockScreen(a){
     </div>`;
   document.body.style.background = '#F4F8FB';
   if(a.reason === 'no_client')
-    document.body.innerHTML = box('أكمل بياناتك','بنحتاج اسمك ورقمك مرة وحدة قبل ما تستعمل البرنامج.','افتح صفحة حسابي','/account');
+    document.body.innerHTML = box('أكمل بياناتك','نحتاج إلى اسمك ورقمك مرة واحدة قبل استخدام البرنامج.','افتح صفحة حسابي','/account');
   else if(a.reason === 'no_subscription')
-    document.body.innerHTML = box('ما عندك اشتراك','اشترك ببرنامج محاسبة الصناعيين أو ابدأ تجربة مجانية.','شوف الباقات','/account');
+    document.body.innerHTML = box('ليس لديك اشتراك','اشترك في برنامج محاسبة الصناعيين أو ابدأ تجربة مجانية.','اعرض الباقات','/account');
   else if(a.reason === 'expired')
-    document.body.innerHTML = box('انتهى اشتراكك','جدّد الاشتراك لتكمّل شغلك — بياناتك محفوظة كما هي.','تجديد الاشتراك','/account?renew='+(a.subscription_id||''));
+    document.body.innerHTML = box('انتهى اشتراكك','جدّد الاشتراك لمتابعة عملك — بياناتك محفوظة كما هي.','تجديد الاشتراك','/account?renew='+(a.subscription_id||''));
   else if(a.reason === 'suspended')
     document.body.innerHTML = box('اشتراكك موقوف','تواصل معنا لتفعيله من جديد.','صفحة حسابي','/account');
   else
@@ -2004,7 +2004,7 @@ function bindLoginEvents(){
         }
       }catch(e){ console.error('users fetch failed', e && e.message); }
     }
-    document.getElementById('login_err').textContent = 'اسم المستخدم أو كلمة السر غلط';
+    document.getElementById('login_err').textContent = 'اسم المستخدم أو كلمة السر غير صحيحة';
   };
   btn.addEventListener('click', tryLogin);
   document.getElementById('login_pass').addEventListener('keydown', e=>{ if(e.key==='Enter') tryLogin(); });
@@ -2056,7 +2056,7 @@ function render(){
   if(reqPerm){
     const ok = reqPerm==='__admin__' ? isPrivilegedUser(currentUser) : hasPermission(reqPerm);
     if(!ok){
-      root().innerHTML = topbar() + crumbs([['الرئيسية','#/'],['ممنوع الدخول',null]]) + emptyState('ما عندك صلاحية توصل لهالصفحة — تواصل مع ADMIN أو SUPERADMIN');
+      root().innerHTML = topbar() + crumbs([['الرئيسية','#/'],['ممنوع الدخول',null]]) + emptyState('ليس لديك صلاحية للوصول إلى هذه الصفحة — تواصل مع ADMIN أو SUPERADMIN');
       bindEvents();
       return;
     }
@@ -2068,7 +2068,7 @@ function render(){
     html += crumbs([['الرئيسية','#/'],['الزبائن',null]]) + dashboardView();
   } else if(parts[0]==='customer' && parts[1]){
     const cust = DB.customers.find(c=>c.id===parts[1]);
-    if(!cust){ html += emptyState('ما لقينا هيدا الزبون'); }
+    if(!cust){ html += emptyState('لم يتم العثور على هذا الزبون'); }
     else{
       html += crumbs([['الرئيسية','#/'],['الزبائن','#/customers'],[cust.name,null]]) + customerView(cust);
     }
@@ -2082,7 +2082,7 @@ function render(){
     html += crumbs([['الرئيسية','#/'],['الزبائن','#/customers'],[cust?cust.name:'', cust?`#/customer/${cust.id}`:null],['تعديل فاتورة',null]]) + invoiceFormView(inv, inv&&inv.customerId);
   } else if(parts[0]==='invoice' && parts[1]){
     const inv = DB.invoices.find(i=>i.id===parts[1]);
-    if(!inv) html+= emptyState('ما لقينا هيدي الفاتورة');
+    if(!inv) html+= emptyState('لم يتم العثور على هذه الفاتورة');
     else{
       const cust = DB.customers.find(c=>c.id===inv.customerId);
       html += crumbs([['الرئيسية','#/'],['الزبائن','#/customers'],[cust?cust.name:'', cust?`#/customer/${cust.id}`:null],['فاتورة #'+inv.number,null]]) + invoicePrintView(inv);
@@ -2097,14 +2097,14 @@ function render(){
     html += crumbs([['الرئيسية','#/'],['الزبائن','#/customers'],[cust?cust.name:'', cust?`#/customer/${cust.id}`:null],['تعديل إيصال',null]]) + receiptFormView(rec, rec&&rec.customerId);
   } else if(parts[0]==='receipt' && parts[1]){
     const rec = DB.receipts.find(r=>r.id===parts[1]);
-    if(!rec) html += emptyState('ما لقينا هيدا الإيصال');
+    if(!rec) html += emptyState('لم يتم العثور على هذا الإيصال');
     else{
       const cust = DB.customers.find(c=>c.id===rec.customerId);
       html += crumbs([['الرئيسية','#/'],['الزبائن','#/customers'],[cust?cust.name:'', cust?`#/customer/${cust.id}`:null],['إيصال #'+rec.number,null]]) + receiptPrintView(rec);
     }
   } else if(parts[0]==='statement' && parts[1]){
     const cust = DB.customers.find(c=>c.id===parts[1]);
-    if(!cust) html += emptyState('ما لقينا هيدا الزبون');
+    if(!cust) html += emptyState('لم يتم العثور على هذا الزبون');
     else html += crumbs([['الرئيسية','#/'],['الزبائن','#/customers'],[cust.name,`#/customer/${cust.id}`],['كشف حساب',null]]) + statementPrintView(cust);
 
   /* ---------- Suppliers ---------- */
@@ -2112,7 +2112,7 @@ function render(){
     html += crumbs([['الرئيسية','#/'],['الموردون',null]]) + suppliersListView();
   } else if(parts[0]==='supplier' && parts[1]){
     const sup = DB.suppliers.find(s=>s.id===parts[1]);
-    if(!sup){ html += emptyState('ما لقينا هيدا المورد'); }
+    if(!sup){ html += emptyState('لم يتم العثور على هذا المورد'); }
     else html += crumbs([['الرئيسية','#/'],['الموردون','#/suppliers'],[sup.name,null]]) + supplierView(sup);
   } else if(parts[0]==='purchase' && parts[1]==='new'){
     const supId = new URLSearchParams(location.hash.split('?')[1]||'').get('supplier');
@@ -2124,7 +2124,7 @@ function render(){
     html += crumbs([['الرئيسية','#/'],['الموردون','#/suppliers'],[sup?sup.name:'', sup?`#/supplier/${sup.id}`:null],['تعديل فاتورة مشتريات',null]]) + purchaseFormView(p, p&&p.supplierId);
   } else if(parts[0]==='purchase' && parts[1]){
     const p = DB.purchaseInvoices.find(i=>i.id===parts[1]);
-    if(!p) html += emptyState('ما لقينا هيدي الفاتورة');
+    if(!p) html += emptyState('لم يتم العثور على هذه الفاتورة');
     else{
       const sup = DB.suppliers.find(s=>s.id===p.supplierId);
       html += crumbs([['الرئيسية','#/'],['الموردون','#/suppliers'],[sup?sup.name:'', sup?`#/supplier/${sup.id}`:null],['فاتورة مشتريات #'+p.number,null]]) + purchasePrintView(p);
@@ -2139,14 +2139,14 @@ function render(){
     html += crumbs([['الرئيسية','#/'],['الموردون','#/suppliers'],[sup?sup.name:'', sup?`#/supplier/${sup.id}`:null],['تعديل سند صرف',null]]) + voucherFormView(v, v&&v.supplierId);
   } else if(parts[0]==='voucher' && parts[1]){
     const v = DB.paymentVouchers.find(x=>x.id===parts[1]);
-    if(!v) html += emptyState('ما لقينا هيدا السند');
+    if(!v) html += emptyState('لم يتم العثور على هذا السند');
     else{
       const sup = DB.suppliers.find(s=>s.id===v.supplierId);
       html += crumbs([['الرئيسية','#/'],['الموردون','#/suppliers'],[sup?sup.name:'', sup?`#/supplier/${sup.id}`:null],['سند صرف #'+v.number,null]]) + voucherPrintView(v);
     }
   } else if(parts[0]==='supplier-statement' && parts[1]){
     const sup = DB.suppliers.find(s=>s.id===parts[1]);
-    if(!sup) html += emptyState('ما لقينا هيدا المورد');
+    if(!sup) html += emptyState('لم يتم العثور على هذا المورد');
     else html += crumbs([['الرئيسية','#/'],['الموردون','#/suppliers'],[sup.name,`#/supplier/${sup.id}`],['كشف حساب',null]]) + supplierStatementPrintView(sup);
 
   /* ---------- Workers ---------- */
@@ -2154,7 +2154,7 @@ function render(){
     html += crumbs([['الرئيسية','#/'],['العمال',null]]) + workersListView();
   } else if(parts[0]==='worker' && parts[1]){
     const wk = DB.workers.find(w=>w.id===parts[1]);
-    if(!wk){ html += emptyState('ما لقينا هيدا العامل'); }
+    if(!wk){ html += emptyState('لم يتم العثور على هذا العامل'); }
     else html += crumbs([['الرئيسية','#/'],['العمال','#/workers'],[wk.name,null]]) + workerView(wk);
   } else if(parts[0]==='workentry' && parts[1]==='new'){
     const wkId = new URLSearchParams(location.hash.split('?')[1]||'').get('worker');
@@ -2166,7 +2166,7 @@ function render(){
     html += crumbs([['الرئيسية','#/'],['العمال','#/workers'],[wk?wk.name:'', wk?`#/worker/${wk.id}`:null],['تعديل يومية',null]]) + workEntryFormView(e, e&&e.workerId);
   } else if(parts[0]==='workentry' && parts[1]){
     const e = DB.workEntries.find(x=>x.id===parts[1]);
-    if(!e) html += emptyState('ما لقينا هيدي اليومية');
+    if(!e) html += emptyState('لم يتم العثور على هذه اليومية');
     else{
       const wk = DB.workers.find(w=>w.id===e.workerId);
       html += crumbs([['الرئيسية','#/'],['العمال','#/workers'],[wk?wk.name:'', wk?`#/worker/${wk.id}`:null],['يومية #'+e.number,null]]) + workEntryPrintView(e);
@@ -2181,14 +2181,14 @@ function render(){
     html += crumbs([['الرئيسية','#/'],['العمال','#/workers'],[wk?wk.name:'', wk?`#/worker/${wk.id}`:null],['تعديل دفعة',null]]) + workerPaymentFormView(p, p&&p.workerId);
   } else if(parts[0]==='workerpay' && parts[1]){
     const p = DB.workerPayments.find(x=>x.id===parts[1]);
-    if(!p) html += emptyState('ما لقينا هيدي الدفعة');
+    if(!p) html += emptyState('لم يتم العثور على هذه الدفعة');
     else{
       const wk = DB.workers.find(w=>w.id===p.workerId);
       html += crumbs([['الرئيسية','#/'],['العمال','#/workers'],[wk?wk.name:'', wk?`#/worker/${wk.id}`:null],['دفعة #'+p.number,null]]) + workerPaymentPrintView(p);
     }
   } else if(parts[0]==='worker-statement' && parts[1]){
     const wk = DB.workers.find(w=>w.id===parts[1]);
-    if(!wk) html += emptyState('ما لقينا هيدا العامل');
+    if(!wk) html += emptyState('لم يتم العثور على هذا العامل');
     else html += crumbs([['الرئيسية','#/'],['العمال','#/workers'],[wk.name,`#/worker/${wk.id}`],['كشف حساب',null]]) + workerStatementPrintView(wk);
 
   /* ---------- Deductions (خصميات الألمنيوم) ---------- */
@@ -2204,14 +2204,14 @@ function render(){
     html += crumbs([['الرئيسية','#/'],['خصميات الألمنيوم','#/deductions'],['تعديل ورقة',null]]) + deductionFormView(d, d&&d.type, d&&d.customerId);
   } else if(parts[0]==='deduction' && parts[1]){
     const d = DB.deductions.find(x=>x.id===parts[1]);
-    if(!d) html += emptyState('ما لقينا هيدي الورقة');
+    if(!d) html += emptyState('لم يتم العثور على هذه الورقة');
     else{
       const cust = DB.customers.find(c=>c.id===d.customerId);
       html += crumbs([['الرئيسية','#/'],['خصميات الألمنيوم','#/deductions'],['ورقة #'+d.number,null]]) + deductionPrintView(d);
     }
   } else if(parts[0]==='deduction-glass' && parts[1]){
     const d = DB.deductions.find(x=>x.id===parts[1]);
-    if(!d) html += emptyState('ما لقينا هيدي الورقة');
+    if(!d) html += emptyState('لم يتم العثور على هذه الورقة');
     else html += crumbs([['الرئيسية','#/'],['خصميات الألمنيوم','#/deductions'],['مقاسات زجاج #'+d.number,null]]) + deductionGlassPrintView(d);
   } else if(parts[0]==='deduction-profiles'){
     html += crumbs([['الرئيسية','#/'],['خصميات الألمنيوم','#/deductions'],['بروفيلات مخصصة',null]]) + deductionProfilesListView();
@@ -2222,7 +2222,7 @@ function render(){
     html += crumbs([['الرئيسية','#/'],['خصميات الألمنيوم','#/deductions'],['بروفيلات مخصصة','#/deduction-profiles'],['تعديل بروفيل',null]]) + deductionProfileFormView(p);
   } else if(parts[0]==='customer-deductions' && parts[1]){
     const cust = DB.customers.find(c=>c.id===parts[1]);
-    if(!cust) html += emptyState('ما لقينا هيدا الزبون');
+    if(!cust) html += emptyState('لم يتم العثور على هذا الزبون');
     else html += crumbs([['الرئيسية','#/'],['الزبائن','#/customers'],[cust.name,`#/customer/${cust.id}`],['خصميات الألمنيوم',null]]) + customerDeductionsListView(cust);
 
   /* ---------- Quotes (عروض أسعار) ---------- */
@@ -2237,7 +2237,7 @@ function render(){
     html += crumbs([['الرئيسية','#/'],['عروض أسعار','#/quotes'],['تعديل عرض سعر مخصص',null]]) + customQuoteFormView(cq);
   } else if(parts[0]==='custom-quote' && parts[1]){
     const cq = DB.quotes.find(x=>x.id===parts[1]);
-    if(!cq) html += emptyState('ما لقينا هيدا العرض');
+    if(!cq) html += emptyState('لم يتم العثور على هذا العرض');
     else html += crumbs([['الرئيسية','#/'],['عروض أسعار','#/quotes'],['عرض سعر #'+cq.number,null]]) + customQuotePrintView(cq);
   } else if(parts[0]==='quote' && parts[1]==='new'){
     const custId = new URLSearchParams(location.hash.split('?')[1]||'').get('customer');
@@ -2246,28 +2246,28 @@ function render(){
   } else if(parts[0]==='quote' && parts[1]==='edit' && parts[2]){
     const q = DB.quotes.find(x=>x.id===parts[2]);
     const cust = DB.customers.find(c=>c.id===(q&&q.customerId));
-    if(q && q.isPdf){ html += emptyState('عرض السعر هيدا ملف PDF مرفوع — ما فيه تعديل، احذفه وارفع ملف جديد إذا بدك تغيره'); }
+    if(q && q.isPdf){ html += emptyState('عرض السعر هذا ملف PDF مرفوع — لا يمكن تعديله، احذفه وارفع ملفًا جديدًا إذا أردت تغييره'); }
     else html += crumbs([['الرئيسية','#/'],['الزبائن','#/customers'],[cust?cust.name:'', cust?`#/customer/${cust.id}`:null],['تعديل عرض سعر',null]]) + quoteFormView(q, q&&q.customerId);
   } else if(parts[0]==='quote' && parts[1]){
     const q = DB.quotes.find(x=>x.id===parts[1]);
-    if(!q) html += emptyState('ما لقينا هيدا العرض');
+    if(!q) html += emptyState('لم يتم العثور على هذا العرض');
     else{
       const cust = DB.customers.find(c=>c.id===q.customerId);
       html += crumbs([['الرئيسية','#/'],['الزبائن','#/customers'],[cust?cust.name:'', cust?`#/customer/${cust.id}`:null],['عرض سعر #'+q.number,null]]) + quotePrintView(q);
     }
   } else if(parts[0]==='customer-quotes' && parts[1]){
     const cust = DB.customers.find(c=>c.id===parts[1]);
-    if(!cust) html += emptyState('ما لقينا هيدا الزبون');
+    if(!cust) html += emptyState('لم يتم العثور على هذا الزبون');
     else html += crumbs([['الرئيسية','#/'],['الزبائن','#/customers'],[cust.name,`#/customer/${cust.id}`],['عروض الأسعار',null]]) + customerQuotesListView(cust);
 
   /* ---------- Warehouse (المستودع) ---------- */
   } else if(parts[0]==='warehouse'){
     html += crumbs([['الرئيسية','#/'],['المستودع',null]]) + warehouseHubView();
   } else if(parts[0]==='warehouse-print'){
-    html += crumbs([['الرئيسية','#/'],['المستودع','#/warehouse'],['جردة المستودع',null]]) + warehouseInventoryPrintView();
+    html += crumbs([['الرئيسية','#/'],['المستودع','#/warehouse'],['جرد المستودع',null]]) + warehouseInventoryPrintView();
   } else if(parts[0]==='warehouse-item' && parts[1]){
     const item = DB.warehouseItems.find(x=>x.id===parts[1]);
-    if(!item) html += emptyState('ما لقينا هيدا المنتج');
+    if(!item) html += emptyState('لم يتم العثور على هذا المنتج');
     else html += crumbs([['الرئيسية','#/'],['المستودع','#/warehouse'],[item.name,null]]) + warehouseItemView(item);
   } else if(parts[0]==='stockout' && parts[1]==='new'){
     const itemId = new URLSearchParams(location.hash.split('?')[1]||'').get('item');
@@ -2283,11 +2283,11 @@ function render(){
     html += crumbs([['الرئيسية','#/'],['إنشاء طلبية',null]]) + ordersHubView();
   } else if(parts[0]==='order' && parts[1]){
     const order = DB.cuttingOrders.find(x=>x.id===parts[1]);
-    if(!order) html += emptyState('ما لقينا هيدي الطلبية');
+    if(!order) html += emptyState('لم يتم العثور على هذه الطلبية');
     else { ensureOrderResultsComplete(order); html += crumbs([['الرئيسية','#/'],['إنشاء طلبية','#/orders'],['طلبية #'+order.number,null]]) + orderView(order); }
   } else if(parts[0]==='order-map' && parts[1]){
     const order = DB.cuttingOrders.find(x=>x.id===parts[1]);
-    if(!order) html += emptyState('ما لقينا هيدي الطلبية');
+    if(!order) html += emptyState('لم يتم العثور على هذه الطلبية');
     else { ensureOrderResultsComplete(order); html += crumbs([['الرئيسية','#/'],['إنشاء طلبية','#/orders'],['طلبية #'+order.number,`#/order/${order.id}`],['خريطة التفصيل',null]]) + orderMapView(order); }
 
   /* ---------- Budget (الميزانية) ---------- */
@@ -2296,7 +2296,7 @@ function render(){
   } else if(parts[0]==='budget-category' && parts[1]){
     const cat = DB.budgetCategories.find(x=>x.id===parts[1]);
     const qs = new URLSearchParams(location.hash.split('?')[1]||'');
-    if(!cat) html += emptyState('ما لقينا هيدا الحقل');
+    if(!cat) html += emptyState('لم يتم العثور على هذا الحقل');
     else html += crumbs([['الرئيسية','#/'],['الميزانية','#/budget'],[cat.name,null]]) + budgetCategoryView(cat, qs.get('period')||'month', qs.get('a'), qs.get('b'));
   } else if(parts[0]==='budget-overview'){
     const qs = new URLSearchParams(location.hash.split('?')[1]||'');
@@ -2311,7 +2311,7 @@ function render(){
   } else if(parts[0]==='trash'){
     html += crumbs([['الرئيسية','#/'],['المحذوفات',null]]) + trashView();
   } else {
-    html += emptyState('الصفحة مش موجودة');
+    html += emptyState('الصفحة غير موجودة');
   }
   root().innerHTML = html;
   bindEvents();
@@ -2378,7 +2378,7 @@ function hubView(){
       <div class="hub-icon">📋</div>
       <div class="hub-title">عروض أسعار</div>
       <div class="hub-sub">${DB.quotes.length} عرض</div>
-      <div class="hub-amt" style="color:var(--steel)">ما بتنزل عكشف الحساب</div>
+      <div class="hub-amt" style="color:var(--steel)">لا تُدرج في كشف الحساب</div>
     </div>`},
     {perm:'warehouse', html:`<div class="hub-card" data-nav="#/warehouse">
       <div class="hub-icon">📦</div>
@@ -2410,13 +2410,13 @@ function hubView(){
       <div class="hub-icon">🔑</div>
       <div class="hub-title">حسابات دخول الزبائن</div>
       <div class="hub-sub">${(DB.customerAccounts||[]).length} حساب</div>
-      <div class="hub-amt" style="color:var(--steel)">عرض كشف حساب بس، بدون تعديل</div>
+      <div class="hub-amt" style="color:var(--steel)">عرض كشف الحساب فقط، دون تعديل</div>
     </div>` : '';
   const workerAccCard = isAdmin? `<div class="hub-card" data-nav="#/worker-accounts">
       <div class="hub-icon">🔑</div>
       <div class="hub-title">حسابات دخول العمال</div>
       <div class="hub-sub">${(DB.workerAccounts||[]).length} حساب</div>
-      <div class="hub-amt" style="color:var(--steel)">عرض كشف حساب بس، بدون تعديل</div>
+      <div class="hub-amt" style="color:var(--steel)">عرض كشف الحساب فقط، دون تعديل</div>
     </div>` : '';
   const trashCard = isAdmin? `<div class="hub-card" data-nav="#/trash">
       <div class="hub-icon">🗑</div>
@@ -2441,13 +2441,13 @@ function dashboardView(){
   return `
   <div class="stats">
     <div class="stat"><div class="k">عدد الزبائن</div><div class="v">${DB.customers.length}</div></div>
-    <div class="stat owe"><div class="k">مجموع المستحق علينا نقبضه</div><div class="v">${fmtMoney(totalOwed)}</div></div>
+    <div class="stat owe"><div class="k">مجموع المستحق الذي يجب أن نقبضه</div><div class="v">${fmtMoney(totalOwed)}</div></div>
     <div class="stat credit"><div class="k">مجموع أرصدة دائنة (سلف زبائن)</div><div class="v">${fmtMoney(totalCredit)}</div></div>
   </div>
   <div class="card">
     <h2><span class="dot"></span> الزبائن</h2>
     <div class="search-row">
-      <input type="text" id="custSearch" placeholder="فتش عن زبون بالاسم أو رقم الحساب...">
+      <input type="text" id="custSearch" placeholder="ابحث عن زبون بالاسم أو رقم الحساب...">
       <button class="btn btn-primary" id="addCustBtn">+ زبون جديد</button>
     </div>
     <div id="custTableWrap">${customerTable(rows)}</div>
@@ -2455,7 +2455,7 @@ function dashboardView(){
   ${appFooter()}`;
 }
 function customerTable(rows){
-  if(!rows.length) return `<div class="empty"><div class="big">ما في زبائن بعد</div>ضيف أول زبون تلقائيًا</div>`;
+  if(!rows.length) return `<div class="empty"><div class="big">لا يوجد زبائن بعد</div>أضف أول زبون تلقائيًا</div>`;
   return `<table><thead><tr>
     <th>الاسم</th><th>رقم الحساب</th><th>الهاتف</th><th>الرصيد الحالي</th>
   </tr></thead><tbody>
@@ -2519,7 +2519,7 @@ function suppliersListView(){
   <div class="card">
     <h2><span class="dot"></span> الموردون</h2>
     <div class="search-row">
-      <input type="text" id="supSearch" placeholder="فتش عن مورد بالاسم أو رقم الحساب...">
+      <input type="text" id="supSearch" placeholder="ابحث عن مورد بالاسم أو رقم الحساب...">
       <button class="btn btn-primary" id="addSupBtn">+ مورد جديد</button>
     </div>
     <div id="supTableWrap">${supplierTable(rows)}</div>
@@ -2527,14 +2527,14 @@ function suppliersListView(){
   ${appFooter()}`;
 }
 function supplierTable(rows){
-  if(!rows.length) return `<div class="empty"><div class="big">ما في موردين بعد</div></div>`;
+  if(!rows.length) return `<div class="empty"><div class="big">لا يوجد موردون بعد</div></div>`;
   return `<table><thead><tr>
     <th>الاسم</th><th>رقم الحساب</th><th>الهاتف</th><th>الرصيد الحالي</th>
   </tr></thead><tbody>
   ${rows.map(s=>{
     const bal = supplierBalance(s.id);
     const cls = bal>0.004?'bal-pos':(bal<-0.004?'bal-neg':'bal-zero');
-    const lbl = bal>0.004? '(مستحق للمورد)' : (bal<-0.004? '(دفعنا زيادة)' : '');
+    const lbl = bal>0.004? '(مستحق للمورد)' : (bal<-0.004? '(دفعنا مبلغًا زائدًا)' : '');
     return `<tr data-nav="#/supplier/${s.id}">
       <td><b>${escapeHtml(s.name)}</b></td>
       <td class="num">${escapeHtml(s.accountNumber||'—')}</td>
@@ -2584,7 +2584,7 @@ function workersListView(){
   <div class="card">
     <h2><span class="dot"></span> العمال</h2>
     <div class="search-row">
-      <input type="text" id="wkSearch" placeholder="فتش عن عامل بالاسم أو رقم الحساب...">
+      <input type="text" id="wkSearch" placeholder="ابحث عن عامل بالاسم أو رقم الحساب...">
       <button class="btn btn-primary" id="addWkBtn">+ عامل جديد</button>
     </div>
     <div id="wkTableWrap">${workerTable(rows)}</div>
@@ -2592,14 +2592,14 @@ function workersListView(){
   ${appFooter()}`;
 }
 function workerTable(rows){
-  if(!rows.length) return `<div class="empty"><div class="big">ما في عمال بعد</div></div>`;
+  if(!rows.length) return `<div class="empty"><div class="big">لا يوجد عمال بعد</div></div>`;
   return `<table><thead><tr>
     <th>الاسم</th><th>رقم الحساب</th><th>الهاتف</th><th>المستحق له</th>
   </tr></thead><tbody>
   ${rows.map(w=>{
     const bal = workerBalance(w.id);
     const cls = bal>0.004?'bal-pos':(bal<-0.004?'bal-neg':'bal-zero');
-    const lbl = bal>0.004? '(مستحق له)' : (bal<-0.004? '(دفعنا زيادة)' : '');
+    const lbl = bal>0.004? '(مستحق له)' : (bal<-0.004? '(دفعنا مبلغًا زائدًا)' : '');
     return `<tr data-nav="#/worker/${w.id}">
       <td><b>${escapeHtml(w.name)}</b></td>
       <td class="num">${escapeHtml(w.accountNumber||'—')}</td>
@@ -2644,11 +2644,11 @@ function warehouseHubView(){
   <div class="card">
     <h2><span class="dot"></span> المستودع</h2>
     <div class="search-row">
-      <input type="text" id="whSearch" placeholder="فتش عن منتج بالاسم أو الماركة أو النوع...">
-      <button class="btn btn-primary" id="addWhItemBtn">+ إضافة إلى الستوك</button>
+      <input type="text" id="whSearch" placeholder="ابحث عن منتج بالاسم أو الماركة أو النوع...">
+      <button class="btn btn-primary" id="addWhItemBtn">+ إضافة إلى المخزون</button>
     </div>
     <div class="action-row" style="margin-top:10px;">
-      <button class="btn" data-nav="#/warehouse-print">🖨 طباعة جردة المستودع</button>
+      <button class="btn" data-nav="#/warehouse-print">🖨 طباعة جرد المستودع</button>
     </div>
     <div id="whTableWrap" style="margin-top:14px;">
     ${warehouseItemTable(items)}
@@ -2657,7 +2657,7 @@ function warehouseHubView(){
   ${appFooter()}`;
 }
 function warehouseItemTable(items){
-  if(!items.length) return `<div class="empty"><div class="big">ما في منتجات بالمستودع بعد</div></div>`;
+  if(!items.length) return `<div class="empty"><div class="big">لا توجد منتجات في المستودع بعد</div></div>`;
   const rowsHtml = items.map(it=>{
     const stock = currentStock(it.id);
     const cls = stock<=0? 'bal-neg' : (stock<5? 'bal-pos':'bal-zero');
@@ -2696,7 +2696,7 @@ function warehouseItemView(item){
     </div>
   </div>
   <div class="stats">
-    <div class="stat ${stock<=0?'owe':''}"><div class="k">الكمية الحالية بالمستودع</div><div class="v">${stock}</div></div>
+    <div class="stat ${stock<=0?'owe':''}"><div class="k">الكمية الحالية في المستودع</div><div class="v">${stock}</div></div>
     <div class="stat"><div class="k">عدد الحركات</div><div class="v">${ledger.rows.length}</div></div>
   </div>
   <div class="card">
@@ -2725,7 +2725,7 @@ function stockOutFormView(itemId){
     <div class="grid grid-2">
       <div class="field"><label>العامل الساحب *</label>
         <select id="so_worker">
-          <option value="">— اختار العامل —</option>
+          <option value="">— اختر العامل —</option>
           ${workerOptions}
         </select>
       </div>
@@ -2742,7 +2742,7 @@ function stockOutFormView(itemId){
 function warehouseTxnView(kind, id){
   const arr = kind==='stockin' ? DB.stockIns : DB.stockOuts;
   const rec = arr.find(x=>x.id===id);
-  if(!rec) return emptyState('ما لقينا هيدا السجل');
+  if(!rec) return emptyState('لم يتم العثور على هذا السجل');
   const item = DB.warehouseItems.find(i=>i.id===rec.itemId);
   const worker = kind==='stockout' ? DB.workers.find(w=>w.id===rec.workerId) : null;
   return `
@@ -2782,7 +2782,7 @@ function warehouseInventoryPrintView(){
     <button class="btn btn-primary" onclick="printWithFilename('Warehouse-Inventory-${todayISO()}')">🖨 طباعة</button>
   </div>
   <div class="doc">
-    ${docHead('جردة المستودع')}
+    ${docHead('جرد المستودع')}
     <div class="doc-info">
       <div class="r"><span>التاريخ:</span><b class="num">${fmtDate(todayISO())}</b></div>
       <div class="r"><span>عدد الأصناف:</span><b class="num">${items.length}</b></div>
@@ -2850,8 +2850,8 @@ function budgetHubView(){
     return `<div class="hub-card" data-nav="#/budget-category/${c.id}">
       <div class="hub-icon">${c.type==='income'?'📥':'📤'}</div>
       <div class="hub-title">${escapeHtml(c.name)}</div>
-      <div class="hub-sub">${c.auto? 'يتزامن تلقائي':'يدوي'}</div>
-      <div class="hub-amt ${c.type==='income'?'':'owe'}">${fmtMoney(total)} (هالشهر)</div>
+      <div class="hub-sub">${c.auto? 'يتزامن تلقائيًا':'يدوي'}</div>
+      <div class="hub-amt ${c.type==='income'?'':'owe'}">${fmtMoney(total)} (هذا الشهر)</div>
       ${!c.builtin? `<div class="action-row" style="margin-top:8px;" onclick="event.stopPropagation()">
         <button class="btn btn-sm" data-edit-budget-cat="${c.id}">✎ تعديل</button>
         <button class="btn btn-sm btn-danger" data-del-budget-cat="${c.id}">🗑 حذف</button>
@@ -2870,7 +2870,7 @@ function budgetHubView(){
   </div>
   <div class="card">
     <h2><span class="dot"></span> 📊 الميزانية العمومية</h2>
-    <div style="font-size:12.5px; color:var(--ink-soft); margin-bottom:10px;">جدول شامل بكل المقبوضات والمدفوعات لفترة معينة، مع الصافي المتبقي (أو العجز).</div>
+    <div style="font-size:12.5px; color:var(--ink-soft); margin-bottom:10px;">جدول شامل لجميع المقبوضات والمدفوعات لفترة معينة، مع الصافي المتبقي (أو العجز).</div>
     <button class="btn btn-primary" data-nav="#/budget-overview">فتح الميزانية العمومية</button>
   </div>
   ${appFooter()}`;
@@ -2890,11 +2890,11 @@ function budgetCategoryView(cat, period, a, b){
   }).join('');
   return `
   <div class="card no-print">
-    <h2><span class="dot"></span> ${escapeHtml(cat.name)} ${cat.auto? '<span style="font-size:11px; color:var(--ink-soft); font-weight:500;">(متزامن تلقائي)</span>':''}</h2>
+    <h2><span class="dot"></span> ${escapeHtml(cat.name)} ${cat.auto? '<span style="font-size:11px; color:var(--ink-soft); font-weight:500;">(متزامن تلقائيًا)</span>':''}</h2>
     ${periodFilterHtml('bc', period, a, b)}
   </div>
   <div class="stats no-print">
-    <div class="stat ${cat.type==='income'?'':'owe'}"><div class="k">المجموع بالفترة</div><div class="v">${fmtMoney(total)}</div></div>
+    <div class="stat ${cat.type==='income'?'':'owe'}"><div class="k">المجموع في الفترة</div><div class="v">${fmtMoney(total)}</div></div>
     <div class="stat"><div class="k">عدد الحركات</div><div class="v">${entries.length}</div></div>
   </div>
   <div class="card no-print">
@@ -2911,7 +2911,7 @@ function budgetCategoryView(cat, period, a, b){
       <div class="r"><span>عدد الحركات:</span><b class="num">${entries.length}</b></div>
     </div>
     ${entries.length? `<div class="table-scroll"><table><thead><tr><th>التاريخ</th><th>التفاصيل</th><th>المبلغ</th>${!cat.auto?'<th class="no-print"></th>':''}</tr></thead><tbody>${rowsHtml}</tbody>
-    <tfoot><tr style="font-weight:800; background:var(--paper)"><td colspan="2">المجموع</td><td class="num">${fmtMoney(total)}</td>${!cat.auto?'<td class="no-print"></td>':''}</tr></tfoot></table></div>` : `<div class="empty"><div class="big">ما في حركات بهالفترة</div></div>`}
+    <tfoot><tr style="font-weight:800; background:var(--paper)"><td colspan="2">المجموع</td><td class="num">${fmtMoney(total)}</td>${!cat.auto?'<td class="no-print"></td>':''}</tr></tfoot></table></div>` : `<div class="empty"><div class="big">لا توجد حركات في هذه الفترة</div></div>`}
     <div class="sig">التوقيع</div>
   </div>`;
 }
@@ -2987,24 +2987,24 @@ function ordersHubView(){
   <div class="card">
     <h2><span class="dot"></span> إنشاء طلبية</h2>
     <div style="font-size:12px; color:var(--ink-soft); margin-bottom:10px;">
-      بتختار ورقة خصميات وطول قضيب الألمنيوم، والبرنامج بيحسبلك أقل عدد قضبان ممكن تشتريه (بأقل هدر) لكل نوع قص، مع خريطة تفصيل توضح شو القطع يلي على كل قضيب.
+      اختر ورقة خصميات وطول قضيب الألمنيوم، وسيحسب لك البرنامج أقل عدد ممكن من القضبان لشرائها (بأقل هدر) لكل نوع قص، مع خريطة تفصيل توضّح القطع الموجودة على كل قضيب.
     </div>
     ${activeDeductions.length? `
     <div class="grid grid-2">
-      <div class="field"><label>اختار ورقة الخصميات</label>
+      <div class="field"><label>اختر ورقة الخصميات</label>
         <select id="orderDeduction">
-          <option value="">— اختار ورقة —</option>
+          <option value="">— اختر ورقة —</option>
           ${dedOptions}
         </select>
       </div>
       <div class="field"><label>طول قضيب الألمنيوم (متر)</label><input type="number" id="orderBarLength" class="num" value="6.60" step="0.01"></div>
     </div>
     <button class="btn btn-primary" id="createOrderBtn">🧮 احسب وأنشئ الطلبية</button>
-    ` : `<div class="empty"><div class="big">ما في أوراق خصميات بعد</div></div>`}
+    ` : `<div class="empty"><div class="big">لا توجد أوراق خصميات بعد</div></div>`}
   </div>
   <div class="card">
     <h2><span class="dot"></span> الطلبيات المحفوظة</h2>
-    ${orders.length? `<div class="table-scroll"><table><thead><tr><th>الزبون</th><th>رقم الطلبية</th><th>التاريخ</th><th>طول القضيب</th><th>مجموع القضبان</th></tr></thead><tbody>${rowsHtml}</tbody></table></div>` : `<div class="empty"><div class="big">ما في طلبيات محفوظة بعد</div></div>`}
+    ${orders.length? `<div class="table-scroll"><table><thead><tr><th>الزبون</th><th>رقم الطلبية</th><th>التاريخ</th><th>طول القضيب</th><th>مجموع القضبان</th></tr></thead><tbody>${rowsHtml}</tbody></table></div>` : `<div class="empty"><div class="big">لا توجد طلبيات محفوظة بعد</div></div>`}
   </div>
   ${appFooter()}`;
 }
@@ -3089,7 +3089,7 @@ function fmtQty(n){
   return n.toLocaleString('en-US', {maximumFractionDigits:2});
 }
 function ledgerTable(ledger, isQty){
-  if(!ledger.rows.length) return `<div class="empty"><div class="big">ما في حركات بعد</div></div>`;
+  if(!ledger.rows.length) return `<div class="empty"><div class="big">لا توجد حركات بعد</div></div>`;
   const fmt = isQty ? fmtQty : fmtMoney;
   const rows = ledger.rows.map(r=>{
     const href = refHref(r.ref, r.id);
@@ -3106,7 +3106,7 @@ function ledgerTable(ledger, isQty){
     </tr>`;
   }).join('');
   return `<div class="table-scroll"><table><thead><tr>
-    <th>التاريخ</th><th>النوع</th><th>الرقم</th><th>التفاصيل</th><th>من</th><th>الى</th><th>الرصيد</th>
+    <th>التاريخ</th><th>النوع</th><th>الرقم</th><th>التفاصيل</th><th>من</th><th>إلى</th><th>الرصيد</th>
   </tr></thead><tbody>${rows}</tbody>
   <tfoot><tr style="font-weight:800; background:var(--paper)">
     <td colspan="4">المجموع</td>
@@ -3130,7 +3130,7 @@ function optionSelectField(key, sysIdx, currentValue){
   const label = SPEC_FIELD_LABELS[key];
   return `<div class="field"><label>${label}</label>
     <select class="spec-opt-select" data-spec-key="${key}" data-sys-idx="${sysIdx}">
-      <option value="">— اختار —</option>
+      <option value="">— اختر —</option>
       ${currentValue && !opts.includes(currentValue) ? `<option value="${escapeHtml(currentValue)}" selected>${escapeHtml(currentValue)}</option>` : ''}
       ${opts.map(o=>`<option value="${escapeHtml(o)}" ${currentValue===o?'selected':''}>${escapeHtml(o)}</option>`).join('')}
       <option value="__add_new__">+ إضافة خيار جديد</option>
@@ -3235,7 +3235,7 @@ function quoteSpecsFormCard(specs){
   <div class="card">
     <h2><span class="dot"></span> صفحة أولى — Specifications (اختياري)</h2>
     <div style="font-size:12px; color:var(--ink-soft); margin-bottom:10px;">
-      إذا عبّيت هالصفحة، بتنطبع كصفحة أولى قبل جدول الأسعار — وإذا تركتها فاضية، ما بتظهر عالطباعة.
+      إذا ملأت هذه الصفحة، تُطبع كصفحة أولى قبل جدول الأسعار — وإذا تركتها فارغة، لا تظهر في الطباعة.
     </div>
     <div class="grid grid-3">
       <div class="field"><label>Project</label><input type="text" id="sp_project" value="${escapeHtml(specs.project||'')}" placeholder="اسم المشروع / الزبون"></div>
@@ -3255,12 +3255,12 @@ function quoteSpecsFormCard(specs){
   <div class="card">
     <h2><span class="dot"></span> صفحة القياسات (إلزامي)</h2>
     <div style="font-size:12px; color:var(--ink-soft); margin-bottom:10px;">
-      لازم تختار ورقة خصميات — هي صفحة الأسعار الوحيدة لعرض السعر، وبتنطبع A4 بالعرض (landscape) بعد صفحة الـSpecifications.
+      يجب أن تختار ورقة خصميات — هي صفحة الأسعار الوحيدة لعرض السعر، وتُطبع A4 بالعرض (landscape) بعد صفحة الـSpecifications.
     </div>
     <div class="grid grid-2">
-      <div class="field"><label>اختار ورقة الخصميات *</label>
+      <div class="field"><label>اختر ورقة الخصميات *</label>
         <select id="sp_deduction">
-          <option value="">— اختار ورقة —</option>
+          <option value="">— اختر ورقة —</option>
           ${DB.deductions.filter(d=>!d.deleted).map(d=>{
             const c = DB.customers.find(x=>x.id===d.customerId);
             const t = getDeductionType(d.type);
@@ -3271,7 +3271,7 @@ function quoteSpecsFormCard(specs){
       <div class="field"><label>Price ($/M)</label><input type="text" id="sp_ded_price" class="num" value="${escapeHtml(specs.deductionPage?specs.deductionPage.price||'':'')}" placeholder="مثلا 120"></div>
     </div>
     ${(specs.deductionPage && specs.deductionPage.items && specs.deductionPage.items.length) ? `
-    <div style="font-size:12px; color:var(--ink-soft); margin:10px 0 6px;">القياسات مسحوبة تلقائيًا (عرض وطول ثابتين) — بتقدر تحدد النوع والعدد لكل سطر:</div>
+    <div style="font-size:12px; color:var(--ink-soft); margin:10px 0 6px;">القياسات مسحوبة تلقائيًا (عرض وطول ثابتان) — يمكنك تحديد النوع والعدد لكل سطر:</div>
     <div id="dedPageItemsBody">
       ${specs.deductionPage.items.map((it,idx)=>dedPageItemRow(it,idx)).join('')}
     </div>` : ''}
@@ -3284,7 +3284,7 @@ function dedPageItemRow(it, idx){
     <div class="grid grid-2">
       <div class="field"><label>النوع</label>
         <select class="dpi-type-select" data-idx="${idx}">
-          <option value="">— اختار النوع —</option>
+          <option value="">— اختر النوع —</option>
           ${it.type && !opts.includes(it.type) ? `<option value="${escapeHtml(it.type)}" selected>${escapeHtml(it.type)}</option>` : ''}
           ${opts.map(o=>`<option value="${escapeHtml(o)}" ${it.type===o?'selected':''}>${escapeHtml(o)}</option>`).join('')}
           <option value="__add_new__">+ إضافة خيار جديد</option>
@@ -3320,7 +3320,7 @@ function itemRow(it, idx, kind){
   const descField = kind==='quote'
     ? `<div class="field"><label>الشرح</label>
         <select class="it-desc-select">
-          <option value="">— اختار الوصف —</option>
+          <option value="">— اختر الوصف —</option>
           ${it.desc && !(DB.settings.quoteDescOptions||[]).includes(it.desc) ? `<option value="${escapeHtml(it.desc)}" selected>${escapeHtml(it.desc)}</option>` : ''}
           ${(DB.settings.quoteDescOptions||[]).map(o=>`<option value="${escapeHtml(o)}" ${it.desc===o?'selected':''}>${escapeHtml(o)}</option>`).join('')}
           <option value="__add_new__">+ إضافة خيار جديد</option>
@@ -3429,7 +3429,7 @@ function workEntryFormView(e, workerId){
       <div class="field"><label>التاريخ</label><input type="date" id="w_date" value="${d.date}"></div>
     </div>
 
-    <div style="font-size:12.5px; color:var(--ink-soft); margin:14px 0 8px; font-weight:700;">اختار أي مزيج بدك (يومية ثابتة و/أو ساعات إضافية و/أو أجرة بالكيلو):</div>
+    <div style="font-size:12.5px; color:var(--ink-soft); margin:14px 0 8px; font-weight:700;">اختر أي مزيج تريده (يومية ثابتة و/أو ساعات إضافية و/أو أجرة بالكيلو):</div>
 
     <div class="grid grid-2">
       <div class="field"><label>يومية ثابتة $</label><input type="number" id="w_daily" class="num" value="${d.dailyWage||0}"></div>
@@ -3473,9 +3473,9 @@ function bindWorkEntryFormEvents(){
 
   const saveBtn = document.getElementById('saveWorkEntryBtn');
   saveBtn.addEventListener('click', async ()=>{
-    if(!_workEntryDraft.number){ toast('لازم رقم يومية'); return; }
-    if(!_workEntryDraft.date){ toast('لازم تاريخ'); return; }
-    if(computeWorkEntryTotal(_workEntryDraft)<=0){ toast('لازم تحدد قيمة وحدة عالأقل (يومية أو ساعات أو كيلو)'); return; }
+    if(!_workEntryDraft.number){ toast('رقم اليومية مطلوب'); return; }
+    if(!_workEntryDraft.date){ toast('التاريخ مطلوب'); return; }
+    if(computeWorkEntryTotal(_workEntryDraft)<=0){ toast('يجب تحديد قيمة واحدة على الأقل (يومية أو ساعات أو كيلو)'); return; }
     let savedId;
     if(_workEntryDraft.id){
       const idx = DB.workEntries.findIndex(x=>x.id===_workEntryDraft.id);
@@ -3490,7 +3490,7 @@ function bindWorkEntryFormEvents(){
       savedId = clean.id;
     }
     const ok = await save(KEYS.workEntries, DB.workEntries);
-    toast(ok? 'تم حفظ اليومية':'صار خطأ بالحفظ');
+    toast(ok? 'تم حفظ اليومية':'حدث خطأ أثناء الحفظ');
     _workEntryDraft = null;
     go(`#/workentry/${savedId}`);
   });
@@ -3570,7 +3570,7 @@ function deductionsHubView(){
   </div>
   <div class="card">
     <h2><span class="dot"></span> أوراق الخصميات المحفوظة</h2>
-    ${rows.length? `<div class="table-scroll"><table><thead><tr><th>الزبون</th><th>النوع</th><th>الرقم</th><th>التاريخ</th><th>عدد الأسطر</th></tr></thead><tbody>${rowsHtml}</tbody></table></div>` : `<div class="empty"><div class="big">ما في أوراق خصميات بعد</div></div>`}
+    ${rows.length? `<div class="table-scroll"><table><thead><tr><th>الزبون</th><th>النوع</th><th>الرقم</th><th>التاريخ</th><th>عدد الأسطر</th></tr></thead><tbody>${rowsHtml}</tbody></table></div>` : `<div class="empty"><div class="big">لا توجد أوراق خصميات بعد</div></div>`}
   </div>
   ${appFooter()}`;
 }
@@ -3580,7 +3580,7 @@ function deductionProfilesListView(){
   return `
   <div class="card">
     <h2><span class="dot"></span> بروفيلات الخصميات المخصصة</h2>
-    <p style="font-size:12.5px; color:var(--ink-soft); margin-top:-6px;">عرّف نظام قياسات جديد (متل سيدم 2000 أو أي نظام تاني) — تحدد كل خانة قياس بتتحسب كيف من العرض أو العلو.</p>
+    <p style="font-size:12.5px; color:var(--ink-soft); margin-top:-6px;">عرّف نظام قياسات جديدًا (مثل سيدم 2000 أو أي نظام آخر) — حدّد كيف تُحسب كل خانة قياس من العرض أو العلو.</p>
     <button class="btn btn-primary" data-nav="#/deduction-profile/new">➕ بروفيل جديد</button>
     <div class="table-scroll" style="margin-top:14px;">
     ${profiles.length? `<table><thead><tr><th>الاسم</th><th>عدد الخانات</th><th></th></tr></thead><tbody>
@@ -3590,7 +3590,7 @@ function deductionProfilesListView(){
         <td><button class="btn btn-sm" data-nav="#/deduction-profile/edit/${p.id}">✎ تعديل</button>
         <button class="btn btn-sm btn-danger" data-del-ded-profile="${p.id}">🗑 حذف</button></td>
       </tr>`).join('')}
-    </tbody></table>` : `<div class="empty" style="padding:20px;"><div class="big">ما في بروفيلات مخصصة بعد</div></div>`}
+    </tbody></table>` : `<div class="empty" style="padding:20px;"><div class="big">لا توجد بروفيلات مخصصة بعد</div></div>`}
     </div>
   </div>
   ${appFooter()}`;
@@ -3626,7 +3626,7 @@ function deductionProfileFormView(profile){
             <span>خانة ${idx+1}${f.key==='glassWidth'||f.key==='glassHeight'?' (زجاج)':''}</span>
             <button class="rm-btn" data-rm-field="${idx}">✕ حذف الخانة</button>
           </div>
-          <div class="field"><label>اسم الخانة (شو رح يبين بالجدول)</label><input type="text" class="dp-field-label" value="${escapeHtml(f.label)}" placeholder="مثلاً: طول السكة"></div>
+          <div class="field"><label>اسم الخانة (ما سيظهر في الجدول)</label><input type="text" class="dp-field-label" value="${escapeHtml(f.label)}" placeholder="مثلاً: طول السكة"></div>
           <div class="field"><label>القيمة الأساسية</label>
             <select class="dp-field-base">
               ${baseOptions(idx).map(o=>`<option value="${o.key}" ${f.base===o.key?'selected':''}>${escapeHtml(o.label)}</option>`).join('')}
@@ -3651,7 +3651,7 @@ function deductionProfileFormView(profile){
     </div>
     <div class="add-item-row"><button class="btn btn-sm btn-primary" id="addDpFieldBtn">+ إضافة خانة قياس جديدة</button></div>
     <div style="font-size:11.5px; color:var(--ink-soft); margin-top:8px; background:var(--paper); padding:10px; border-radius:8px;">
-      💡 نصيحة: سمّي وحدة الخانات <b>عرض الزجاج</b> و<b>علو الزجاج</b> بالظبط إذا بدك تظهر بصفحة "طباعة مقاسات الزجاج فقط".
+      💡 نصيحة: سمِّ إحدى الخانات <b>عرض الزجاج</b> و<b>علو الزجاج</b> تمامًا إذا أردت أن تظهر في صفحة "طباعة مقاسات الزجاج فقط".
     </div>
     <div class="action-row" style="margin-top:16px">
       <button class="btn btn-primary" id="saveDpBtn">💾 حفظ البروفيل</button>
@@ -3688,7 +3688,7 @@ function bindDeductionProfileFormEvents(){
     card.querySelectorAll('[data-rm-op]').forEach(btn=>{
       btn.addEventListener('click', ()=>{
         const oidx = Number(btn.getAttribute('data-rm-op'));
-        if(f.ops.length<=1){ toast('لازم تضل خطوة وحدة عالأقل'); return; }
+        if(f.ops.length<=1){ toast('يجب أن تبقى خطوة واحدة على الأقل'); return; }
         f.ops.splice(oidx,1);
         render();
       });
@@ -3698,7 +3698,7 @@ function bindDeductionProfileFormEvents(){
   });
   document.querySelectorAll('[data-rm-field]').forEach(btn=>{
     btn.addEventListener('click', ()=>{
-      if(_dedProfileDraft.fields.length<=1){ toast('لازم تضل خانة وحدة عالأقل'); return; }
+      if(_dedProfileDraft.fields.length<=1){ toast('يجب أن تبقى خانة واحدة على الأقل'); return; }
       _dedProfileDraft.fields.splice(Number(btn.getAttribute('data-rm-field')),1);
       render();
     });
@@ -3708,8 +3708,8 @@ function bindDeductionProfileFormEvents(){
 
   const saveBtn = document.getElementById('saveDpBtn');
   if(saveBtn) saveBtn.addEventListener('click', async ()=>{
-    if(!_dedProfileDraft.label.trim()){ toast('لازم تكتب اسم البروفيل'); return; }
-    if(_dedProfileDraft.fields.some(f=>!f.label.trim())){ toast('لازم كل خانة يكون إلها اسم'); return; }
+    if(!_dedProfileDraft.label.trim()){ toast('يجب كتابة اسم البروفيل'); return; }
+    if(_dedProfileDraft.fields.some(f=>!f.label.trim())){ toast('يجب أن يكون لكل خانة اسم'); return; }
     const list = DB.settings.customDeductionProfiles||[];
     if(_dedProfileDraft.id){
       const idx = list.findIndex(p=>p.id===_dedProfileDraft.id);
@@ -3722,7 +3722,7 @@ function bindDeductionProfileFormEvents(){
     }
     DB.settings.customDeductionProfiles = list;
     const ok = await save(KEYS.settings, DB.settings);
-    toast(ok? 'تم حفظ البروفيل':'صار خطأ بالحفظ');
+    toast(ok? 'تم حفظ البروفيل':'حدث خطأ أثناء الحفظ');
     _dedProfileDraft = null;
     go('#/deduction-profiles');
   });
@@ -3742,7 +3742,7 @@ function customerDeductionsListView(cust){
   return `
   <div class="card">
     <h2><span class="dot"></span> خصميات الألمنيوم — ${escapeHtml(cust.name)}</h2>
-    ${rows.length? `<div class="table-scroll"><table><thead><tr><th>النوع</th><th>الرقم</th><th>التاريخ</th><th>عدد الأسطر</th></tr></thead><tbody>${rowsHtml}</tbody></table></div>` : `<div class="empty"><div class="big">ما في أوراق خصميات لهيدا الزبون بعد</div></div>`}
+    ${rows.length? `<div class="table-scroll"><table><thead><tr><th>النوع</th><th>الرقم</th><th>التاريخ</th><th>عدد الأسطر</th></tr></thead><tbody>${rowsHtml}</tbody></table></div>` : `<div class="empty"><div class="big">لا توجد أوراق خصميات لهذا الزبون بعد</div></div>`}
   </div>`;
 }
 function computeQuoteTotal(q){
@@ -3769,7 +3769,7 @@ function customerQuotesListView(cust){
   return `
   <div class="card">
     <h2><span class="dot"></span> عروض الأسعار — ${escapeHtml(cust.name)}</h2>
-    ${rows.length? `<div class="table-scroll"><table><thead><tr><th>الرقم</th><th>التاريخ</th><th>عدد القياسات</th><th>الإجمالي $</th></tr></thead><tbody>${rowsHtml}</tbody></table></div>` : `<div class="empty"><div class="big">ما في عروض أسعار لهيدا الزبون بعد</div></div>`}
+    ${rows.length? `<div class="table-scroll"><table><thead><tr><th>الرقم</th><th>التاريخ</th><th>عدد القياسات</th><th>الإجمالي $</th></tr></thead><tbody>${rowsHtml}</tbody></table></div>` : `<div class="empty"><div class="big">لا توجد عروض أسعار لهذا الزبون بعد</div></div>`}
   </div>`;
 }
 function quotesHubView(){
@@ -3802,16 +3802,16 @@ function quotesHubView(){
     <h2><span class="dot"></span> إنشاء عرض سعر من ملف خصميات</h2>
     ${activeDeductions.length? `
     <div class="grid grid-2">
-      <div class="field"><label>اختار ورقة الخصميات</label>
+      <div class="field"><label>اختر ورقة الخصميات</label>
         <select id="quoteHubDeduction">
-          <option value="">— اختار ورقة —</option>
+          <option value="">— اختر ورقة —</option>
           ${dedOptions}
         </select>
       </div>
       <div class="field" style="display:flex; align-items:flex-end;">
-        <button class="btn" id="quoteHubFromDedBtn" style="width:100%; justify-content:center;">📐 إنشاء عرض سعر من هاي القياسات</button>
+        <button class="btn" id="quoteHubFromDedBtn" style="width:100%; justify-content:center;">📐 إنشاء عرض سعر من هذه القياسات</button>
       </div>
-    </div>` : `<div class="empty"><div class="big">ما في أوراق خصميات بعد</div></div>`}
+    </div>` : `<div class="empty"><div class="big">لا توجد أوراق خصميات بعد</div></div>`}
     <div class="action-row" style="margin-top:12px;">
       <button class="btn" data-nav="#/quote-options">✎ تعديل الخيارات</button>
       <button class="btn btn-primary" data-nav="#/custom-quote/new">📝 إنشاء عرض سعر مخصص</button>
@@ -3820,12 +3820,12 @@ function quotesHubView(){
   <div class="card">
     <h2><span class="dot"></span> إنشاء عرض سعر من ملف PDF</h2>
     <div style="font-size:12px; color:var(--ink-soft); margin-bottom:10px;">
-      عندك عرض سعر جاهز كملف PDF من مكان تاني؟ ارفعو هون واختار الزبون، وبينحفظ مع باقي عروض الأسعار (بتقدر تفتحو أو تحملو بأي وقت).
+      لديك عرض سعر جاهز كملف PDF من مكان آخر؟ ارفعه هنا واختر الزبون، وسيُحفظ مع باقي عروض الأسعار (يمكنك فتحه أو تحميله في أي وقت).
     </div>
     <div class="grid grid-2">
-      <div class="field"><label>اختار الزبون</label>
+      <div class="field"><label>اختر الزبون</label>
         <select id="quotePdfCustomer">
-          <option value="">— اختار الزبون —</option>
+          <option value="">— اختر الزبون —</option>
           ${custOptionsForPdf}
         </select>
       </div>
@@ -3835,7 +3835,7 @@ function quotesHubView(){
   </div>
   <div class="card">
     <h2><span class="dot"></span> كل عروض الأسعار</h2>
-    ${rows.length? `<div class="table-scroll"><table><thead><tr><th>الزبون</th><th>الرقم</th><th>التاريخ</th><th>عدد البنود</th><th>الإجمالي $</th></tr></thead><tbody>${rowsHtml}</tbody></table></div>` : `<div class="empty"><div class="big">ما في عروض أسعار بعد</div></div>`}
+    ${rows.length? `<div class="table-scroll"><table><thead><tr><th>الزبون</th><th>الرقم</th><th>التاريخ</th><th>عدد البنود</th><th>الإجمالي $</th></tr></thead><tbody>${rowsHtml}</tbody></table></div>` : `<div class="empty"><div class="big">لا توجد عروض أسعار بعد</div></div>`}
   </div>
   ${appFooter()}`;
 }
@@ -3861,7 +3861,7 @@ function deductionFormView(doc, type, customerId){
       <div class="field"><label>التاريخ</label><input type="date" id="d_date" value="${d.date}"></div>
       <div class="field"><label>الزبون</label>
         <select id="d_customer">
-          <option value="">— اختار الزبون —</option>
+          <option value="">— اختر الزبون —</option>
           ${DB.customers.slice().sort((a,b)=>a.name.localeCompare(b.name,'ar')).map(c=>`<option value="${c.id}" ${c.id===d.customerId?'selected':''}>${escapeHtml(c.name)}</option>`).join('')}
         </select>
       </div>
@@ -3920,7 +3920,7 @@ function bindDeductionFormEvents(){
   body.querySelectorAll('[data-rm]').forEach(btn=>{
     btn.addEventListener('click', ()=>{
       const idx = Number(btn.getAttribute('data-rm'));
-      if(_deductionDraft.rows.length<=1){ toast('لازم يبقى سطر واحد عالأقل'); return; }
+      if(_deductionDraft.rows.length<=1){ toast('يجب أن يبقى سطر واحد على الأقل'); return; }
       _deductionDraft.rows.splice(idx,1);
       render();
     });
@@ -3930,10 +3930,10 @@ function bindDeductionFormEvents(){
 
   const saveBtn = document.getElementById('saveDeductionBtn');
   if(saveBtn) saveBtn.addEventListener('click', async ()=>{
-    if(!_deductionDraft.number){ toast('لازم رقم للورقة'); return; }
-    if(!_deductionDraft.customerId){ toast('لازم تختار الزبون'); return; }
+    if(!_deductionDraft.number){ toast('رقم الورقة مطلوب'); return; }
+    if(!_deductionDraft.customerId){ toast('يجب اختيار الزبون'); return; }
     const hasRow = _deductionDraft.rows.some(r=>Number(r.width)>0 && Number(r.height)>0);
-    if(!hasRow){ toast('ضيف سطر واحد عالأقل فيه عرض وعلو'); return; }
+    if(!hasRow){ toast('أضف سطرًا واحدًا على الأقل يحتوي على عرض وعلو'); return; }
     let savedId;
     if(_deductionDraft.id){
       const idx = DB.deductions.findIndex(x=>x.id===_deductionDraft.id);
@@ -3946,7 +3946,7 @@ function bindDeductionFormEvents(){
       savedId = clean.id;
     }
     const ok = await save(KEYS.deductions, DB.deductions);
-    toast(ok? 'تم حفظ الورقة':'صار خطأ بالحفظ');
+    toast(ok? 'تم حفظ الورقة':'حدث خطأ أثناء الحفظ');
     _deductionDraft = null;
     go(`#/deduction/${savedId}`);
   });
@@ -3968,7 +3968,7 @@ function deductionPrintView(doc){
   <div class="doc-actions no-print">
     <button class="btn" data-nav="#/deduction/edit/${doc.id}">✎ تعديل</button>
     <button class="btn" data-nav="#/deduction-glass/${doc.id}">🪟 طباعة مقاسات الزجاج فقط</button>
-    <button class="btn btn-debit" data-create-doc="${doc.id}" data-create-kind="invoice">🧾 إنشاء فاتورة من هاي القياسات</button>
+    <button class="btn btn-debit" data-create-doc="${doc.id}" data-create-kind="invoice">🧾 إنشاء فاتورة من هذه القياسات</button>
     <button class="btn" data-nav="#/quotes">📋 إنشاء عرض سعر (من صفحة عروض الأسعار)</button>
     <button class="btn btn-danger" data-del-doc="${doc.id}" data-doc-kind="deduction">🗑 حذف</button>
     <button class="btn btn-primary" onclick="printLandscape('Deduction-${safeText(doc.number)}')">🖨 طباعة</button>
@@ -4013,7 +4013,7 @@ function deductionGlassPrintView(doc){
   <div class="doc no-autofit">
     ${docHead('مقاسات زجاج')}
     <div style="text-align:center; margin:-6px 0 14px; font-family:var(--font-display); font-weight:800; font-size:16px; color:var(--bronze-deep);">
-      نوع الشغلة: ${escapeHtml(t.label)}
+      نوع العمل: ${escapeHtml(t.label)}
     </div>
     <div class="doc-info">
       <div class="r"><span>الزبون:</span><b>${escapeHtml(cust?cust.name:'')}</b></div>
@@ -4086,7 +4086,7 @@ function customQuoteFormView(doc){
       <div class="field"><label>Date *</label><input type="date" id="cq_date" value="${d.date}"></div>
     </div>
     <div class="field">
-      <label>النص (لصق من الوورد بيحافظ على الجداول والتنسيق — أو اكتب مباشرة)</label>
+      <label>النص (اللصق من الوورد يحافظ على الجداول والتنسيق — أو اكتب مباشرة)</label>
       <div id="cq_content" contenteditable="true" dir="${d.direction}"
         style="width:100%; min-height:320px; padding:12px; border:1px solid var(--line); border-radius:8px; font-family:inherit; font-size:14px; line-height:1.8; overflow:auto; background:#fff;">${customQuoteContentHtml(d.content)}</div>
     </div>
@@ -4206,7 +4206,7 @@ function quotePrintPageView(doc){
   return `
   <div class="doc-actions no-print">
     <button class="btn" data-nav="#/quote/edit/${doc.id}">✎ تعديل</button>
-    <button class="btn btn-debit" data-create-invoice-from-quote="${doc.id}">🧾 إنشاء فاتورة من هاد العرض</button>
+    <button class="btn btn-debit" data-create-invoice-from-quote="${doc.id}">🧾 إنشاء فاتورة من هذا العرض</button>
     <button class="btn btn-danger" data-del-doc="${doc.id}" data-doc-kind="quote">🗑 حذف</button>
     ${(showSpecsCover||showGXCover)? `<button class="btn" onclick="printQuoteSpecsOnly('Quote-Specs-${safeText(doc.number)}')">🖨 طباعة Specifications</button>` : ''}
     <button class="btn btn-primary" onclick="printQuoteMeasurementsOnly('Quote-Measurements-${safeText(doc.number)}')">🖨 طباعة صفحة القياسات</button>
@@ -4268,7 +4268,7 @@ function paymentPrintView(kind, rec){
   const cfg = PAYMENT_CFG[kind];
   const party = DB[cfg.partyArr].find(c=>c.id===rec[cfg.partyField]);
   const editRoute = kind==='receipt'?`#/receipt/edit/${rec.id}`:(kind==='voucher'?`#/voucher/edit/${rec.id}`:`#/workerpay/edit/${rec.id}`);
-  const label = kind==='receipt' ? 'وصلنا من' : (kind==='voucher' ? 'دفعنا لـ' : 'دفعنا لـ');
+  const label = kind==='receipt' ? 'استلمنا من' : (kind==='voucher' ? 'دفعنا لـ' : 'دفعنا لـ');
   const fnamePrefix = kind==='receipt'?'Reciept':(kind==='voucher'?'Voucher':'WorkerPay');
   const readOnly = !!currentCustomerSession || !!currentWorkerSession;
   return `
@@ -4350,7 +4350,7 @@ function trashView(){
     </tr>`).join('');
     return `<div class="card">
       <h2><span class="dot"></span> ${sec.title}</h2>
-      ${items.length? `<table><thead><tr><th>الطرف</th><th>${sec.numLabel}</th><th>التاريخ</th><th>${sec.amtLabel||'المبلغ'}</th><th></th></tr></thead><tbody>${rows}</tbody></table>` : `<div class="empty"><div class="big">ما في شي محذوف هون</div></div>`}
+      ${items.length? `<table><thead><tr><th>الطرف</th><th>${sec.numLabel}</th><th>التاريخ</th><th>${sec.amtLabel||'المبلغ'}</th><th></th></tr></thead><tbody>${rows}</tbody></table>` : `<div class="empty"><div class="big">لا يوجد شيء محذوف هنا</div></div>`}
     </div>`;
   }).join('');
   return cards;
@@ -4393,8 +4393,8 @@ function optionListsManagerCard(){
   const arr = getOptionArray(selected);
   return `<div class="card">
     <h2><span class="dot"></span> إدارة قوائم الخيارات</h2>
-    <div style="font-size:12px; color:var(--ink-soft); margin-bottom:10px;">عدّل أو احذف أي قيمة أضفتها سابقًا من قوائم "+ إضافة خيار جديد" (متل تصحيح غلط إملائي).</div>
-    <div class="field" style="max-width:340px"><label>اختار القائمة</label>
+    <div style="font-size:12px; color:var(--ink-soft); margin-bottom:10px;">عدّل أو احذف أي قيمة أضفتها سابقًا من قوائم "+ إضافة خيار جديد" (مثل تصحيح خطأ إملائي).</div>
+    <div class="field" style="max-width:340px"><label>اختر القائمة</label>
       <select id="optListSelect">
         ${keys.map(k=>`<option value="${k.key}" ${k.key===selected?'selected':''}>${k.label}</option>`).join('')}
       </select>
@@ -4403,7 +4403,7 @@ function optionListsManagerCard(){
       ${arr.length? arr.map((v,i)=>`<div class="grid" style="grid-template-columns:1fr auto; gap:8px; margin-bottom:6px;">
         <input type="text" class="opt-item-input" data-i="${i}" value="${escapeHtml(v)}">
         <button class="btn btn-sm btn-danger" data-rm-opt="${i}">🗑</button>
-      </div>`).join('') : `<div class="empty" style="padding:16px;"><div class="big">القائمة فاضية</div></div>`}
+      </div>`).join('') : `<div class="empty" style="padding:16px;"><div class="big">القائمة فارغة</div></div>`}
     </div>
     <div class="action-row" style="margin-top:8px">
       <button class="btn btn-sm" id="addOptItemBtn">+ إضافة قيمة</button>
@@ -4420,7 +4420,7 @@ function settingsView(){
       <p style="font-size:13.5px; color:var(--credit); font-weight:700;">✅ البرنامج مفعّل${lic.label? ' — '+escapeHtml(lic.label):''}</p>
       <p style="font-size:12.5px; color:var(--ink-soft);">صالح لتاريخ: ${new Date(lic.expiresAt).toLocaleDateString('ar')}</p>
     ` : `
-      <p style="font-size:13.5px; color:${lic.daysLeft<=1?'var(--debit)':'var(--ink)'}; font-weight:700;">⏳ فترة تجربة — باقي ${lic.daysLeft} ${lic.daysLeft===1?'يوم':'أيام'}</p>
+      <p style="font-size:13.5px; color:${lic.daysLeft<=1?'var(--debit)':'var(--ink)'}; font-weight:700;">⏳ فترة تجربة — متبقٍّ ${lic.daysLeft} ${lic.daysLeft===1?'يوم':'أيام'}</p>
     `}
     <div class="field" style="margin-top:10px;"><label>رقم التفعيل</label><input type="text" id="s_license_serial" placeholder="HMDH1...." style="direction:ltr; text-align:left;" value="${escapeHtml(s.licenseSerial||'')}"></div>
     <div id="s_license_err" style="color:var(--debit); font-size:12.5px; min-height:16px; margin-bottom:6px;"></div>
@@ -4438,13 +4438,13 @@ function settingsView(){
       <div class="field"><label>بداية ترقيم الفواتير</label><input type="number" id="s_invstart" class="num" value="${s.invoiceStart}"></div>
       <div class="field"><label>بداية ترقيم إيصالات القبض</label><input type="number" id="s_recstart" class="num" value="${s.receiptStart}"></div>
     </div>
-    <p style="font-size:11.5px; color:var(--ink-soft);">سعر الصرف صار يتحدد من كرت "العملة الثانية" تحت.</p>
+    <p style="font-size:11.5px; color:var(--ink-soft);">أصبح سعر الصرف يُحدَّد من بطاقة "العملة الثانية" أدناه.</p>
     <button class="btn btn-primary" id="saveSettingsBtn">💾 حفظ الإعدادات</button>
   </div>
 
   <div class="card">
     <h2><span class="dot"></span> 💱 العملة الثانية (اختياري)</h2>
-    <p style="font-size:12.5px; color:var(--ink-soft);">البرنامج شغّال أساساً بالدولار والليرة اللبنانية. إذا بدك تبيع/تشتغل ببلد تاني، فعّل عملة ثانية هون وحدد سعر صرفها مقابل الدولار — يدوياً أو بمزامنة تلقائية من الإنترنت.</p>
+    <p style="font-size:12.5px; color:var(--ink-soft);">البرنامج يعمل أساساً بالدولار والليرة اللبنانية. إذا أردت البيع/العمل في بلد آخر، فعّل عملة ثانية هنا وحدد سعر صرفها مقابل الدولار — يدوياً أو بمزامنة تلقائية من الإنترنت.</p>
     <div class="field">
       <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
         <input type="checkbox" id="s_cur2_enabled" ${s.secondCurrencyEnabled?'checked':''}>
@@ -4467,10 +4467,10 @@ function settingsView(){
   <div class="card">
     <h2><span class="dot"></span> شعار المؤسسة</h2>
     <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap;">
-      <div id="logoPreviewWrap">${s.logo? `<img src="${s.logo}" style="height:70px; width:auto; border:1px solid var(--line); border-radius:8px; padding:6px; background:#fff;">` : `<div style="color:var(--ink-soft); font-size:13px;">ما في شعار مضاف بعد</div>`}</div>
+      <div id="logoPreviewWrap">${s.logo? `<img src="${s.logo}" style="height:70px; width:auto; border:1px solid var(--line); border-radius:8px; padding:6px; background:#fff;">` : `<div style="color:var(--ink-soft); font-size:13px;">لا يوجد شعار مضاف بعد</div>`}</div>
       <div>
         <input type="file" id="logoInput" accept="image/*" style="max-width:240px;">
-        <div style="font-size:11.5px; color:var(--ink-soft); margin-top:6px;">فضّل صورة صغيرة الحجم (أقل من 300KB) لأنها بتنحفظ داخل البرنامج</div>
+        <div style="font-size:11.5px; color:var(--ink-soft); margin-top:6px;">يُفضَّل استخدام صورة صغيرة الحجم (أقل من 300KB) لأنها تُحفظ داخل البرنامج</div>
         ${s.logo? `<button class="btn btn-sm btn-danger" id="removeLogoBtn" style="margin-top:8px;">🗑 حذف الشعار</button>` : ''}
       </div>
     </div>
@@ -4479,28 +4479,25 @@ function settingsView(){
   <div class="card">
     <h2><span class="dot"></span> طباعة بدون رأس وتذييل المتصفح</h2>
     <div style="font-size:13px; color:var(--ink-soft); line-height:1.8;">
-      لإلغاء عنوان الصفحة والتاريخ ورقم الصفحة يلي بيضيفهم المتصفح تلقائيًا عالطباعة (مش من البرنامج، من إعدادات المتصفح نفسه):
-      عند الضغط على 🖨 طباعة، فوت على "المزيد من الإعدادات / More settings" بنافذة الطباعة، وبطّل خيار
-      <b>"رأس وتذييل الصفحة / Headers and footers"</b>. هيدا الخيار محكوم من المتصفح ومش ممكن للبرنامج يلغيه تلقائيًا.
+      لإلغاء عنوان الصفحة والتاريخ ورقم الصفحة التي يضيفها المتصفح تلقائيًا عند الطباعة (ليس من البرنامج، بل من إعدادات المتصفح نفسه): عند الضغط على 🖨 طباعة، ادخل إلى "المزيد من الإعدادات / More settings" في نافذة الطباعة، وألغِ تحديد خيار
+      <b>"رأس وتذييل الصفحة / Headers and footers"</b>. هذا الخيار يتحكم به المتصفح ولا يمكن للبرنامج إلغاؤه تلقائيًا.
     </div>
   </div>
 
   <div class="card">
     <h2><span class="dot"></span> نسخة احتياطية</h2>
     <div style="font-size:13px; color:var(--ink-soft); margin-bottom:12px; line-height:1.7;">
-      اسم ملف النسخة الاحتياطية بيتحدد أوتوماتيك بتاريخ ووقت اللحظة (مثلاً hmadeh-backup-2026-08-26_14-32.json) لتصير الاسترجاع أسهل.
+      يُحدَّد اسم ملف النسخة الاحتياطية تلقائيًا بتاريخ ووقت اللحظة (مثلاً hmadeh-backup-2026-08-26_14-32.json) لتسهيل الاسترجاع.
     </div>
     <div style="font-size:13px; background:var(--paper); border:1px dashed var(--line); border-radius:8px; padding:12px; margin-bottom:14px; line-height:1.8;">
-      <b>⚠ مهم عن مكان الحفظ:</b> لأسباب أمان، ما في متصفح (كروم، إيدج...) بيسمح لأي صفحة ويب تختار مجلد معيّن تلقائيًا للحفظ فيه — هيدا قرار المتصفح نفسه مش قصور بالبرنامج.
-      لتحديد مكان النزول <b>مرة وحدة ولكل مرة</b>: روح لإعدادات المتصفح ← التنزيلات (Downloads) ← غيّر "مكان الحفظ الافتراضي" لمجلد Google Drive المتزامن عمكينتك.
-      بعدها أي نسخة احتياطية (وأي تنزيل تاني) رح تنزل هناك مباشرة بدون ما يسألك المتصفح كل مرة.
+      <b>⚠ مهم عن مكان الحفظ:</b> لأسباب أمنية، لا يسمح أي متصفح (كروم، إيدج...) لأي صفحة ويب باختيار مجلد معيّن تلقائيًا للحفظ فيه — هذا قرار المتصفح نفسه وليس قصورًا في البرنامج. لتحديد مكان التنزيل <b>مرة واحدة ولكل مرة</b>: اذهب إلى إعدادات المتصفح ← التنزيلات (Downloads) ← غيّر "مكان الحفظ الافتراضي" إلى مجلد Google Drive المتزامن على جهازك. بعدها ستُنزَّل أي نسخة احتياطية (وأي تنزيل آخر) هناك مباشرة دون أن يسألك المتصفح في كل مرة.
     </div>
     <div class="field" style="display:flex; align-items:center; gap:8px; margin-bottom:14px;">
       <input type="checkbox" id="s_autobackup" ${DB.settings.autoBackupOnClose? 'checked':''} style="width:auto;">
-      <label for="s_autobackup" style="margin:0; cursor:pointer;">نسخة احتياطية تلقائية كل ما تسكر الصفحة أو تطلع منها</label>
+      <label for="s_autobackup" style="margin:0; cursor:pointer;">نسخة احتياطية تلقائية كلما أغلقت الصفحة أو خرجت منها</label>
     </div>
     <div style="font-size:11.5px; color:var(--ink-soft); margin-bottom:12px;">
-      ملاحظة: هالخيار بيعتمد على دعم المتصفح لحدث "الإغلاق" — بمعظم المتصفحات (خصوصًا عالكمبيوتر) بيشتغل منيح، بس مش مضمون 100% بكل الحالات (مثلاً لو المتصفح سكر فجأة أو تطبيق الموبايل قفل الصفحة من الخلفية). الأفضل كمان تاخد نسخة يدوية بشكل دوري من الزر تحت.
+      ملاحظة: يعتمد هذا الخيار على دعم المتصفح لحدث "الإغلاق" — في معظم المتصفحات (خصوصًا على الكمبيوتر) يعمل جيدًا، لكنه غير مضمون 100% في كل الحالات (مثلاً إذا أُغلق المتصفح فجأة أو أغلق تطبيق الهاتف المحمول الصفحة في الخلفية). الأفضل أيضًا أخذ نسخة يدوية بشكل دوري من الزر أدناه.
     </div>
     <div class="action-row">
       <button class="btn btn-primary" id="backupExportBtn">⬇ تنزيل نسخة احتياطية الآن</button>
@@ -4512,7 +4509,7 @@ function settingsView(){
 
   <div class="card">
     <h2><span class="dot"></span> 👥 المستخدمون والصلاحيات</h2>
-    <div style="font-size:12.5px; color:var(--ink-soft); margin-bottom:12px;">SUPERADMIN وADMIN إلهن كل الصلاحيات دايمًا. لأي مستخدم تاني، حدد شو بيقدر يفوت عليه.</div>
+    <div style="font-size:12.5px; color:var(--ink-soft); margin-bottom:12px;">SUPERADMIN وADMIN لهما كل الصلاحيات دائمًا. لأي مستخدم آخر، حدد ما يمكنه الدخول إليه.</div>
     ${usersTableHtml()}
     <button class="btn btn-primary" id="addUserBtn" style="margin-top:10px;">+ مستخدم جديد</button>
   </div>
@@ -4528,11 +4525,11 @@ function settingsView(){
   <div class="card" style="border:2px solid var(--debit);">
     <h2><span class="dot" style="background:var(--debit);"></span> ⚠ منطقة خطرة</h2>
     <div style="font-size:13px; color:var(--debit); margin-bottom:14px; line-height:1.8; font-weight:700;">
-      فرمتة البرنامج بتمسح كل شي نهائيًا — كل الزبائن، الموردين، العمال، الفواتير، عروض الأسعار، المستودع، المستخدمين... كل شي. هالإجراء ما بينرجع فيه إطلاقًا.
+      تهيئة البرنامج تمسح كل شيء نهائيًا — كل الزبائن، الموردين، العمال، الفواتير، عروض الأسعار، المستودع، المستخدمين... كل شيء. لا يمكن التراجع عن هذا الإجراء إطلاقًا.
     </div>
     ${currentUser && currentUser.role==='superuser'
-      ? `<button class="btn btn-danger" id="factoryResetBtn" style="width:100%; justify-content:center; padding:16px; font-size:16px;">🗑💣 فرمتة البرنامج بالكامل (Factory Reset)</button>`
-      : `<div style="font-size:13px; color:var(--ink-soft); background:var(--paper); border:1px dashed var(--line); border-radius:8px; padding:12px; text-align:center;">🔒 فرمتة البرنامج متاحة بس لحساب SUPERADMIN</div>`}
+      ? `<button class="btn btn-danger" id="factoryResetBtn" style="width:100%; justify-content:center; padding:16px; font-size:16px;">🗑💣 تهيئة البرنامج بالكامل (Factory Reset)</button>`
+      : `<div style="font-size:13px; color:var(--ink-soft); background:var(--paper); border:1px dashed var(--line); border-radius:8px; padding:12px; text-align:center;">🔒 تهيئة البرنامج متاحة فقط لحساب SUPERADMIN</div>`}
   </div>`;
 }
 function trashTotalCount(){
@@ -4588,9 +4585,9 @@ function customerAccountsView(){
   return `<div class="card">
     <h2><span class="dot"></span> 🔑 حسابات دخول الزبائن</h2>
     <div style="font-size:12.5px; color:var(--ink-soft); margin-bottom:14px; line-height:1.7;">
-      الزبون يلي بتعملو حساب هون بيقدر يسجل دخول ويشوف كشف حسابو الكامل وأي فاتورة أو إيصال إلو (عرض أو طباعة بس) — <b>ممنوع عليه يعدل أو يحذف أو يضيف أي شي إطلاقًا</b>.
+      الزبون الذي تنشئ له حسابًا هنا يمكنه تسجيل الدخول ومشاهدة كشف حسابه الكامل وأي فاتورة أو إيصال خاص به (عرض أو طباعة فقط) — <b>ممنوع عليه أن يعدّل أو يحذف أو يضيف أي شيء إطلاقًا</b>.
     </div>
-    ${accounts.length? `<div class="table-scroll"><table><thead><tr><th>الزبون</th><th>اسم المستخدم</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>` : `<div class="empty"><div class="big">ما في حسابات زبائن بعد</div></div>`}
+    ${accounts.length? `<div class="table-scroll"><table><thead><tr><th>الزبون</th><th>اسم المستخدم</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>` : `<div class="empty"><div class="big">لا توجد حسابات زبائن بعد</div></div>`}
     <button class="btn btn-primary" id="addCustAccBtn" style="margin-top:12px;">+ إنشاء مستخدم للزبون</button>
   </div>`;
 }
@@ -4604,7 +4601,7 @@ function openCustomerAccountModal(account){
     <h3>${isNew? 'إنشاء مستخدم للزبون' : 'تعديل حساب الزبون'}</h3>
     <div class="field"><label>الزبون *</label>
       <select id="ca_customer" ${!isNew?'disabled':''}>
-        <option value="">— اختار الزبون —</option>
+        <option value="">— اختر الزبون —</option>
         ${custOptions}
       </select>
     </div>
@@ -4622,12 +4619,12 @@ function openCustomerAccountModal(account){
     const customerId = isNew ? wrap.querySelector('#ca_customer').value : account.customerId;
     const username = wrap.querySelector('#ca_username').value.trim();
     const password = wrap.querySelector('#ca_password').value.trim();
-    if(!customerId){ toast('لازم تختار الزبون'); return; }
-    if(!username){ toast('لازم تكتب اسم المستخدم'); return; }
-    if(!password){ toast('لازم تكتب كلمة السر'); return; }
+    if(!customerId){ toast('يجب اختيار الزبون'); return; }
+    if(!username){ toast('يجب كتابة اسم المستخدم'); return; }
+    if(!password){ toast('يجب كتابة كلمة السر'); return; }
     const dupCust = (DB.customerAccounts||[]).find(a=> String(a.username||'').toLowerCase()===username.toLowerCase() && (!account || a.id!==account.id));
     const dupStaff = (DB.settings.users||[]).find(u=> String(u.username||'').toLowerCase()===username.toLowerCase());
-    if(dupCust || dupStaff){ toast('اسم المستخدم هيدا مستخدم لحد تاني'); return; }
+    if(dupCust || dupStaff){ toast('اسم المستخدم هذا مستخدم لشخص آخر'); return; }
     if(isNew){
       const na = {id:uid(), createdAt:Date.now(), customerId, username, password};
       DB.customerAccounts = [...(DB.customerAccounts||[]), na];
@@ -4637,7 +4634,7 @@ function openCustomerAccountModal(account){
     }
     const ok = await save(KEYS.customerAccounts, DB.customerAccounts);
     wrap.remove();
-    toast(ok? (isNew?'تمت إضافة الحساب':'تم حفظ التعديلات') : 'صار خطأ بالحفظ');
+    toast(ok? (isNew?'تمت إضافة الحساب':'تم حفظ التعديلات') : 'حدث خطأ أثناء الحفظ');
     render();
   });
 }
@@ -4648,7 +4645,7 @@ function openDeleteCustomerAccountModal(account){
   wrap.className='modal-bg';
   wrap.innerHTML = `<div class="modal">
     <h3 style="color:var(--debit)">⚠ حذف حساب الزبون</h3>
-    <p style="font-size:13.5px; color:var(--ink-soft);">متأكد بدك تحذف حساب دخول <b>${escapeHtml(cust?cust.name:account.username)}</b>؟</p>
+    <p style="font-size:13.5px; color:var(--ink-soft);">هل أنت متأكد أنك تريد حذف حساب دخول <b>${escapeHtml(cust?cust.name:account.username)}</b>؟</p>
     <div class="row">
       <button class="btn" id="dca_cancel">إلغاء</button>
       <button class="btn btn-danger" id="dca_confirm">حذف</button>
@@ -4661,7 +4658,7 @@ function openDeleteCustomerAccountModal(account){
     DB.customerAccounts = (DB.customerAccounts||[]).filter(a=>a.id!==account.id);
     const ok = await save(KEYS.customerAccounts, DB.customerAccounts);
     wrap.remove();
-    toast(ok? 'تم حذف الحساب':'صار خطأ بالحفظ');
+    toast(ok? 'تم حذف الحساب':'حدث خطأ أثناء الحفظ');
     render();
   });
 }
@@ -4681,9 +4678,9 @@ function workerAccountsView(){
   return `<div class="card">
     <h2><span class="dot"></span> 🔑 حسابات دخول العمال</h2>
     <div style="font-size:12.5px; color:var(--ink-soft); margin-bottom:14px; line-height:1.7;">
-      العامل يلي بتعملو حساب هون بيقدر يسجل دخول ويشوف كشف حسابو الكامل (يومياتو ودفعاتو) — عرض أو طباعة بس — <b>ممنوع عليه يعدل أو يحذف أو يضيف أي شي إطلاقًا</b>.
+      العامل الذي تنشئ له حسابًا هنا يمكنه تسجيل الدخول ومشاهدة كشف حسابه الكامل (يومياته ودفعاته) — عرض أو طباعة فقط — <b>ممنوع عليه أن يعدّل أو يحذف أو يضيف أي شيء إطلاقًا</b>.
     </div>
-    ${accounts.length? `<div class="table-scroll"><table><thead><tr><th>العامل</th><th>اسم المستخدم</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>` : `<div class="empty"><div class="big">ما في حسابات عمال بعد</div></div>`}
+    ${accounts.length? `<div class="table-scroll"><table><thead><tr><th>العامل</th><th>اسم المستخدم</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>` : `<div class="empty"><div class="big">لا توجد حسابات عمال بعد</div></div>`}
     <button class="btn btn-primary" id="addWorkerAccBtn" style="margin-top:12px;">+ إنشاء مستخدم للعامل</button>
   </div>`;
 }
@@ -4697,7 +4694,7 @@ function openWorkerAccountModal(account){
     <h3>${isNew? 'إنشاء مستخدم للعامل' : 'تعديل حساب العامل'}</h3>
     <div class="field"><label>العامل *</label>
       <select id="wa_worker" ${!isNew?'disabled':''}>
-        <option value="">— اختار العامل —</option>
+        <option value="">— اختر العامل —</option>
         ${wkOptions}
       </select>
     </div>
@@ -4715,13 +4712,13 @@ function openWorkerAccountModal(account){
     const workerId = isNew ? wrap.querySelector('#wa_worker').value : account.workerId;
     const username = wrap.querySelector('#wa_username').value.trim();
     const password = wrap.querySelector('#wa_password').value.trim();
-    if(!workerId){ toast('لازم تختار العامل'); return; }
-    if(!username){ toast('لازم تكتب اسم المستخدم'); return; }
-    if(!password){ toast('لازم تكتب كلمة السر'); return; }
+    if(!workerId){ toast('يجب اختيار العامل'); return; }
+    if(!username){ toast('يجب كتابة اسم المستخدم'); return; }
+    if(!password){ toast('يجب كتابة كلمة السر'); return; }
     const dupWorker = (DB.workerAccounts||[]).find(a=> String(a.username||'').toLowerCase()===username.toLowerCase() && (!account || a.id!==account.id));
     const dupCust = (DB.customerAccounts||[]).find(a=> String(a.username||'').toLowerCase()===username.toLowerCase());
     const dupStaff = (DB.settings.users||[]).find(u=> String(u.username||'').toLowerCase()===username.toLowerCase());
-    if(dupWorker || dupCust || dupStaff){ toast('اسم المستخدم هيدا مستخدم لحد تاني'); return; }
+    if(dupWorker || dupCust || dupStaff){ toast('اسم المستخدم هذا مستخدم لشخص آخر'); return; }
     if(isNew){
       const na = {id:uid(), createdAt:Date.now(), workerId, username, password};
       DB.workerAccounts = [...(DB.workerAccounts||[]), na];
@@ -4731,7 +4728,7 @@ function openWorkerAccountModal(account){
     }
     const ok = await save(KEYS.workerAccounts, DB.workerAccounts);
     wrap.remove();
-    toast(ok? (isNew?'تمت إضافة الحساب':'تم حفظ التعديلات') : 'صار خطأ بالحفظ');
+    toast(ok? (isNew?'تمت إضافة الحساب':'تم حفظ التعديلات') : 'حدث خطأ أثناء الحفظ');
     render();
   });
 }
@@ -4742,7 +4739,7 @@ function openDeleteWorkerAccountModal(account){
   wrap.className='modal-bg';
   wrap.innerHTML = `<div class="modal">
     <h3 style="color:var(--debit)">⚠ حذف حساب العامل</h3>
-    <p style="font-size:13.5px; color:var(--ink-soft);">متأكد بدك تحذف حساب دخول <b>${escapeHtml(wk?wk.name:account.username)}</b>؟</p>
+    <p style="font-size:13.5px; color:var(--ink-soft);">هل أنت متأكد أنك تريد حذف حساب دخول <b>${escapeHtml(wk?wk.name:account.username)}</b>؟</p>
     <div class="row">
       <button class="btn" id="dwa_cancel">إلغاء</button>
       <button class="btn btn-danger" id="dwa_confirm">حذف</button>
@@ -4755,7 +4752,7 @@ function openDeleteWorkerAccountModal(account){
     DB.workerAccounts = (DB.workerAccounts||[]).filter(a=>a.id!==account.id);
     const ok = await save(KEYS.workerAccounts, DB.workerAccounts);
     wrap.remove();
-    toast(ok? 'تم حذف الحساب':'صار خطأ بالحفظ');
+    toast(ok? 'تم حذف الحساب':'حدث خطأ أثناء الحفظ');
     render();
   });
 }
@@ -4964,17 +4961,17 @@ function bindEvents(){
     document.getElementById('so_note').addEventListener('input', e=>_stockOutDraft.note=e.target.value);
     const saveStockOutBtn = document.getElementById('saveStockOutBtn');
     if(saveStockOutBtn) saveStockOutBtn.addEventListener('click', async ()=>{
-      if(!_stockOutDraft.workerId){ toast('لازم تختار العامل الساحب'); return; }
+      if(!_stockOutDraft.workerId){ toast('يجب اختيار العامل الساحب'); return; }
       const qty = Number(_stockOutDraft.qty);
-      if(!(qty>0)){ toast('لازم كمية أكبر من صفر'); return; }
+      if(!(qty>0)){ toast('يجب إدخال كمية أكبر من صفر'); return; }
       const stock = currentStock(_stockOutDraft.itemId);
-      if(qty > stock){ toast(`ما في كمية كافية بالمستودع — المتوفر بس ${stock}`); return; }
-      if(!_stockOutDraft.number){ toast('لازم رقم لأمر السحب'); return; }
-      if(!_stockOutDraft.date){ toast('لازم تاريخ'); return; }
+      if(qty > stock){ toast(`لا توجد كمية كافية في المستودع — المتوفر فقط ${stock}`); return; }
+      if(!_stockOutDraft.number){ toast('رقم أمر السحب مطلوب'); return; }
+      if(!_stockOutDraft.date){ toast('التاريخ مطلوب'); return; }
       const clean = {id:uid(), createdAt:Date.now(), itemId:_stockOutDraft.itemId, workerId:_stockOutDraft.workerId, qty, date:_stockOutDraft.date, number:_stockOutDraft.number, note:_stockOutDraft.note};
       DB.stockOuts.push(clean);
       const ok = await save(KEYS.stockOuts, DB.stockOuts);
-      toast(ok? 'تم حفظ أمر السحب':'صار خطأ بالحفظ');
+      toast(ok? 'تم حفظ أمر السحب':'حدث خطأ أثناء الحفظ');
       _stockOutDraft = null;
       go(`#/stockout/${clean.id}`);
     });
@@ -4986,15 +4983,15 @@ function bindEvents(){
       const dedSel = document.getElementById('orderDeduction');
       const dedId = dedSel ? dedSel.value : '';
       const barLength = Number(document.getElementById('orderBarLength').value);
-      if(!dedId){ toast('لازم تختار ورقة خصميات'); return; }
-      if(!(barLength>0)){ toast('لازم طول قضيب أكبر من صفر'); return; }
+      if(!dedId){ toast('يجب اختيار ورقة خصميات'); return; }
+      if(!(barLength>0)){ toast('يجب إدخال طول قضيب أكبر من صفر'); return; }
       const deduction = DB.deductions.find(d=>d.id===dedId);
-      if(!deduction){ toast('ما لقينا ورقة الخصميات'); return; }
+      if(!deduction){ toast('لم نعثر على ورقة الخصميات'); return; }
       const results = computeCuttingOrder(deduction, barLength);
       const order = {id:uid(), createdAt:Date.now(), number:nextOrderNumber(), date:todayISO(), customerId:deduction.customerId, deductionId:deduction.id, barLength, results};
       DB.cuttingOrders.push(order);
       const ok = await save(KEYS.cuttingOrders, DB.cuttingOrders);
-      toast(ok? 'تم إنشاء الطلبية':'صار خطأ بالحفظ');
+      toast(ok? 'تم إنشاء الطلبية':'حدث خطأ أثناء الحفظ');
       go(`#/order/${order.id}`);
     });
   }
@@ -5013,12 +5010,12 @@ function bindEvents(){
       if(!p) return;
       const usedCount = DB.deductions.filter(d=>d.type===p.key && !d.deleted).length;
       const msg = usedCount>0
-        ? `في ${usedCount} ورقة خصميات موجودة مستخدمة هالبروفيل — حذفه رح يخليهم يعرضوا بأسماء خانات فاضية. متأكد بدك تحذف "${p.label}"؟`
-        : `متأكد بدك تحذف بروفيل "${p.label}"؟`;
+        ? `يوجد ${usedCount} ورقة خصميات تستخدم هذا البروفيل — حذفه سيجعلها تُعرض بأسماء خانات فارغة. هل أنت متأكد أنك تريد حذف "${p.label}"؟`
+        : `هل أنت متأكد أنك تريد حذف البروفيل "${p.label}"؟`;
       if(!confirm(msg)) return;
       DB.settings.customDeductionProfiles = (DB.settings.customDeductionProfiles||[]).filter(x=>x.id!==id);
       const ok = await save(KEYS.settings, DB.settings);
-      toast(ok? 'تم حذف البروفيل':'صار خطأ بالحذف');
+      toast(ok? 'تم حذف البروفيل':'حدث خطأ أثناء الحذف');
       render();
     });
   });
@@ -5031,7 +5028,7 @@ function bindEvents(){
     DB.settings.invoiceStart = (()=>{ const n=Number(document.getElementById('s_invstart').value); return Number.isFinite(n)? n : 0; })();
     DB.settings.receiptStart = (()=>{ const n=Number(document.getElementById('s_recstart').value); return Number.isFinite(n)? n : 1000; })();
     const ok = await save(KEYS.settings, DB.settings);
-    toast(ok? 'تم حفظ الإعدادات':'صار خطأ بالحفظ');
+    toast(ok? 'تم حفظ الإعدادات':'حدث خطأ أثناء الحفظ');
   });
 
   const saveCur2Btn = document.getElementById('saveCur2Btn');
@@ -5041,18 +5038,18 @@ function bindEvents(){
     DB.settings.secondCurrencyRate = Number(document.getElementById('s_cur2_rate').value)||0;
     DB.settings.defaultExchangeRate = DB.settings.secondCurrencyRate || DB.settings.defaultExchangeRate || 90000;
     const ok = await save(KEYS.settings, DB.settings);
-    toast(ok? 'تم حفظ إعدادات العملة':'صار خطأ بالحفظ');
+    toast(ok? 'تم حفظ إعدادات العملة':'حدث خطأ أثناء الحفظ');
     render();
   });
   const cur2SyncBtn = document.getElementById('s_cur2_sync');
   if(cur2SyncBtn) cur2SyncBtn.addEventListener('click', async ()=>{
     const code = document.getElementById('s_cur2_code').value || 'LBP';
-    cur2SyncBtn.disabled = true; cur2SyncBtn.textContent = 'عم يجيب السعر...';
+    cur2SyncBtn.disabled = true; cur2SyncBtn.textContent = 'جارٍ جلب السعر...';
     try{
       const res = await fetch('https://open.er-api.com/v6/latest/USD');
       const data = await res.json();
       const rate = data && data.rates && data.rates[code];
-      if(!rate){ toast('ما لقينا سعر لهالعملة — تأكد من الرمز (مثال: LBP, EUR, SAR)'); }
+      if(!rate){ toast('لم نعثر على سعر لهذه العملة — تأكد من الرمز (مثال: LBP, EUR, SAR)'); }
       else{
         document.getElementById('s_cur2_rate').value = rate;
         DB.settings.secondCurrencyLastSync = Date.now();
@@ -5060,7 +5057,7 @@ function bindEvents(){
         const note = document.getElementById('s_cur2_synced_note');
         if(note) note.textContent = 'آخر مزامنة: '+new Date(DB.settings.secondCurrencyLastSync).toLocaleString('ar');
       }
-    }catch(e){ toast('ما قدرنا نتواصل مع خدمة أسعار الصرف — تأكد من الإنترنت'); console.error(e); }
+    }catch(e){ toast('لم نتمكن من الاتصال بخدمة أسعار الصرف — تأكد من الاتصال بالإنترنت'); console.error(e); }
     cur2SyncBtn.disabled = false; cur2SyncBtn.textContent = '🔄 مزامنة السعر من الإنترنت';
   });
 
@@ -5068,12 +5065,12 @@ function bindEvents(){
   if(licenseActivateBtn) licenseActivateBtn.addEventListener('click', async ()=>{
     const serial = document.getElementById('s_license_serial').value.trim();
     const errEl = document.getElementById('s_license_err');
-    if(!serial){ errEl.textContent = 'لازم تكتب رقم التفعيل'; return; }
+    if(!serial){ errEl.textContent = 'يجب إدخال رقم التفعيل'; return; }
     errEl.textContent = '';
     const res = await activateLicenseSerial(serial);
     if(res.ok){ toast('تم تفعيل البرنامج بنجاح'); render(); }
     else{
-      errEl.textContent = res.reason==='expired' ? 'رقم التفعيل هاد منتهي الصلاحية' : (res.reason==='invalid' ? 'رقم التفعيل غلط' : 'صار خطأ بالتفعيل، جرب كمان');
+      errEl.textContent = res.reason==='expired' ? 'رقم التفعيل هذا منتهي الصلاحية' : (res.reason==='invalid' ? 'رقم التفعيل غير صحيح' : 'حدث خطأ أثناء التفعيل، حاول مرة أخرى');
     }
   });
 
@@ -5107,7 +5104,7 @@ function bindEvents(){
     if(_optionListSelectedKey.startsWith('spec:')) DB.settings.specOptions[_optionListSelectedKey.slice(5)] = cleaned;
     else DB.settings[_optionListSelectedKey] = cleaned;
     const ok = await save(KEYS.settings, DB.settings);
-    toast(ok? 'تم حفظ القائمة':'صار خطأ بالحفظ');
+    toast(ok? 'تم حفظ القائمة':'حدث خطأ أثناء الحفظ');
     render();
   });
 
@@ -5115,22 +5112,22 @@ function bindEvents(){
   if(logoInput) logoInput.addEventListener('change', async ()=>{
     const file = logoInput.files[0];
     if(!file) return;
-    if(file.size > 800*1024){ toast('الصورة كبيرة، فضّل صورة أصغر من 800KB'); return; }
+    if(file.size > 800*1024){ toast('الصورة كبيرة، يُفضَّل استخدام صورة أصغر من 800KB'); return; }
     const reader = new FileReader();
     reader.onload = async ()=>{
       DB.settings.logo = reader.result;
       const ok = await save(KEYS.settings, DB.settings);
-      toast(ok? 'تم إضافة الشعار':'صار خطأ بالحفظ');
+      toast(ok? 'تمت إضافة الشعار':'حدث خطأ أثناء الحفظ');
       render();
     };
-    reader.onerror = ()=> toast('صار خطأ بقراءة الصورة');
+    reader.onerror = ()=> toast('حدث خطأ أثناء قراءة الصورة');
     reader.readAsDataURL(file);
   });
   const removeLogoBtn = document.getElementById('removeLogoBtn');
   if(removeLogoBtn) removeLogoBtn.addEventListener('click', async ()=>{
     DB.settings.logo = '';
     const ok = await save(KEYS.settings, DB.settings);
-    toast(ok? 'تم حذف الشعار':'صار خطأ بالحفظ');
+    toast(ok? 'تم حذف الشعار':'حدث خطأ أثناء الحفظ');
     render();
   });
 
@@ -5146,7 +5143,7 @@ function bindEvents(){
   if(autoBackupChk) autoBackupChk.addEventListener('change', async ()=>{
     DB.settings.autoBackupOnClose = autoBackupChk.checked;
     await save(KEYS.settings, DB.settings);
-    toast(autoBackupChk.checked? 'تفعّل النسخ التلقائي عند الإغلاق':'تعطّل النسخ التلقائي عند الإغلاق');
+    toast(autoBackupChk.checked? 'تم تفعيل النسخ التلقائي عند الإغلاق':'تم تعطيل النسخ التلقائي عند الإغلاق');
   });
 
   const addUserBtn = document.getElementById('addUserBtn');
@@ -5233,10 +5230,10 @@ function bindEvents(){
     });
     const saveCustomQuoteBtn = document.getElementById('saveCustomQuoteBtn');
     if(saveCustomQuoteBtn) saveCustomQuoteBtn.addEventListener('click', async ()=>{
-      if(!_customQuoteDraft.customerName.trim()){ toast('لازم تعبي Customer Name'); return; }
-      if(!_customQuoteDraft.scope.trim()){ toast('لازم تعبي Scope'); return; }
-      if(!_customQuoteDraft.location.trim()){ toast('لازم تعبي Location'); return; }
-      if(!_customQuoteDraft.date){ toast('لازم تعبي Date'); return; }
+      if(!_customQuoteDraft.customerName.trim()){ toast('يجب تعبئة Customer Name'); return; }
+      if(!_customQuoteDraft.scope.trim()){ toast('يجب تعبئة Scope'); return; }
+      if(!_customQuoteDraft.location.trim()){ toast('يجب تعبئة Location'); return; }
+      if(!_customQuoteDraft.date){ toast('يجب تعبئة Date'); return; }
       let savedId;
       if(_customQuoteDraft.id){
         const idx = DB.quotes.findIndex(q=>q.id===_customQuoteDraft.id);
@@ -5251,7 +5248,7 @@ function bindEvents(){
         savedId = clean.id;
       }
       const ok = await save(KEYS.quotes, DB.quotes);
-      toast(ok? 'تم حفظ عرض السعر':'صار خطأ بالحفظ');
+      toast(ok? 'تم حفظ عرض السعر':'حدث خطأ أثناء الحفظ');
       _customQuoteDraft = null;
       go(`#/custom-quote/${savedId}`);
     });
@@ -5309,7 +5306,7 @@ document.querySelectorAll('[data-create-doc]').forEach(btn=>{
     quoteHubFromDedBtn.addEventListener('click', ()=>{
       const sel = document.getElementById('quoteHubDeduction');
       const dedId = sel ? sel.value : '';
-      if(!dedId){ toast('لازم تختار ورقة خصميات'); return; }
+      if(!dedId){ toast('يجب اختيار ورقة خصميات'); return; }
       const deduction = DB.deductions.find(x=>x.id===dedId);
       if(!deduction) return;
       const cust = DB.customers.find(c=>c.id===deduction.customerId);
@@ -5332,19 +5329,19 @@ document.querySelectorAll('[data-create-doc]').forEach(btn=>{
       const fileInput = document.getElementById('quotePdfFile');
       const custId = custSel ? custSel.value : '';
       const file = fileInput && fileInput.files[0];
-      if(!custId){ toast('لازم تختار الزبون'); return; }
-      if(!file){ toast('لازم ترفع ملف PDF'); return; }
-      if(file.type !== 'application/pdf'){ toast('الملف لازم يكون PDF'); return; }
-      if(file.size > 4*1024*1024){ toast('الملف كبير — فضّل PDF أصغر من 4MB'); return; }
+      if(!custId){ toast('يجب اختيار الزبون'); return; }
+      if(!file){ toast('يجب رفع ملف PDF'); return; }
+      if(file.type !== 'application/pdf'){ toast('يجب أن يكون الملف بصيغة PDF'); return; }
+      if(file.size > 4*1024*1024){ toast('الملف كبير — يُفضَّل ملف PDF أصغر من 4MB'); return; }
       const reader = new FileReader();
       reader.onload = async ()=>{
         const clean = {id:uid(), createdAt:Date.now(), customerId:custId, number:nextQuoteNumber(), date:todayISO(), isPdf:true, pdfData:reader.result, pdfFileName:file.name};
         DB.quotes.push(clean);
         const ok = await save(KEYS.quotes, DB.quotes);
-        toast(ok? 'تم حفظ عرض السعر':'صار خطأ بالحفظ — جرب ملف أصغر');
+        toast(ok? 'تم حفظ عرض السعر':'حدث خطأ أثناء الحفظ — جرّب ملفًا أصغر');
         if(ok) go(`#/quote/${clean.id}`);
       };
-      reader.onerror = ()=> toast('صار خطأ بقراءة الملف');
+      reader.onerror = ()=> toast('حدث خطأ أثناء قراءة الملف');
       reader.readAsDataURL(file);
     });
   }
@@ -5353,8 +5350,8 @@ document.querySelectorAll('[data-create-doc]').forEach(btn=>{
       const quote = DB.quotes.find(x=>x.id===btn.getAttribute('data-create-invoice-from-quote'));
       if(!quote) return;
       const dp = quote.specs && quote.specs.deductionPage;
-      if(!dp || !dp.items || !dp.items.length){ toast('ما في قياسات بهاد العرض'); return; }
-      if(!confirm('رح ينعمل فاتورة جديدة بنفس قياسات عرض السعر — متأكد؟')) return;
+      if(!dp || !dp.items || !dp.items.length){ toast('لا توجد قياسات في هذا العرض'); return; }
+      if(!confirm('سيتم إنشاء فاتورة جديدة بنفس قياسات عرض السعر — هل أنت متأكد؟')) return;
       const price = Number(dp.price)||0;
       const items = dp.items.map(it=>{
         const w = Number(it.width)||0, l = Number(it.length)||0, c = Number(it.count)||1;
@@ -5374,13 +5371,13 @@ document.querySelectorAll('[data-create-doc]').forEach(btn=>{
     btn.addEventListener('click', async ()=>{
       const kind = btn.getAttribute('data-doc-kind');
       const cfg = DOC_KIND_MAP[kind];
-      if(!confirm(`متأكد بدك تحذف ${cfg.label}؟ رح تنتقل لسلة المحذوفات وبتقدر ترجعها من هناك.`)) return;
+      if(!confirm(`هل أنت متأكد أنك تريد حذف ${cfg.label}؟ ستنتقل إلى سلة المحذوفات ويمكنك استرجاعها من هناك.`)) return;
       const id = btn.getAttribute('data-del-doc');
       const item = DB[cfg.arr].find(x=>x.id===id);
       if(!item) return;
       item.deleted = true; item.deletedAt = Date.now();
       await save(KEYS[cfg.key], DB[cfg.arr]);
-      toast(`انتقل${cfg.label==='الفاتورة'||cfg.label==='فاتورة المشتريات'?'ت':''} ${cfg.label} لسلة المحذوفات`);
+      toast(`انتقل${cfg.label==='الفاتورة'||cfg.label==='فاتورة المشتريات'?'ت':''} ${cfg.label} إلى سلة المحذوفات`);
       go(cfg.backRoute(item[cfg.partyField]));
     });
   });
@@ -5399,7 +5396,7 @@ document.querySelectorAll('[data-create-doc]').forEach(btn=>{
   });
   document.querySelectorAll('[data-purge-doc]').forEach(btn=>{
     btn.addEventListener('click', async ()=>{
-      if(!confirm('حذف نهائي وما بينرجع فيه — متأكد؟')) return;
+      if(!confirm('حذف نهائي لا يمكن التراجع عنه — هل أنت متأكد؟')) return;
       const kind = btn.getAttribute('data-doc-kind');
       const cfg = DOC_KIND_MAP[kind];
       const id = btn.getAttribute('data-purge-doc');
@@ -5438,12 +5435,12 @@ function openCustomerModal(cust){
   wrap.addEventListener('click', (e)=>{ if(e.target===wrap) wrap.remove(); });
   wrap.querySelector('#m_save').addEventListener('click', async ()=>{
     const name = wrap.querySelector('#m_name').value.trim();
-    if(!name){ toast('لازم تكتب اسم الزبون'); return; }
+    if(!name){ toast('يجب كتابة اسم الزبون'); return; }
     const accNum = wrap.querySelector('#m_acc').value.trim();
-    if(!accNum){ toast('لازم رقم حساب'); return; }
-    if(!accNum.startsWith('41110')){ toast('رقم الحساب لازم يبلش بـ 41110'); return; }
+    if(!accNum){ toast('رقم الحساب مطلوب'); return; }
+    if(!accNum.startsWith('41110')){ toast('يجب أن يبدأ رقم الحساب بـ 41110'); return; }
     const dup = DB.customers.find(c=> c.accountNumber===accNum && (!cust || c.id!==cust.id));
-    if(dup){ toast('رقم الحساب هيدا مستخدم لزبون تاني — لازم يكون كل رقم حساب وحداني'); return; }
+    if(dup){ toast('رقم الحساب هذا مستخدم لزبون آخر — يجب أن يكون كل رقم حساب فريدًا'); return; }
     const data = {
       name,
       accountNumber: accNum,
@@ -5467,12 +5464,12 @@ function openCustomerModal(cust){
 }
 function openCustomerDeductionPickerModal(customer){
   const dedList = DB.deductions.filter(d=>!d.deleted && d.customerId===customer.id).sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
-  if(!dedList.length){ toast('ما في أوراق خصميات لهيدا الزبون — أضف وحدة أول'); return; }
+  if(!dedList.length){ toast('لا توجد أوراق خصميات لهذا الزبون — أضف واحدة أولًا'); return; }
   const wrap = document.createElement('div');
   wrap.className='modal-bg';
   wrap.innerHTML = `<div class="modal">
     <h3>إنشاء فاتورة من خصميات</h3>
-    <p style="font-size:13.5px; color:var(--ink-soft); line-height:1.7;">اختار ورقة الخصميات يلي بدك تنقل قياساتها للفاتورة:</p>
+    <p style="font-size:13.5px; color:var(--ink-soft); line-height:1.7;">اختر ورقة الخصميات التي تريد نقل قياساتها إلى الفاتورة:</p>
     <div class="field"><label>ورقة الخصميات</label>
       <select id="custDedPick">
         ${dedList.map(d=>{
@@ -5504,8 +5501,7 @@ function openCreateDocFromDeductionModal(deduction, kind){
   wrap.innerHTML = `<div class="modal">
     <h3>إنشاء ${cfg.title} من القياسات</h3>
     <p style="font-size:13.5px; color:var(--ink-soft); line-height:1.7;">
-      رح ينقل ${deduction.rows.length} سطر (عرض/طول) من ورقة الخصميات إلى ${cfg.title} جديدة لـ<b>${escapeHtml(cust?cust.name:'')}</b>.
-      بتضل عليك تكتب الشرح والسعر لكل بند.
+      سيتم نقل ${deduction.rows.length} سطر (عرض/طول) من ورقة الخصميات إلى ${cfg.title} جديدة لـ<b>${escapeHtml(cust?cust.name:'')}</b>. يبقى عليك كتابة الشرح والسعر لكل بند.
     </p>
     <div class="field" style="display:flex; align-items:center; gap:8px;">
       <input type="checkbox" id="add25_chk" style="width:auto;">
@@ -5556,10 +5552,10 @@ function openUserModal(user){
     <div class="field"><label>اسم المستخدم *</label><input type="text" id="um_username" value="${user?escapeHtml(user.username):''}"></div>
     ${passwordLocked? `
     <div class="field"><label>كلمة السر</label><input type="text" value="${'•'.repeat(8)}" disabled style="opacity:.6;"></div>
-    <p style="font-size:12px; color:var(--debit); font-weight:600;">🔒 بس حساب SUPERADMIN نفسو يقدر يغير كلمة سرّو، لا ADMIN ولا غيره.</p>
+    <p style="font-size:12px; color:var(--debit); font-weight:600;">🔒 فقط حساب SUPERADMIN نفسه يمكنه تغيير كلمة سرّه، لا ADMIN ولا غيره.</p>
     ` : `<div class="field"><label>كلمة السر *</label><input type="text" id="um_password" class="num" value="${user?escapeHtml(user.password):''}"></div>`}
-    ${isPriv? `<p style="font-size:12.5px; color:var(--ink-soft);">هيدا حساب ${user.role==='superuser'?'SUPERADMIN':'ADMIN'} — إلو كل الصلاحيات دايمًا.</p>` : `
-    <div class="field"><label>الصلاحيات (شو بيقدر يفوت عليه)</label>${permsHtml}</div>`}
+    ${isPriv? `<p style="font-size:12.5px; color:var(--ink-soft);">هذا حساب ${user.role==='superuser'?'SUPERADMIN':'ADMIN'} — له كل الصلاحيات دائمًا.</p>` : `
+    <div class="field"><label>الصلاحيات (ما يمكنه الدخول إليه)</label>${permsHtml}</div>`}
     <div class="row">
       <button class="btn" id="um_cancel">إلغاء</button>
       <button class="btn btn-primary" id="um_save">${isNew?'إضافة':'حفظ'}</button>
@@ -5572,10 +5568,10 @@ function openUserModal(user){
     const username = wrap.querySelector('#um_username').value.trim();
     const passwordInput = wrap.querySelector('#um_password');
     const password = passwordLocked ? user.password : (passwordInput? passwordInput.value.trim() : '');
-    if(!username){ toast('لازم تكتب اسم المستخدم'); return; }
-    if(!password){ toast('لازم تكتب كلمة السر'); return; }
+    if(!username){ toast('يجب كتابة اسم المستخدم'); return; }
+    if(!password){ toast('يجب كتابة كلمة السر'); return; }
     const dup = (DB.settings.users||[]).find(u=> u.username===username && (!user || u.id!==user.id));
-    if(dup){ toast('اسم المستخدم هيدا مستخدم لحد تاني'); return; }
+    if(dup){ toast('اسم المستخدم هذا مستخدم لشخص آخر'); return; }
     if(isNew){
       const perms = Array.from(wrap.querySelectorAll('.user-perm-chk:checked')).map(c=>c.value);
       const nu = {id:uid(), username, password, role:'custom', permissions:perms};
@@ -5596,31 +5592,31 @@ function openUserModal(user){
             if(error){
               lastSupabaseError = describeSupabaseError(error);
               console.error('supabase auth password update error:', lastSupabaseError);
-              setTimeout(()=>{ alert('تفاصيل خطأ تحديث كلمة السر بالسحابة (خذ لقطة شاشة وابعتها):\n\n'+lastSupabaseError); }, 400);
+              setTimeout(()=>{ alert('تفاصيل خطأ تحديث كلمة السر في السحابة (خذ لقطة شاشة وأرسلها):\n\n'+lastSupabaseError); }, 400);
             }
           }catch(e){
             lastSupabaseError = 'threw: '+(e && e.message);
             console.error('supabase auth password update threw:', e && e.message);
-            setTimeout(()=>{ alert('تفاصيل خطأ تحديث كلمة السر بالسحابة (خذ لقطة شاشة وابعتها):\n\n'+lastSupabaseError); }, 400);
+            setTimeout(()=>{ alert('تفاصيل خطأ تحديث كلمة السر في السحابة (خذ لقطة شاشة وأرسلها):\n\n'+lastSupabaseError); }, 400);
           }
         })();
       }
     }
     const ok = await save(KEYS.settings, DB.settings);
     wrap.remove();
-    toast(ok? (isNew?'تمت إضافة المستخدم':'تم حفظ التعديلات') : 'صار خطأ بالحفظ');
+    toast(ok? (isNew?'تمت إضافة المستخدم':'تم حفظ التعديلات') : 'حدث خطأ أثناء الحفظ');
     render();
   });
 }
 function openDeleteUserModal(user){
   if(!user) return;
   if(String(user.username||'').toUpperCase()==='SUPERADMIN'){ toast('هذا حساب محمي'); return; }
-  if(isPrivilegedUser(user)){ toast('ما فيك تحذف حساب ADMIN أو SUPERADMIN'); return; }
+  if(isPrivilegedUser(user)){ toast('لا يمكنك حذف حساب ADMIN أو SUPERADMIN'); return; }
   const wrap = document.createElement('div');
   wrap.className='modal-bg';
   wrap.innerHTML = `<div class="modal">
     <h3 style="color:var(--debit)">⚠ حذف المستخدم</h3>
-    <p style="font-size:13.5px; color:var(--ink-soft);">متأكد بدك تحذف المستخدم <b>${escapeHtml(user.username)}</b>؟</p>
+    <p style="font-size:13.5px; color:var(--ink-soft);">هل أنت متأكد أنك تريد حذف المستخدم <b>${escapeHtml(user.username)}</b>؟</p>
     <div class="row">
       <button class="btn" id="dum_cancel">إلغاء</button>
       <button class="btn btn-danger" id="dum_confirm">حذف</button>
@@ -5633,7 +5629,7 @@ function openDeleteUserModal(user){
     DB.settings.users = (DB.settings.users||[]).filter(u=>u.id!==user.id);
     const ok = await save(KEYS.settings, DB.settings);
     wrap.remove();
-    toast(ok? 'تم حذف المستخدم':'صار خطأ بالحفظ');
+    toast(ok? 'تم حذف المستخدم':'حدث خطأ أثناء الحفظ');
     render();
   });
 }
@@ -5646,15 +5642,15 @@ function open2FASetupModal(user){
   wrap.innerHTML = `<div class="modal">
     <h3>🔐 إعداد 2FA — ${escapeHtml(user.username)}</h3>
     <div style="font-size:13px; color:var(--ink-soft); line-height:1.8; margin-bottom:12px;">
-      <b>1.</b> نزّل تطبيق <b>Google Authenticator</b> عتلفون ${escapeHtml(user.username)} (من متجر التطبيقات).<br>
-      <b>2.</b> افتح التطبيق واعمل "+" ثم "Scan a QR code" وامسح الكود تحت.<br>
-      <b>3.</b> اكتب الكود المكوّن من 6 أرقام يلي بيطلع بالتطبيق بالخانة تحت للتأكيد.
+      <b>1.</b> نزّل تطبيق <b>Google Authenticator</b> على هاتفك ${escapeHtml(user.username)} (من متجر التطبيقات).<br>
+      <b>2.</b> افتح التطبيق واضغط "+" ثم "Scan a QR code" وامسح الكود أدناه.<br>
+      <b>3.</b> اكتب الكود المكوّن من 6 أرقام الذي يظهر في التطبيق في الخانة أدناه للتأكيد.
     </div>
     <div style="display:flex; justify-content:center; margin-bottom:12px;">
       <div id="qr2fa_container"></div>
     </div>
     <div style="font-size:11.5px; color:var(--ink-soft); text-align:center; margin-bottom:14px;">
-      ما قدرت تسكن؟ ادخل هالكود يدوي بالتطبيق:<br><code style="font-size:13px; font-weight:700; letter-spacing:1px;">${secret}</code>
+      لم تتمكن من المسح؟ أدخل هذا الكود يدويًا في التطبيق:<br><code style="font-size:13px; font-weight:700; letter-spacing:1px;">${secret}</code>
     </div>
     <div class="field"><label>الكود المكوّن من 6 أرقام (للتأكيد)</label><input type="text" id="setup2fa_code" inputmode="numeric" maxlength="6"></div>
     <div id="setup2fa_err" style="color:var(--debit); font-size:12.5px; min-height:16px;"></div>
@@ -5668,33 +5664,33 @@ function open2FASetupModal(user){
     if(window.QRCode){
       new QRCode(wrap.querySelector('#qr2fa_container'), {text:uri, width:200, height:200});
     } else {
-      wrap.querySelector('#qr2fa_container').innerHTML = '<div style="font-size:12px; color:var(--debit);">ما قدرنا نحمّل مولّد الكود (تأكد من الإنترنت) — استخدم الإدخال اليدوي بالأسفل.</div>';
+      wrap.querySelector('#qr2fa_container').innerHTML = '<div style="font-size:12px; color:var(--debit);">لم نتمكن من تحميل مولّد الكود (تأكد من الاتصال بالإنترنت) — استخدم الإدخال اليدوي بالأسفل.</div>';
     }
   }catch(e){
-    wrap.querySelector('#qr2fa_container').innerHTML = '<div style="font-size:12px; color:var(--debit);">صار خطأ بعرض QR — استخدم الإدخال اليدوي بالأسفل.</div>';
+    wrap.querySelector('#qr2fa_container').innerHTML = '<div style="font-size:12px; color:var(--debit);">حدث خطأ في عرض QR — استخدم الإدخال اليدوي بالأسفل.</div>';
   }
   wrap.querySelector('#setup2fa_cancel').addEventListener('click', ()=>wrap.remove());
   wrap.addEventListener('click', (e)=>{ if(e.target===wrap) wrap.remove(); });
   wrap.querySelector('#setup2fa_confirm').addEventListener('click', async ()=>{
     const code = wrap.querySelector('#setup2fa_code').value.trim();
     const ok = await verifyTotp(secret, code);
-    if(!ok){ wrap.querySelector('#setup2fa_err').textContent = 'الكود غلط، جرب كمان'; return; }
+    if(!ok){ wrap.querySelector('#setup2fa_err').textContent = 'الرمز غير صحيح، حاول مرة أخرى'; return; }
     user.totpSecret = secret;
     user.totpEnabled = true;
     const saved = await save(KEYS.settings, DB.settings);
     wrap.remove();
-    toast(saved? 'تم تفعيل 2FA بنجاح':'صار خطأ بالحفظ');
+    toast(saved? 'تم تفعيل 2FA بنجاح':'حدث خطأ أثناء الحفظ');
     render();
   });
 }
 function openDelete2FAModal(user){
   if(!user) return;
-  if(!currentUser || currentUser.role!=='superuser'){ toast('بس SUPERADMIN بيقدر يحذف 2FA'); return; }
+  if(!currentUser || currentUser.role!=='superuser'){ toast('فقط SUPERADMIN يمكنه حذف 2FA'); return; }
   const wrap = document.createElement('div');
   wrap.className='modal-bg';
   wrap.innerHTML = `<div class="modal">
     <h3 style="color:var(--debit)">⚠ حذف 2FA</h3>
-    <p style="font-size:13.5px; color:var(--ink-soft);">متأكد بدك تحذف 2FA لحساب <b>${escapeHtml(user.username)}</b>؟ (استخدم هيدا إذا ضيّع تلفونو أو مش قادر يسجل دخول)</p>
+    <p style="font-size:13.5px; color:var(--ink-soft);">هل أنت متأكد أنك تريد حذف 2FA لحساب <b>${escapeHtml(user.username)}</b>؟ (استخدم هذا إذا أضاع هاتفه أو لم يتمكن من تسجيل الدخول)</p>
     <div class="row">
       <button class="btn" id="d2fa_cancel">إلغاء</button>
       <button class="btn btn-danger" id="d2fa_confirm">حذف 2FA</button>
@@ -5708,7 +5704,7 @@ function openDelete2FAModal(user){
     user.totpSecret = null;
     const ok = await save(KEYS.settings, DB.settings);
     wrap.remove();
-    toast(ok? 'تم حذف 2FA':'صار خطأ بالحفظ');
+    toast(ok? 'تم حذف 2FA':'حدث خطأ أثناء الحفظ');
     render();
   });
 }
@@ -5734,18 +5730,18 @@ function openAddBudgetCategoryModal(){
   wrap.addEventListener('click', (e)=>{ if(e.target===wrap) wrap.remove(); });
   wrap.querySelector('#bc_save').addEventListener('click', async ()=>{
     const name = wrap.querySelector('#bc_name').value.trim();
-    if(!name){ toast('لازم تكتب اسم الحقل'); return; }
+    if(!name){ toast('يجب كتابة اسم الحقل'); return; }
     const type = wrap.querySelector('#bc_type').value;
     const nc = {id:uid(), name, type, auto:false, builtin:false};
     DB.budgetCategories = [...DB.budgetCategories, nc];
     const ok = await save(KEYS.budgetCategories, DB.budgetCategories);
     wrap.remove();
-    toast(ok? 'تمت إضافة الحقل':'صار خطأ بالحفظ');
+    toast(ok? 'تمت إضافة الحقل':'حدث خطأ أثناء الحفظ');
     render();
   });
 }
 function openEditBudgetCategoryModal(cat){
-  if(!cat || cat.builtin){ toast('هالحقل أساسي وما فيك تعدلو'); return; }
+  if(!cat || cat.builtin){ toast('هذا الحقل أساسي ولا يمكنك تعديله'); return; }
   const wrap = document.createElement('div');
   wrap.className='modal-bg';
   wrap.innerHTML = `<div class="modal">
@@ -5767,22 +5763,22 @@ function openEditBudgetCategoryModal(cat){
   wrap.addEventListener('click', (e)=>{ if(e.target===wrap) wrap.remove(); });
   wrap.querySelector('#ebc_save').addEventListener('click', async ()=>{
     const name = wrap.querySelector('#ebc_name').value.trim();
-    if(!name){ toast('لازم تكتب اسم الحقل'); return; }
+    if(!name){ toast('يجب كتابة اسم الحقل'); return; }
     cat.name = name;
     cat.type = wrap.querySelector('#ebc_type').value;
     const ok = await save(KEYS.budgetCategories, DB.budgetCategories);
     wrap.remove();
-    toast(ok? 'تم حفظ التعديلات':'صار خطأ بالحفظ');
+    toast(ok? 'تم حفظ التعديلات':'حدث خطأ أثناء الحفظ');
     render();
   });
 }
 function openDeleteBudgetCategoryModal(cat){
-  if(!cat || cat.builtin){ toast('هالحقل أساسي وما فيك تحذفو'); return; }
+  if(!cat || cat.builtin){ toast('هذا الحقل أساسي ولا يمكنك حذفه'); return; }
   const wrap = document.createElement('div');
   wrap.className='modal-bg';
   wrap.innerHTML = `<div class="modal">
     <h3 style="color:var(--debit)">⚠ حذف حقل الميزانية</h3>
-    <p style="font-size:13.5px; color:var(--ink-soft); line-height:1.7;">رح يتحذف حقل <b>${escapeHtml(cat.name)}</b> مع كل السندات المسجلة فيه. هيدا الإجراء ما بينرجع فيه.</p>
+    <p style="font-size:13.5px; color:var(--ink-soft); line-height:1.7;">سيتم حذف حقل <b>${escapeHtml(cat.name)}</b> مع كل السندات المسجلة فيه. لا يمكن التراجع عن هذا الإجراء.</p>
     <div class="row">
       <button class="btn" id="dbc_cancel">إلغاء</button>
       <button class="btn btn-danger" id="dbc_confirm">حذف نهائي</button>
@@ -5820,25 +5816,25 @@ function openAddBudgetEntryModal(categoryId){
   wrap.addEventListener('click', (e)=>{ if(e.target===wrap) wrap.remove(); });
   wrap.querySelector('#be_save').addEventListener('click', async ()=>{
     const amount = Number(wrap.querySelector('#be_amount').value);
-    if(!(amount>0)){ toast('لازم مبلغ أكبر من صفر'); return; }
+    if(!(amount>0)){ toast('يجب إدخال مبلغ أكبر من صفر'); return; }
     const date = wrap.querySelector('#be_date').value || todayISO();
     const note = wrap.querySelector('#be_note').value.trim();
     const ne = {id:uid(), createdAt:Date.now(), categoryId, amount, date, note, number:nextBudgetEntryNumber()};
     DB.budgetEntries = [...DB.budgetEntries, ne];
     const ok = await save(KEYS.budgetEntries, DB.budgetEntries);
     wrap.remove();
-    toast(ok? 'تم حفظ سند الصرف':'صار خطأ بالحفظ');
+    toast(ok? 'تم حفظ سند الصرف':'حدث خطأ أثناء الحفظ');
     render();
   });
 }
 function openFactoryResetModal(){
-  if(!currentUser || currentUser.role!=='superuser'){ toast('بس SUPERADMIN بيقدر يعمل فرمتة للبرنامج'); return; }
+  if(!currentUser || currentUser.role!=='superuser'){ toast('فقط SUPERADMIN يمكنه تهيئة البرنامج'); return; }
   const wrap = document.createElement('div');
   wrap.className='modal-bg';
   wrap.innerHTML = `<div class="modal">
-    <h3 style="color:var(--debit)">💣 فرمتة البرنامج بالكامل</h3>
+    <h3 style="color:var(--debit)">💣 تهيئة البرنامج بالكامل</h3>
     <p style="font-size:13.5px; color:var(--debit); font-weight:700; line-height:1.7;">
-      رح يتمسح كل شي نهائيًا وبدون رجعة: كل الزبائن، الفواتير، الموردين، العمال، المستودع، عروض الأسعار، المستخدمين... كل شي.
+      سيتم حذف كل شيء نهائيًا وبلا رجعة: كل الزبائن، الفواتير، الموردين، العمال، المستودع، عروض الأسعار، المستخدمين... كل شيء.
     </p>
     <div class="field"><label>اكتب <b style="color:var(--debit)">WIPE ALL</b> بالحروف الكبيرة للتأكيد</label><input type="text" id="wipe_confirm" autocomplete="off"></div>
     <div class="row">
@@ -5851,7 +5847,7 @@ function openFactoryResetModal(){
   wrap.addEventListener('click', (e)=>{ if(e.target===wrap) wrap.remove(); });
   wrap.querySelector('#wipe_next').addEventListener('click', ()=>{
     const typed = wrap.querySelector('#wipe_confirm').value.trim();
-    if(typed !== 'WIPE ALL'){ toast('لازم تكتب WIPE ALL بالضبط'); return; }
+    if(typed !== 'WIPE ALL'){ toast('يجب أن تكتب WIPE ALL بالضبط'); return; }
     wrap.remove();
     openFactoryResetCountdown();
   });
@@ -5860,7 +5856,7 @@ function openFactoryResetCountdown(){
   const wrap = document.createElement('div');
   wrap.className='modal-bg';
   wrap.innerHTML = `<div class="modal" style="text-align:center;">
-    <h3 style="color:var(--debit)">⏳ رح تنمسح كل البيانات خلال...</h3>
+    <h3 style="color:var(--debit)">⏳ سيتم حذف كل البيانات خلال...</h3>
     <div id="wipe_countdown_num" style="font-family:var(--font-num); font-size:56px; font-weight:800; color:var(--debit); margin:16px 0;">10</div>
     <button class="btn btn-primary" id="wipe_cancel_countdown" style="width:100%; justify-content:center; padding:12px;">إلغاء العملية</button>
   </div>`;
@@ -5880,7 +5876,7 @@ function openFactoryResetCountdown(){
   wrap.querySelector('#wipe_cancel_countdown').addEventListener('click', ()=>{
     clearInterval(interval);
     wrap.remove();
-    toast('تم إلغاء عملية الفرمتة');
+    toast('تم إلغاء عملية التهيئة');
   });
 }
 async function performFactoryReset(){
@@ -5893,13 +5889,13 @@ function openLogoutModal(){
   const wrap = document.createElement('div');
   wrap.className='modal-bg';
   wrap.innerHTML = `<div class="modal">
-    <h3>⚠ قبل ما تسكر</h3>
+    <h3>⚠ قبل الإغلاق</h3>
     <p style="font-size:13.5px; color:var(--ink-soft); line-height:1.7;">
-      لازم تاخد نسخة احتياطية قبل تسجيل الخروج، لحتى ما تضيع بياناتك.
+      يجب أخذ نسخة احتياطية قبل تسجيل الخروج، حتى لا تضيع بياناتك.
     </p>
     <div class="row">
       <button class="btn" id="logout_cancel">إلغاء</button>
-      <button class="btn btn-primary" id="logout_backup_confirm">⬇ خد نسخة احتياطية واخرج</button>
+      <button class="btn btn-primary" id="logout_backup_confirm">⬇ خذ نسخة احتياطية واخرج</button>
     </div>
   </div>`;
   document.body.appendChild(wrap);
@@ -5920,8 +5916,7 @@ function openDeleteCustomerModal(cust){
   wrap.innerHTML = `<div class="modal">
     <h3 style="color:var(--debit)">⚠ حذف الزبون نهائيًا</h3>
     <p style="font-size:13.5px; color:var(--ink-soft); line-height:1.7;">
-      رح يتحذف الزبون <b>${escapeHtml(cust.name)}</b> نهائيًا مع <b>${invCount}</b> فاتورة و<b>${recCount}</b> إيصال قبض المرتبطين فيه.
-      هيدا الإجراء ما بينرجع فيه وكل الكشف بيروح معه.
+      سيتم حذف الزبون <b>${escapeHtml(cust.name)}</b> نهائيًا مع <b>${invCount}</b> فاتورة و<b>${recCount}</b> إيصال قبض المرتبطة به. لا يمكن التراجع عن هذا الإجراء، وسيُحذف الكشف بالكامل معه.
     </p>
     <div class="field"><label>اكتب اسم الزبون بالكامل للتأكيد</label><input type="text" id="del_confirm" placeholder="${escapeHtml(cust.name)}"></div>
     <div class="row">
@@ -5934,7 +5929,7 @@ function openDeleteCustomerModal(cust){
   wrap.addEventListener('click', (e)=>{ if(e.target===wrap) wrap.remove(); });
   wrap.querySelector('#del_confirm_btn').addEventListener('click', async ()=>{
     const typed = wrap.querySelector('#del_confirm').value.trim();
-    if(typed !== cust.name){ toast('لازم تكتب اسم الزبون متل ما هو بالضبط'); return; }
+    if(typed !== cust.name){ toast('يجب أن تكتب اسم الزبون كما هو بالضبط'); return; }
     DB.customers = DB.customers.filter(c=>c.id!==cust.id);
     DB.invoices = DB.invoices.filter(i=>i.customerId!==cust.id);
     DB.receipts = DB.receipts.filter(r=>r.customerId!==cust.id);
@@ -5990,12 +5985,12 @@ function openPartyModal(kind, party){
   wrap.addEventListener('click', (e)=>{ if(e.target===wrap) wrap.remove(); });
   wrap.querySelector('#m_save').addEventListener('click', async ()=>{
     const name = wrap.querySelector('#m_name').value.trim();
-    if(!name){ toast('لازم تكتب الاسم'); return; }
+    if(!name){ toast('يجب أن تكتب الاسم'); return; }
     const accNum = wrap.querySelector('#m_acc').value.trim();
-    if(!accNum){ toast('لازم رقم حساب'); return; }
-    if(!accNum.startsWith(cfg.acctPrefix)){ toast(`رقم الحساب لازم يبلش بـ ${cfg.acctPrefix}`); return; }
+    if(!accNum){ toast('رقم الحساب مطلوب'); return; }
+    if(!accNum.startsWith(cfg.acctPrefix)){ toast(`يجب أن يبدأ رقم الحساب بـ ${cfg.acctPrefix}`); return; }
     const dup = DB[cfg.arr].find(p=> p.accountNumber===accNum && (!party || p.id!==party.id));
-    if(dup){ toast('رقم الحساب هيدا مستخدم — لازم يكون كل رقم حساب وحداني'); return; }
+    if(dup){ toast('رقم الحساب هذا مستخدم — يجب أن يكون كل رقم حساب فريدًا'); return; }
     const data = {
       name,
       accountNumber: accNum,
@@ -6006,13 +6001,13 @@ function openPartyModal(kind, party){
       DB[cfg.arr].push(p);
       const ok = await save(KEYS[cfg.key], DB[cfg.arr]);
       wrap.remove();
-      toast(ok? 'تمت الإضافة' : 'صار خطأ بالحفظ');
+      toast(ok? 'تمت الإضافة' : 'حدث خطأ أثناء الحفظ');
       go(kind==='supplier'? `#/supplier/${p.id}` : `#/worker/${p.id}`);
     } else {
       Object.assign(party, data);
       const ok = await save(KEYS[cfg.key], DB[cfg.arr]);
       wrap.remove();
-      toast(ok? 'تم حفظ التعديلات' : 'صار خطأ بالحفظ');
+      toast(ok? 'تم حفظ التعديلات' : 'حدث خطأ أثناء الحفظ');
       render();
     }
   });
@@ -6027,8 +6022,7 @@ function openDeletePartyModal(kind, party){
   wrap.innerHTML = `<div class="modal">
     <h3 style="color:var(--debit)">⚠ حذف ${cfg.label} نهائيًا</h3>
     <p style="font-size:13.5px; color:var(--ink-soft); line-height:1.7;">
-      رح يتحذف <b>${escapeHtml(party.name)}</b> نهائيًا مع ${countsText} مرتبطين فيه.
-      هيدا الإجراء ما بينرجع فيه.
+      سيتم حذف <b>${escapeHtml(party.name)}</b> نهائيًا مع ${countsText} المرتبطة به. لا يمكن التراجع عن هذا الإجراء.
     </p>
     <div class="field"><label>اكتب الاسم بالكامل للتأكيد</label><input type="text" id="del_confirm" placeholder="${escapeHtml(party.name)}"></div>
     <div class="row">
@@ -6041,7 +6035,7 @@ function openDeletePartyModal(kind, party){
   wrap.addEventListener('click', (e)=>{ if(e.target===wrap) wrap.remove(); });
   wrap.querySelector('#del_confirm_btn').addEventListener('click', async ()=>{
     const typed = wrap.querySelector('#del_confirm').value.trim();
-    if(typed !== party.name){ toast('لازم تكتب الاسم متل ما هو بالضبط'); return; }
+    if(typed !== party.name){ toast('يجب أن تكتب الاسم كما هو بالضبط'); return; }
     DB[cfg.arr] = DB[cfg.arr].filter(p=>p.id!==party.id);
     const ops = [save(KEYS[cfg.key], DB[cfg.arr])];
     cfg.docs.forEach(d=>{
@@ -6061,7 +6055,7 @@ function openWarehouseItemModal(item){
   const custOptions = DB.customers.slice().sort((a,b)=>a.name.localeCompare(b.name,'ar'))
     .map(c=>`<option value="${c.id}" ${item&&item.customerId===c.id?'selected':''}>${escapeHtml(c.name)}</option>`).join('');
   wrap.innerHTML = `<div class="modal">
-    <h3>${isNew? 'إضافة إلى الستوك' : 'تعديل بيانات المنتج'}</h3>
+    <h3>${isNew? 'إضافة إلى المخزون' : 'تعديل بيانات المنتج'}</h3>
     <div class="field"><label>الاسم *</label><input type="text" id="wm_name" value="${item?escapeHtml(item.name):''}"></div>
     <div class="grid grid-2">
       <div class="field"><label>الماركة</label><input type="text" id="wm_brand" value="${item?escapeHtml(item.brand||''):''}"></div>
@@ -6074,7 +6068,7 @@ function openWarehouseItemModal(item){
     </div>` : ''}
     <div class="field"><label>تابع لورشة</label>
       <select id="wm_customer">
-        <option value="">— إضافة حر (بدون زبون) —</option>
+        <option value="">— إضافة حرة (بدون زبون) —</option>
         ${custOptions}
       </select>
     </div>
@@ -6089,7 +6083,7 @@ function openWarehouseItemModal(item){
   wrap.addEventListener('click', (e)=>{ if(e.target===wrap) wrap.remove(); });
   wrap.querySelector('#wm_save').addEventListener('click', async ()=>{
     const name = wrap.querySelector('#wm_name').value.trim();
-    if(!name){ toast('لازم تكتب الاسم'); return; }
+    if(!name){ toast('يجب أن تكتب الاسم'); return; }
     const brand = wrap.querySelector('#wm_brand').value.trim();
     const type = wrap.querySelector('#wm_type').value.trim();
     const customerId = wrap.querySelector('#wm_customer').value;
@@ -6097,20 +6091,20 @@ function openWarehouseItemModal(item){
     if(isNew){
       const qty = Number(wrap.querySelector('#wm_qty').value)||0;
       const date = wrap.querySelector('#wm_date').value || todayISO();
-      if(qty<=0){ toast('لازم تحط كمية أكبر من صفر'); return; }
+      if(qty<=0){ toast('يجب إدخال كمية أكبر من صفر'); return; }
       const it = {id:uid(), createdAt:Date.now(), name, brand, type, customerId, note, purchaseDate:date};
       DB.warehouseItems.push(it);
       const stockIn = {id:uid(), createdAt:Date.now(), itemId:it.id, qty, date, number:nextStockInNumber(), note:'رصيد ابتدائي'};
       DB.stockIns.push(stockIn);
       const ok = await Promise.all([save(KEYS.warehouseItems, DB.warehouseItems), save(KEYS.stockIns, DB.stockIns)]);
       wrap.remove();
-      toast(ok.every(Boolean)? 'تمت الإضافة إلى الستوك' : 'صار خطأ بالحفظ');
+      toast(ok.every(Boolean)? 'تمت الإضافة إلى المخزون' : 'حدث خطأ أثناء الحفظ');
       go(`#/warehouse-item/${it.id}`);
     } else {
       item.name = name; item.brand = brand; item.type = type; item.customerId = customerId; item.note = note;
       const ok = await save(KEYS.warehouseItems, DB.warehouseItems);
       wrap.remove();
-      toast(ok? 'تم حفظ التعديلات' : 'صار خطأ بالحفظ');
+      toast(ok? 'تم حفظ التعديلات' : 'حدث خطأ أثناء الحفظ');
       render();
     }
   });
@@ -6122,7 +6116,7 @@ function openDeleteWarehouseItemModal(item){
   wrap.innerHTML = `<div class="modal">
     <h3 style="color:var(--debit)">⚠ حذف المنتج نهائيًا</h3>
     <p style="font-size:13.5px; color:var(--ink-soft); line-height:1.7;">
-      رح يتحذف <b>${escapeHtml(item.name)}</b> نهائيًا مع كل سجلات الإضافة والسحب المرتبطة فيه. هيدا الإجراء ما بينرجع فيه.
+      سيتم حذف <b>${escapeHtml(item.name)}</b> نهائيًا مع كل سجلات الإضافة والسحب المرتبطة به. لا يمكن التراجع عن هذا الإجراء.
     </p>
     <div class="field"><label>اكتب اسم المنتج بالكامل للتأكيد</label><input type="text" id="wdel_confirm" placeholder="${escapeHtml(item.name)}"></div>
     <div class="row">
@@ -6135,7 +6129,7 @@ function openDeleteWarehouseItemModal(item){
   wrap.addEventListener('click', (e)=>{ if(e.target===wrap) wrap.remove(); });
   wrap.querySelector('#wdel_confirm_btn').addEventListener('click', async ()=>{
     const typed = wrap.querySelector('#wdel_confirm').value.trim();
-    if(typed !== item.name){ toast('لازم تكتب الاسم متل ما هو بالضبط'); return; }
+    if(typed !== item.name){ toast('يجب أن تكتب الاسم كما هو بالضبط'); return; }
     DB.warehouseItems = DB.warehouseItems.filter(x=>x.id!==item.id);
     DB.stockIns = DB.stockIns.filter(x=>x.itemId!==item.id);
     DB.stockOuts = DB.stockOuts.filter(x=>x.itemId!==item.id);
@@ -6293,7 +6287,7 @@ function bindQuoteSaveButton(){
   saveBtn.addEventListener('click', async ()=>{
     if(!_itemDocDraft.specs) _itemDocDraft.specs = blankSpecs();
     if(!_itemDocDraft.specs.deductionPage || !_itemDocDraft.specs.deductionPage.deductionId){
-      toast('لازم تختار ورقة خصميات — إلزامية لعرض السعر');
+      toast('يجب اختيار ورقة خصميات — إلزامية لعرض السعر');
       return;
     }
     if(!_itemDocDraft.number) _itemDocDraft.number = nextQuoteNumber();
@@ -6310,7 +6304,7 @@ function bindQuoteSaveButton(){
       savedId = clean.id;
     }
     const ok = await save(KEYS.quotes, DB.quotes);
-    toast(ok? 'تم حفظ عرض السعر':'صار خطأ بالحفظ');
+    toast(ok? 'تم حفظ عرض السعر':'حدث خطأ أثناء الحفظ');
     _itemDocDraft = null;
     go(`#/quote/${savedId}`);
   });
@@ -6373,7 +6367,7 @@ function bindItemDocFormEvents(){
   body.querySelectorAll('[data-rm]').forEach(btn=>{
     btn.addEventListener('click', ()=>{
       const idx = Number(btn.getAttribute('data-rm'));
-      if(_itemDocDraft.items.length<=1){ toast('لازم يبقى سطر واحد عالأقل'); return; }
+      if(_itemDocDraft.items.length<=1){ toast('يجب أن يبقى سطر واحد على الأقل'); return; }
       _itemDocDraft.items.splice(idx,1);
       render();
     });
@@ -6383,14 +6377,14 @@ function bindItemDocFormEvents(){
 
   const saveBtn = document.getElementById('saveInvoiceBtn');
   if(saveBtn) saveBtn.addEventListener('click', async ()=>{
-    if(!_itemDocDraft.number){ toast('لازم رقم '+cfg.title); return; }
-    if(!_itemDocDraft.date){ toast('لازم تاريخ'); return; }
+    if(!_itemDocDraft.number){ toast('الرقم مطلوب '+cfg.title); return; }
+    if(!_itemDocDraft.date){ toast('التاريخ مطلوب'); return; }
     if(cfg.numberUnique){
       const dupInv = DB[cfg.docArr].find(i=> i.number===_itemDocDraft.number && i.id!==_itemDocDraft.id);
-      if(dupInv){ toast('رقم '+cfg.title+' هيدا مستخدم لفاتورة تانية — لازم يكون وحداني'); return; }
+      if(dupInv){ toast('رقم '+cfg.title+' هذا الرقم مستخدم لفاتورة أخرى — يجب أن يكون فريدًا'); return; }
     }
     const hasItem = _itemDocDraft.items.some(it=>it.desc && Number(it.total)>0);
-    if(!hasItem){ toast('ضيف سطر واحد عالأقل فيه وصف ومبلغ'); return; }
+    if(!hasItem){ toast('أضف سطرًا واحدًا على الأقل يحتوي على وصف ومبلغ'); return; }
     let savedId;
     if(_itemDocDraft.id){
       const idx = DB[cfg.docArr].findIndex(i=>i.id===_itemDocDraft.id);
@@ -6404,7 +6398,7 @@ function bindItemDocFormEvents(){
       savedId = clean.id;
     }
     const ok = await save(KEYS[cfg.keyName], DB[cfg.docArr]);
-    toast(ok? 'تم حفظ '+cfg.title:'صار خطأ بالحفظ');
+    toast(ok? 'تم حفظ '+cfg.title:'حدث خطأ أثناء الحفظ');
     _itemDocDraft = null;
     go(cfg.viewRoute(savedId));
   });
@@ -6424,9 +6418,9 @@ function bindPaymentFormEvents(){
   });
   const saveBtn = document.getElementById('saveReceiptBtn');
   saveBtn.addEventListener('click', async ()=>{
-    if(!_paymentDraft.number){ toast('لازم رقم'); return; }
-    if(!_paymentDraft.date){ toast('لازم تاريخ'); return; }
-    if(!(Number(_paymentDraft.amount)>0)){ toast('لازم مبلغ أكبر من صفر'); return; }
+    if(!_paymentDraft.number){ toast('الرقم مطلوب'); return; }
+    if(!_paymentDraft.date){ toast('التاريخ مطلوب'); return; }
+    if(!(Number(_paymentDraft.amount)>0)){ toast('يجب إدخال مبلغ أكبر من صفر'); return; }
     let savedId;
     if(_paymentDraft.id){
       const idx = DB[cfg.arr].findIndex(r=>r.id===_paymentDraft.id);
@@ -6439,7 +6433,7 @@ function bindPaymentFormEvents(){
       savedId = clean.id;
     }
     const ok = await save(KEYS[cfg.keyName], DB[cfg.arr]);
-    toast(ok? 'تم حفظ '+cfg.title:'صار خطأ بالحفظ');
+    toast(ok? 'تم حفظ '+cfg.title:'حدث خطأ أثناء الحفظ');
     _paymentDraft = null;
     go(cfg.viewRoute(savedId));
   });
@@ -6471,7 +6465,7 @@ function bindPaymentFormEvents(){
     bar.style.cssText = 'position:fixed;inset-inline:0;bottom:0;z-index:9999;padding:9px;'+
       'text-align:center;font-family:system-ui;font-size:13.5px;font-weight:700;color:#fff;'+
       'background:'+(a.days_left<=5 ? '#C0392B' : '#E08A2B');
-    bar.innerHTML = (a.trial ? 'تجربتك المجانية' : 'اشتراكك') + ' ينتهي بعد ' + a.days_left + ' يوم — ' +
+    bar.innerHTML = (a.trial ? 'تجربتك المجانية' : 'اشتراكك') + ' تنتهي بعد ' + a.days_left + ' يوم — ' +
       '<a href="/account?renew=' + (a.subscription_id||'') + '" style="color:#fff;text-decoration:underline">' +
       (a.trial ? 'اشترك الآن' : 'جدّد') + '</a>';
     document.addEventListener('DOMContentLoaded', ()=> document.body.appendChild(bar));

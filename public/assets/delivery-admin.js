@@ -10,7 +10,7 @@ var $=function(s){return document.querySelector(s)};
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){
   return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
 function ago(t){ if(!t) return '—'; var m=Math.max(0,Math.round((Date.now()-new Date(t))/60000));
-  return m<1?'هلق':m<60?'من '+m+' د':m<1440?'من '+Math.floor(m/60)+' س':'من '+Math.floor(m/1440)+' يوم'; }
+  return m<1?'الآن':m<60?'منذ '+m+' د':m<1440?'منذ '+Math.floor(m/60)+' س':'منذ '+Math.floor(m/1440)+' يوم'; }
 function fresh(p,ms){ return p&&p.pos_at&&(Date.now()-new Date(p.pos_at))<(ms||180000); }
 function waNum(p){ var d=String(p||'').replace(/\D/g,''); if(d.indexOf('00')===0) d=d.slice(2);
   if(d.indexOf('961')===0) return d; if(d.charAt(0)==='0') d=d.slice(1); return d.length<=8?'961'+d:d; }
@@ -19,8 +19,8 @@ function toast(t,ok){ var e=document.createElement('div');
     'border-radius:12px;font-weight:700;font-size:14px;color:#fff;background:'+(ok===false?'#B91C1C':'#111');
   e.textContent=t; document.body.appendChild(e); setTimeout(function(){e.remove()},2600); }
 function copy(t){ (navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject())
-  .then(function(){toast('انتسخ ✓')},function(){prompt('انسخ:',t)}); }
-var ST={waiting:['بانتظار موتوسيكل','w'],claimed:['تم تكليف سائق','b'],ready_wait:['السائق بانتظار الطلب','w'],on_the_way:['بالطريق','b'],
+  .then(function(){toast('تم النسخ ✓')},function(){prompt('انسخ:',t)}); }
+var ST={waiting:['بانتظار دراجة نارية','w'],claimed:['تم تكليف سائق','b'],ready_wait:['السائق بانتظار الطلب','w'],on_the_way:['في الطريق','b'],
         delivered:['وصل ✓','p'],cancelled:['ملغى','x']};
 var KIND={traccar_app:'تطبيق Traccar',gps_tracker:'جهاز GPS',other:'جهاز آخر',phone:'GPS الهاتف'};
 
@@ -78,26 +78,26 @@ function shell(){
     '<h3>الخريطة المباشرة</h3>'+
     '<div class="dlv-stats" id="dlvStats"></div>'+
     '<div id="dlvMap"></div>'+
-    '<div class="muted" style="font-size:12px;margin-top:6px">بتتحدث كل 5 ثواني · 🏍️ ملوّن = شغّال · باهت = موقعو قديم</div>'+
+    '<div class="muted" style="font-size:12px;margin-top:6px">تتحدّث كل 5 ثوانٍ · 🏍️ ملوّن = يعمل · باهت = موقعه قديم</div>'+
   '</div>'+
   '<div class="panel"><h3>طلبات التوصيل المفتوحة</h3><div id="dlvOrders"></div></div>'+
   '<div class="panel">'+
-    '<h3>موظفين التوصيل</h3>'+
+    '<h3>موظفو التوصيل</h3>'+
     '<div class="g3">'+
       '<div><label>الاسم</label><input type="text" id="dlvDName"></div>'+
       '<div><label>الهاتف</label><input type="tel" id="dlvDPhone" placeholder="03xxxxxx"></div>'+
       '<div style="display:flex;align-items:flex-end"><button class="btn" id="dlvAddDrv" style="width:100%">إضافة موظف</button></div>'+
     '</div>'+
-    '<div class="muted" style="font-size:12.5px;margin-top:6px">كل موظف إلو رابط خاص — بيفتحو على تلفونو وبيستلم الطلبات منو. ما بيحتاج إيميل ولا كلمة سر.</div>'+
+    '<div class="muted" style="font-size:12.5px;margin-top:6px">لكل موظف رابط خاص — يفتحه على هاتفه ويستلم الطلبات منه. لا يحتاج إلى بريد إلكتروني ولا كلمة سر.</div>'+
     '<div id="dlvDrivers" style="margin-top:10px"></div>'+
   '</div>'+
   '<div class="panel">'+
     '<h3>أجهزة التتبع</h3>'+
     '<div class="g3">'+
-      '<div><label>النوع</label><select id="dlvKKind"><option value="gps_tracker">جهاز GPS للموتوسيكل</option>'+
+      '<div><label>النوع</label><select id="dlvKKind"><option value="gps_tracker">جهاز GPS للدراجة النارية</option>'+
         '<option value="traccar_app">تطبيق Traccar على هاتف</option><option value="other">جهاز آخر (HTTP)</option></select></div>'+
-      '<div><label>اسم / رقم الموتوسيكل</label><input type="text" id="dlvKLabel" placeholder="موتو 1"></div>'+
-      '<div><label>رقم الجهاز (IMEI / ID)</label><input type="text" id="dlvKId" dir="ltr" placeholder="اتركه فاضي لتطبيق Traccar"></div>'+
+      '<div><label>اسم / رقم الدراجة النارية</label><input type="text" id="dlvKLabel" placeholder="دراجة 1"></div>'+
+      '<div><label>رقم الجهاز (IMEI / ID)</label><input type="text" id="dlvKId" dir="ltr" placeholder="اتركه فارغًا لتطبيق Traccar"></div>'+
     '</div>'+
     '<div class="acts"><button class="btn" id="dlvAddDev">إضافة جهاز</button></div>'+
     '<div id="dlvDevices" style="margin-top:10px"></div>'+
@@ -105,19 +105,19 @@ function shell(){
   '<div class="panel">'+
     '<h3>الإعدادات والربط</h3>'+
     '<label>إرسال الطلبات للموظفين</label>'+
-    '<select id="dlvMode"><option value="auto">تلقائي — كل طلب توصيل بيوصل فوراً (Whish: بعد الدفع)</option>'+
-      '<option value="manual">يدوي — أنا بكبس «أرسل للتوصيل» على كل طلب</option></select>'+
+    '<select id="dlvMode"><option value="auto">تلقائي — يصل كل طلب توصيل فوراً (Whish: بعد الدفع)</option>'+
+      '<option value="manual">يدوي — أضغط «أرسل للتوصيل» بنفسي على كل طلب</option></select>'+
     '<div class="msg" id="dlvSetMsg"></div>'+
     '<label style="margin-top:14px">رابط استقبال المواقع (لتطبيق Traccar وأجهزة الـGPS)</label>'+
     '<div class="dlv-kv" id="dlvSrv"></div>'+
-    '<label style="margin-top:10px">رابط التحويل من سيرفر Traccar (forward.url) — لأجهزة GPS القديمة</label>'+
+    '<label style="margin-top:10px">رابط التحويل من خادم Traccar (forward.url) — لأجهزة GPS القديمة</label>'+
     '<div class="dlv-kv" id="dlvFwd">—</div>'+
     '<div class="acts"><button class="btn alt sm" id="dlvCopyFwd">نسخ</button><button class="btn dg sm" id="dlvNewKey">تغيير المفتاح</button></div>'+
     '<div class="muted" style="font-size:12.5px;line-height:1.8;margin-top:8px">'+
-      '• <b>Apple AirTag:</b> Apple ما بتسمح لأي برنامج يقرأ موقعو (بس تطبيق Find My) — فما فينا نستعملو هون.<br>'+
-      '• <b>أسهل حل:</b> تطبيق Traccar Client المجاني على تلفون الموظف — الموظف بيجهّزو من صفحتو بكبسة.<br>'+
-      '• <b>جهاز GPS على الموتوسيكل:</b> إذا الجهاز بيدعم إرسال HTTP (OsmAnd) بتحط الرابط فوق مباشرة. '+
-        'أغلب الأجهزة الصينية (GT06 / Sinotrack / Concox) بتحكي بس مع سيرفر Traccar، وهو بيحوّل لعنّا عبر رابط التحويل.'+
+      '• <b>Apple AirTag:</b> Apple لا تسمح لأي برنامج بقراءة موقعه (سوى تطبيق Find My) — لذلك لا يمكننا استخدامه هنا.<br>'+
+      '• <b>أسهل حل:</b> تطبيق Traccar Client المجاني على هاتف الموظف — يجهّزه الموظف من صفحته بضغطة واحدة.<br>'+
+      '• <b>جهاز GPS على الدراجة النارية:</b> إذا كان الجهاز يدعم إرسال HTTP (OsmAnd) فضع الرابط أعلاه مباشرة. '+
+        'معظم الأجهزة الصينية (GT06 / Sinotrack / Concox) تتواصل فقط مع خادم Traccar، وهو يحوّل البيانات إلينا عبر رابط التحويل.'+
     '</div>'+
   '</div>'+
   '</div>';
@@ -125,7 +125,7 @@ function shell(){
   $('#dlvAddDrv').onclick=addDriver;
   $('#dlvAddDev').onclick=addDevice;
   $('#dlvMode').onchange=function(){ saveSettings(this.value,false); };
-  $('#dlvNewKey').onclick=function(){ if(confirm('تغيير المفتاح بيوقف أي سيرفر Traccar مربوط لحد ما تحط الرابط الجديد. متأكد؟')) saveSettings(null,true); };
+  $('#dlvNewKey').onclick=function(){ if(confirm('تغيير المفتاح يوقف أي خادم Traccar مربوط حتى تضع الرابط الجديد. هل أنت متأكد؟')) saveSettings(null,true); };
   $('#dlvCopyFwd').onclick=function(){ copy($('#dlvFwd').textContent); };
   $('#dlvSrv').textContent=location.origin+'/api/track/osmand';
   root.addEventListener('click',onClick);
@@ -155,16 +155,16 @@ function paint(){
   var live=D.filter(function(d){return d.on_duty && fresh(d.pos)}).length;
   var cnt=function(s){return O.filter(function(o){return o.dispatch===s}).length};
   $('#dlvStats').innerHTML=
-    '<div><b>'+live+'</b><span>موتوسيكل شغّال</span></div>'+
+    '<div><b>'+live+'</b><span>دراجة نارية نشطة</span></div>'+
     '<div><b>'+cnt('waiting')+'</b><span>بانتظار موظف</span></div>'+
-    '<div><b>'+(cnt('claimed')+cnt('ready_wait')+cnt('on_the_way'))+'</b><span>عالطريق</span></div>'+
+    '<div><b>'+(cnt('claimed')+cnt('ready_wait')+cnt('on_the_way'))+'</b><span>على الطريق</span></div>'+
     '<div><b>'+D.reduce(function(a,d){return a+Number(d.done_today||0)},0)+'</b><span>وصل اليوم</span></div>';
 
   // الطلبات
-  var opts=function(sel){ return '<option value="">— اختار موظف —</option>'+D.filter(function(d){return d.is_active})
+  var opts=function(sel){ return '<option value="">— اختر موظفًا —</option>'+D.filter(function(d){return d.is_active})
     .map(function(d){return '<option value="'+d.id+'"'+(d.id===sel?' selected':'')+'>'+esc(d.name)+(d.on_duty?' 🟢':'')+'</option>'}).join(''); };
   $('#dlvOrders').innerHTML=O.length?O.map(function(o){
-    var s=ST[o.dispatch]||['ما انبعت للتوصيل','x'], d=drvById(o.driver_id);
+    var s=ST[o.dispatch]||['لم يُرسل للتوصيل','x'], d=drvById(o.driver_id);
     var trk=location.origin+'/t/'+encodeURIComponent(o.token);
     var open=['waiting','claimed','ready_wait','on_the_way'].indexOf(o.dispatch)>=0;
     return '<div class="row"><div class="t"><b>'+esc(o.order_no)+' · '+esc(o.customer_name)+'</b>'+
@@ -179,41 +179,41 @@ function paint(){
       '<button class="btn alt sm" data-copy="'+esc(trk)+'">رابط التتبع</button>'+
       (o.lat!=null?'<button class="btn alt sm" data-focus="'+o.lat+','+o.lng+'">📍</button>':'')+
       '</div></div>';
-  }).join(''):'<p class="muted">ما في طلبات توصيل مفتوحة</p>';
+  }).join(''):'<p class="muted">لا توجد طلبات توصيل مفتوحة</p>';
 
   // الموظفين
   $('#dlvDrivers').innerHTML=D.length?D.map(function(d){
     var link=location.origin+'/d/'+d.token, p=d.pos;
-    var src=p?(KIND[p.src]||p.src)+' · '+ago(p.pos_at):'ما في موقع بعد';
+    var src=p?(KIND[p.src]||p.src)+' · '+ago(p.pos_at):'لا يوجد موقع بعد';
     var dot=!d.is_active?'⚫':!d.allowed?'🔴':d.on_duty&&fresh(p)?'🟢':d.on_duty?'🟡':'⚪';
-    var msg='مرحبا '+d.name+'، هيدا رابط صفحة التوصيل تبعك عند '+A.R.name_ar+
-      '. افتحو على تلفونك وكبس «بدء الدوام»:\n'+link;
+    var msg='مرحبا '+d.name+'، هذا رابط صفحة التوصيل الخاصة بك لدى '+A.R.name_ar+
+      '. افتحه على هاتفك واضغط «بدء الدوام»:\n'+link;
     return '<div class="row"><div class="t"><b>'+dot+' '+esc(d.name)+(d.phone?' · <span style="direction:ltr;display:inline">'+esc(d.phone)+'</span>':'')+'</b>'+
-      '<span>'+(!d.allowed&&d.is_active?'<b style="color:#FF7A7E">اشتراك هالموظف منتهي</b> · ':'')+(d.on_duty?'بالدوام':'خارج الدوام')+' · '+src+
+      '<span>'+(!d.allowed&&d.is_active?'<b style="color:#FF7A7E">اشتراك هذا الموظف منتهٍ</b> · ':'')+(d.on_duty?'في الدوام':'خارج الدوام')+' · '+src+
         (d.device?' · '+esc(KIND[d.device.kind])+': '+esc(d.device.label||d.device.identifier)+(d.device.battery!=null?' 🔋'+Math.round(d.device.battery)+'%':''):'')+
-        ' · معو '+d.active+' · اليوم '+d.done_today+'</span></div>'+
+        ' · معه '+d.active+' · اليوم '+d.done_today+'</span></div>'+
       '<div class="dlv-acts">'+
-        (d.phone?'<a class="btn sm" target="_blank" rel="noopener" style="text-decoration:none" href="https://wa.me/'+waNum(d.phone)+'?text='+encodeURIComponent(msg)+'">ابعت الرابط</a>':'')+
+        (d.phone?'<a class="btn sm" target="_blank" rel="noopener" style="text-decoration:none" href="https://wa.me/'+waNum(d.phone)+'?text='+encodeURIComponent(msg)+'">أرسل الرابط</a>':'')+
         '<button class="btn alt sm" data-copy="'+esc(link)+'">نسخ الرابط</button>'+
         (p&&p.lat!=null?'<button class="btn alt sm" data-focus="'+p.lat+','+p.lng+'">📍</button>':'')+
         '<button class="btn alt sm" data-da="toggle" data-id="'+d.id+'" data-on="'+d.is_active+'">'+(d.is_active?'إيقاف':'تفعيل')+'</button>'+
         '<button class="btn alt sm" data-da="token" data-id="'+d.id+'">رابط جديد</button>'+
         '<button class="btn dg sm" data-da="del" data-id="'+d.id+'">حذف</button>'+
       '</div></div>';
-  }).join(''):'<p class="muted">ضيف أول موظف توصيل</p>';
+  }).join(''):'<p class="muted">أضف أول موظف توصيل</p>';
 
   // الأجهزة
-  var dopt=function(sel){ return '<option value="">— مش مربوط —</option>'+D.map(function(d){
+  var dopt=function(sel){ return '<option value="">— غير مربوط —</option>'+D.map(function(d){
     return '<option value="'+d.id+'"'+(d.id===sel?' selected':'')+'>'+esc(d.name)+'</option>'}).join(''); };
   $('#dlvDevices').innerHTML=F.devices.length?F.devices.map(function(t){
     return '<div class="row"><div class="t"><b>'+esc(t.label||'—')+' <span class="chip x">'+esc(KIND[t.kind])+'</span></b>'+
       '<span style="direction:ltr;display:inline-block">ID: '+esc(t.identifier)+'</span>'+
-      '<span> · '+(t.pos_at?'آخر موقع '+ago(t.pos_at):'ما وصل منو موقع بعد')+(t.battery!=null?' · 🔋'+Math.round(t.battery)+'%':'')+'</span></div>'+
+      '<span> · '+(t.pos_at?'آخر موقع '+ago(t.pos_at):'لم يصل منه أي موقع بعد')+(t.battery!=null?' · 🔋'+Math.round(t.battery)+'%':'')+'</span></div>'+
       '<div class="dlv-acts"><select data-devdrv="'+t.id+'">'+dopt(t.driver_id)+'</select>'+
       '<button class="btn alt sm" data-copy="'+esc(t.identifier)+'">نسخ ID</button>'+
-      (t.kind!=='traccar_app'?'<button class="btn alt sm" data-copy="'+esc(location.origin+'/api/track/osmand?id='+t.identifier+'&key='+t.secret)+'" title="للأجهزة اللي بتبعت HTTP مباشرة">رابط الجهاز</button>':'')+
+      (t.kind!=='traccar_app'?'<button class="btn alt sm" data-copy="'+esc(location.origin+'/api/track/osmand?id='+t.identifier+'&key='+t.secret)+'" title="للأجهزة التي ترسل HTTP مباشرة">رابط الجهاز</button>':'')+
       '<button class="btn dg sm" data-ka="del" data-id="'+t.id+'">حذف</button></div></div>';
-  }).join(''):'<p class="muted">ما في أجهزة بعد — الموظفين بيقدروا يستعملوا GPS هاتفهم بدون أي جهاز</p>';
+  }).join(''):'<p class="muted">لا توجد أجهزة بعد — يمكن للموظفين استخدام GPS هواتفهم بدون أي جهاز</p>';
 
   // الإعدادات
   if(F.settings){
@@ -240,7 +240,7 @@ function paintMap(){
     var html='<div style="position:relative"><div class="dlv-moto'+(old?' dlv-off':'')+'">🏍️</div><div class="dlv-lbl">'+esc(d.name)+(d.active?' · '+d.active:'')+'</div></div>';
     var ic=L.divIcon({html:html,className:'',iconSize:[30,30],iconAnchor:[15,15]});
     var pop='<b>'+esc(d.name)+'</b><br>'+(KIND[p.src]||p.src)+' · '+ago(p.pos_at)+
-      (p.speed_kmh!=null?'<br>'+Math.round(p.speed_kmh)+' كم/س':'')+'<br>معو '+d.active+' طلب';
+      (p.speed_kmh!=null?'<br>'+Math.round(p.speed_kmh)+' كم/س':'')+'<br>معه '+d.active+' طلب';
     if(MK.drv[d.id]){ MK.drv[d.id].setLatLng([p.lat,p.lng]).setIcon(ic).setPopupContent(pop); }
     else MK.drv[d.id]=L.marker([p.lat,p.lng],{icon:ic,zIndexOffset:1000}).bindPopup(pop).addTo(MAP);
   });
@@ -262,11 +262,11 @@ async function addDriver(){
   var n=$('#dlvDName').value.trim(), ph=$('#dlvDPhone').value.trim();
   if(n.length<2) return toast('اكتب اسم الموظف',false);
   if(B && B.used>=B.capacity){
-    if(confirm('وصلت للحد: '+B.used+' من '+B.capacity+' موظف.\nكل موظف إضافي '+money(B.seat_price)+' بالسنة. بدك تضيف مقعد موظف هلق؟')) buy('seat_new',null,1);
+    if(confirm('وصلت للحد: '+B.used+' من '+B.capacity+' موظف.\nكل موظف إضافي '+money(B.seat_price)+' سنويًا. هل تريد إضافة مقعد موظف الآن؟')) buy('seat_new',null,1);
     return;
   }
   var r=await A.sb.from('drivers').insert({restaurant_id:A.R.id,name:n,phone:ph});
-  if(r.error) return toast(/driver limit/.test(r.error.message)?'وصلت للحد — اشترِ مقعد موظف إضافي':'ما انحفظ: '+r.error.message,false);
+  if(r.error) return toast(/driver limit/.test(r.error.message)?'وصلت إلى الحد — اشترِ مقعد موظف إضافي':'لم يُحفظ: '+r.error.message,false);
   $('#dlvDName').value=''; $('#dlvDPhone').value=''; toast('تمت إضافة الموظف ✓'); load();
 }
 function rndId(){ var a=new Uint8Array(7); crypto.getRandomValues(a);
@@ -276,14 +276,14 @@ async function addDevice(){
   if(k==='traccar_app') id=id||rndId();
   if(!id) return toast('اكتب رقم الجهاز (IMEI / ID)',false);
   var r=await A.sb.from('tracker_devices').insert({restaurant_id:A.R.id,kind:k,label:lb,identifier:id});
-  if(r.error) return toast(/duplicate|unique/i.test(r.error.message)?'هالرقم مسجّل من قبل':'ما انحفظ: '+r.error.message,false);
+  if(r.error) return toast(/duplicate|unique/i.test(r.error.message)?'هذا الرقم مسجّل من قبل':'لم يُحفظ: '+r.error.message,false);
   $('#dlvKLabel').value=''; $('#dlvKId').value=''; toast('تمت إضافة الجهاز ✓'); load();
 }
 async function saveSettings(mode,newKey){
   var r=await A.sb.rpc('admin_delivery_settings',{rid:A.R.id,p_mode:mode,p_new_key:!!newKey});
   var m=$('#dlvSetMsg');
-  if(r.error){ m.className='msg e'; m.textContent='ما انحفظ'; return; }
-  F.settings=r.data; m.className='msg s'; m.textContent='انحفظ ✓'; paint();
+  if(r.error){ m.className='msg e'; m.textContent='لم يُحفظ'; return; }
+  F.settings=r.data; m.className='msg s'; m.textContent='تم الحفظ ✓'; paint();
 }
 async function onClick(e){
   var b;
@@ -291,27 +291,27 @@ async function onClick(e){
   if((b=e.target.closest('[data-focus]'))&&MAP){ var c=b.dataset.focus.split(',').map(Number);
     MAP.setView(c,16); $('#dlvMap').scrollIntoView({behavior:'smooth',block:'center'}); return; }
   if((b=e.target.closest('[data-oa]'))){
-    if(b.dataset.oa==='cancel'&&!confirm('إلغاء توصيل هالطلب؟')) return;
+    if(b.dataset.oa==='cancel'&&!confirm('إلغاء توصيل هذا الطلب؟')) return;
     var r=await A.sb.rpc('admin_dispatch',{p_order:Number(b.dataset.id),p_action:b.dataset.oa,p_driver:null});
-    if(r.error) toast('ما زبط: '+r.error.message,false); return load();
+    if(r.error) toast('فشل: '+r.error.message,false); return load();
   }
   if((b=e.target.closest('[data-da]'))){
     var id=b.dataset.id, a=b.dataset.da, q;
-    if(a==='del'){ if(!confirm('حذف الموظف؟ طلباتو القديمة بتضل محفوظة.')) return;
+    if(a==='del'){ if(!confirm('حذف الموظف؟ ستبقى طلباته القديمة محفوظة.')) return;
       q=A.sb.from('drivers').delete().eq('id',id); }
     if(a==='toggle'){
-      if(b.dataset.on!=='true' && B && B.used>=B.capacity) return toast('ما في مقعد فاضي — وقّف موظف تاني أو اشترِ مقعد إضافي',false);
+      if(b.dataset.on!=='true' && B && B.used>=B.capacity) return toast('لا يوجد مقعد شاغر — أوقف موظفًا آخر أو اشترِ مقعدًا إضافيًا',false);
       q=A.sb.from('drivers').update({is_active:b.dataset.on!=='true',on_duty:false}).eq('id',id);
     }
-    if(a==='token'){ if(!confirm('الرابط القديم رح يوقف يشتغل. متأكد؟')) return;
+    if(a==='token'){ if(!confirm('سيتوقف الرابط القديم عن العمل. هل أنت متأكد؟')) return;
       var t=new Uint8Array(16); crypto.getRandomValues(t);
       q=A.sb.from('drivers').update({token:Array.prototype.map.call(t,function(x){return ('0'+x.toString(16)).slice(-2)}).join('')}).eq('id',id); }
-    var r2=await q; if(r2.error) toast(/driver limit/.test(r2.error.message)?'وصلت للحد — اشترِ مقعد موظف إضافي':'ما زبط: '+r2.error.message,false); return load();
+    var r2=await q; if(r2.error) toast(/driver limit/.test(r2.error.message)?'وصلت إلى الحد — اشترِ مقعد موظف إضافي':'فشل: '+r2.error.message,false); return load();
   }
   if((b=e.target.closest('[data-ka]'))){
     if(!confirm('حذف الجهاز؟')) return;
     var r3=await A.sb.from('tracker_devices').delete().eq('id',b.dataset.id);
-    if(r3.error) toast('ما زبط',false); return load();
+    if(r3.error) toast('لم ينجح',false); return load();
   }
 }
 async function onChange(e){
@@ -324,7 +324,7 @@ async function onChange(e){
     if(s.value) await A.sb.from('tracker_devices').update({driver_id:null}).eq('driver_id',s.value).neq('id',s.dataset.devdrv);
     r=await A.sb.from('tracker_devices').update({driver_id:s.value||null}).eq('id',s.dataset.devdrv);
   } else return;
-  if(r&&r.error) toast('ما زبط: '+r.error.message,false); else toast('تم ✓');
+  if(r&&r.error) toast('فشل: '+r.error.message,false); else toast('تم ✓');
   load();
 }
 
@@ -340,25 +340,25 @@ function paintPitch(){
   $('#dlvPitch').innerHTML=
   '<div class="panel dlv-hero">'+
     '<div class="ic">🏍️</div>'+
-    '<h2>'+(ex?'اشتراك التوصيل منتهي':'نظام التوصيل والتتبع المباشر')+'</h2>'+
-    '<p>'+(ex?'جدّد الاشتراك لترجع الطلبات توصل لموظفين التوصيل وزبائنك يتابعوا الموتوسيكل عالخريطة.':
-      'كل طلب توصيل بيوصل فوراً لموظفين التوصيل على تلفوناتهن. أول واحد بيكبس «استلمت الطلب» بياخدو، '+
-      'والزبون بيوصلو رابط بيشوف فيه الموتوسيكل عالخريطة لحد باب البيت. وإنت بتشوف كل الموتوسيكلات من هون.')+'</p>'+
+    '<h2>'+(ex?'اشتراك التوصيل منتهٍ':'نظام التوصيل والتتبع المباشر')+'</h2>'+
+    '<p>'+(ex?'جدّد الاشتراك لتعود الطلبات إلى موظفي التوصيل ويتابع زبائنك الدراجة النارية على الخريطة.':
+      'كل طلب توصيل يصل فوراً إلى موظفي التوصيل على هواتفهم. أول من يضغط «استلمت الطلب» يأخذه، '+
+      'ويصل إلى الزبون رابط يرى فيه الدراجة النارية على الخريطة حتى باب المنزل. وأنت ترى جميع الدراجات النارية من هنا.')+'</p>'+
     '<div class="dlv-price">'+
-      '<div><b>'+money(B.price)+'</b><span>بالسنة · بيشمل موظف توصيل واحد</span></div>'+
-      '<div><b>+'+money(B.seat_price)+'</b><span>بالسنة لكل موظف إضافي</span></div>'+
+      '<div><b>'+money(B.price)+'</b><span>في السنة · يشمل موظف توصيل واحدًا</span></div>'+
+      '<div><b>+'+money(B.seat_price)+'</b><span>في السنة لكل موظف إضافي</span></div>'+
     '</div>'+
     '<button class="btn y" id="dlvBuy" style="font-size:17px;padding:13px 34px">'+(ex?'جدّد الآن':'اشترك الآن')+' — '+money(B.price)+'</button>'+
-    '<div class="muted" style="margin-top:10px">الدفع أونلاين عبر Whish والتفعيل فوري'+
-      (WA?' · أو <a href="https://wa.me/'+WA+'?text='+encodeURIComponent('مرحبا، بدي فعّل نظام التوصيل لمطعم '+A.R.name_ar+' ('+A.R.slug+')')+'" target="_blank" style="color:var(--accent)">ادفع كاش عبر واتساب</a>':'')+'</div>'+
+    '<div class="muted" style="margin-top:10px">الدفع الإلكتروني عبر Whish والتفعيل فوري'+
+      (WA?' · أو <a href="https://wa.me/'+WA+'?text='+encodeURIComponent('مرحبا، أريد تفعيل نظام التوصيل لمطعم '+A.R.name_ar+' ('+A.R.slug+')')+'" target="_blank" style="color:var(--accent)">ادفع نقدًا عبر واتساب</a>':'')+'</div>'+
   '</div>'+
-  '<div class="panel"><h3>شو بتاخد مع نظام التوصيل؟</h3><div class="dlv-feat">'+
-    '<div><b>📲 صفحة لكل موظف</b>رابط خاص على تلفونو، بلا تطبيق ولا كلمة سر. بيوصلو صوت تنبيه مع كل طلب.</div>'+
-    '<div><b>✋ أول واحد بياخد الطلب</b>«استلمت الطلب» ← «في الطريق إليك» ← «تم التوصيل». ما في طلب بيضيع ولا بيتكرر.</div>'+
-    '<div><b>🗺️ تتبع مباشر للزبون</b>الزبون بيشوف الموتوسيكل عم يقرّب عالخريطة مع الوقت التقريبي، وبعد التسليم بينقطع التتبع.</div>'+
-    '<div><b>👀 خريطة لكل الموتوسيكلات</b>بتعرف وين كل موظف، شو معو طلبات، وكم وصّل اليوم.</div>'+
-    '<div><b>🛰️ أجهزة GPS</b>GPS الهاتف، تطبيق Traccar بالخلفية، أو جهاز GPS مركّب عالموتوسيكل.</div>'+
-    '<div><b>🧭 ملاحة بكبسة</b>Google Maps أو Waze لعنوان الزبون مباشرة، واتصال وواتساب للزبون.</div>'+
+  '<div class="panel"><h3>ماذا تحصل مع نظام التوصيل؟</h3><div class="dlv-feat">'+
+    '<div><b>📲 صفحة لكل موظف</b>رابط خاص على هاتفه، بلا تطبيق ولا كلمة سر. يصله تنبيه صوتي مع كل طلب.</div>'+
+    '<div><b>✋ الطلب لأول من يأخذه</b>«استلمت الطلب» ← «في الطريق إليك» ← «تم التوصيل». لا يضيع أي طلب ولا يتكرر.</div>'+
+    '<div><b>🗺️ تتبع مباشر للزبون</b>يرى الزبون الدراجة النارية وهي تقترب على الخريطة مع الوقت التقريبي، وبعد التسليم يتوقف التتبع.</div>'+
+    '<div><b>👀 خريطة لكل الدراجات النارية</b>تعرف أين كل موظف، وما الطلبات التي معه، وكم طلبًا وصّل اليوم.</div>'+
+    '<div><b>🛰️ أجهزة GPS</b>GPS الهاتف، تطبيق Traccar في الخلفية، أو جهاز GPS مركّب على الدراجة النارية.</div>'+
+    '<div><b>🧭 ملاحة بضغطة</b>Google Maps أو Waze إلى عنوان الزبون مباشرة، واتصال وواتساب مع الزبون.</div>'+
   '</div></div>';
   $('#dlvBuy').onclick=function(){ buy('delivery'); };
 }
@@ -369,25 +369,25 @@ function billHTML(){
   var col=B.days_left<=15?'var(--accent)':'#4ADE80';
   var h='<h3>اشتراك التوصيل</h3>'+
     '<div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">'+
-      '<div style="font-family:var(--font-display);font-size:28px;color:'+col+'">باقي '+B.days_left+' يوم</div>'+
+      '<div style="font-family:var(--font-display);font-size:28px;color:'+col+'">متبقٍّ '+B.days_left+' يوم</div>'+
       '<div class="muted">ينتهي بتاريخ '+dt(B.expires_at)+'</div>'+
       '<button class="btn y sm" data-buy="renew_all" style="margin-inline-start:auto">جدّد سنة — '+money(Number(B.price)+Number(B.seat_price)*seats.length)+'</button>'+
     '</div>'+
     '<div style="margin-top:12px;font-weight:700">الموظفين: '+B.used+' من '+B.capacity+'</div>'+
     '<div class="dlv-cap"><i style="width:'+pct+'%"></i></div>'+
-    '<div class="muted">الاشتراك الأساسي بيشمل '+B.included+' موظف · كل موظف إضافي '+money(B.seat_price)+' بالسنة · '+
-      'إذا حذفت موظف بتقدر تحط بديل عنو بنفس المقعد.</div>';
+    '<div class="muted">الاشتراك الأساسي يشمل '+B.included+' موظف · كل موظف إضافي '+money(B.seat_price)+' سنويًا · '+
+      'إذا حذفت موظفًا يمكنك وضع بديل عنه في المقعد نفسه.</div>';
   h+='<div style="margin-top:10px">'+
-    '<div class="dlv-seat"><span>🏍️ مقعد أساسي (مع الاشتراك)</span><span class="muted">لحد '+dt(B.expires_at)+'</span></div>'+
+    '<div class="dlv-seat"><span>🏍️ مقعد أساسي (مع الاشتراك)</span><span class="muted">حتى '+dt(B.expires_at)+'</span></div>'+
     seats.map(function(x,i){
       var on=new Date(x.expires_at)>Date.now();
-      return '<div class="dlv-seat"><span>➕ مقعد موظف إضافي '+(i+1)+(x.source!=='whish'?' <span class="chip x">'+(x.source==='gift'?'هدية':'كاش')+'</span>':'')+'</span>'+
-        '<span class="muted" style="flex:none">'+(on?'لحد '+dt(x.expires_at):'<b style="color:#FF7A7E">منتهي</b>')+'</span>'+
+      return '<div class="dlv-seat"><span>➕ مقعد موظف إضافي '+(i+1)+(x.source!=='whish'?' <span class="chip x">'+(x.source==='gift'?'هدية':'نقدًا')+'</span>':'')+'</span>'+
+        '<span class="muted" style="flex:none">'+(on?'حتى '+dt(x.expires_at):'<b style="color:#FF7A7E">منتهي</b>')+'</span>'+
         '<button class="btn alt sm" data-buy="seat_renew" data-seat="'+x.id+'">جدّد '+money(B.seat_price)+'</button></div>';
     }).join('')+'</div>'+
     '<div class="dlv-acts" style="margin-top:12px">'+
       '<select id="dlvSeatQty">'+[1,2,3,4,5].map(function(n){return '<option value="'+n+'">'+n+'</option>'}).join('')+'</select>'+
-      '<button class="btn sm" data-buy="seat_new">أضف موظف إضافي — '+money(B.seat_price)+' بالسنة</button>'+
+      '<button class="btn sm" data-buy="seat_new">أضف موظفًا إضافيًا — '+money(B.seat_price)+' سنويًا</button>'+
     '</div>';
   return h;
 }
@@ -398,10 +398,10 @@ function paintSub(){
   var el=$('#subDlv'); if(!el||!B) return;
   if(B.active){ el.innerHTML=billHTML(); return; }
   el.innerHTML='<h3>🏍️ نظام التوصيل</h3>'+
-    '<p class="muted" style="font-size:14px;line-height:1.9">'+(B.ever?'اشتراك التوصيل منتهي — جدّدو لترجع الطلبات توصل للموظفين.':
-      'موظفين توصيل بيستلموا الطلبات على تلفوناتهن، وزبونك بيتابع الموتوسيكل عالخريطة لحد ما يوصل.')+'</p>'+
-    '<div class="dlv-acts"><button class="btn y" data-buy="delivery">'+(B.ever?'جدّد الآن':'اشترك الآن')+' — '+money(B.price)+' بالسنة</button>'+
-    '<span class="muted">بيشمل موظف واحد · كل موظف إضافي '+money(B.seat_price)+'</span></div>';
+    '<p class="muted" style="font-size:14px;line-height:1.9">'+(B.ever?'اشتراك التوصيل منتهٍ — جدّده ليعود وصول الطلبات إلى الموظفين.':
+      'موظفو توصيل يستلمون الطلبات على هواتفهم، ويتابع زبونك الدراجة النارية على الخريطة حتى وصولها.')+'</p>'+
+    '<div class="dlv-acts"><button class="btn y" data-buy="delivery">'+(B.ever?'جدّد الآن':'اشترك الآن')+' — '+money(B.price)+' سنويًا</button>'+
+    '<span class="muted">يشمل موظفًا واحدًا · كل موظف إضافي '+money(B.seat_price)+'</span></div>';
 }
 
 async function buy(kind,seat,qty){
@@ -410,10 +410,10 @@ async function buy(kind,seat,qty){
             seat_new:'مقعد موظف توصيل إضافي لسنة',seat_renew:'تجديد مقعد موظف لسنة'}[kind];
   var r=await A.sb.rpc('start_addon',{rid:A.R.id,p_kind:kind,p_seat:seat||null,p_qty:qty||1});
   if(r.error){ var m=r.error.message||'';
-    return toast(/not subscribed/.test(m)?'لازم تشترك بنظام التوصيل أول':/price not set/.test(m)?'السعر مش محدد — تواصل معنا':'ما زبط: '+m,false); }
-  if(!confirm(what+'\nالمبلغ: '+money(r.data.amount)+'\n\nرح ننقلك لصفحة Whish للدفع.')) return;
+    return toast(/not subscribed/.test(m)?'يجب الاشتراك في نظام التوصيل أولًا':/price not set/.test(m)?'السعر غير محدد — تواصل معنا':'فشل: '+m,false); }
+  if(!confirm(what+'\nالمبلغ: '+money(r.data.amount)+'\n\nسننقلك إلى صفحة Whish للدفع.')) return;
   var ss=await A.sb.auth.getSession(), tok=ss.data.session&&ss.data.session.access_token;
-  toast('عم نجهّز الدفع…');
+  toast('جارٍ تجهيز الدفع…');
   try{
     var res=await fetch('/api/addon/pay',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+tok},
       body:JSON.stringify({id:r.data.id})});
@@ -428,7 +428,7 @@ async function checkReturn(){
   var q=new URLSearchParams(location.search), id=q.get('addon'), bad=q.get('addon_failed');
   if(!id&&!bad) return;
   history.replaceState(null,'',location.pathname);
-  if(bad){ alert('ما تمت عملية الدفع. فيك تجرّب مرة تانية أو تتواصل معنا.'); return; }
+  if(bad){ alert('لم تتم عملية الدفع. يمكنك المحاولة مرة أخرى أو التواصل معنا.'); return; }
   var ss=await A.sb.auth.getSession(), tok=ss.data.session&&ss.data.session.access_token;
   for(var i=0;i<4;i++){
     try{
@@ -439,7 +439,7 @@ async function checkReturn(){
     }catch(e){}
     await new Promise(function(r){setTimeout(r,2500)});
   }
-  alert('استلمنا رجوعك من صفحة الدفع، بس ما تأكد الدفع بعد. إذا انخصم المبلغ تواصل معنا.');
+  alert('تلقّينا عودتك من صفحة الدفع، لكن الدفع لم يتأكد بعد. إذا خُصم المبلغ فتواصل معنا.');
 }
 
 document.addEventListener('click',function(e){

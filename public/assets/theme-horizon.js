@@ -112,13 +112,13 @@
         '<div class="hz-orb a"></div><div class="hz-orb b"></div><div class="hz-orb c"></div>'+
         '<div class="hz-aside-top"><span class="hz-logo">Liban<b>Apps</b></span></div>'+
         '<div class="hz-aside-mid">'+
-          '<h3>'+(isUp?'ابدأ خلال دقيقة':'أهلاً فيك من جديد')+'</h3>'+
+          '<h3>'+(isUp?'ابدأ خلال دقيقة':'أهلاً بك من جديد')+'</h3>'+
           '<p>منيو المطاعم، محاسبة الصناعيين والتجّار، والمتجر الإلكتروني — بحساب واحد.</p>'+
           '<ul>'+
             '<li><i>'+ICON.check+'</i><span>تفعيل فوري بعد الدفع</span></li>'+
-            '<li><i>'+ICON.check+'</i><span>الدولار والليرة بكل البرامج</span></li>'+
-            '<li><i>'+ICON.check+'</i><span>بيشتغل على الموبايل والكمبيوتر</span></li>'+
-            '<li><i>'+ICON.check+'</i><span>دعم محلي بالعربي</span></li>'+
+            '<li><i>'+ICON.check+'</i><span>الدولار والليرة في كل البرامج</span></li>'+
+            '<li><i>'+ICON.check+'</i><span>يعمل على الهاتف والكمبيوتر</span></li>'+
+            '<li><i>'+ICON.check+'</i><span>دعم محلي بالعربية</span></li>'+
           '</ul>'+
         '</div>'+
         '<div class="hz-chips">'+
@@ -126,7 +126,7 @@
           '<div class="hz-chip c2"><i class="g">'+ICON.bill+'</i><div><b>فاتورة مدفوعة</b><small dir="ltr">#1024 · 250 $</small></div></div>'+
           '<div class="hz-chip c3"><i class="b">'+ICON.box+'</i><div><b>المخزون محدّث</b><small>الآن</small></div></div>'+
         '</div>'+
-        '<div class="hz-aside-foot">مبني بلبنان · مدعوم محلياً</div>');
+        '<div class="hz-aside-foot">صُنع في لبنان · مدعوم محلياً</div>');
       sec.appendChild(aside);
 
       // ترتيب ظهور الحقول
