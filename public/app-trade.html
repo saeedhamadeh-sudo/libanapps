@@ -382,6 +382,8 @@ async function save(key, value){
 let DB = {customers:[], invoices:[], receipts:[], settings:{}, suppliers:[], purchaseInvoices:[], paymentVouchers:[], warehouseItems:[], stockIns:[], stockOuts:[], customerAccounts:[], budgetCategories:[], budgetEntries:[], cashMovements:[], dayClosures:[], cashierShifts:[]};
 let authenticated = false;
 async function signOutEverywhere(){
+  // مشرف المنصة داخل على مؤسسة زبون: نُغلق المؤسسة ونعود إلى /super مع إبقاء جلسة المشرف
+  if(typeof PLATFORM_ADMIN!=='undefined' && PLATFORM_ADMIN){ location.href = '/super'; return; }
   try{ if(supabaseClient) await supabaseClient.auth.signOut(); }catch(e){}
   try{
     Object.keys(localStorage).forEach(k=>{
@@ -1523,6 +1525,11 @@ async function bootPlatform(){
       const check = await supabaseClient.rpc('app_access', { p_product: 'trade' });
       const currentClientId = check.data && check.data.client_id;
       if(expJson.ok && expJson.client_id && expJson.client_id !== currentClientId){
+        const admChk = await supabaseClient.rpc('is_admin');
+        if(admChk.data === true){
+          location.replace('/trade?c=' + encodeURIComponent(expJson.client_id));
+          return { ok:false, reason:'no_session' };
+        }
         await supabaseClient.auth.signOut();
         ses = { data: { session: null } };
       }
