@@ -578,13 +578,15 @@ function zavuTemplateContent(id, tpl, code) {
     content.templateVariables = {};
     for (const n of names) content.templateVariables[n] = code;   // قالب الكود فيه متغيّر واحد عادة
   }
-  // زر نسخ الكود / زر رابط: بدو الكود كمان
+  // قالب AUTHENTICATION (زر OTP / نسخ الكود): الكود بـ{{1}} بس — Zavu بيمرّرو للزر لحالو.
+  // إذا بعتنا متغيّر للزر كمان، Meta بترجّع (#100) Invalid parameter
   const btns = Array.isArray(tpl.buttons) ? tpl.buttons : [];
+  const btype = b => String((b && (b.type || b.otpType || b.otp_type || b.subType)) || '').toLowerCase();
+  const isAuth = String(tpl.category || '').toUpperCase() === 'AUTHENTICATION' || btns.some(b => /otp|copy/.test(btype(b)));
+  if (isAuth) { content.templateVariables = { '1': code }; return content; }
+  // قوالب تانية: زر رابط ديناميكي بياخد الكود
   const bv = {};
-  btns.forEach((b, i) => {
-    const t = String((b && (b.type || b.otpType || b.otp_type || b.subType)) || '').toLowerCase();
-    if (/otp|copy|url/.test(t)) bv[String(i)] = code;
-  });
+  btns.forEach((b, i) => { if (/url/.test(btype(b))) bv[String(i)] = code; });
   if (Object.keys(bv).length) content.templateButtonVariables = bv;
   return content;
 }
