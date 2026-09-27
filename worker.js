@@ -1043,21 +1043,29 @@ async function portalToken(request, env) {
   if (sub.status === 'suspended') return json(200, { ok: false, reason: 'suspended' });
   if (new Date(sub.expires_at).getTime() < Date.now()) return json(200, { ok: false, reason: 'expired' });
 
-  const clientRows = await sbGet(env, `clients?id=eq.${clientId}&select=user_id&limit=1`);
-  if (!clientRows.length || !clientRows[0].user_id) return json(200, { ok: false, reason: 'no_client' });
-  const userId = clientRows[0].user_id;
+  const clientRows = await sbGet(env, `clients?id=eq.${clientId}&select=id&limit=1`);
+  if (!clientRows.length) return json(200, { ok: false, reason: 'no_client' });
 
-  const userRes = await fetch(`${env.SUPABASE_URL}/auth/v1/admin/users/${userId}`, {
-    headers: { apikey: env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}` }
-  });
-  if (!userRes.ok) return json(500, { error: 'user lookup failed' });
-  const userData = await userRes.json();
-  const email = userData.email;
-  if (!email) return json(500, { error: 'الحساب المرتبط ليس له بريد إلكتروني' });
+  // الرابط يُدخل بحساب خاص بالمؤسسة (portal_users) — وليس بحساب صاحبها —
+  // فيصل إلى بيانات البرنامج فقط، لا إلى صفحة الحساب والاشتراكات والدفع.
+  let portalRows;
+  try { portalRows = await sbGet(env, `portal_users?client_id=eq.${clientId}&select=user_id&limit=1`); }
+  catch (e) { return json(200, { ok: false, reason: 'error', message: 'جدول portal_users غير موجود — شغّل db/upgrade-portal-users.sql على Supabase' }); }
+
+  const adminHdr = { apikey: env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`, 'Content-Type': 'application/json' };
+  const email = `portal-${clientId}@portal.libanapps.local`;
+  if (!portalRows.length) {
+    const pw = Array.from(crypto.getRandomValues(new Uint8Array(24)), b => b.toString(16).padStart(2, '0')).join('');
+    const cr = await fetch(`${env.SUPABASE_URL}/auth/v1/admin/users`, {
+      method: 'POST', headers: adminHdr,
+      body: JSON.stringify({ email, password: pw, email_confirm: true, user_metadata: { portal: true, client_id: clientId } })
+    });
+    // 422 = الحساب موجود مسبقاً (طلبان في الوقت نفسه) — نكمل ونأخذ رقمه من رابط الدخول
+    if (!cr.ok && cr.status !== 422) return json(500, { error: 'تعذّر إنشاء حساب الرابط: ' + (await cr.text()).slice(0, 150) });
+  }
 
   const linkRes = await fetch(`${env.SUPABASE_URL}/auth/v1/admin/generate_link`, {
-    method: 'POST',
-    headers: { apikey: env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`, 'Content-Type': 'application/json' },
+    method: 'POST', headers: adminHdr,
     body: JSON.stringify({ type: 'magiclink', email })
   });
   if (!linkRes.ok) {
@@ -1067,6 +1075,14 @@ async function portalToken(request, env) {
   const linkData = await linkRes.json();
   const hashedToken = linkData.hashed_token || (linkData.properties && linkData.properties.hashed_token);
   if (!hashedToken) return json(500, { error: 'لم يصدر رمز دخول من Supabase' });
+
+  if (!portalRows.length) {
+    const portalUserId = linkData.id || (linkData.user && linkData.user.id);
+    if (!portalUserId) return json(500, { error: 'لم يُعرف رقم حساب الرابط' });
+    const ins = await sbPost(env, 'portal_users?on_conflict=client_id',
+      { user_id: portalUserId, client_id: clientId }, 'resolution=ignore-duplicates,return=minimal');
+    if (!ins.ok) return json(500, { error: 'تعذّر ربط حساب الرابط بالمؤسسة: ' + (await ins.text()).slice(0, 150) });
+  }
 
   return json(200, { ok: true, hashed_token: hashedToken });
 }

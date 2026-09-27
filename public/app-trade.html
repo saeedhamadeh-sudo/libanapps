@@ -1544,8 +1544,8 @@ async function bootPlatform(){
         if(j.ok && j.hashed_token){
           const v = await supabaseClient.auth.verifyOtp({ token_hash: j.hashed_token, type: 'magiclink' });
           if(!v.error) ses = await supabaseClient.auth.getSession();
-        } else if(j.reason){
-          return { ok:false, reason: j.reason };
+        } else if(j.reason || j.error){
+          return { ok:false, reason: j.reason || 'error', message: j.message || j.error };
         }
       }catch(e){ console.error('portal auto-login failed', e && e.message); }
     }
