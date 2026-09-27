@@ -51,6 +51,11 @@ window.LAEngine=function(opts){
     var tpl2=k.replace(/([A-Za-z][A-Za-z0-9._\-\/@:?=&%+#]*)|([0-9\u0660-\u0669]+(?:[.,][0-9\u0660-\u0669]+)*)/g,
       function(m,a){ if(a){ s2.push(m); return '{s}'; } n2.push(latin(m)); return '{n}'; });
     if(s2.length){ hit=get(tpl2,l); if(hit!=null) return fill(hit,n2,s2); }
+    // 3) نص بين علامتي تنصيص ("…" أو «…») — اسم من البيانات
+    var n3=[], s3=[];
+    var tpl3=k.replace(/"([^"]*)"|«([^»]*)»/g,function(m,a,b){ s3.push(a!=null?a:b); return m.charAt(0)==='"'?'"{s}"':'«{s}»'; })
+              .replace(NUM,function(m){ n3.push(latin(m)); return '{n}'; });
+    if(s3.length){ hit=get(tpl3,l); if(hit!=null) return fill(hit,n3,s3); }
     return null;
   }
   function tCore(k,l){
@@ -60,6 +65,11 @@ window.LAEngine=function(opts){
     if(m && (m[1]||m[3]) && m[2]){
       hit=tNums(m[2],l);
       if(hit!=null) return m[1]+hit+m[3].replace(/؟/g,'?').replace(/،/g,',');
+      // المفتاح قد يتضمّن علامة الترقيم في آخره أو الرمز في أوله
+      if(m[1]&&m[3]){
+        hit=tNums(m[2]+m[3],l); if(hit!=null) return m[1]+hit;
+        hit=tNums(m[1]+m[2],l); if(hit!=null) return hit+m[3];
+      }
     }
     return null;
   }

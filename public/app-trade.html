@@ -354,8 +354,8 @@ async function loadCustomers(){
       try{ localStorage.setItem(skey(KEYS.customers), JSON.stringify(remote)); }catch(e){}
       return remote;
     }
-    toast('ما قدرنا نوصل لقاعدة البيانات السحابية — عم نستخدم آخر نسخة محفوظة عالجهاز');
-    setTimeout(()=>{ if(lastSupabaseError) alert('تفاصيل خطأ الاتصال بالسحابة (خذ لقطة شاشة وابعتها):\n\n'+lastSupabaseError); }, 400);
+    toast('تعذّر الوصول إلى قاعدة البيانات السحابية — يتم استخدام آخر نسخة محفوظة على الجهاز');
+    setTimeout(()=>{ if(lastSupabaseError) alert('تفاصيل خطأ الاتصال بالسحابة (التقط لقطة شاشة وأرسلها):\n\n'+lastSupabaseError); }, 400);
   }
   return safeGet(KEYS.customers, []);
 }
@@ -476,8 +476,8 @@ async function saveCustomerRemote(customer){
   if(supabaseClient){
     const ok = await supabaseUpsertCustomer(customer);
     if(!ok){
-      toast('تم الحفظ محليًا بس صار خطأ بالمزامنة مع السحابة');
-      setTimeout(()=>{ if(lastSupabaseError) alert('تفاصيل خطأ المزامنة (خذ لقطة شاشة وابعتها):\n\n'+lastSupabaseError); }, 400);
+      toast('تم الحفظ محليًا لكن حدث خطأ في المزامنة مع السحابة');
+      setTimeout(()=>{ if(lastSupabaseError) alert('تفاصيل خطأ المزامنة (التقط لقطة شاشة وأرسلها):\n\n'+lastSupabaseError); }, 400);
     }
     return ok;
   }
@@ -487,7 +487,7 @@ async function deleteCustomerRemote(id){
   try{ localStorage.setItem(skey(KEYS.customers), JSON.stringify(DB.customers)); }catch(e){}
   if(supabaseClient){
     const ok = await supabaseDeleteCustomer(id);
-    if(!ok) toast('تم الحذف محليًا بس صار خطأ بالمزامنة مع السحابة');
+    if(!ok) toast('تم الحذف محليًا لكن حدث خطأ في المزامنة مع السحابة');
     return ok;
   }
   return true;
@@ -666,19 +666,19 @@ async function syncSettingsToSupabase(settings){
     if(error){
       lastSupabaseError = describeSupabaseError(error);
       console.error('app_settings upsert error:', lastSupabaseError);
-      toast('تم الحفظ محليًا بس صار خطأ بمزامنة الإعدادات مع السحابة');
-      setTimeout(()=>{ if(lastSupabaseError) alert('تفاصيل خطأ مزامنة الإعدادات (خذ لقطة شاشة وابعتها):\n\n'+lastSupabaseError); }, 400);
+      toast('تم الحفظ محليًا لكن حدث خطأ في مزامنة الإعدادات مع السحابة');
+      setTimeout(()=>{ if(lastSupabaseError) alert('تفاصيل خطأ مزامنة الإعدادات (التقط لقطة شاشة وأرسلها):\n\n'+lastSupabaseError); }, 400);
     }
   }catch(e){
     lastSupabaseError = 'threw: '+(e && e.message);
     console.error('app_settings sync threw:', e && e.message);
-    toast('تم الحفظ محليًا بس صار خطأ بمزامنة الإعدادات مع السحابة');
-    setTimeout(()=>{ if(lastSupabaseError) alert('تفاصيل خطأ مزامنة الإعدادات (خذ لقطة شاشة وابعتها):\n\n'+lastSupabaseError); }, 400);
+    toast('تم الحفظ محليًا لكن حدث خطأ في مزامنة الإعدادات مع السحابة');
+    setTimeout(()=>{ if(lastSupabaseError) alert('تفاصيل خطأ مزامنة الإعدادات (التقط لقطة شاشة وأرسلها):\n\n'+lastSupabaseError); }, 400);
   }
 }
 async function syncUsersToSupabase(users){
   if(!supabaseClient) return;
-  if(!CLIENT_ID){ console.warn('syncUsersToSupabase: تخطّينا المزامنة لأنو CLIENT_ID مش محدد بعد'); return; }
+  if(!CLIENT_ID){ console.warn('syncUsersToSupabase: تم تخطي المزامنة لأن CLIENT_ID غير محدد بعد'); return; }
   try{
     if(users.length){
       const rows = users.map(userToDb);
@@ -686,8 +686,8 @@ async function syncUsersToSupabase(users){
       if(error){
         lastSupabaseError = describeSupabaseError(error);
         console.error('app_users upsert error:', lastSupabaseError);
-        toast('تم الحفظ محليًا بس صار خطأ بمزامنة المستخدمين مع السحابة');
-        setTimeout(()=>{ if(lastSupabaseError) alert('تفاصيل خطأ مزامنة المستخدمين (خذ لقطة شاشة وابعتها):\n\n'+lastSupabaseError); }, 400);
+        toast('تم الحفظ محليًا لكن حدث خطأ في مزامنة المستخدمين مع السحابة');
+        setTimeout(()=>{ if(lastSupabaseError) alert('تفاصيل خطأ مزامنة المستخدمين (التقط لقطة شاشة وأرسلها):\n\n'+lastSupabaseError); }, 400);
         return;
       }
     }
@@ -708,8 +708,8 @@ async function syncUsersToSupabase(users){
   }catch(e){
     lastSupabaseError = 'threw: '+(e && e.message);
     console.error('app_users sync threw:', e && e.message);
-    toast('تم الحفظ محليًا بس صار خطأ بمزامنة المستخدمين مع السحابة');
-    setTimeout(()=>{ if(lastSupabaseError) alert('تفاصيل خطأ مزامنة المستخدمين (خذ لقطة شاشة وابعتها):\n\n'+lastSupabaseError); }, 400);
+    toast('تم الحفظ محليًا لكن حدث خطأ في مزامنة المستخدمين مع السحابة');
+    setTimeout(()=>{ if(lastSupabaseError) alert('تفاصيل خطأ مزامنة المستخدمين (التقط لقطة شاشة وأرسلها):\n\n'+lastSupabaseError); }, 400);
   }
 }
 async function loadSettings(defaults){
@@ -743,7 +743,7 @@ const SUPABASE_TABLES = {
   budgetEntries: {table:'budget_entries', toDb:budgetEntryToDb, fromDb:budgetEntryFromDb, label:'سندات الميزانية'},
   cashMovements: {table:'cash_movements', toDb:cashMovementToDb, fromDb:cashMovementFromDb, label:'حركات الصندوق'},
   dayClosures: {table:'day_closures', toDb:dayClosureToDb, fromDb:dayClosureFromDb, label:'إقفالات اليومية'},
-  cashierShifts: {table:'cashier_shifts', toDb:cashierShiftToDb, fromDb:cashierShiftFromDb, label:'شفتات الكاشير'}
+  cashierShifts: {table:'cashier_shifts', toDb:cashierShiftToDb, fromDb:cashierShiftFromDb, label:'ورديات الكاشير'}
 };
 async function syncArrayToSupabase(localKey, arr){
   const cfg = SUPABASE_TABLES[localKey];
@@ -755,8 +755,8 @@ async function syncArrayToSupabase(localKey, arr){
       if(error){
         lastSupabaseError = describeSupabaseError(error);
         console.error(cfg.table+' upsert error:', lastSupabaseError);
-        toast('تم الحفظ محليًا بس صار خطأ بمزامنة '+cfg.label+' مع السحابة');
-        setTimeout(()=>{ if(lastSupabaseError) alert('تفاصيل خطأ مزامنة '+cfg.label+' (خذ لقطة شاشة وابعتها):\n\n'+lastSupabaseError); }, 400);
+        toast('تم الحفظ محليًا لكن حدث خطأ في المزامنة '+cfg.label+' مع السحابة');
+        setTimeout(()=>{ if(lastSupabaseError) alert('تفاصيل خطأ مزامنة '+cfg.label+' (التقط لقطة شاشة وأرسلها):\n\n'+lastSupabaseError); }, 400);
         return;
       }
     }
@@ -770,8 +770,8 @@ async function syncArrayToSupabase(localKey, arr){
   }catch(e){
     lastSupabaseError = 'threw: '+(e && e.message);
     console.error(cfg.table+' sync threw:', e && e.message);
-    toast('تم الحفظ محليًا بس صار خطأ بمزامنة '+cfg.label+' مع السحابة');
-    setTimeout(()=>{ if(lastSupabaseError) alert('تفاصيل خطأ مزامنة '+cfg.label+' (خذ لقطة شاشة وابعتها):\n\n'+lastSupabaseError); }, 400);
+    toast('تم الحفظ محليًا لكن حدث خطأ في المزامنة '+cfg.label+' مع السحابة');
+    setTimeout(()=>{ if(lastSupabaseError) alert('تفاصيل خطأ مزامنة '+cfg.label+' (التقط لقطة شاشة وأرسلها):\n\n'+lastSupabaseError); }, 400);
   }
 }
 async function loadSyncedArray(localKey, fallback){
@@ -790,7 +790,7 @@ async function loadSyncedArray(localKey, fallback){
       lastSupabaseError = 'threw: '+(e && e.message);
       console.error(cfg.table+' list threw:', e && e.message);
     }
-    toast('ما قدرنا نوصل لقاعدة بيانات '+cfg.label+' — عم نستخدم آخر نسخة محفوظة عالجهاز');
+    toast('تعذّر الوصول إلى قاعدة بيانات '+cfg.label+' — نستخدم آخر نسخة محفوظة على الجهاز');
   }
   return safeGet(localKey, fallback);
 }
@@ -918,7 +918,7 @@ function downloadBackupFile(){
 async function handleBackupImportFile(inputEl){
   const file = inputEl.files[0];
   if(!file) return;
-  if(!confirm('استيراد النسخة الاحتياطية رح يستبدل كل البيانات الحالية بالكامل. متأكد؟')) { inputEl.value=''; return; }
+  if(!confirm('استيراد النسخة الاحتياطية سيستبدل كل البيانات الحالية بالكامل. هل أنت متأكد؟')) { inputEl.value=''; return; }
   try{
     const text = await file.text();
     const data = JSON.parse(text);
@@ -941,12 +941,12 @@ async function handleBackupImportFile(inputEl){
     if(supabaseClient && DB.customers.length){
       const rows = DB.customers.map(customerToDb);
       const { error } = await supabaseClient.from(T('customers')).upsert(rows.map(withClient));
-      if(error) toast('استُرجعت النسخة محليًا بس صار خطأ بمزامنة الزبائن للسحابة');
+      if(error) toast('استُرجعت النسخة محليًا لكن حدث خطأ في مزامنة الزبائن مع السحابة');
     }
     toast('تم استرجاع النسخة الاحتياطية بنجاح');
     go('#/');
   }catch(e){
-    toast('صار خطأ: الملف مش نسخة احتياطية صالحة');
+    toast('حدث خطأ: الملف ليس نسخة احتياطية صالحة');
   }
   inputEl.value='';
 }
@@ -1205,7 +1205,7 @@ function openBarcodeScannerModal(onScan, continuous){
   if(method === 'reader'){
     wrap.innerHTML = `<div class="modal">
       <h3>📷 مسح باركود (قارئ خارجي)</h3>
-      <p style="font-size:12.5px; color:var(--ink-soft); margin-bottom:10px;">تأكد القارئ متوصل بالجهاز (بلوتوث أو USB)، حط المؤشر بالخانة تحت وامسح الباركود مباشرة.</p>
+      <p style="font-size:12.5px; color:var(--ink-soft); margin-bottom:10px;">تأكد من أن القارئ متصل بالجهاز (بلوتوث أو USB)، ثم ضع المؤشر في الخانة أدناه وامسح الباركود مباشرة.</p>
       <div class="field"><label>الرقم</label><input type="text" id="bc_reader_input" class="num"></div>
       <div class="row">
         <button class="btn" id="bc_cancel">إلغاء</button>
@@ -1233,7 +1233,7 @@ function openBarcodeScannerModal(onScan, continuous){
     <div id="bc_ok_msg" style="color:var(--credit); font-size:13px; margin-top:6px; min-height:18px; font-weight:700;"></div>
     ${continuous? '' : `<div class="field" style="margin-top:10px;"><label>أو اكتب الرقم يدويًا</label><input type="text" id="bc_manual_input" class="num"></div>`}
     <div class="row">
-      <button class="btn" id="bc_cancel">${continuous?'✅ خلصت / إنهاء':'إلغاء'}</button>
+      <button class="btn" id="bc_cancel">${continuous?'✅ تم / إنهاء':'إلغاء'}</button>
       ${continuous? '' : `<button class="btn btn-primary" id="bc_manual_ok">استخدام الرقم اليدوي</button>`}
     </div>
   </div>`;
@@ -1256,7 +1256,7 @@ function openBarcodeScannerModal(onScan, continuous){
   });
   (async ()=>{
     if(!('BarcodeDetector' in window)){
-      errEl.textContent = 'الكاميرا الحية مش مدعومة عهالمتصفح — استخدم الرقم اليدوي تحت';
+      errEl.textContent = 'الكاميرا الحية غير مدعومة في هذا المتصفح — استخدم الرقم اليدوي أدناه';
       return;
     }
     try{
@@ -1286,7 +1286,7 @@ function openBarcodeScannerModal(onScan, continuous){
       };
       rafId = requestAnimationFrame(scanLoop);
     }catch(e){
-      errEl.textContent = 'ما قدرنا نوصل للكاميرا — تأكد أعطيت الإذن، أو استخدم الرقم اليدوي تحت';
+      errEl.textContent = 'تعذّر الوصول إلى الكاميرا — تأكد من منح الإذن، أو استخدم الرقم اليدوي أدناه';
     }
   })();
 }
@@ -1473,7 +1473,7 @@ function licenseBlockedView(){
     <div class="login-card">
       <h2 style="justify-content:center; text-align:center;"><span class="dot"></span> انتهت فترة التجربة</h2>
       <p style="font-size:13.5px; color:var(--ink-soft); text-align:center; line-height:1.7; margin-bottom:14px;">
-        انتهت فترة التجربة المجانية (${TRIAL_DAYS} أيام). لتفعيل البرنامج لمدة سنة كاملة، تواصل مع المزوّد واحصل على رقم تفعيل، وحطو تحت:
+        انتهت فترة التجربة المجانية (${TRIAL_DAYS} أيام). لتفعيل البرنامج لمدة سنة كاملة، تواصل مع المزوّد واحصل على رقم تفعيل، ثم أدخله أدناه:
       </p>
       <div class="field"><label>رقم التفعيل</label><input type="text" id="license_serial_input" placeholder="HMDH1...." style="direction:ltr; text-align:left;"></div>
       <div id="license_err" style="color:var(--debit); font-size:12.5px; min-height:16px; margin-bottom:6px;"></div>
@@ -1487,12 +1487,12 @@ function bindLicenseBlockedEvents(){
   const doActivate = async ()=>{
     const serial = document.getElementById('license_serial_input').value.trim();
     const errEl = document.getElementById('license_err');
-    if(!serial){ errEl.textContent = 'لازم تكتب رقم التفعيل'; return; }
+    if(!serial){ errEl.textContent = 'يجب إدخال رقم التفعيل'; return; }
     errEl.textContent = '';
     const res = await activateLicenseSerial(serial);
     if(res.ok){ render(); }
     else{
-      errEl.textContent = res.reason==='expired' ? 'رقم التفعيل هاد منتهي الصلاحية' : (res.reason==='invalid' ? 'رقم التفعيل غلط' : 'صار خطأ بالتفعيل، جرب كمان');
+      errEl.textContent = res.reason==='expired' ? 'رقم التفعيل هذا منتهي الصلاحية' : (res.reason==='invalid' ? 'رقم التفعيل غير صحيح' : 'حدث خطأ أثناء التفعيل، حاول مرة أخرى');
     }
   };
   btn.addEventListener('click', doActivate);
@@ -1562,7 +1562,7 @@ async function bootPlatform(){
         return ACCESS;
       }
     }
-    return { ok:false, reason:'error', message:'ما فيك تفتح مؤسسة هذا الزبون' };
+    return { ok:false, reason:'error', message:'لا يمكنك فتح مؤسسة هذا الزبون' };
   }
 
   let acc;
@@ -1576,7 +1576,7 @@ async function bootPlatform(){
       ACCESS = { ok:true, offline:true, client_id: CLIENT_ID };
       return ACCESS;
     }
-    return { ok:false, reason:'error', message:'ما في إنترنت، ومافي رمز تفعيل فعّال محفوظ على هذا الجهاز' };
+    return { ok:false, reason:'error', message:'لا يوجد اتصال بالإنترنت، ولا يوجد رمز تفعيل فعّال محفوظ على هذا الجهاز' };
   }
   if(acc.error) return { ok:false, reason:'error', message: acc.error.message };
   ACCESS = acc.data || {};
@@ -1595,8 +1595,8 @@ function platformAdminBar(){
   bar.style.cssText = 'position:fixed;inset-inline:0;top:0;z-index:99999;padding:7px 12px;'+
     'text-align:center;font-family:system-ui;font-size:13px;font-weight:700;'+
     'color:#fff;background:#E08A2B';
-  bar.innerHTML = 'أنت داخل كمشرف المنصة — مؤسسة: ' + (PLATFORM_CLIENT_NAME||'—') +
-    ' &nbsp;<a href="/super" style="color:#fff;text-decoration:underline">رجوع للوحتك</a>';
+  bar.innerHTML = 'أنت مسجّل الدخول بصفة مشرف المنصة — مؤسسة: ' + (PLATFORM_CLIENT_NAME||'—') +
+    ' &nbsp;<a href="/super" style="color:#fff;text-decoration:underline">العودة إلى لوحتك</a>';
   document.body.appendChild(bar);
   document.body.style.paddingTop = '32px';
 }
@@ -1612,11 +1612,11 @@ function platformBlockScreen(a){
     </div>`;
   document.body.style.background = '#F4F8FB';
   if(a.reason === 'no_client')
-    document.body.innerHTML = box('أكمل بياناتك','بنحتاج اسمك ورقمك مرة وحدة قبل ما تستعمل البرنامج.','افتح صفحة حسابي','/account');
+    document.body.innerHTML = box('أكمل بياناتك','نحتاج إلى اسمك ورقمك مرة واحدة قبل استخدام البرنامج.','افتح صفحة حسابي','/account');
   else if(a.reason === 'no_subscription')
-    document.body.innerHTML = box('ما عندك اشتراك','اشترك ببرنامج محاسبة التجارة أو ابدأ تجربة مجانية.','شوف الباقات','/account');
+    document.body.innerHTML = box('ليس لديك اشتراك','اشترك في برنامج محاسبة التجارة أو ابدأ تجربة مجانية.','اعرض الباقات','/account');
   else if(a.reason === 'expired')
-    document.body.innerHTML = box('انتهى اشتراكك','جدّد الاشتراك لتكمّل شغلك — بياناتك محفوظة كما هي.','تجديد الاشتراك','/account?renew='+(a.subscription_id||''));
+    document.body.innerHTML = box('انتهى اشتراكك','جدّد الاشتراك لمتابعة عملك — بياناتك محفوظة كما هي.','تجديد الاشتراك','/account?renew='+(a.subscription_id||''));
   else if(a.reason === 'suspended')
     document.body.innerHTML = box('اشتراكك موقوف','تواصل معنا لتفعيله من جديد.','صفحة حسابي','/account');
   else
@@ -1665,7 +1665,7 @@ function customerPortalHome(cust){
   </div>
   <div class="card">
     <h2><span class="dot"></span> كشف الحساب (فواتيري وإيصالاتي)</h2>
-    <div style="font-size:12px; color:var(--ink-soft); margin-bottom:10px;">اضغط على أي حركة تحتها لتشوفها أو تطبعها.</div>
+    <div style="font-size:12px; color:var(--ink-soft); margin-bottom:10px;">اضغط على أي حركة أدناه لعرضها أو طباعتها.</div>
     ${ledgerTable(ledger)}
   </div>
   ${appFooter()}`;
@@ -1674,7 +1674,7 @@ function renderCustomerPortal(){
   const parts = currentRoute();
   const cust = DB.customers.find(c=>c.id===currentCustomerSession.customerId);
   if(!cust){
-    root().innerHTML = `<div class="topbar"><div class="brand"><div class="name">حسابك</div></div><div class="topbar-actions"><button class="btn btn-ghost btn-sm" id="customerLogoutBtn">🔒 خروج</button></div></div>` + emptyState('صار خطأ بحسابك، تواصل مع الإدارة');
+    root().innerHTML = `<div class="topbar"><div class="brand"><div class="name">حسابك</div></div><div class="topbar-actions"><button class="btn btn-ghost btn-sm" id="customerLogoutBtn">🔒 خروج</button></div></div>` + emptyState('حدث خطأ في حسابك، تواصل مع الإدارة');
     const btn = document.getElementById('customerLogoutBtn');
     if(btn) btn.addEventListener('click', signOutEverywhere);
     return;
@@ -1684,10 +1684,10 @@ function renderCustomerPortal(){
     inner = customerPortalHome(cust);
   } else if(parts[0]==='invoice' && parts[1]){
     const inv = DB.invoices.find(i=>i.id===parts[1] && i.customerId===cust.id && !i.deleted);
-    inner = inv ? (crumbs([['كشف حسابي','#/'],['فاتورة #'+inv.number,null]]) + invoicePrintView(inv)) : emptyState('ما لقينا هيدي الفاتورة');
+    inner = inv ? (crumbs([['كشف حسابي','#/'],['فاتورة #'+inv.number,null]]) + invoicePrintView(inv)) : emptyState('لم يتم العثور على هذه الفاتورة');
   } else if(parts[0]==='receipt' && parts[1]){
     const rec = DB.receipts.find(r=>r.id===parts[1] && r.customerId===cust.id && !r.deleted);
-    inner = rec ? (crumbs([['كشف حسابي','#/'],['إيصال #'+rec.number,null]]) + receiptPrintView(rec)) : emptyState('ما لقينا هيدا الإيصال');
+    inner = rec ? (crumbs([['كشف حسابي','#/'],['إيصال #'+rec.number,null]]) + receiptPrintView(rec)) : emptyState('لم يتم العثور على هذا الإيصال');
   } else {
     inner = customerPortalHome(cust);
   }
@@ -1718,8 +1718,8 @@ function totpVerifyView(){
   <div style="min-height:70vh; display:flex; flex-direction:column; align-items:center; justify-content:center;">
     <div class="card" style="max-width:340px; width:100%;">
       <h2 style="justify-content:center; text-align:center;"><span class="dot"></span> رمز التحقق (2FA)</h2>
-      <p style="font-size:13px; color:var(--ink-soft); text-align:center; margin-bottom:14px;">افتح Google Authenticator واكتب الكود يلي طالع لحساب <b>${escapeHtml(pendingTotpUser.username)}</b></p>
-      <div class="field"><label>الكود المكوّن من 6 أرقام</label><input type="text" id="totp_code" inputmode="numeric" maxlength="6" autocomplete="one-time-code"></div>
+      <p style="font-size:13px; color:var(--ink-soft); text-align:center; margin-bottom:14px;">افتح Google Authenticator وأدخل الرمز الظاهر لحساب <b>${escapeHtml(pendingTotpUser.username)}</b></p>
+      <div class="field"><label>الرمز المكوّن من 6 أرقام</label><input type="text" id="totp_code" inputmode="numeric" maxlength="6" autocomplete="one-time-code"></div>
       <div id="totp_err" style="color:var(--debit); font-size:12.5px; min-height:16px; margin-bottom:6px;"></div>
       <button class="btn btn-primary" id="totpVerifyBtn" style="width:100%; justify-content:center;">تأكيد</button>
       <button class="btn" id="totpBackBtn" style="width:100%; justify-content:center; margin-top:8px;">رجوع</button>
@@ -1742,7 +1742,7 @@ function bindTotpVerifyEvents(){
       go('#/');
       render();
     } else {
-      document.getElementById('totp_err').textContent = 'الكود غلط، جرب كمان';
+      document.getElementById('totp_err').textContent = 'الرمز غير صحيح، حاول مرة أخرى';
     }
   };
   document.getElementById('totpVerifyBtn').addEventListener('click', verify);
@@ -1838,7 +1838,7 @@ function bindLoginEvents(){
         }
       }catch(e){ console.error('fresh-device login fallback threw:', e && e.message); }
     }
-    document.getElementById('login_err').textContent = 'اسم المستخدم أو كلمة السر غلط';
+    document.getElementById('login_err').textContent = 'اسم المستخدم أو كلمة السر غير صحيحة';
   };
   btn.addEventListener('click', tryLogin);
   document.getElementById('login_pass').addEventListener('keydown', e=>{ if(e.key==='Enter') tryLogin(); });
@@ -1882,7 +1882,7 @@ function render(){
   if(reqPerm){
     const ok = reqPerm==='__admin__' ? isPrivilegedUser(currentUser) : hasPermission(reqPerm);
     if(!ok){
-      root().innerHTML = topbar() + crumbs([['الرئيسية','#/'],['ممنوع الدخول',null]]) + emptyState('ما عندك صلاحية توصل لهالصفحة — تواصل مع ADMIN أو SUPERADMIN');
+      root().innerHTML = topbar() + crumbs([['الرئيسية','#/'],['ممنوع الدخول',null]]) + emptyState('ليس لديك صلاحية للوصول إلى هذه الصفحة — تواصل مع ADMIN أو SUPERADMIN');
       bindEvents();
       return;
     }
@@ -1894,7 +1894,7 @@ function render(){
     html += crumbs([['الرئيسية','#/'],['الزبائن',null]]) + dashboardView();
   } else if(parts[0]==='customer' && parts[1]){
     const cust = DB.customers.find(c=>c.id===parts[1]);
-    if(!cust){ html += emptyState('ما لقينا هيدا الزبون'); }
+    if(!cust){ html += emptyState('لم يتم العثور على هذا الزبون'); }
     else{
       html += crumbs([['الرئيسية','#/'],['الزبائن','#/customers'],[cust.name,null]]) + customerView(cust);
     }
@@ -1908,7 +1908,7 @@ function render(){
     html += crumbs([['الرئيسية','#/'],['الزبائن','#/customers'],[cust?cust.name:'', cust?`#/customer/${cust.id}`:null],['تعديل فاتورة',null]]) + invoiceFormView(inv, inv&&inv.customerId);
   } else if(parts[0]==='invoice' && parts[1]){
     const inv = DB.invoices.find(i=>i.id===parts[1]);
-    if(!inv) html+= emptyState('ما لقينا هيدي الفاتورة');
+    if(!inv) html+= emptyState('لم يتم العثور على هذه الفاتورة');
     else{
       const cust = DB.customers.find(c=>c.id===inv.customerId);
       html += crumbs([['الرئيسية','#/'],['الزبائن','#/customers'],[cust?cust.name:'', cust?`#/customer/${cust.id}`:null],['فاتورة #'+inv.number,null]]) + invoicePrintView(inv);
@@ -1923,14 +1923,14 @@ function render(){
     html += crumbs([['الرئيسية','#/'],['الزبائن','#/customers'],[cust?cust.name:'', cust?`#/customer/${cust.id}`:null],['تعديل إيصال',null]]) + receiptFormView(rec, rec&&rec.customerId);
   } else if(parts[0]==='receipt' && parts[1]){
     const rec = DB.receipts.find(r=>r.id===parts[1]);
-    if(!rec) html += emptyState('ما لقينا هيدا الإيصال');
+    if(!rec) html += emptyState('لم يتم العثور على هذا الإيصال');
     else{
       const cust = DB.customers.find(c=>c.id===rec.customerId);
       html += crumbs([['الرئيسية','#/'],['الزبائن','#/customers'],[cust?cust.name:'', cust?`#/customer/${cust.id}`:null],['إيصال #'+rec.number,null]]) + receiptPrintView(rec);
     }
   } else if(parts[0]==='statement' && parts[1]){
     const cust = DB.customers.find(c=>c.id===parts[1]);
-    if(!cust) html += emptyState('ما لقينا هيدا الزبون');
+    if(!cust) html += emptyState('لم يتم العثور على هذا الزبون');
     else html += crumbs([['الرئيسية','#/'],['الزبائن','#/customers'],[cust.name,`#/customer/${cust.id}`],['كشف حساب',null]]) + statementPrintView(cust);
 
   /* ---------- Suppliers ---------- */
@@ -1938,7 +1938,7 @@ function render(){
     html += crumbs([['الرئيسية','#/'],['الموردون',null]]) + suppliersListView();
   } else if(parts[0]==='supplier' && parts[1]){
     const sup = DB.suppliers.find(s=>s.id===parts[1]);
-    if(!sup){ html += emptyState('ما لقينا هيدا المورد'); }
+    if(!sup){ html += emptyState('لم يتم العثور على هذا المورد'); }
     else html += crumbs([['الرئيسية','#/'],['الموردون','#/suppliers'],[sup.name,null]]) + supplierView(sup);
   } else if(parts[0]==='purchase' && parts[1]==='new'){
     const supId = new URLSearchParams(location.hash.split('?')[1]||'').get('supplier');
@@ -1950,7 +1950,7 @@ function render(){
     html += crumbs([['الرئيسية','#/'],['الموردون','#/suppliers'],[sup?sup.name:'', sup?`#/supplier/${sup.id}`:null],['تعديل فاتورة مشتريات',null]]) + purchaseFormView(p, p&&p.supplierId);
   } else if(parts[0]==='purchase' && parts[1]){
     const p = DB.purchaseInvoices.find(i=>i.id===parts[1]);
-    if(!p) html += emptyState('ما لقينا هيدي الفاتورة');
+    if(!p) html += emptyState('لم يتم العثور على هذه الفاتورة');
     else{
       const sup = DB.suppliers.find(s=>s.id===p.supplierId);
       html += crumbs([['الرئيسية','#/'],['الموردون','#/suppliers'],[sup?sup.name:'', sup?`#/supplier/${sup.id}`:null],['فاتورة مشتريات #'+p.number,null]]) + purchasePrintView(p);
@@ -1965,14 +1965,14 @@ function render(){
     html += crumbs([['الرئيسية','#/'],['الموردون','#/suppliers'],[sup?sup.name:'', sup?`#/supplier/${sup.id}`:null],['تعديل سند صرف',null]]) + voucherFormView(v, v&&v.supplierId);
   } else if(parts[0]==='voucher' && parts[1]){
     const v = DB.paymentVouchers.find(x=>x.id===parts[1]);
-    if(!v) html += emptyState('ما لقينا هيدا السند');
+    if(!v) html += emptyState('لم يتم العثور على هذا السند');
     else{
       const sup = DB.suppliers.find(s=>s.id===v.supplierId);
       html += crumbs([['الرئيسية','#/'],['الموردون','#/suppliers'],[sup?sup.name:'', sup?`#/supplier/${sup.id}`:null],['سند صرف #'+v.number,null]]) + voucherPrintView(v);
     }
   } else if(parts[0]==='supplier-statement' && parts[1]){
     const sup = DB.suppliers.find(s=>s.id===parts[1]);
-    if(!sup) html += emptyState('ما لقينا هيدا المورد');
+    if(!sup) html += emptyState('لم يتم العثور على هذا المورد');
     else html += crumbs([['الرئيسية','#/'],['الموردون','#/suppliers'],[sup.name,`#/supplier/${sup.id}`],['كشف حساب',null]]) + supplierStatementPrintView(sup);
 
   /* ---------- Warehouse (المستودع) ---------- */
@@ -1987,10 +1987,10 @@ function render(){
   } else if(parts[0]==='warehouse'){
     html += crumbs([['الرئيسية','#/'],['المستودع',null]]) + warehouseHubView();
   } else if(parts[0]==='warehouse-print'){
-    html += crumbs([['الرئيسية','#/'],['المستودع','#/warehouse'],['جردة المستودع',null]]) + warehouseInventoryPrintView();
+    html += crumbs([['الرئيسية','#/'],['المستودع','#/warehouse'],['جرد المستودع',null]]) + warehouseInventoryPrintView();
   } else if(parts[0]==='warehouse-item' && parts[1]){
     const item = DB.warehouseItems.find(x=>x.id===parts[1]);
-    if(!item) html += emptyState('ما لقينا هيدا المنتج');
+    if(!item) html += emptyState('لم يتم العثور على هذا المنتج');
     else html += crumbs([['الرئيسية','#/'],['المستودع','#/warehouse'],[item.name,null]]) + warehouseItemView(item);
   } else if(parts[0]==='stockout' && parts[1]==='new'){
     const itemId = new URLSearchParams(location.hash.split('?')[1]||'').get('item');
@@ -2007,7 +2007,7 @@ function render(){
   } else if(parts[0]==='budget-category' && parts[1]){
     const cat = DB.budgetCategories.find(x=>x.id===parts[1]);
     const qs = new URLSearchParams(location.hash.split('?')[1]||'');
-    if(!cat) html += emptyState('ما لقينا هيدا الحقل');
+    if(!cat) html += emptyState('لم يتم العثور على هذا الحقل');
     else html += crumbs([['الرئيسية','#/'],['الميزانية','#/budget'],[cat.name,null]]) + budgetCategoryView(cat, qs.get('period')||'month', qs.get('a'), qs.get('b'));
   } else if(parts[0]==='budget-overview'){
     const qs = new URLSearchParams(location.hash.split('?')[1]||'');
@@ -2020,7 +2020,7 @@ function render(){
   } else if(parts[0]==='trash'){
     html += crumbs([['الرئيسية','#/'],['المحذوفات',null]]) + trashView();
   } else {
-    html += emptyState('الصفحة مش موجودة');
+    html += emptyState('الصفحة غير موجودة');
   }
   root().innerHTML = html;
   bindEvents();
@@ -2030,9 +2030,9 @@ function render(){
     if(expiring.length){
       const lines = expiring.slice(0,10).map(it=>{
         const d = daysUntilExpiry(it);
-        return `• ${it.name} — ${d<0?'منتهي الصلاحية':'باقي '+d+' يوم'}`;
+        return `• ${it.name} — ${d<0?'منتهي الصلاحية':'متبقٍّ '+d+' يوم'}`;
       }).join('\n');
-      setTimeout(()=>{ alert('⚠️ تنبيه: منتجات قرب تنتهي صلاحيتها\n\n'+lines); }, 300);
+      setTimeout(()=>{ alert('⚠️ تنبيه: منتجات تقترب صلاحيتها من الانتهاء\n\n'+lines); }, 300);
     }
   }
 }
@@ -2077,7 +2077,7 @@ function hubView(){
   const isAdmin = isPrivilegedUser(currentUser);
   const expiring = hasPermission('warehouse') ? expiringSoonItems() : [];
   const expiryCard = expiring.length? `<div class="card" style="border-color:var(--debit);">
-    <h2><span class="dot" style="background:var(--debit);"></span> ⚠️ منتجات قرب تنتهي صلاحيتها</h2>
+    <h2><span class="dot" style="background:var(--debit);"></span> ⚠️ منتجات تقترب صلاحيتها من الانتهاء</h2>
     <div class="table-scroll"><table><thead><tr><th>المنتج</th><th>تاريخ الانتهاء</th><th>الأيام المتبقية</th></tr></thead><tbody>
       ${expiring.map(it=>{
         const d = daysUntilExpiry(it);
@@ -2099,7 +2099,7 @@ function hubView(){
     {perm:'pos', html:`<div class="hub-card" data-nav="#/journal">
       <div class="hub-icon">📒</div>
       <div class="hub-title">اليوميات</div>
-      <div class="hub-sub">كل حركات اليوم بمكان واحد</div>
+      <div class="hub-sub">كل حركات اليوم في مكان واحد</div>
       <div class="hub-amt" style="color:var(--steel)">فواتير، إيصالات، سندات</div>
     </div>`},
     {perm:'pos', html:`<div class="hub-card" data-nav="#/reports">
@@ -2124,7 +2124,7 @@ function hubView(){
       <div class="hub-icon">📦</div>
       <div class="hub-title">المستودع</div>
       <div class="hub-sub">${DB.warehouseItems.length} صنف</div>
-      <div class="hub-amt" style="color:${expiring.length?'var(--debit)':'var(--steel)'}">${expiring.length? expiring.length+' صنف قرب ينتهي ⚠️' : 'كل شي تمام'}</div>
+      <div class="hub-amt" style="color:${expiring.length?'var(--debit)':'var(--steel)'}">${expiring.length? expiring.length+' صنف يقترب من انتهاء صلاحيته ⚠️' : 'كل شيء على ما يرام'}</div>
     </div>`},
     {perm:'budget', html:`<div class="hub-card" data-nav="#/budget">
       <div class="hub-icon">💰</div>
@@ -2144,7 +2144,7 @@ function hubView(){
       <div class="hub-icon">🔑</div>
       <div class="hub-title">حسابات دخول الزبائن</div>
       <div class="hub-sub">${(DB.customerAccounts||[]).length} حساب</div>
-      <div class="hub-amt" style="color:var(--steel)">عرض كشف حساب بس، بدون تعديل</div>
+      <div class="hub-amt" style="color:var(--steel)">عرض كشف الحساب فقط، دون تعديل</div>
     </div>` : '';
   const trashCard = isAdmin? `<div class="hub-card" data-nav="#/trash">
       <div class="hub-icon">🗑</div>
@@ -2167,13 +2167,13 @@ function hubView(){
       <div style="font-size:12px; color:var(--ink-soft); margin-bottom:10px;">مبيعات اليوم (POS): <b class="num">${todaySales.count} عملية — $${todaySales.totalUSD.toFixed(2)}</b></div>
       ${openShifts.length? openShifts.map(sh=>`
       <div style="display:flex; justify-content:space-between; align-items:center; background:var(--bg-2); border:1px solid var(--line); border-radius:8px; padding:8px 12px; margin-bottom:8px; flex-wrap:wrap; gap:8px;">
-        <div><b>${escapeHtml(sh.username)}</b><div style="font-size:11px; color:var(--ink-soft);">فاتح منذ ${new Date(sh.openedAt).toLocaleTimeString('ar')}</div></div>
+        <div><b>${escapeHtml(sh.username)}</b><div style="font-size:11px; color:var(--ink-soft);">مفتوح منذ ${new Date(sh.openedAt).toLocaleTimeString('ar')}</div></div>
         <div class="num" style="font-weight:800;">$${sh.cashUSD.toFixed(2)} + ${fmtNum(sh.cashLBP)} ${secCurLabel()}</div>
         <div style="display:flex; gap:5px;">
           <button class="btn btn-sm" data-admin-cashmove="deposit" data-shift="${sh.id}" data-currency="USD" style="padding:3px 8px;">➕$</button>
           <button class="btn btn-sm" data-admin-cashmove="withdraw" data-shift="${sh.id}" data-currency="USD" style="padding:3px 8px;">➖$</button>
         </div>
-      </div>`).join('') : `<p style="font-size:12.5px; color:var(--ink-soft);">ما في صناديق مفتوحة حالياً</p>`}
+      </div>`).join('') : `<p style="font-size:12.5px; color:var(--ink-soft);">لا توجد صناديق مفتوحة حالياً</p>`}
       <div style="display:flex; justify-content:space-between; font-weight:800; border-top:1px solid var(--line); padding-top:8px; margin-top:4px;">
         <span>المجموع الكلي (كل الصناديق المفتوحة)</span>
         <span class="num">$${grandUSD.toFixed(2)} + ${fmtNum(grandLBP)} ${secCurLabel()}</span>
@@ -2204,7 +2204,7 @@ function hubView(){
       <button class="btn btn-sm" data-nav="#/pos" style="margin-top:10px; width:100%;">🔒 إقفال صندوقي (من شاشة POS)</button>
     </div>` : `<div class="card" style="padding:14px;">
       <h2 style="margin:0 0 8px;"><span class="dot"></span> 💵 صندوقي</h2>
-      <p style="font-size:12.5px; color:var(--ink-soft);">صندوقك مقفول حالياً.</p>
+      <p style="font-size:12.5px; color:var(--ink-soft);">صندوقك مغلق حالياً.</p>
       <button class="btn btn-sm btn-primary" data-nav="#/pos" style="width:100%;">افتحه من شاشة POS</button>
     </div>`;
   }
@@ -2226,13 +2226,13 @@ function dashboardView(){
   return `
   <div class="stats">
     <div class="stat"><div class="k">عدد الزبائن</div><div class="v">${DB.customers.length}</div></div>
-    <div class="stat owe"><div class="k">مجموع المستحق علينا نقبضه</div><div class="v">${fmtMoney(totalOwed)}</div></div>
+    <div class="stat owe"><div class="k">مجموع المستحق الذي يجب أن نقبضه</div><div class="v">${fmtMoney(totalOwed)}</div></div>
     <div class="stat credit"><div class="k">مجموع أرصدة دائنة (سلف زبائن)</div><div class="v">${fmtMoney(totalCredit)}</div></div>
   </div>
   <div class="card">
     <h2><span class="dot"></span> الزبائن</h2>
     <div class="search-row">
-      <input type="text" id="custSearch" placeholder="فتش عن زبون بالاسم أو رقم الحساب...">
+      <input type="text" id="custSearch" placeholder="ابحث عن زبون بالاسم أو رقم الحساب...">
       <button class="btn btn-primary" id="addCustBtn">+ زبون جديد</button>
     </div>
     <div id="custTableWrap">${customerTable(rows)}</div>
@@ -2240,7 +2240,7 @@ function dashboardView(){
   ${appFooter()}`;
 }
 function customerTable(rows){
-  if(!rows.length) return `<div class="empty"><div class="big">ما في زبائن بعد</div>ضيف أول زبون تلقائيًا</div>`;
+  if(!rows.length) return `<div class="empty"><div class="big">لا يوجد زبائن بعد</div>أضف أول زبون تلقائيًا</div>`;
   return `<table><thead><tr>
     <th>الاسم</th><th>رقم الحساب</th><th>الهاتف</th><th>الرصيد الحالي</th>
   </tr></thead><tbody>
@@ -2301,7 +2301,7 @@ function suppliersListView(){
   <div class="card">
     <h2><span class="dot"></span> الموردون</h2>
     <div class="search-row">
-      <input type="text" id="supSearch" placeholder="فتش عن مورد بالاسم أو رقم الحساب...">
+      <input type="text" id="supSearch" placeholder="ابحث عن مورد بالاسم أو رقم الحساب...">
       <button class="btn btn-primary" id="addSupBtn">+ مورد جديد</button>
     </div>
     <div id="supTableWrap">${supplierTable(rows)}</div>
@@ -2309,14 +2309,14 @@ function suppliersListView(){
   ${appFooter()}`;
 }
 function supplierTable(rows){
-  if(!rows.length) return `<div class="empty"><div class="big">ما في موردين بعد</div></div>`;
+  if(!rows.length) return `<div class="empty"><div class="big">لا يوجد موردون بعد</div></div>`;
   return `<table><thead><tr>
     <th>الاسم</th><th>رقم الحساب</th><th>الهاتف</th><th>الرصيد الحالي</th>
   </tr></thead><tbody>
   ${rows.map(s=>{
     const bal = supplierBalance(s.id);
     const cls = bal>0.004?'bal-pos':(bal<-0.004?'bal-neg':'bal-zero');
-    const lbl = bal>0.004? '(مستحق للمورد)' : (bal<-0.004? '(دفعنا زيادة)' : '');
+    const lbl = bal>0.004? '(مستحق للمورد)' : (bal<-0.004? '(دفعنا مبلغًا زائدًا)' : '');
     return `<tr data-nav="#/supplier/${s.id}">
       <td><b>${escapeHtml(s.name)}</b></td>
       <td class="num">${escapeHtml(s.accountNumber||'—')}</td>
@@ -2404,14 +2404,14 @@ function openStartShiftModal(){
   wrap.innerHTML = `<div class="modal">
     <h3>🧾 فتح صندوقك لبدء البيع</h3>
     ${others.length? `
-    <div class="field"><label>استلام صندوق مفتوح من موظف تاني</label>
+    <div class="field"><label>استلام صندوق مفتوح من موظف آخر</label>
       <select id="ss_receive_from">
-        <option value="">— ابدأ صندوق جديد فاضي —</option>
+        <option value="">— ابدأ صندوقًا جديدًا فارغًا —</option>
         ${others.map(s=>`<option value="${s.id}">${escapeHtml(s.username)} — $${s.cashUSD.toFixed(2)} + ${fmtNum(s.cashLBP)} ${secCurLabel()}</option>`).join('')}
       </select>
     </div>` : ''}
     <div id="ss_new_wrap">
-      <p style="font-size:12.5px; color:var(--ink-soft);">أو ابدأ صندوق جديد فاضي — حط المبلغ يلي جوا الصندوق فعلياً هلق (نقدية افتتاحية، اختياري):</p>
+      <p style="font-size:12.5px; color:var(--ink-soft);">أو ابدأ صندوقًا جديدًا فارغًا — أدخل المبلغ الموجود فعلياً داخل الصندوق الآن (نقدية افتتاحية، اختياري):</p>
       <div class="grid grid-2">
         <div class="field"><label>افتتاحي $</label><input type="number" step="0.01" id="ss_open_usd" class="num" value="0"></div>
         <div class="field"><label>افتتاحي ${secCurLabel()}</label><input type="number" id="ss_open_lbp" class="num" value="0"></div>
@@ -2439,7 +2439,7 @@ function openStartShiftModal(){
 }
 function closeMyShiftModal(){
   const shift = currentUserShift();
-  if(!shift){ toast('ما في صندوق مفتوح إلك'); return; }
+  if(!shift){ toast('لا يوجد صندوق مفتوح لك'); return; }
   const myMoves = (DB.cashMovements||[]).filter(m=>m.shiftId===shift.id && !m.deleted);
   const salesUSD = myMoves.filter(m=>m.type==='sale'&&m.currency==='USD').reduce((s,m)=>s+Number(m.amount),0);
   const salesLBP = myMoves.filter(m=>m.type==='sale'&&m.currency==='LBP').reduce((s,m)=>s+Number(m.amount),0);
@@ -2447,10 +2447,10 @@ function closeMyShiftModal(){
   wrap.className='modal-bg';
   wrap.innerHTML = `<div class="modal">
     <h3>🔒 إقفال صندوقي</h3>
-    <p style="font-size:12.5px; color:var(--ink-soft);">مبيعاتك بهالشفت: $${salesUSD.toFixed(2)} + ${fmtNum(salesLBP)} ${secCurLabel()}</p>
+    <p style="font-size:12.5px; color:var(--ink-soft);">مبيعاتك في هذه الوردية: $${salesUSD.toFixed(2)} + ${fmtNum(salesLBP)} ${secCurLabel()}</p>
     <div class="grid grid-2">
-      <div class="field"><label>رصيد الصندوق بالنظام $</label><input type="text" class="num" value="$${shift.cashUSD.toFixed(2)}" disabled></div>
-      <div class="field"><label>رصيد الصندوق بالنظام ${secCurLabel()}</label><input type="text" class="num" value="${fmtNum(shift.cashLBP)}" disabled></div>
+      <div class="field"><label>رصيد الصندوق في النظام $</label><input type="text" class="num" value="$${shift.cashUSD.toFixed(2)}" disabled></div>
+      <div class="field"><label>رصيد الصندوق في النظام ${secCurLabel()}</label><input type="text" class="num" value="${fmtNum(shift.cashLBP)}" disabled></div>
     </div>
     <div class="grid grid-2">
       <div class="field"><label>المعدود فعلياً $</label><input type="number" step="0.01" id="cs_usd" class="num" value="${shift.cashUSD.toFixed(2)}"></div>
@@ -2491,7 +2491,7 @@ function printShiftReport(shift, moves){
   <table>
     <tr><th></th><th>دولار $</th><th>${secCurLabel()}</th></tr>
     <tr><td>افتتاحي</td><td>$${shift.openingUSD.toFixed(2)}</td><td>${fmtNum(shift.openingLBP)}</td></tr>
-    <tr><td>مبيعات الشفت</td><td>$${salesUSD.toFixed(2)}</td><td>${fmtNum(salesLBP)}</td></tr>
+    <tr><td>مبيعات الوردية</td><td>$${salesUSD.toFixed(2)}</td><td>${fmtNum(salesLBP)}</td></tr>
     <tr><td>رصيد النظام</td><td>$${shift.cashUSD.toFixed(2)}</td><td>${fmtNum(shift.cashLBP)}</td></tr>
     <tr><td>المعدود فعلياً</td><td>$${(shift.closingCountedUSD||0).toFixed(2)}</td><td>${fmtNum(shift.closingCountedLBP||0)}</td></tr>
     <tr><td>الفرق</td><td>$${diffUSD.toFixed(2)}</td><td>${fmtNum(diffLBP)}</td></tr>
@@ -2536,8 +2536,8 @@ function posView(){
   if(!myShift){
     return `<div class="card">
       <div class="empty">
-        <div class="big">🔒 صندوقك مقفول</div>
-        <p style="color:var(--ink-soft); font-size:13px; margin-top:8px;">لازم تفتح صندوقك أول (صندوق جديد فاضي أو استلام من موظف تاني) قبل ما تقدر تبيع.</p>
+        <div class="big">🔒 صندوقك مغلق</div>
+        <p style="color:var(--ink-soft); font-size:13px; margin-top:8px;">يجب أن تفتح صندوقك أولاً (صندوق جديد فارغ أو استلام من موظف آخر) قبل أن تتمكن من البيع.</p>
         <button class="btn btn-primary" id="pos_open_shift_btn" style="margin-top:14px;">🧾 فتح الصندوق</button>
       </div>
     </div>`;
@@ -2604,7 +2604,7 @@ function posView(){
             ${it.image? `<img src="${it.image}" class="pos-tile-img">` : `<div class="pos-tile-img pos-tile-img-placeholder">📦</div>`}
             <div class="pos-tile-name">${escapeHtml(it.name)}</div>
             <div class="pos-tile-price">$${(Number(it.price)||0).toFixed(2)}</div>
-          </button>`).join('') : `<div class="empty" style="grid-column:1/-1;"><div class="big">ما في منتجات — ضيف منتج من المستودع أول</div></div>`}
+          </button>`).join('') : `<div class="empty" style="grid-column:1/-1;"><div class="big">لا توجد منتجات — أضف منتجًا من المستودع أولاً</div></div>`}
         </div>
       </div>
     </div>
@@ -2624,7 +2624,7 @@ function posView(){
         </div>
       </div>
       <div class="pos-receipt-items">
-        ${ticket.cart.length? itemRows : `<div class="empty" style="padding:24px 0;"><div class="big" style="font-size:13px;">السلة فاضية</div></div>`}
+        ${ticket.cart.length? itemRows : `<div class="empty" style="padding:24px 0;"><div class="big" style="font-size:13px;">السلة فارغة</div></div>`}
       </div>
       <div class="pos-receipt-foot">
         <div style="display:flex; gap:6px; margin-bottom:10px;">
@@ -2658,10 +2658,10 @@ function bindPosEvents(){
   const msg = document.getElementById('pos_scan_msg');
   function handleCode(code){
     const item = posFindItemByBarcode(code);
-    if(!item){ if(msg){ msg.textContent = '⚠️ ما لقينا منتج بهيدا الباركود: '+code; msg.style.color = 'var(--debit)'; } return; }
+    if(!item){ if(msg){ msg.textContent = '⚠️ لم نجد منتجًا بهذا الباركود: '+code; msg.style.color = 'var(--debit)'; } return; }
     playBeep();
     posAddToCart(ticket, item);
-    if(msg){ msg.textContent = '✅ انضاف: '+item.name; msg.style.color = 'var(--credit)'; }
+    if(msg){ msg.textContent = '✅ تمت الإضافة: '+item.name; msg.style.color = 'var(--credit)'; }
     render();
     setTimeout(()=>{ const i2 = document.getElementById('pos_scan_input'); if(i2){ i2.setAttribute('inputmode','none'); i2.focus(); } }, 30);
   }
@@ -2725,7 +2725,7 @@ function bindPosEvents(){
     e.stopPropagation();
     const id = el.getAttribute('data-pos-close-tab');
     const t = _posTickets.find(x=>x.id===id);
-    if(t && t.cart.length && !confirm('في صنف بسلة هذا الزبون — تأكيد الإغلاق وتفريغها؟')) return;
+    if(t && t.cart.length && !confirm('يوجد صنف في سلة هذا الزبون — تأكيد الإغلاق وتفريغها؟')) return;
     _posTickets = _posTickets.filter(x=>x.id!==id);
     if(_posActiveTicketId===id) _posActiveTicketId = null;
     render();
@@ -2763,8 +2763,8 @@ function openCategoryImageModal(category){
   });
   wrap.querySelector('#ci_save').addEventListener('click', async ()=>{
     const file = wrap.querySelector('#ci_file').files[0];
-    if(!file){ toast('اختار صورة'); return; }
-    if(file.size > 400*1024){ toast('الصورة كبيرة — فضّل أصغر من 400KB'); return; }
+    if(!file){ toast('اختر صورة'); return; }
+    if(file.size > 400*1024){ toast('الصورة كبيرة — يُفضّل أن تكون أصغر من 400KB'); return; }
     const dataUrl = await new Promise((resolve)=>{
       const reader = new FileReader();
       reader.onload = ()=>resolve(reader.result);
@@ -2782,7 +2782,7 @@ function openPosCustomerPickerModal(ticket){
   const wrap = document.createElement('div');
   wrap.className='modal-bg';
   wrap.innerHTML = `<div class="modal">
-    <h3>اختار الزبون</h3>
+    <h3>اختر الزبون</h3>
     <div class="field"><input type="text" id="pc_search" placeholder="بحث بالاسم..."></div>
     <div id="pc_list" style="max-height:260px; overflow:auto; border:1px solid var(--line); border-radius:8px;">
       <div data-pc-pick="__walkin__" style="padding:10px; cursor:pointer; border-bottom:1px solid var(--line);">🚶 زبون عابر (بدون تسجيل)</div>
@@ -2828,14 +2828,14 @@ function openPosReturnModal(){
   wrap.innerHTML = `<div class="modal">
     <h3>↩ فاتورة استرجاع</h3>
     ${posInvoices.length? `
-    <div class="field"><label>اختار فاتورة POS</label>
+    <div class="field"><label>اختر فاتورة POS</label>
       <select id="ret_invoice">
         ${posInvoices.map(i=>`<option value="${i.id}">#${escapeHtml(i.number)} — ${fmtDate(i.date)} — $${(i.items||[]).reduce((s,it)=>s+Number(it.total),0).toFixed(2)}</option>`).join('')}
       </select>
     </div>
     <div id="ret_items"></div>
     <div class="row"><button class="btn" id="ret_cancel">إلغاء</button><button class="btn btn-primary" id="ret_confirm">تأكيد الاسترجاع</button></div>
-    ` : `<div class="empty"><div class="big">ما في فواتير POS للاسترجاع منها</div></div><div class="row"><button class="btn" id="ret_cancel">إغلاق</button></div>`}
+    ` : `<div class="empty"><div class="big">لا توجد فواتير POS للاسترجاع منها</div></div><div class="row"><button class="btn" id="ret_cancel">إغلاق</button></div>`}
   </div>`;
   document.body.appendChild(wrap);
   wrap.querySelector('#ret_cancel').addEventListener('click', ()=>wrap.remove());
@@ -2870,9 +2870,9 @@ function openPosReturnModal(){
       totalReturnedUSD += qty * Number(it.price);
       DB.stockIns.push({id:uid(), createdAt:now, itemId:it.productId, qty, date, number:nextStockInNumber(), note:'استرجاع من فاتورة POS #'+inv.number});
     });
-    if(!anyChecked || totalReturnedUSD<=0){ toast('اختار صنف واحد ع الأقل للاسترجاع'); return; }
+    if(!anyChecked || totalReturnedUSD<=0){ toast('اختر صنفًا واحدًا على الأقل للاسترجاع'); return; }
     const myShift = currentUserShift();
-    if(!myShift){ toast('لازم يكون عندك صندوق مفتوح'); return; }
+    if(!myShift){ toast('يجب أن يكون لديك صندوق مفتوح'); return; }
     const rate = inv.exchangeRate || DB.settings.defaultExchangeRate || 90000;
     // نرجع المبلغ من نفس عملة الصندوق (نفترض دولار افتراضياً — تقدر تصحح لاحقاً من حركات الصندوق لو لزم)
     myShift.cashUSD = (myShift.cashUSD||0) - totalReturnedUSD;
@@ -2930,7 +2930,7 @@ async function completePosSale(currency, received, due){
   const ticket = posActiveTicket();
   if(!ticket.cart.length) return;
   const myShift = currentUserShift();
-  if(!myShift){ toast('لازم تفتح صندوقك أول'); return; }
+  if(!myShift){ toast('يجب أن تفتح صندوقك أولاً'); return; }
   const rate = DB.settings.defaultExchangeRate || 90000;
   const totalUSD = posTotalUSD(ticket);
   if(received==null){ due = currency==='USD'? totalUSD : totalUSD*rate; received = due; }
@@ -3057,12 +3057,12 @@ function canvasToEscPosRaster(canvas){
 }
 async function getWritableCharacteristic(){
   if(DB.settings.posPrinterType==='bluetooth'){
-    if(!('bluetooth' in navigator)){ toast('⚠️ المتصفح ما بيدعم بلوتوث'); return null; }
-    if(!DB.settings.posPrinterBtId){ toast('⚠️ ما في طابعة بلوتوث مربوطة بالإعدادات'); return null; }
-    if(!navigator.bluetooth.getDevices){ toast('⚠️ هالمتصفح ما بيدعم إعادة الاتصال التلقائي بالبلوتوث (getDevices)'); return null; }
+    if(!('bluetooth' in navigator)){ toast('⚠️ المتصفح لا يدعم البلوتوث'); return null; }
+    if(!DB.settings.posPrinterBtId){ toast('⚠️ لا توجد طابعة بلوتوث مربوطة في الإعدادات'); return null; }
+    if(!navigator.bluetooth.getDevices){ toast('⚠️ هذا المتصفح لا يدعم إعادة الاتصال التلقائي بالبلوتوث (getDevices)'); return null; }
     const devices = await navigator.bluetooth.getDevices();
     const dev = devices.find(d=>d.id===DB.settings.posPrinterBtId);
-    if(!dev){ toast('⚠️ الطابعة المحفوظة مش من ضمن الأجهزة المسموحة — اربطها من جديد بالإعدادات'); return null; }
+    if(!dev){ toast('⚠️ الطابعة المحفوظة ليست من ضمن الأجهزة المسموح بها — اربطها من جديد في الإعدادات'); return null; }
     let server;
     try{ server = await dev.gatt.connect(); }
     catch(e){ toast('⚠️ فشل الاتصال بالطابعة عبر بلوتوث: '+(e&&e.message||'')); return null; }
@@ -3075,20 +3075,20 @@ async function getWritableCharacteristic(){
       }catch(e){}
     }
     server.disconnect();
-    toast('⚠️ اتصلنا بالطابعة بس ما لقينا فيها خدمة طباعة معروفة — موديل الطابعة ممكن يحتاج بروتوكول مختلف');
+    toast('⚠️ تم الاتصال بالطابعة لكن لم نجد فيها خدمة طباعة معروفة — قد يحتاج طراز الطابعة إلى بروتوكول مختلف');
     return null;
   }
-  if(!('usb' in navigator)){ toast('⚠️ المتصفح ما بيدعم USB'); return null; }
-  if(!DB.settings.posPrinterVendorId){ toast('⚠️ ما في طابعة USB مربوطة بالإعدادات'); return null; }
+  if(!('usb' in navigator)){ toast('⚠️ المتصفح لا يدعم USB'); return null; }
+  if(!DB.settings.posPrinterVendorId){ toast('⚠️ لا توجد طابعة USB مربوطة في الإعدادات'); return null; }
   const devices = await navigator.usb.getDevices();
   const dev = devices.find(d=>d.vendorId===DB.settings.posPrinterVendorId && d.productId===DB.settings.posPrinterProductId);
-  if(!dev){ toast('⚠️ الطابعة المحفوظة مش من ضمن الأجهزة المسموحة — اربطها من جديد بالإعدادات'); return null; }
+  if(!dev){ toast('⚠️ الطابعة المحفوظة ليست من ضمن الأجهزة المسموح بها — اربطها من جديد في الإعدادات'); return null; }
   await dev.open();
   if(dev.configuration===null) await dev.selectConfiguration(1);
   const iface = dev.configuration.interfaces[0];
   await dev.claimInterface(iface.interfaceNumber);
   const ep = iface.alternate.endpoints.find(e=>e.direction==='out');
-  if(!ep){ toast('⚠️ ما لقينا منفذ إرسال بيانات بهالطابعة'); return null; }
+  if(!ep){ toast('⚠️ لم نجد منفذ إرسال بيانات في هذه الطابعة'); return null; }
   return { write: (bytes)=>dev.transferOut(ep.endpointNumber, bytes), chunkSize: 16384, close: ()=>dev.close() };
 }
 async function printReceiptRaw(inv, currency, totalUSD, rate, customerLabel, received, changeDue){
@@ -3173,7 +3173,7 @@ const PRINTER_BLE_SERVICES = [
   '6e400001-b5a3-f393-e0a9-e50e24dcca9e'
 ];
 async function pickPosPrinterUSB(){
-  if(!('usb' in navigator)){ alert('متصفحك ما بيدعم الاتصال المباشر بالطابعة عبر USB (WebUSB) — استخدم Chrome على كمبيوتر، أو جرب الاتصال بالبلوتوث.'); return; }
+  if(!('usb' in navigator)){ alert('متصفحك لا يدعم الاتصال المباشر بالطابعة عبر USB (WebUSB) — استخدم Chrome على كمبيوتر، أو جرّب الاتصال بالبلوتوث.'); return; }
   try{
     const device = await navigator.usb.requestDevice({ filters: [] });
     DB.settings.posPrinterVendorId = device.vendorId;
@@ -3187,7 +3187,7 @@ async function pickPosPrinterUSB(){
 }
 async function pickPosPrinterBluetooth(){
   if(!('bluetooth' in navigator)){
-    alert('متصفحك ما بيدعم الاتصال بالبلوتوث (Web Bluetooth). جرب Chrome على أندرويد أو كمبيوتر — سفاري وآيفون ما بيدعموها نهائياً، هاي قيود من آبل نفسها ومش شي فينا نتحكم فيه.');
+    alert('متصفحك لا يدعم الاتصال بالبلوتوث (Web Bluetooth). جرّب Chrome على أندرويد أو كمبيوتر — سفاري وآيفون لا يدعمانه نهائياً، وهذه قيود من آبل نفسها وليست أمرًا يمكننا التحكم فيه.');
     return;
   }
   try{
@@ -3226,7 +3226,7 @@ async function openCashDrawerViaUSB(){
 async function openCashDrawerViaBluetooth(){
   try{
     if(!('bluetooth' in navigator) || !DB.settings.posPrinterBtId) return;
-    if(!navigator.bluetooth.getDevices){ console.warn('هالمتصفح ما بيدعم إعادة الاتصال التلقائي بالبلوتوث'); return; }
+    if(!navigator.bluetooth.getDevices){ console.warn('هذا المتصفح لا يدعم إعادة الاتصال التلقائي بالبلوتوث'); return; }
     const devices = await navigator.bluetooth.getDevices();
     const dev = devices.find(d=>d.id===DB.settings.posPrinterBtId);
     if(!dev) return;
@@ -3245,7 +3245,7 @@ async function openCashDrawerViaBluetooth(){
 }
 function openCashMovementModal(type, currency, shift){
   shift = shift || currentUserShift();
-  if(!shift){ toast('ما في صندوق مفتوح لتعدّل عليه'); return; }
+  if(!shift){ toast('لا يوجد صندوق مفتوح لتعدّل عليه'); return; }
   const wrap = document.createElement('div');
   wrap.className='modal-bg';
   wrap.innerHTML = `<div class="modal">
@@ -3262,7 +3262,7 @@ function openCashMovementModal(type, currency, shift){
   wrap.addEventListener('click', (e)=>{ if(e.target===wrap) wrap.remove(); });
   wrap.querySelector('#cm_save').addEventListener('click', async ()=>{
     const amount = Number(wrap.querySelector('#cm_amount').value);
-    if(!amount || amount<=0){ toast('لازم تحط مبلغ أكبر من صفر'); return; }
+    if(!amount || amount<=0){ toast('يجب إدخال مبلغ أكبر من صفر'); return; }
     const note = wrap.querySelector('#cm_note').value.trim();
     const now = Date.now();
     const signedAmount = type==='withdraw'? -amount : amount;
@@ -3292,7 +3292,7 @@ function openDayCloseModal(){
     ${openShifts.length? `<div class="table-scroll"><table>
       <thead><tr><th>الموظف</th><th>$</th><th>${secCurLabel()}</th></tr></thead>
       <tbody>${openShifts.map(s=>`<tr><td>${escapeHtml(s.username)}</td><td class="num">$${s.cashUSD.toFixed(2)}</td><td class="num">${fmtNum(s.cashLBP)}</td></tr>`).join('')}</tbody>
-    </table></div>` : `<p style="color:var(--ink-soft); font-size:12.5px;">ما في صناديق مفتوحة حالياً</p>`}
+    </table></div>` : `<p style="color:var(--ink-soft); font-size:12.5px;">لا توجد صناديق مفتوحة حالياً</p>`}
     <div class="grid grid-2" style="margin-top:10px;">
       <div class="field"><label>مجموع النظام $ (كل الصناديق المفتوحة)</label><input type="text" class="num" value="$${expectedUSD.toFixed(2)}" disabled></div>
       <div class="field"><label>مجموع النظام ${secCurLabel()}</label><input type="text" class="num" value="${fmtNum(expectedLBP)}" disabled></div>
@@ -3302,7 +3302,7 @@ function openDayCloseModal(){
       <div class="field"><label>المبلغ المعدود فعلياً ${secCurLabel()}</label><input type="number" id="dc_lbp" class="num" value="${expectedLBP}"></div>
     </div>
     <div class="field"><label>ملاحظة</label><input type="text" id="dc_note" value=""></div>
-    <p style="font-size:11.5px; color:var(--ink-soft);">ملاحظة: هاد التقرير بيلخّص الصناديق المفتوحة حالياً كمجموع عام؛ الصناديق يلي انقفلت من الموظفين نفسهم إلها تقاريرها الخاصة أصلاً.</p>
+    <p style="font-size:11.5px; color:var(--ink-soft);">ملاحظة: هذا التقرير يلخّص الصناديق المفتوحة حالياً كمجموع عام؛ أما الصناديق التي أقفلها الموظفون أنفسهم فلها تقاريرها الخاصة أصلاً.</p>
     <div class="row">
       <button class="btn" id="dc_cancel">إلغاء</button>
       <button class="btn btn-primary" id="dc_confirm">🖨 تسجيل وطباعة التقرير الشامل</button>
@@ -3420,7 +3420,7 @@ function journalView(qs){
         <td>${escapeHtml(r.type)}${r.reprintPosId?' 🖨':''}${(isPrivilegedUser(currentUser) && r.cashierUsername)? ` <span style="font-size:11px; color:var(--ink-soft);">— ${escapeHtml(r.cashierUsername)}</span>`:''}</td><td>${escapeHtml(r.party)}</td>
         <td class="num" style="color:${r.usd<0?'var(--debit)':(r.usd>0?'var(--credit)':'inherit')}">${r.usd?(r.usd<0?'-':'')+'$'+Math.abs(r.usd).toFixed(2):'—'}</td>
         <td class="num" style="color:${r.lbp<0?'var(--debit)':(r.lbp>0?'var(--credit)':'inherit')}">${r.lbp?(r.lbp<0?'-':'')+fmtMoney(Math.abs(r.lbp)):'—'}</td>
-      </tr>`).join('') : `<tr><td colspan="5" style="text-align:center; color:var(--ink-soft);">ما في حركات بهالفترة</td></tr>`}</tbody>
+      </tr>`).join('') : `<tr><td colspan="5" style="text-align:center; color:var(--ink-soft);">لا توجد حركات في هذه الفترة</td></tr>`}</tbody>
       <tfoot><tr style="font-weight:800; border-top:2px solid var(--line);">
         <td colspan="3">المجموع</td>
         <td class="num" style="color:${totalUSD<0?'var(--debit)':'var(--credit)'}">${totalUSD<0?'-':''}$${Math.abs(totalUSD).toFixed(2)}</td>
@@ -3442,7 +3442,7 @@ function bindJournalEvents(){
 }
 function reprintPosInvoice(invId){
   const inv = DB.invoices.find(i=>i.id===invId);
-  if(!inv){ toast('ما لقينا الفاتورة'); return; }
+  if(!inv){ toast('لم نجد الفاتورة'); return; }
   const cust = DB.customers.find(c=>c.id===inv.customerId);
   const customerLabel = cust? cust.name : '';
   const rate = inv.exchangeRate || DB.settings.defaultExchangeRate || 90000;
@@ -3486,7 +3486,7 @@ function reportsView(qs){
         <td class="num">${fmtDate(r.date)}</td><td>${escapeHtml(r.type)}</td><td>${escapeHtml(r.party)}</td>
         <td class="num" style="color:${r.usd<0?'var(--debit)':(r.usd>0?'var(--credit)':'inherit')}">${r.usd?(r.usd<0?'-':'')+'$'+Math.abs(r.usd).toFixed(2):'—'}</td>
         <td class="num" style="color:${r.lbp<0?'var(--debit)':(r.lbp>0?'var(--credit)':'inherit')}">${r.lbp?(r.lbp<0?'-':'')+fmtMoney(Math.abs(r.lbp)):'—'}</td>
-      </tr>`).join('') : `<tr><td colspan="5" style="text-align:center; color:var(--ink-soft);">ما في حركات بهالفترة</td></tr>`}</tbody>
+      </tr>`).join('') : `<tr><td colspan="5" style="text-align:center; color:var(--ink-soft);">لا توجد حركات في هذه الفترة</td></tr>`}</tbody>
       <tfoot><tr style="font-weight:800; border-top:2px solid var(--line);">
         <td colspan="3">المجموع</td>
         <td class="num">${totalUSD<0?'-':''}$${Math.abs(totalUSD).toFixed(2)}</td>
@@ -3508,11 +3508,11 @@ function warehouseHubView(){
   <div class="card">
     <h2><span class="dot"></span> المستودع</h2>
     <div class="search-row">
-      <input type="text" id="whSearch" placeholder="فتش عن منتج بالاسم أو الماركة أو النوع...">
-      <button class="btn btn-primary" id="addWhItemBtn">+ إضافة إلى الستوك</button>
+      <input type="text" id="whSearch" placeholder="ابحث عن منتج بالاسم أو الماركة أو النوع...">
+      <button class="btn btn-primary" id="addWhItemBtn">+ إضافة إلى المخزون</button>
     </div>
     <div class="action-row" style="margin-top:10px;">
-      <button class="btn" data-nav="#/warehouse-print">🖨 طباعة جردة المستودع</button>
+      <button class="btn" data-nav="#/warehouse-print">🖨 طباعة جرد المستودع</button>
     </div>
     <div id="whTableWrap" style="margin-top:14px;">
     ${warehouseItemTable(items)}
@@ -3521,7 +3521,7 @@ function warehouseHubView(){
   ${appFooter()}`;
 }
 function warehouseItemTable(items){
-  if(!items.length) return `<div class="empty"><div class="big">ما في منتجات بالمستودع بعد</div></div>`;
+  if(!items.length) return `<div class="empty"><div class="big">لا توجد منتجات في المستودع بعد</div></div>`;
   const rowsHtml = items.map(it=>{
     const stock = currentStock(it.id);
     const stockCls = stock<0 ? 'bal-pos' : 'bal-zero';
@@ -3555,7 +3555,7 @@ function warehouseItemView(item){
       <div>
         <div class="cust-name">${escapeHtml(item.name)}</div>
         <div class="cust-meta">${metaParts.join(' &nbsp;•&nbsp; ')}</div>
-        ${expiring? `<div class="cust-meta" style="color:var(--debit); font-weight:700; margin-top:4px;">⚠️ باقي ${expDays<0?'منتهي':expDays+' يوم'} على انتهاء الصلاحية</div>` : ''}
+        ${expiring? `<div class="cust-meta" style="color:var(--debit); font-weight:700; margin-top:4px;">⚠️ بقي ${expDays<0?'منتهي':expDays+' يوم'} على انتهاء الصلاحية</div>` : ''}
       </div>
       <div class="action-row">
         <button class="btn btn-debit" data-nav="#/stockout/new?item=${item.id}">📤 أمر سحب</button>
@@ -3565,7 +3565,7 @@ function warehouseItemView(item){
     </div>
   </div>
   <div class="stats">
-    <div class="stat ${stock<0?'owe':''}"><div class="k">الكمية الحالية بالمستودع</div><div class="v">${stock}</div></div>
+    <div class="stat ${stock<0?'owe':''}"><div class="k">الكمية الحالية في المستودع</div><div class="v">${stock}</div></div>
     <div class="stat"><div class="k">عدد الحركات</div><div class="v">${ledger.rows.length}</div></div>
   </div>
   <div class="card">
@@ -3601,7 +3601,7 @@ function stockOutFormView(itemId){
 function warehouseTxnView(kind, id){
   const arr = kind==='stockin' ? DB.stockIns : DB.stockOuts;
   const rec = arr.find(x=>x.id===id);
-  if(!rec) return emptyState('ما لقينا هيدا السجل');
+  if(!rec) return emptyState('لم يتم العثور على هذا السجل');
   const item = DB.warehouseItems.find(i=>i.id===rec.itemId);
   return `
   <div class="doc-actions no-print">
@@ -3639,7 +3639,7 @@ function warehouseInventoryPrintView(){
     <button class="btn btn-primary" onclick="printWithFilename('Warehouse-Inventory-${todayISO()}')">🖨 طباعة</button>
   </div>
   <div class="doc">
-    ${docHead('جردة المستودع')}
+    ${docHead('جرد المستودع')}
     <div class="doc-info">
       <div class="r"><span>التاريخ:</span><b class="num">${fmtDate(todayISO())}</b></div>
       <div class="r"><span>عدد الأصناف:</span><b class="num">${items.length}</b></div>
@@ -3715,8 +3715,8 @@ function budgetHubView(){
     return `<div class="hub-card" data-nav="#/budget-category/${c.id}">
       <div class="hub-icon">${c.type==='income'?'📥':'📤'}</div>
       <div class="hub-title">${escapeHtml(c.name)}</div>
-      <div class="hub-sub">${c.auto? 'يتزامن تلقائي':'يدوي'}</div>
-      <div class="hub-amt ${c.type==='income'?'':'owe'}">${fmtMoney(total)} (هالشهر)</div>
+      <div class="hub-sub">${c.auto? 'يتزامن تلقائيًا':'يدوي'}</div>
+      <div class="hub-amt ${c.type==='income'?'':'owe'}">${fmtMoney(total)} (هذا الشهر)</div>
       ${!c.builtin? `<div class="action-row" style="margin-top:8px;" onclick="event.stopPropagation()">
         <button class="btn btn-sm" data-edit-budget-cat="${c.id}">✎ تعديل</button>
         <button class="btn btn-sm btn-danger" data-del-budget-cat="${c.id}">🗑 حذف</button>
@@ -3735,7 +3735,7 @@ function budgetHubView(){
   </div>
   <div class="card">
     <h2><span class="dot"></span> 📊 الميزانية العمومية</h2>
-    <div style="font-size:12.5px; color:var(--ink-soft); margin-bottom:10px;">جدول شامل بكل المقبوضات والمدفوعات لفترة معينة، مع الصافي المتبقي (أو العجز).</div>
+    <div style="font-size:12.5px; color:var(--ink-soft); margin-bottom:10px;">جدول شامل لجميع المقبوضات والمدفوعات لفترة معينة، مع الصافي المتبقي (أو العجز).</div>
     <button class="btn btn-primary" data-nav="#/budget-overview">فتح الميزانية العمومية</button>
   </div>
   ${appFooter()}`;
@@ -3755,11 +3755,11 @@ function budgetCategoryView(cat, period, a, b){
   }).join('');
   return `
   <div class="card no-print">
-    <h2><span class="dot"></span> ${escapeHtml(cat.name)} ${cat.auto? '<span style="font-size:11px; color:var(--ink-soft); font-weight:500;">(متزامن تلقائي)</span>':''}</h2>
+    <h2><span class="dot"></span> ${escapeHtml(cat.name)} ${cat.auto? '<span style="font-size:11px; color:var(--ink-soft); font-weight:500;">(متزامن تلقائيًا)</span>':''}</h2>
     ${periodFilterHtml('bc', period, a, b)}
   </div>
   <div class="stats no-print">
-    <div class="stat ${cat.type==='income'?'':'owe'}"><div class="k">المجموع بالفترة</div><div class="v">${fmtMoney(total)}</div></div>
+    <div class="stat ${cat.type==='income'?'':'owe'}"><div class="k">المجموع في الفترة</div><div class="v">${fmtMoney(total)}</div></div>
     <div class="stat"><div class="k">عدد الحركات</div><div class="v">${entries.length}</div></div>
   </div>
   <div class="card no-print">
@@ -3776,7 +3776,7 @@ function budgetCategoryView(cat, period, a, b){
       <div class="r"><span>عدد الحركات:</span><b class="num">${entries.length}</b></div>
     </div>
     ${entries.length? `<div class="table-scroll"><table><thead><tr><th>التاريخ</th><th>التفاصيل</th><th>المبلغ</th>${!cat.auto?'<th class="no-print"></th>':''}</tr></thead><tbody>${rowsHtml}</tbody>
-    <tfoot><tr style="font-weight:800; background:var(--paper)"><td colspan="2">المجموع</td><td class="num">${fmtMoney(total)}</td>${!cat.auto?'<td class="no-print"></td>':''}</tr></tfoot></table></div>` : `<div class="empty"><div class="big">ما في حركات بهالفترة</div></div>`}
+    <tfoot><tr style="font-weight:800; background:var(--paper)"><td colspan="2">المجموع</td><td class="num">${fmtMoney(total)}</td>${!cat.auto?'<td class="no-print"></td>':''}</tr></tfoot></table></div>` : `<div class="empty"><div class="big">لا توجد حركات في هذه الفترة</div></div>`}
     <div class="sig">التوقيع</div>
   </div>`;
 }
@@ -3841,7 +3841,7 @@ function fmtQty(n){
   return n.toLocaleString('en-US', {maximumFractionDigits:2});
 }
 function ledgerTable(ledger, isQty){
-  if(!ledger.rows.length) return `<div class="empty"><div class="big">ما في حركات بعد</div></div>`;
+  if(!ledger.rows.length) return `<div class="empty"><div class="big">لا توجد حركات بعد</div></div>`;
   const fmt = isQty ? fmtQty : fmtMoney;
   const rows = ledger.rows.map(r=>{
     const href = refHref(r.ref, r.id);
@@ -3858,7 +3858,7 @@ function ledgerTable(ledger, isQty){
     </tr>`;
   }).join('');
   return `<div class="table-scroll"><table><thead><tr>
-    <th>التاريخ</th><th>النوع</th><th>الرقم</th><th>التفاصيل</th><th>من</th><th>الى</th><th>الرصيد</th>
+    <th>التاريخ</th><th>النوع</th><th>الرقم</th><th>التفاصيل</th><th>من</th><th>إلى</th><th>الرصيد</th>
   </tr></thead><tbody>${rows}</tbody>
   <tfoot><tr style="font-weight:800; background:var(--paper)">
     <td colspan="4">المجموع</td>
@@ -3880,7 +3880,7 @@ function optionSelectField(key, sysIdx, currentValue){
   const label = SPEC_FIELD_LABELS[key];
   return `<div class="field"><label>${label}</label>
     <select class="spec-opt-select" data-spec-key="${key}" data-sys-idx="${sysIdx}">
-      <option value="">— اختار —</option>
+      <option value="">— اختر —</option>
       ${currentValue && !opts.includes(currentValue) ? `<option value="${escapeHtml(currentValue)}" selected>${escapeHtml(currentValue)}</option>` : ''}
       ${opts.map(o=>`<option value="${escapeHtml(o)}" ${currentValue===o?'selected':''}>${escapeHtml(o)}</option>`).join('')}
       <option value="__add_new__">+ إضافة خيار جديد</option>
@@ -3965,11 +3965,11 @@ function itemRow(it, idx){
     </div>
     <div class="field"><label>المنتج</label>
       <select class="it-product">
-        <option value="">— اختار منتج من المستودع —</option>
+        <option value="">— اختر منتجًا من المستودع —</option>
         ${products.map(p=>`<option value="${p.id}" data-name="${escapeHtml(p.name)}" ${it.productId===p.id?'selected':''}>${escapeHtml(p.name)}</option>`).join('')}
       </select>
     </div>
-    <div class="field"><label>اسم المنتج (يدوي إذا مش موجود بالمستودع)</label><input type="text" class="it-desc" value="${escapeHtml(it.desc)}" placeholder="اسم المنتج"></div>
+    <div class="field"><label>اسم المنتج (يدوي إذا لم يكن موجودًا في المستودع)</label><input type="text" class="it-desc" value="${escapeHtml(it.desc)}" placeholder="اسم المنتج"></div>
     <div class="grid grid-3">
       <div class="field"><label>الكمية</label><input type="number" class="it-qty num" value="${it.qty}"></div>
       <div class="field"><label>السعر الإفرادي $</label><input type="number" class="it-price num" value="${it.price}"></div>
@@ -4096,7 +4096,7 @@ function paymentPrintView(kind, rec){
   const cfg = PAYMENT_CFG[kind];
   const party = DB[cfg.partyArr].find(c=>c.id===rec[cfg.partyField]);
   const editRoute = kind==='receipt'?`#/receipt/edit/${rec.id}`:`#/voucher/edit/${rec.id}`;
-  const label = kind==='receipt' ? 'وصلنا من' : 'دفعنا لـ';
+  const label = kind==='receipt' ? 'استلمنا من' : 'دفعنا لـ';
   const fnamePrefix = kind==='receipt'?'Reciept':'Voucher';
   const readOnly = !!currentCustomerSession;
   return `
@@ -4172,7 +4172,7 @@ function trashView(){
     </tr>`).join('');
     return `<div class="card">
       <h2><span class="dot"></span> ${sec.title}</h2>
-      ${items.length? `<table><thead><tr><th>الطرف</th><th>${sec.numLabel}</th><th>التاريخ</th><th>${sec.amtLabel||'المبلغ'}</th><th></th></tr></thead><tbody>${rows}</tbody></table>` : `<div class="empty"><div class="big">ما في شي محذوف هون</div></div>`}
+      ${items.length? `<table><thead><tr><th>الطرف</th><th>${sec.numLabel}</th><th>التاريخ</th><th>${sec.amtLabel||'المبلغ'}</th><th></th></tr></thead><tbody>${rows}</tbody></table>` : `<div class="empty"><div class="big">لا يوجد شيء محذوف هنا</div></div>`}
     </div>`;
   }).join('');
   return cards;
@@ -4187,9 +4187,9 @@ function settingsView(){
     ${lic.mode==='licensed' ? `
       <p style="font-size:13.5px; color:var(--credit); font-weight:700;">✅ البرنامج مفعّل${lic.label? ' — '+escapeHtml(lic.label):''}</p>
       <p style="font-size:12.5px; color:var(--ink-soft);">صالح لتاريخ: ${new Date(lic.expiresAt).toLocaleDateString('ar')}</p>
-      <p style="font-size:11.5px; color:var(--ink-soft);">هالرمز موقّع محلياً — البرنامج بيشتغل حتى بدون إنترنت لحد تاريخ الانتهاء.</p>
+      <p style="font-size:11.5px; color:var(--ink-soft);">هذا الرمز موقّع محلياً — يعمل البرنامج حتى بدون إنترنت إلى حين تاريخ الانتهاء.</p>
     ` : `
-      <p style="font-size:13.5px; color:${lic.daysLeft<=1?'var(--debit)':'var(--ink)'}; font-weight:700;">⏳ فترة تجربة — باقي ${lic.daysLeft} ${lic.daysLeft===1?'يوم':'أيام'}</p>
+      <p style="font-size:13.5px; color:${lic.daysLeft<=1?'var(--debit)':'var(--ink)'}; font-weight:700;">⏳ فترة تجربة — متبقٍّ ${lic.daysLeft} ${lic.daysLeft===1?'يوم':'أيام'}</p>
     `}
     <div class="field" style="margin-top:10px;"><label>رقم التفعيل</label><input type="text" id="s_license_serial" placeholder="TRAD1...." style="direction:ltr; text-align:left;" value="${escapeHtml(s.licenseSerial||'')}"></div>
     <div id="s_license_err" style="color:var(--debit); font-size:12.5px; min-height:16px; margin-bottom:6px;"></div>
@@ -4207,13 +4207,13 @@ function settingsView(){
       <div class="field"><label>بداية ترقيم الفواتير</label><input type="number" id="s_invstart" class="num" value="${s.invoiceStart}"></div>
       <div class="field"><label>بداية ترقيم إيصالات القبض</label><input type="number" id="s_recstart" class="num" value="${s.receiptStart}"></div>
     </div>
-    <p style="font-size:11.5px; color:var(--ink-soft);">سعر الصرف صار يتحدد من كرت "العملة الثانية" تحت.</p>
+    <p style="font-size:11.5px; color:var(--ink-soft);">أصبح سعر الصرف يُحدَّد من بطاقة "العملة الثانية" أدناه.</p>
     <button class="btn btn-primary" id="saveSettingsBtn">💾 حفظ الإعدادات</button>
   </div>
 
   <div class="card">
     <h2><span class="dot"></span> 💱 العملة الثانية (اختياري)</h2>
-    <p style="font-size:12.5px; color:var(--ink-soft);">البرنامج شغّال أساساً بالدولار. إذا بدك تبيع/تشتغل ببلد تاني، فعّل عملة ثانية هون واختار البلد — سعر الصرف بينسحب من الإنترنت تلقائياً.</p>
+    <p style="font-size:12.5px; color:var(--ink-soft);">يعمل البرنامج أساساً بالدولار. إذا أردت البيع/العمل في بلد آخر، فعّل عملة ثانية هنا واختر البلد — يُجلب سعر الصرف من الإنترنت تلقائياً.</p>
     <div class="field">
       <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
         <input type="checkbox" id="s_cur2_enabled" ${s.secondCurrencyEnabled?'checked':''}>
@@ -4230,9 +4230,9 @@ function settingsView(){
       <div class="field"><label>&nbsp;</label><button type="button" class="btn btn-sm" id="s_cur2_sync">🔄 مزامنة السعر من الإنترنت</button></div>
     </div>
     <div id="s_cur2_synced_note" style="font-size:11.5px; color:var(--ink-soft);">${s.secondCurrencyLastSync? 'آخر مزامنة: '+new Date(s.secondCurrencyLastSync).toLocaleString('ar') : ''}</div>
-    <div class="field" style="margin-top:10px; max-width:320px;"><label>عملة القبض بشاشة POS</label>
+    <div class="field" style="margin-top:10px; max-width:320px;"><label>عملة القبض في شاشة POS</label>
       <select id="s_pos_pay_currency">
-        <option value="USD" ${s.posPaymentCurrency!=='SECOND'?'selected':''}>دولار $ (دايماً)</option>
+        <option value="USD" ${s.posPaymentCurrency!=='SECOND'?'selected':''}>دولار $ (دائماً)</option>
         <option value="SECOND" ${s.posPaymentCurrency==='SECOND'?'selected':''}>العملة الثانية (${secCurLabel()})</option>
       </select>
     </div>
@@ -4257,18 +4257,17 @@ function settingsView(){
     <h2><span class="dot"></span> 🧾 إعدادات نقطة البيع (POS)</h2>
     <div class="field">
       <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
-        <input type="checkbox" id="s_pos_autodrawer" ${s.posAutoOpenDrawer!==false?'checked':''}>
-        افتح درج الصندوق تلقائياً لما نقبض
+        <input type="checkbox" id="s_pos_autodrawer" ${s.posAutoOpenDrawer!==false?'checked':''}> افتح درج الصندوق تلقائياً عند القبض
       </label>
     </div>
     <div class="field">
       <label>الطابعة الحرارية (٨٠ ملم) — لفتح الدرج تلقائياً عبرها</label>
       <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-        <span style="font-size:13px; color:var(--ink-soft);">${s.posPrinterName? '✅ متوصلة ('+(s.posPrinterType==='bluetooth'?'بلوتوث':'USB')+'): '+escapeHtml(s.posPrinterName) : 'ما في طابعة مربوطة بعد'}</span>
-        <button type="button" class="btn btn-sm" id="s_pos_pick_printer">🔌 اختار/غيّر عبر USB</button>
-        <button type="button" class="btn btn-sm" id="s_pos_pick_printer_bt">🔷 اختار/غيّر عبر بلوتوث</button>
+        <span style="font-size:13px; color:var(--ink-soft);">${s.posPrinterName? '✅ متصلة ('+(s.posPrinterType==='bluetooth'?'بلوتوث':'USB')+'): '+escapeHtml(s.posPrinterName) : 'لا توجد طابعة مربوطة بعد'}</span>
+        <button type="button" class="btn btn-sm" id="s_pos_pick_printer">🔌 اختر/غيّر عبر USB</button>
+        <button type="button" class="btn btn-sm" id="s_pos_pick_printer_bt">🔷 اختر/غيّر عبر بلوتوث</button>
       </div>
-      <p style="font-size:11.5px; color:var(--ink-soft); margin-top:6px;">USB: بيطبع مباشرة تلقائياً من Chrome على كمبيوتر. بلوتوث: للأسف أغلب الطابعات الرخيصة ما بتقبل طباعة مباشرة من المتصفح عبرها — لازم تطبيق وسيط متل <b>RawBT</b> (اقرن الطابعة Classic Bluetooth بـPIN من إعدادات النظام، ثبّت RawBT، وبعدين اختاره من نافذة الطباعة العادية بدل "حفظ PDF"). ربط البلوتوث من هون بيفيد بس لمحاولة فتح درج القبض تلقائياً، مش للطباعة نفسها.</p>
+      <p style="font-size:11.5px; color:var(--ink-soft); margin-top:6px;">USB: يطبع مباشرة وتلقائياً من Chrome على الكمبيوتر. بلوتوث: للأسف أغلب الطابعات الرخيصة لا تقبل الطباعة المباشرة من المتصفح عبره — يلزم تطبيق وسيط مثل <b>RawBT</b> (اقرن الطابعة Classic Bluetooth بـPIN من إعدادات النظام، وثبّت RawBT، ثم اختره من نافذة الطباعة العادية بدل "حفظ PDF"). ربط البلوتوث من هنا يفيد فقط لمحاولة فتح درج القبض تلقائياً، وليس للطباعة نفسها.</p>
     </div>
     <button class="btn btn-primary" id="saveposSettingsBtn">💾 حفظ إعدادات POS</button>
   </div>
@@ -4276,10 +4275,10 @@ function settingsView(){
   <div class="card">
     <h2><span class="dot"></span> شعار المؤسسة</h2>
     <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap;">
-      <div id="logoPreviewWrap">${s.logo? `<img src="${s.logo}" style="height:70px; width:auto; border:1px solid var(--line); border-radius:8px; padding:6px; background:#fff;">` : `<div style="color:var(--ink-soft); font-size:13px;">ما في شعار مضاف بعد</div>`}</div>
+      <div id="logoPreviewWrap">${s.logo? `<img src="${s.logo}" style="height:70px; width:auto; border:1px solid var(--line); border-radius:8px; padding:6px; background:#fff;">` : `<div style="color:var(--ink-soft); font-size:13px;">لا يوجد شعار مضاف بعد</div>`}</div>
       <div>
         <input type="file" id="logoInput" accept="image/*" style="max-width:240px;">
-        <div style="font-size:11.5px; color:var(--ink-soft); margin-top:6px;">فضّل صورة صغيرة الحجم (أقل من 300KB) لأنها بتنحفظ داخل البرنامج</div>
+        <div style="font-size:11.5px; color:var(--ink-soft); margin-top:6px;">يُفضَّل استخدام صورة صغيرة الحجم (أقل من 300KB) لأنها تُحفظ داخل البرنامج</div>
         ${s.logo? `<button class="btn btn-sm btn-danger" id="removeLogoBtn" style="margin-top:8px;">🗑 حذف الشعار</button>` : ''}
       </div>
     </div>
@@ -4288,28 +4287,25 @@ function settingsView(){
   <div class="card">
     <h2><span class="dot"></span> طباعة بدون رأس وتذييل المتصفح</h2>
     <div style="font-size:13px; color:var(--ink-soft); line-height:1.8;">
-      لإلغاء عنوان الصفحة والتاريخ ورقم الصفحة يلي بيضيفهم المتصفح تلقائيًا عالطباعة (مش من البرنامج، من إعدادات المتصفح نفسه):
-      عند الضغط على 🖨 طباعة، فوت على "المزيد من الإعدادات / More settings" بنافذة الطباعة، وبطّل خيار
-      <b>"رأس وتذييل الصفحة / Headers and footers"</b>. هيدا الخيار محكوم من المتصفح ومش ممكن للبرنامج يلغيه تلقائيًا.
+      لإلغاء عنوان الصفحة والتاريخ ورقم الصفحة التي يضيفها المتصفح تلقائيًا عند الطباعة (ليس من البرنامج، بل من إعدادات المتصفح نفسه): عند الضغط على 🖨 طباعة، ادخل إلى "المزيد من الإعدادات / More settings" في نافذة الطباعة، وألغِ تحديد خيار
+      <b>"رأس وتذييل الصفحة / Headers and footers"</b>. هذا الخيار يتحكم به المتصفح ولا يمكن للبرنامج إلغاؤه تلقائيًا.
     </div>
   </div>
 
   <div class="card">
     <h2><span class="dot"></span> نسخة احتياطية</h2>
     <div style="font-size:13px; color:var(--ink-soft); margin-bottom:12px; line-height:1.7;">
-      اسم ملف النسخة الاحتياطية بيتحدد أوتوماتيك بتاريخ ووقت اللحظة (مثلاً hmadeh-backup-2026-08-26_14-32.json) لتصير الاسترجاع أسهل.
+      يُحدَّد اسم ملف النسخة الاحتياطية تلقائيًا بتاريخ ووقت اللحظة (مثلاً hmadeh-backup-2026-08-26_14-32.json) لتسهيل الاسترجاع.
     </div>
     <div style="font-size:13px; background:var(--paper); border:1px dashed var(--line); border-radius:8px; padding:12px; margin-bottom:14px; line-height:1.8;">
-      <b>⚠ مهم عن مكان الحفظ:</b> لأسباب أمان، ما في متصفح (كروم، إيدج...) بيسمح لأي صفحة ويب تختار مجلد معيّن تلقائيًا للحفظ فيه — هيدا قرار المتصفح نفسه مش قصور بالبرنامج.
-      لتحديد مكان النزول <b>مرة وحدة ولكل مرة</b>: روح لإعدادات المتصفح ← التنزيلات (Downloads) ← غيّر "مكان الحفظ الافتراضي" لمجلد Google Drive المتزامن عمكينتك.
-      بعدها أي نسخة احتياطية (وأي تنزيل تاني) رح تنزل هناك مباشرة بدون ما يسألك المتصفح كل مرة.
+      <b>⚠ مهم عن مكان الحفظ:</b> لأسباب أمنية، لا يسمح أي متصفح (كروم، إيدج...) لأي صفحة ويب باختيار مجلد معيّن تلقائيًا للحفظ فيه — هذا قرار المتصفح نفسه وليس قصورًا في البرنامج. لتحديد مكان التنزيل <b>مرة واحدة ولكل مرة</b>: اذهب إلى إعدادات المتصفح ← التنزيلات (Downloads) ← غيّر "مكان الحفظ الافتراضي" إلى مجلد Google Drive المتزامن على جهازك. بعدها ستُنزَّل أي نسخة احتياطية (وأي تنزيل آخر) هناك مباشرة دون أن يسألك المتصفح في كل مرة.
     </div>
     <div class="field" style="display:flex; align-items:center; gap:8px; margin-bottom:14px;">
       <input type="checkbox" id="s_autobackup" ${DB.settings.autoBackupOnClose? 'checked':''} style="width:auto;">
-      <label for="s_autobackup" style="margin:0; cursor:pointer;">نسخة احتياطية تلقائية كل ما تسكر الصفحة أو تطلع منها</label>
+      <label for="s_autobackup" style="margin:0; cursor:pointer;">نسخة احتياطية تلقائية كلما أغلقت الصفحة أو خرجت منها</label>
     </div>
     <div style="font-size:11.5px; color:var(--ink-soft); margin-bottom:12px;">
-      ملاحظة: هالخيار بيعتمد على دعم المتصفح لحدث "الإغلاق" — بمعظم المتصفحات (خصوصًا عالكمبيوتر) بيشتغل منيح، بس مش مضمون 100% بكل الحالات (مثلاً لو المتصفح سكر فجأة أو تطبيق الموبايل قفل الصفحة من الخلفية). الأفضل كمان تاخد نسخة يدوية بشكل دوري من الزر تحت.
+      ملاحظة: يعتمد هذا الخيار على دعم المتصفح لحدث "الإغلاق" — في معظم المتصفحات (خصوصًا على الكمبيوتر) يعمل جيدًا، لكنه غير مضمون 100% في كل الحالات (مثلاً إذا أُغلق المتصفح فجأة أو أغلق تطبيق الهاتف المحمول الصفحة في الخلفية). الأفضل أيضًا أخذ نسخة يدوية بشكل دوري من الزر أدناه.
     </div>
     <div class="action-row">
       <button class="btn btn-primary" id="backupExportBtn">⬇ تنزيل نسخة احتياطية الآن</button>
@@ -4321,7 +4317,7 @@ function settingsView(){
 
   <div class="card">
     <h2><span class="dot"></span> 👥 المستخدمون والصلاحيات</h2>
-    <div style="font-size:12.5px; color:var(--ink-soft); margin-bottom:12px;">SUPERADMIN وADMIN إلهن كل الصلاحيات دايمًا. لأي مستخدم تاني، حدد شو بيقدر يفوت عليه.</div>
+    <div style="font-size:12.5px; color:var(--ink-soft); margin-bottom:12px;">SUPERADMIN وADMIN لهما كل الصلاحيات دائمًا. لأي مستخدم آخر، حدد ما يمكنه الدخول إليه.</div>
     ${usersTableHtml()}
     <button class="btn btn-primary" id="addUserBtn" style="margin-top:10px;">+ مستخدم جديد</button>
   </div>
@@ -4337,11 +4333,11 @@ function settingsView(){
   <div class="card" style="border:2px solid var(--debit);">
     <h2><span class="dot" style="background:var(--debit);"></span> ⚠ منطقة خطرة</h2>
     <div style="font-size:13px; color:var(--debit); margin-bottom:14px; line-height:1.8; font-weight:700;">
-      فرمتة البرنامج بتمسح كل شي نهائيًا — كل الزبائن، الموردين، العمال، الفواتير، عروض الأسعار، المستودع، المستخدمين... كل شي. هالإجراء ما بينرجع فيه إطلاقًا.
+      تهيئة البرنامج تمسح كل شيء نهائيًا — كل الزبائن، الموردين، العمال، الفواتير، عروض الأسعار، المستودع، المستخدمين... كل شيء. لا يمكن التراجع عن هذا الإجراء إطلاقًا.
     </div>
     ${currentUser && currentUser.role==='superuser'
-      ? `<button class="btn btn-danger" id="factoryResetBtn" style="width:100%; justify-content:center; padding:16px; font-size:16px;">🗑💣 فرمتة البرنامج بالكامل (Factory Reset)</button>`
-      : `<div style="font-size:13px; color:var(--ink-soft); background:var(--paper); border:1px dashed var(--line); border-radius:8px; padding:12px; text-align:center;">🔒 فرمتة البرنامج متاحة بس لحساب SUPERADMIN</div>`}
+      ? `<button class="btn btn-danger" id="factoryResetBtn" style="width:100%; justify-content:center; padding:16px; font-size:16px;">🗑💣 تهيئة البرنامج بالكامل (Factory Reset)</button>`
+      : `<div style="font-size:13px; color:var(--ink-soft); background:var(--paper); border:1px dashed var(--line); border-radius:8px; padding:12px; text-align:center;">🔒 تهيئة البرنامج متاحة فقط لحساب SUPERADMIN</div>`}
   </div>`;
 }
 function trashTotalCount(){
@@ -4393,9 +4389,9 @@ function customerAccountsView(){
   return `<div class="card">
     <h2><span class="dot"></span> 🔑 حسابات دخول الزبائن</h2>
     <div style="font-size:12.5px; color:var(--ink-soft); margin-bottom:14px; line-height:1.7;">
-      الزبون يلي بتعملو حساب هون بيقدر يسجل دخول ويشوف كشف حسابو الكامل وأي فاتورة أو إيصال إلو (عرض أو طباعة بس) — <b>ممنوع عليه يعدل أو يحذف أو يضيف أي شي إطلاقًا</b>.
+      الزبون الذي تنشئ له حسابًا هنا يمكنه تسجيل الدخول ومشاهدة كشف حسابه الكامل وأي فاتورة أو إيصال خاص به (عرض أو طباعة فقط) — <b>ممنوع عليه أن يعدّل أو يحذف أو يضيف أي شيء إطلاقًا</b>.
     </div>
-    ${accounts.length? `<div class="table-scroll"><table><thead><tr><th>الزبون</th><th>اسم المستخدم</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>` : `<div class="empty"><div class="big">ما في حسابات زبائن بعد</div></div>`}
+    ${accounts.length? `<div class="table-scroll"><table><thead><tr><th>الزبون</th><th>اسم المستخدم</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>` : `<div class="empty"><div class="big">لا توجد حسابات زبائن بعد</div></div>`}
     <button class="btn btn-primary" id="addCustAccBtn" style="margin-top:12px;">+ إنشاء مستخدم للزبون</button>
   </div>`;
 }
@@ -4409,7 +4405,7 @@ function openCustomerAccountModal(account){
     <h3>${isNew? 'إنشاء مستخدم للزبون' : 'تعديل حساب الزبون'}</h3>
     <div class="field"><label>الزبون *</label>
       <select id="ca_customer" ${!isNew?'disabled':''}>
-        <option value="">— اختار الزبون —</option>
+        <option value="">— اختر الزبون —</option>
         ${custOptions}
       </select>
     </div>
@@ -4427,12 +4423,12 @@ function openCustomerAccountModal(account){
     const customerId = isNew ? wrap.querySelector('#ca_customer').value : account.customerId;
     const username = wrap.querySelector('#ca_username').value.trim();
     const password = wrap.querySelector('#ca_password').value.trim();
-    if(!customerId){ toast('لازم تختار الزبون'); return; }
-    if(!username){ toast('لازم تكتب اسم المستخدم'); return; }
-    if(!password){ toast('لازم تكتب كلمة السر'); return; }
+    if(!customerId){ toast('يجب اختيار الزبون'); return; }
+    if(!username){ toast('يجب كتابة اسم المستخدم'); return; }
+    if(!password){ toast('يجب كتابة كلمة السر'); return; }
     const dupCust = (DB.customerAccounts||[]).find(a=> String(a.username||'').toLowerCase()===username.toLowerCase() && (!account || a.id!==account.id));
     const dupStaff = (DB.settings.users||[]).find(u=> String(u.username||'').toLowerCase()===username.toLowerCase());
-    if(dupCust || dupStaff){ toast('اسم المستخدم هيدا مستخدم لحد تاني'); return; }
+    if(dupCust || dupStaff){ toast('اسم المستخدم هذا مستخدم لشخص آخر'); return; }
     if(isNew){
       const na = {id:uid(), createdAt:Date.now(), customerId, username, password};
       DB.customerAccounts = [...(DB.customerAccounts||[]), na];
@@ -4442,7 +4438,7 @@ function openCustomerAccountModal(account){
     }
     const ok = await save(KEYS.customerAccounts, DB.customerAccounts);
     wrap.remove();
-    toast(ok? (isNew?'تمت إضافة الحساب':'تم حفظ التعديلات') : 'صار خطأ بالحفظ');
+    toast(ok? (isNew?'تمت إضافة الحساب':'تم حفظ التعديلات') : 'حدث خطأ أثناء الحفظ');
     render();
   });
 }
@@ -4453,7 +4449,7 @@ function openDeleteCustomerAccountModal(account){
   wrap.className='modal-bg';
   wrap.innerHTML = `<div class="modal">
     <h3 style="color:var(--debit)">⚠ حذف حساب الزبون</h3>
-    <p style="font-size:13.5px; color:var(--ink-soft);">متأكد بدك تحذف حساب دخول <b>${escapeHtml(cust?cust.name:account.username)}</b>؟</p>
+    <p style="font-size:13.5px; color:var(--ink-soft);">هل أنت متأكد أنك تريد حذف حساب دخول <b>${escapeHtml(cust?cust.name:account.username)}</b>؟</p>
     <div class="row">
       <button class="btn" id="dca_cancel">إلغاء</button>
       <button class="btn btn-danger" id="dca_confirm">حذف</button>
@@ -4466,7 +4462,7 @@ function openDeleteCustomerAccountModal(account){
     DB.customerAccounts = (DB.customerAccounts||[]).filter(a=>a.id!==account.id);
     const ok = await save(KEYS.customerAccounts, DB.customerAccounts);
     wrap.remove();
-    toast(ok? 'تم حذف الحساب':'صار خطأ بالحفظ');
+    toast(ok? 'تم حذف الحساب':'حدث خطأ أثناء الحفظ');
     render();
   });
 }
@@ -4621,15 +4617,15 @@ function bindEvents(){
     const saveStockOutBtn = document.getElementById('saveStockOutBtn');
     if(saveStockOutBtn) saveStockOutBtn.addEventListener('click', async ()=>{
       const qty = Number(_stockOutDraft.qty);
-      if(!(qty>0)){ toast('لازم كمية أكبر من صفر'); return; }
+      if(!(qty>0)){ toast('يجب إدخال كمية أكبر من صفر'); return; }
       const stock = currentStock(_stockOutDraft.itemId);
-      if(qty > stock){ toast(`ما في كمية كافية بالمستودع — المتوفر بس ${stock}`); return; }
-      if(!_stockOutDraft.number){ toast('لازم رقم لأمر السحب'); return; }
-      if(!_stockOutDraft.date){ toast('لازم تاريخ'); return; }
+      if(qty > stock){ toast(`لا توجد كمية كافية في المستودع — المتوفر فقط ${stock}`); return; }
+      if(!_stockOutDraft.number){ toast('رقم أمر السحب مطلوب'); return; }
+      if(!_stockOutDraft.date){ toast('التاريخ مطلوب'); return; }
       const clean = {id:uid(), createdAt:Date.now(), itemId:_stockOutDraft.itemId, qty, date:_stockOutDraft.date, number:_stockOutDraft.number, note:_stockOutDraft.note};
       DB.stockOuts.push(clean);
       const ok = await save(KEYS.stockOuts, DB.stockOuts);
-      toast(ok? 'تم حفظ أمر السحب':'صار خطأ بالحفظ');
+      toast(ok? 'تم حفظ أمر السحب':'حدث خطأ أثناء الحفظ');
       _stockOutDraft = null;
       go(`#/stockout/${clean.id}`);
     });
@@ -4646,7 +4642,7 @@ function bindEvents(){
     DB.settings.invoiceStart = (()=>{ const n=Number(document.getElementById('s_invstart').value); return Number.isFinite(n)? n : 0; })();
     DB.settings.receiptStart = (()=>{ const n=Number(document.getElementById('s_recstart').value); return Number.isFinite(n)? n : 1000; })();
     const ok = await save(KEYS.settings, DB.settings);
-    toast(ok? 'تم حفظ الإعدادات':'صار خطأ بالحفظ');
+    toast(ok? 'تم حفظ الإعدادات':'حدث خطأ أثناء الحفظ');
   });
 
   const saveCur2Btn = document.getElementById('saveCur2Btn');
@@ -4657,18 +4653,18 @@ function bindEvents(){
     DB.settings.defaultExchangeRate = DB.settings.secondCurrencyRate || DB.settings.defaultExchangeRate || 90000;
     DB.settings.posPaymentCurrency = document.getElementById('s_pos_pay_currency').value || 'USD';
     const ok = await save(KEYS.settings, DB.settings);
-    toast(ok? 'تم حفظ إعدادات العملة':'صار خطأ بالحفظ');
+    toast(ok? 'تم حفظ إعدادات العملة':'حدث خطأ أثناء الحفظ');
     render();
   });
   const cur2SyncBtn = document.getElementById('s_cur2_sync');
   if(cur2SyncBtn) cur2SyncBtn.addEventListener('click', async ()=>{
     const code = document.getElementById('s_cur2_code').value || 'LBP';
-    cur2SyncBtn.disabled = true; cur2SyncBtn.textContent = 'عم يجيب السعر...';
+    cur2SyncBtn.disabled = true; cur2SyncBtn.textContent = 'جارٍ جلب السعر...';
     try{
       const res = await fetch('https://open.er-api.com/v6/latest/USD');
       const data = await res.json();
       const rate = data && data.rates && data.rates[code];
-      if(!rate){ toast('ما لقينا سعر لهالعملة — تأكد من الرمز (مثال: LBP, EUR, SAR)'); }
+      if(!rate){ toast('لم نعثر على سعر لهذه العملة — تأكد من الرمز (مثال: LBP, EUR, SAR)'); }
       else{
         document.getElementById('s_cur2_rate').value = rate;
         DB.settings.secondCurrencyLastSync = Date.now();
@@ -4676,7 +4672,7 @@ function bindEvents(){
         const note = document.getElementById('s_cur2_synced_note');
         if(note) note.textContent = 'آخر مزامنة: '+new Date(DB.settings.secondCurrencyLastSync).toLocaleString('ar');
       }
-    }catch(e){ toast('ما قدرنا نتواصل مع خدمة أسعار الصرف — تأكد من الإنترنت'); console.error(e); }
+    }catch(e){ toast('لم نتمكن من الاتصال بخدمة أسعار الصرف — تأكد من الاتصال بالإنترنت'); console.error(e); }
     cur2SyncBtn.disabled = false; cur2SyncBtn.textContent = '🔄 مزامنة السعر من الإنترنت';
   });
   if(saveWarehouseSettingsBtn) saveWarehouseSettingsBtn.addEventListener('click', async ()=>{
@@ -4684,7 +4680,7 @@ function bindEvents(){
     DB.settings.expiryAlertDays = Number.isFinite(days) && days>0 ? days : 20;
     DB.settings.barcodeScanMethod = document.getElementById('s_scanmethod').value || 'camera';
     const ok = await save(KEYS.settings, DB.settings);
-    toast(ok? 'تم حفظ إعدادات المستودع':'صار خطأ بالحفظ');
+    toast(ok? 'تم حفظ إعدادات المستودع':'حدث خطأ أثناء الحفظ');
     _expiryAlertShownThisSession = false;
   });
 
@@ -4692,7 +4688,7 @@ function bindEvents(){
   if(savePosSettingsBtn) savePosSettingsBtn.addEventListener('click', async ()=>{
     DB.settings.posAutoOpenDrawer = document.getElementById('s_pos_autodrawer').checked;
     const ok = await save(KEYS.settings, DB.settings);
-    toast(ok? 'تم حفظ إعدادات POS':'صار خطأ بالحفظ');
+    toast(ok? 'تم حفظ إعدادات POS':'حدث خطأ أثناء الحفظ');
     render();
   });
   const pickPrinterBtn = document.getElementById('s_pos_pick_printer');
@@ -4704,12 +4700,12 @@ function bindEvents(){
   if(licenseActivateBtn) licenseActivateBtn.addEventListener('click', async ()=>{
     const serial = document.getElementById('s_license_serial').value.trim();
     const errEl = document.getElementById('s_license_err');
-    if(!serial){ errEl.textContent = 'لازم تكتب رقم التفعيل'; return; }
+    if(!serial){ errEl.textContent = 'يجب إدخال رقم التفعيل'; return; }
     errEl.textContent = '';
     const res = await activateLicenseSerial(serial);
     if(res.ok){ toast('تم تفعيل البرنامج بنجاح'); render(); }
     else{
-      errEl.textContent = res.reason==='expired' ? 'رقم التفعيل هاد منتهي الصلاحية' : (res.reason==='invalid' ? 'رقم التفعيل غلط' : 'صار خطأ بالتفعيل، جرب كمان');
+      errEl.textContent = res.reason==='expired' ? 'رقم التفعيل هذا منتهي الصلاحية' : (res.reason==='invalid' ? 'رقم التفعيل غير صحيح' : 'حدث خطأ أثناء التفعيل، حاول مرة أخرى');
     }
   });
 
@@ -4717,22 +4713,22 @@ function bindEvents(){
   if(logoInput) logoInput.addEventListener('change', async ()=>{
     const file = logoInput.files[0];
     if(!file) return;
-    if(file.size > 800*1024){ toast('الصورة كبيرة، فضّل صورة أصغر من 800KB'); return; }
+    if(file.size > 800*1024){ toast('الصورة كبيرة، يُفضَّل استخدام صورة أصغر من 800KB'); return; }
     const reader = new FileReader();
     reader.onload = async ()=>{
       DB.settings.logo = reader.result;
       const ok = await save(KEYS.settings, DB.settings);
-      toast(ok? 'تم إضافة الشعار':'صار خطأ بالحفظ');
+      toast(ok? 'تمت إضافة الشعار':'حدث خطأ أثناء الحفظ');
       render();
     };
-    reader.onerror = ()=> toast('صار خطأ بقراءة الصورة');
+    reader.onerror = ()=> toast('حدث خطأ أثناء قراءة الصورة');
     reader.readAsDataURL(file);
   });
   const removeLogoBtn = document.getElementById('removeLogoBtn');
   if(removeLogoBtn) removeLogoBtn.addEventListener('click', async ()=>{
     DB.settings.logo = '';
     const ok = await save(KEYS.settings, DB.settings);
-    toast(ok? 'تم حذف الشعار':'صار خطأ بالحفظ');
+    toast(ok? 'تم حذف الشعار':'حدث خطأ أثناء الحفظ');
     render();
   });
 
@@ -4748,7 +4744,7 @@ function bindEvents(){
   if(autoBackupChk) autoBackupChk.addEventListener('change', async ()=>{
     DB.settings.autoBackupOnClose = autoBackupChk.checked;
     await save(KEYS.settings, DB.settings);
-    toast(autoBackupChk.checked? 'تفعّل النسخ التلقائي عند الإغلاق':'تعطّل النسخ التلقائي عند الإغلاق');
+    toast(autoBackupChk.checked? 'تم تفعيل النسخ التلقائي عند الإغلاق':'تم تعطيل النسخ التلقائي عند الإغلاق');
   });
 
   const addUserBtn = document.getElementById('addUserBtn');
@@ -4832,13 +4828,13 @@ const DOC_KIND_MAP = {
     btn.addEventListener('click', async ()=>{
       const kind = btn.getAttribute('data-doc-kind');
       const cfg = DOC_KIND_MAP[kind];
-      if(!confirm(`متأكد بدك تحذف ${cfg.label}؟ رح تنتقل لسلة المحذوفات وبتقدر ترجعها من هناك.`)) return;
+      if(!confirm(`هل أنت متأكد أنك تريد حذف ${cfg.label}؟ ستنتقل إلى سلة المحذوفات ويمكنك استرجاعها من هناك.`)) return;
       const id = btn.getAttribute('data-del-doc');
       const item = DB[cfg.arr].find(x=>x.id===id);
       if(!item) return;
       item.deleted = true; item.deletedAt = Date.now();
       await save(KEYS[cfg.key], DB[cfg.arr]);
-      toast(`انتقل${cfg.label==='الفاتورة'||cfg.label==='فاتورة المشتريات'?'ت':''} ${cfg.label} لسلة المحذوفات`);
+      toast(`انتقل${cfg.label==='الفاتورة'||cfg.label==='فاتورة المشتريات'?'ت':''} ${cfg.label} إلى سلة المحذوفات`);
       go(cfg.backRoute(item[cfg.partyField]));
     });
   });
@@ -4857,7 +4853,7 @@ const DOC_KIND_MAP = {
   });
   document.querySelectorAll('[data-purge-doc]').forEach(btn=>{
     btn.addEventListener('click', async ()=>{
-      if(!confirm('حذف نهائي وما بينرجع فيه — متأكد؟')) return;
+      if(!confirm('حذف نهائي لا يمكن التراجع عنه — هل أنت متأكد؟')) return;
       const kind = btn.getAttribute('data-doc-kind');
       const cfg = DOC_KIND_MAP[kind];
       const id = btn.getAttribute('data-purge-doc');
@@ -4896,12 +4892,12 @@ function openCustomerModal(cust){
   wrap.addEventListener('click', (e)=>{ if(e.target===wrap) wrap.remove(); });
   wrap.querySelector('#m_save').addEventListener('click', async ()=>{
     const name = wrap.querySelector('#m_name').value.trim();
-    if(!name){ toast('لازم تكتب اسم الزبون'); return; }
+    if(!name){ toast('يجب كتابة اسم الزبون'); return; }
     const accNum = wrap.querySelector('#m_acc').value.trim();
-    if(!accNum){ toast('لازم رقم حساب'); return; }
-    if(!accNum.startsWith('41110')){ toast('رقم الحساب لازم يبلش بـ 41110'); return; }
+    if(!accNum){ toast('رقم الحساب مطلوب'); return; }
+    if(!accNum.startsWith('41110')){ toast('يجب أن يبدأ رقم الحساب بـ 41110'); return; }
     const dup = DB.customers.find(c=> c.accountNumber===accNum && (!cust || c.id!==cust.id));
-    if(dup){ toast('رقم الحساب هيدا مستخدم لزبون تاني — لازم يكون كل رقم حساب وحداني'); return; }
+    if(dup){ toast('رقم الحساب هذا مستخدم لزبون آخر — يجب أن يكون كل رقم حساب فريدًا'); return; }
     const data = {
       name,
       accountNumber: accNum,
@@ -4942,13 +4938,13 @@ function openUserModal(user){
     <div class="field"><label>اسم المستخدم *</label><input type="text" id="um_username" value="${user?escapeHtml(user.username):''}"></div>
     ${passwordLocked? `
     <div class="field"><label>كلمة السر</label><input type="text" value="${'•'.repeat(8)}" disabled style="opacity:.6;"></div>
-    <p style="font-size:12px; color:var(--debit); font-weight:600;">🔒 بس حساب SUPERADMIN نفسو يقدر يغير كلمة سرّو، لا ADMIN ولا غيره.</p>
+    <p style="font-size:12px; color:var(--debit); font-weight:600;">🔒 فقط حساب SUPERADMIN نفسه يمكنه تغيير كلمة سرّه، لا ADMIN ولا غيره.</p>
     ` : `<div class="field"><label>كلمة السر *</label><input type="text" id="um_password" class="num" value="${user?escapeHtml(user.password):''}"></div>`}
-    ${isPriv? `<p style="font-size:12.5px; color:var(--ink-soft);">هيدا حساب ${user.role==='superuser'?'SUPERADMIN':'ADMIN'} — إلو كل الصلاحيات دايمًا.</p>` : `
+    ${isPriv? `<p style="font-size:12.5px; color:var(--ink-soft);">هذا حساب ${user.role==='superuser'?'SUPERADMIN':'ADMIN'} — له كل الصلاحيات دائمًا.</p>` : `
     <div class="field">
-      <button type="button" class="btn btn-sm" id="um_preset_cashier">⚡ كاشير (POS بس)</button>
+      <button type="button" class="btn btn-sm" id="um_preset_cashier">⚡ كاشير (POS فقط)</button>
     </div>
-    <div class="field"><label>الصلاحيات (شو بيقدر يفوت عليه)</label>${permsHtml}</div>`}
+    <div class="field"><label>الصلاحيات (ما يمكنه الدخول إليه)</label>${permsHtml}</div>`}
     <div class="row">
       <button class="btn" id="um_cancel">إلغاء</button>
       <button class="btn btn-primary" id="um_save">${isNew?'إضافة':'حفظ'}</button>
@@ -4966,10 +4962,10 @@ function openUserModal(user){
     const username = wrap.querySelector('#um_username').value.trim();
     const passwordInput = wrap.querySelector('#um_password');
     const password = passwordLocked ? user.password : (passwordInput? passwordInput.value.trim() : '');
-    if(!username){ toast('لازم تكتب اسم المستخدم'); return; }
-    if(!password){ toast('لازم تكتب كلمة السر'); return; }
+    if(!username){ toast('يجب كتابة اسم المستخدم'); return; }
+    if(!password){ toast('يجب كتابة كلمة السر'); return; }
     const dup = (DB.settings.users||[]).find(u=> u.username===username && (!user || u.id!==user.id));
-    if(dup){ toast('اسم المستخدم هيدا مستخدم لحد تاني'); return; }
+    if(dup){ toast('اسم المستخدم هذا مستخدم لشخص آخر'); return; }
     if(isNew){
       const perms = Array.from(wrap.querySelectorAll('.user-perm-chk:checked')).map(c=>c.value);
       const nu = {id:uid(), username, password, role:'custom', permissions:perms};
@@ -4991,30 +4987,30 @@ function openUserModal(user){
             if(error){
               lastSupabaseError = describeSupabaseError(error);
               console.error('supabase auth password update error:', lastSupabaseError);
-              setTimeout(()=>{ alert('تفاصيل خطأ تحديث كلمة السر بالسحابة (خذ لقطة شاشة وابعتها):\n\n'+lastSupabaseError); }, 400);
+              setTimeout(()=>{ alert('تفاصيل خطأ تحديث كلمة السر في السحابة (خذ لقطة شاشة وأرسلها):\n\n'+lastSupabaseError); }, 400);
             }
           }catch(e){
             lastSupabaseError = 'threw: '+(e && e.message);
             console.error('supabase auth password update threw:', e && e.message);
-            setTimeout(()=>{ alert('تفاصيل خطأ تحديث كلمة السر بالسحابة (خذ لقطة شاشة وابعتها):\n\n'+lastSupabaseError); }, 400);
+            setTimeout(()=>{ alert('تفاصيل خطأ تحديث كلمة السر في السحابة (خذ لقطة شاشة وأرسلها):\n\n'+lastSupabaseError); }, 400);
           }
         })();
       }
     }
     const ok = await save(KEYS.settings, DB.settings);
     wrap.remove();
-    toast(ok? (isNew?'تمت إضافة المستخدم':'تم حفظ التعديلات') : 'صار خطأ بالحفظ');
+    toast(ok? (isNew?'تمت إضافة المستخدم':'تم حفظ التعديلات') : 'حدث خطأ أثناء الحفظ');
     render();
   });
 }
 function openDeleteUserModal(user){
   if(!user) return;
-  if(isPrivilegedUser(user)){ toast('ما فيك تحذف حساب ADMIN أو SUPERADMIN'); return; }
+  if(isPrivilegedUser(user)){ toast('لا يمكنك حذف حساب ADMIN أو SUPERADMIN'); return; }
   const wrap = document.createElement('div');
   wrap.className='modal-bg';
   wrap.innerHTML = `<div class="modal">
     <h3 style="color:var(--debit)">⚠ حذف المستخدم</h3>
-    <p style="font-size:13.5px; color:var(--ink-soft);">متأكد بدك تحذف المستخدم <b>${escapeHtml(user.username)}</b>؟</p>
+    <p style="font-size:13.5px; color:var(--ink-soft);">هل أنت متأكد أنك تريد حذف المستخدم <b>${escapeHtml(user.username)}</b>؟</p>
     <div class="row">
       <button class="btn" id="dum_cancel">إلغاء</button>
       <button class="btn btn-danger" id="dum_confirm">حذف</button>
@@ -5027,7 +5023,7 @@ function openDeleteUserModal(user){
     DB.settings.users = (DB.settings.users||[]).filter(u=>u.id!==user.id);
     const ok = await save(KEYS.settings, DB.settings);
     wrap.remove();
-    toast(ok? 'تم حذف المستخدم':'صار خطأ بالحفظ');
+    toast(ok? 'تم حذف المستخدم':'حدث خطأ أثناء الحفظ');
     render();
   });
 }
@@ -5040,15 +5036,15 @@ function open2FASetupModal(user){
   wrap.innerHTML = `<div class="modal">
     <h3>🔐 إعداد 2FA — ${escapeHtml(user.username)}</h3>
     <div style="font-size:13px; color:var(--ink-soft); line-height:1.8; margin-bottom:12px;">
-      <b>1.</b> نزّل تطبيق <b>Google Authenticator</b> عتلفون ${escapeHtml(user.username)} (من متجر التطبيقات).<br>
-      <b>2.</b> افتح التطبيق واعمل "+" ثم "Scan a QR code" وامسح الكود تحت.<br>
-      <b>3.</b> اكتب الكود المكوّن من 6 أرقام يلي بيطلع بالتطبيق بالخانة تحت للتأكيد.
+      <b>1.</b> نزّل تطبيق <b>Google Authenticator</b> على هاتفك ${escapeHtml(user.username)} (من متجر التطبيقات).<br>
+      <b>2.</b> افتح التطبيق واضغط "+" ثم "Scan a QR code" وامسح الكود أدناه.<br>
+      <b>3.</b> اكتب الكود المكوّن من 6 أرقام الذي يظهر في التطبيق في الخانة أدناه للتأكيد.
     </div>
     <div style="display:flex; justify-content:center; margin-bottom:12px;">
       <div id="qr2fa_container"></div>
     </div>
     <div style="font-size:11.5px; color:var(--ink-soft); text-align:center; margin-bottom:14px;">
-      ما قدرت تسكن؟ ادخل هالكود يدوي بالتطبيق:<br><code style="font-size:13px; font-weight:700; letter-spacing:1px;">${secret}</code>
+      لم تتمكن من المسح؟ أدخل هذا الكود يدويًا في التطبيق:<br><code style="font-size:13px; font-weight:700; letter-spacing:1px;">${secret}</code>
     </div>
     <div class="field"><label>الكود المكوّن من 6 أرقام (للتأكيد)</label><input type="text" id="setup2fa_code" inputmode="numeric" maxlength="6"></div>
     <div id="setup2fa_err" style="color:var(--debit); font-size:12.5px; min-height:16px;"></div>
@@ -5062,33 +5058,33 @@ function open2FASetupModal(user){
     if(window.QRCode){
       new QRCode(wrap.querySelector('#qr2fa_container'), {text:uri, width:200, height:200});
     } else {
-      wrap.querySelector('#qr2fa_container').innerHTML = '<div style="font-size:12px; color:var(--debit);">ما قدرنا نحمّل مولّد الكود (تأكد من الإنترنت) — استخدم الإدخال اليدوي بالأسفل.</div>';
+      wrap.querySelector('#qr2fa_container').innerHTML = '<div style="font-size:12px; color:var(--debit);">لم نتمكن من تحميل مولّد الكود (تأكد من الاتصال بالإنترنت) — استخدم الإدخال اليدوي بالأسفل.</div>';
     }
   }catch(e){
-    wrap.querySelector('#qr2fa_container').innerHTML = '<div style="font-size:12px; color:var(--debit);">صار خطأ بعرض QR — استخدم الإدخال اليدوي بالأسفل.</div>';
+    wrap.querySelector('#qr2fa_container').innerHTML = '<div style="font-size:12px; color:var(--debit);">حدث خطأ في عرض QR — استخدم الإدخال اليدوي بالأسفل.</div>';
   }
   wrap.querySelector('#setup2fa_cancel').addEventListener('click', ()=>wrap.remove());
   wrap.addEventListener('click', (e)=>{ if(e.target===wrap) wrap.remove(); });
   wrap.querySelector('#setup2fa_confirm').addEventListener('click', async ()=>{
     const code = wrap.querySelector('#setup2fa_code').value.trim();
     const ok = await verifyTotp(secret, code);
-    if(!ok){ wrap.querySelector('#setup2fa_err').textContent = 'الكود غلط، جرب كمان'; return; }
+    if(!ok){ wrap.querySelector('#setup2fa_err').textContent = 'الرمز غير صحيح، حاول مرة أخرى'; return; }
     user.totpSecret = secret;
     user.totpEnabled = true;
     const saved = await save(KEYS.settings, DB.settings);
     wrap.remove();
-    toast(saved? 'تم تفعيل 2FA بنجاح':'صار خطأ بالحفظ');
+    toast(saved? 'تم تفعيل 2FA بنجاح':'حدث خطأ أثناء الحفظ');
     render();
   });
 }
 function openDelete2FAModal(user){
   if(!user) return;
-  if(!currentUser || currentUser.role!=='superuser'){ toast('بس SUPERADMIN بيقدر يحذف 2FA'); return; }
+  if(!currentUser || currentUser.role!=='superuser'){ toast('فقط SUPERADMIN يمكنه حذف 2FA'); return; }
   const wrap = document.createElement('div');
   wrap.className='modal-bg';
   wrap.innerHTML = `<div class="modal">
     <h3 style="color:var(--debit)">⚠ حذف 2FA</h3>
-    <p style="font-size:13.5px; color:var(--ink-soft);">متأكد بدك تحذف 2FA لحساب <b>${escapeHtml(user.username)}</b>؟ (استخدم هيدا إذا ضيّع تلفونو أو مش قادر يسجل دخول)</p>
+    <p style="font-size:13.5px; color:var(--ink-soft);">هل أنت متأكد أنك تريد حذف 2FA لحساب <b>${escapeHtml(user.username)}</b>؟ (استخدم هذا إذا أضاع هاتفه أو لم يتمكن من تسجيل الدخول)</p>
     <div class="row">
       <button class="btn" id="d2fa_cancel">إلغاء</button>
       <button class="btn btn-danger" id="d2fa_confirm">حذف 2FA</button>
@@ -5102,7 +5098,7 @@ function openDelete2FAModal(user){
     user.totpSecret = null;
     const ok = await save(KEYS.settings, DB.settings);
     wrap.remove();
-    toast(ok? 'تم حذف 2FA':'صار خطأ بالحفظ');
+    toast(ok? 'تم حذف 2FA':'حدث خطأ أثناء الحفظ');
     render();
   });
 }
@@ -5128,18 +5124,18 @@ function openAddBudgetCategoryModal(){
   wrap.addEventListener('click', (e)=>{ if(e.target===wrap) wrap.remove(); });
   wrap.querySelector('#bc_save').addEventListener('click', async ()=>{
     const name = wrap.querySelector('#bc_name').value.trim();
-    if(!name){ toast('لازم تكتب اسم الحقل'); return; }
+    if(!name){ toast('يجب كتابة اسم الحقل'); return; }
     const type = wrap.querySelector('#bc_type').value;
     const nc = {id:uid(), name, type, auto:false, builtin:false};
     DB.budgetCategories = [...DB.budgetCategories, nc];
     const ok = await save(KEYS.budgetCategories, DB.budgetCategories);
     wrap.remove();
-    toast(ok? 'تمت إضافة الحقل':'صار خطأ بالحفظ');
+    toast(ok? 'تمت إضافة الحقل':'حدث خطأ أثناء الحفظ');
     render();
   });
 }
 function openEditBudgetCategoryModal(cat){
-  if(!cat || cat.builtin){ toast('هالحقل أساسي وما فيك تعدلو'); return; }
+  if(!cat || cat.builtin){ toast('هذا الحقل أساسي ولا يمكنك تعديله'); return; }
   const wrap = document.createElement('div');
   wrap.className='modal-bg';
   wrap.innerHTML = `<div class="modal">
@@ -5161,22 +5157,22 @@ function openEditBudgetCategoryModal(cat){
   wrap.addEventListener('click', (e)=>{ if(e.target===wrap) wrap.remove(); });
   wrap.querySelector('#ebc_save').addEventListener('click', async ()=>{
     const name = wrap.querySelector('#ebc_name').value.trim();
-    if(!name){ toast('لازم تكتب اسم الحقل'); return; }
+    if(!name){ toast('يجب كتابة اسم الحقل'); return; }
     cat.name = name;
     cat.type = wrap.querySelector('#ebc_type').value;
     const ok = await save(KEYS.budgetCategories, DB.budgetCategories);
     wrap.remove();
-    toast(ok? 'تم حفظ التعديلات':'صار خطأ بالحفظ');
+    toast(ok? 'تم حفظ التعديلات':'حدث خطأ أثناء الحفظ');
     render();
   });
 }
 function openDeleteBudgetCategoryModal(cat){
-  if(!cat || cat.builtin){ toast('هالحقل أساسي وما فيك تحذفو'); return; }
+  if(!cat || cat.builtin){ toast('هذا الحقل أساسي ولا يمكنك حذفه'); return; }
   const wrap = document.createElement('div');
   wrap.className='modal-bg';
   wrap.innerHTML = `<div class="modal">
     <h3 style="color:var(--debit)">⚠ حذف حقل الميزانية</h3>
-    <p style="font-size:13.5px; color:var(--ink-soft); line-height:1.7;">رح يتحذف حقل <b>${escapeHtml(cat.name)}</b> مع كل السندات المسجلة فيه. هيدا الإجراء ما بينرجع فيه.</p>
+    <p style="font-size:13.5px; color:var(--ink-soft); line-height:1.7;">سيتم حذف حقل <b>${escapeHtml(cat.name)}</b> مع كل السندات المسجلة فيه. لا يمكن التراجع عن هذا الإجراء.</p>
     <div class="row">
       <button class="btn" id="dbc_cancel">إلغاء</button>
       <button class="btn btn-danger" id="dbc_confirm">حذف نهائي</button>
@@ -5214,25 +5210,25 @@ function openAddBudgetEntryModal(categoryId){
   wrap.addEventListener('click', (e)=>{ if(e.target===wrap) wrap.remove(); });
   wrap.querySelector('#be_save').addEventListener('click', async ()=>{
     const amount = Number(wrap.querySelector('#be_amount').value);
-    if(!(amount>0)){ toast('لازم مبلغ أكبر من صفر'); return; }
+    if(!(amount>0)){ toast('يجب إدخال مبلغ أكبر من صفر'); return; }
     const date = wrap.querySelector('#be_date').value || todayISO();
     const note = wrap.querySelector('#be_note').value.trim();
     const ne = {id:uid(), createdAt:Date.now(), categoryId, amount, date, note, number:nextBudgetEntryNumber()};
     DB.budgetEntries = [...DB.budgetEntries, ne];
     const ok = await save(KEYS.budgetEntries, DB.budgetEntries);
     wrap.remove();
-    toast(ok? 'تم حفظ سند الصرف':'صار خطأ بالحفظ');
+    toast(ok? 'تم حفظ سند الصرف':'حدث خطأ أثناء الحفظ');
     render();
   });
 }
 function openFactoryResetModal(){
-  if(!currentUser || currentUser.role!=='superuser'){ toast('بس SUPERADMIN بيقدر يعمل فرمتة للبرنامج'); return; }
+  if(!currentUser || currentUser.role!=='superuser'){ toast('فقط SUPERADMIN يمكنه تهيئة البرنامج'); return; }
   const wrap = document.createElement('div');
   wrap.className='modal-bg';
   wrap.innerHTML = `<div class="modal">
-    <h3 style="color:var(--debit)">💣 فرمتة البرنامج بالكامل</h3>
+    <h3 style="color:var(--debit)">💣 تهيئة البرنامج بالكامل</h3>
     <p style="font-size:13.5px; color:var(--debit); font-weight:700; line-height:1.7;">
-      رح يتمسح كل شي نهائيًا وبدون رجعة: كل الزبائن، الفواتير، الموردين، العمال، المستودع، عروض الأسعار، المستخدمين... كل شي.
+      سيتم حذف كل شيء نهائيًا وبلا رجعة: كل الزبائن، الفواتير، الموردين، العمال، المستودع، عروض الأسعار، المستخدمين... كل شيء.
     </p>
     <div class="field"><label>اكتب <b style="color:var(--debit)">WIPE ALL</b> بالحروف الكبيرة للتأكيد</label><input type="text" id="wipe_confirm" autocomplete="off"></div>
     <div class="row">
@@ -5245,7 +5241,7 @@ function openFactoryResetModal(){
   wrap.addEventListener('click', (e)=>{ if(e.target===wrap) wrap.remove(); });
   wrap.querySelector('#wipe_next').addEventListener('click', ()=>{
     const typed = wrap.querySelector('#wipe_confirm').value.trim();
-    if(typed !== 'WIPE ALL'){ toast('لازم تكتب WIPE ALL بالضبط'); return; }
+    if(typed !== 'WIPE ALL'){ toast('يجب أن تكتب WIPE ALL بالضبط'); return; }
     wrap.remove();
     openFactoryResetCountdown();
   });
@@ -5254,7 +5250,7 @@ function openFactoryResetCountdown(){
   const wrap = document.createElement('div');
   wrap.className='modal-bg';
   wrap.innerHTML = `<div class="modal" style="text-align:center;">
-    <h3 style="color:var(--debit)">⏳ رح تنمسح كل البيانات خلال...</h3>
+    <h3 style="color:var(--debit)">⏳ سيتم حذف كل البيانات خلال...</h3>
     <div id="wipe_countdown_num" style="font-family:var(--font-num); font-size:56px; font-weight:800; color:var(--debit); margin:16px 0;">10</div>
     <button class="btn btn-primary" id="wipe_cancel_countdown" style="width:100%; justify-content:center; padding:12px;">إلغاء العملية</button>
   </div>`;
@@ -5274,7 +5270,7 @@ function openFactoryResetCountdown(){
   wrap.querySelector('#wipe_cancel_countdown').addEventListener('click', ()=>{
     clearInterval(interval);
     wrap.remove();
-    toast('تم إلغاء عملية الفرمتة');
+    toast('تم إلغاء عملية التهيئة');
   });
 }
 async function performFactoryReset(){
@@ -5287,13 +5283,13 @@ function openLogoutModal(){
   const wrap = document.createElement('div');
   wrap.className='modal-bg';
   wrap.innerHTML = `<div class="modal">
-    <h3>⚠ قبل ما تسكر</h3>
+    <h3>⚠ قبل الإغلاق</h3>
     <p style="font-size:13.5px; color:var(--ink-soft); line-height:1.7;">
-      لازم تاخد نسخة احتياطية قبل تسجيل الخروج، لحتى ما تضيع بياناتك.
+      يجب أخذ نسخة احتياطية قبل تسجيل الخروج، حتى لا تضيع بياناتك.
     </p>
     <div class="row">
       <button class="btn" id="logout_cancel">إلغاء</button>
-      <button class="btn btn-primary" id="logout_backup_confirm">⬇ خد نسخة احتياطية واخرج</button>
+      <button class="btn btn-primary" id="logout_backup_confirm">⬇ خذ نسخة احتياطية واخرج</button>
     </div>
   </div>`;
   document.body.appendChild(wrap);
@@ -5314,8 +5310,7 @@ function openDeleteCustomerModal(cust){
   wrap.innerHTML = `<div class="modal">
     <h3 style="color:var(--debit)">⚠ حذف الزبون نهائيًا</h3>
     <p style="font-size:13.5px; color:var(--ink-soft); line-height:1.7;">
-      رح يتحذف الزبون <b>${escapeHtml(cust.name)}</b> نهائيًا مع <b>${invCount}</b> فاتورة و<b>${recCount}</b> إيصال قبض المرتبطين فيه.
-      هيدا الإجراء ما بينرجع فيه وكل الكشف بيروح معه.
+      سيتم حذف الزبون <b>${escapeHtml(cust.name)}</b> نهائيًا مع <b>${invCount}</b> فاتورة و<b>${recCount}</b> إيصال قبض المرتبطة به. لا يمكن التراجع عن هذا الإجراء، وسيُحذف الكشف بالكامل معه.
     </p>
     <div class="field"><label>اكتب اسم الزبون بالكامل للتأكيد</label><input type="text" id="del_confirm" placeholder="${escapeHtml(cust.name)}"></div>
     <div class="row">
@@ -5328,7 +5323,7 @@ function openDeleteCustomerModal(cust){
   wrap.addEventListener('click', (e)=>{ if(e.target===wrap) wrap.remove(); });
   wrap.querySelector('#del_confirm_btn').addEventListener('click', async ()=>{
     const typed = wrap.querySelector('#del_confirm').value.trim();
-    if(typed !== cust.name){ toast('لازم تكتب اسم الزبون متل ما هو بالضبط'); return; }
+    if(typed !== cust.name){ toast('يجب أن تكتب اسم الزبون كما هو بالضبط'); return; }
     DB.customers = DB.customers.filter(c=>c.id!==cust.id);
     DB.invoices = DB.invoices.filter(i=>i.customerId!==cust.id);
     DB.receipts = DB.receipts.filter(r=>r.customerId!==cust.id);
@@ -5379,12 +5374,12 @@ function openPartyModal(kind, party){
   wrap.addEventListener('click', (e)=>{ if(e.target===wrap) wrap.remove(); });
   wrap.querySelector('#m_save').addEventListener('click', async ()=>{
     const name = wrap.querySelector('#m_name').value.trim();
-    if(!name){ toast('لازم تكتب الاسم'); return; }
+    if(!name){ toast('يجب أن تكتب الاسم'); return; }
     const accNum = wrap.querySelector('#m_acc').value.trim();
-    if(!accNum){ toast('لازم رقم حساب'); return; }
-    if(!accNum.startsWith(cfg.acctPrefix)){ toast(`رقم الحساب لازم يبلش بـ ${cfg.acctPrefix}`); return; }
+    if(!accNum){ toast('رقم الحساب مطلوب'); return; }
+    if(!accNum.startsWith(cfg.acctPrefix)){ toast(`يجب أن يبدأ رقم الحساب بـ ${cfg.acctPrefix}`); return; }
     const dup = DB[cfg.arr].find(p=> p.accountNumber===accNum && (!party || p.id!==party.id));
-    if(dup){ toast('رقم الحساب هيدا مستخدم — لازم يكون كل رقم حساب وحداني'); return; }
+    if(dup){ toast('رقم الحساب هذا مستخدم — يجب أن يكون كل رقم حساب فريدًا'); return; }
     const data = {
       name,
       accountNumber: accNum,
@@ -5395,13 +5390,13 @@ function openPartyModal(kind, party){
       DB[cfg.arr].push(p);
       const ok = await save(KEYS[cfg.key], DB[cfg.arr]);
       wrap.remove();
-      toast(ok? 'تمت الإضافة' : 'صار خطأ بالحفظ');
+      toast(ok? 'تمت الإضافة' : 'حدث خطأ أثناء الحفظ');
       go(`#/supplier/${p.id}`);
     } else {
       Object.assign(party, data);
       const ok = await save(KEYS[cfg.key], DB[cfg.arr]);
       wrap.remove();
-      toast(ok? 'تم حفظ التعديلات' : 'صار خطأ بالحفظ');
+      toast(ok? 'تم حفظ التعديلات' : 'حدث خطأ أثناء الحفظ');
       render();
     }
   });
@@ -5416,8 +5411,7 @@ function openDeletePartyModal(kind, party){
   wrap.innerHTML = `<div class="modal">
     <h3 style="color:var(--debit)">⚠ حذف ${cfg.label} نهائيًا</h3>
     <p style="font-size:13.5px; color:var(--ink-soft); line-height:1.7;">
-      رح يتحذف <b>${escapeHtml(party.name)}</b> نهائيًا مع ${countsText} مرتبطين فيه.
-      هيدا الإجراء ما بينرجع فيه.
+      سيتم حذف <b>${escapeHtml(party.name)}</b> نهائيًا مع ${countsText} المرتبطة به. لا يمكن التراجع عن هذا الإجراء.
     </p>
     <div class="field"><label>اكتب الاسم بالكامل للتأكيد</label><input type="text" id="del_confirm" placeholder="${escapeHtml(party.name)}"></div>
     <div class="row">
@@ -5430,7 +5424,7 @@ function openDeletePartyModal(kind, party){
   wrap.addEventListener('click', (e)=>{ if(e.target===wrap) wrap.remove(); });
   wrap.querySelector('#del_confirm_btn').addEventListener('click', async ()=>{
     const typed = wrap.querySelector('#del_confirm').value.trim();
-    if(typed !== party.name){ toast('لازم تكتب الاسم متل ما هو بالضبط'); return; }
+    if(typed !== party.name){ toast('يجب أن تكتب الاسم كما هو بالضبط'); return; }
     DB[cfg.arr] = DB[cfg.arr].filter(p=>p.id!==party.id);
     const ops = [save(KEYS[cfg.key], DB[cfg.arr])];
     cfg.docs.forEach(d=>{
@@ -5448,7 +5442,7 @@ function openWarehouseItemModal(item){
   const wrap = document.createElement('div');
   wrap.className='modal-bg';
   wrap.innerHTML = `<div class="modal">
-    <h3>${isNew? 'إضافة إلى الستوك' : 'تعديل بيانات المنتج'}</h3>
+    <h3>${isNew? 'إضافة إلى المخزون' : 'تعديل بيانات المنتج'}</h3>
     <div class="field"><label>الاسم *</label><input type="text" id="wm_name" value="${item?escapeHtml(item.name):''}"></div>
     <div class="grid grid-2">
       <div class="field"><label>الماركة</label><input type="text" id="wm_brand" value="${item?escapeHtml(item.brand||''):''}"></div>
@@ -5465,7 +5459,7 @@ function openWarehouseItemModal(item){
       <input type="text" id="wm_category" list="wm_category_list" value="${item?escapeHtml(item.category||''):''}" placeholder="مثال: مشروبات">
       <datalist id="wm_category_list">${posCategories().map(c=>`<option value="${escapeHtml(c)}">`).join('')}</datalist>
     </div>
-    <div class="field"><label>صورة المنتج (تظهر بشاشة POS — اختياري)</label>
+    <div class="field"><label>صورة المنتج (تظهر في شاشة POS — اختياري)</label>
       <div style="display:flex; align-items:center; gap:10px;">
         ${item&&item.image? `<img src="${item.image}" style="height:54px; width:54px; object-fit:cover; border-radius:8px; border:1px solid var(--line);">` : ''}
         <input type="file" id="wm_image" accept="image/*" style="flex:1;">
@@ -5480,7 +5474,7 @@ function openWarehouseItemModal(item){
       <div class="field"><label>تاريخ الإنتاج</label><input type="date" id="wm_prod_date" value="${item?escapeHtml(item.productionDate||''):''}"></div>
       <div class="field"><label>تاريخ الانتهاء</label><input type="date" id="wm_exp_date" value="${item?escapeHtml(item.expiryDate||''):''}"></div>
     </div>
-    <div class="field"><label>تنبيه انتهاء خاص بهالمنتج (أيام) — اتركها فاضية لاستخدام الإعداد العام</label><input type="number" id="wm_exp_alert" class="num" value="${item&&item.expiryAlertDays!=null?item.expiryAlertDays:''}" placeholder="افتراضي: ${DB.settings.expiryAlertDays||20} يوم"></div>
+    <div class="field"><label>تنبيه انتهاء خاص بهذا المنتج (أيام) — اتركه فارغًا لاستخدام الإعداد العام</label><input type="number" id="wm_exp_alert" class="num" value="${item&&item.expiryAlertDays!=null?item.expiryAlertDays:''}" placeholder="افتراضي: ${DB.settings.expiryAlertDays||20} يوم"></div>
     <div class="field"><label>ملاحظات</label><input type="text" id="wm_note" value="${item?escapeHtml(item.note||''):''}"></div>
     <div class="row">
       <button class="btn" id="wm_cancel">إلغاء</button>
@@ -5495,7 +5489,7 @@ function openWarehouseItemModal(item){
   });
   wrap.querySelector('#wm_save').addEventListener('click', async ()=>{
     const name = wrap.querySelector('#wm_name').value.trim();
-    if(!name){ toast('لازم تكتب الاسم'); return; }
+    if(!name){ toast('يجب أن تكتب الاسم'); return; }
     const brand = wrap.querySelector('#wm_brand').value.trim();
     const type = wrap.querySelector('#wm_type').value.trim();
     const barcode = wrap.querySelector('#wm_barcode').value.trim();
@@ -5509,7 +5503,7 @@ function openWarehouseItemModal(item){
     const imageFile = wrap.querySelector('#wm_image').files[0];
     let image = item? item.image : null;
     if(imageFile){
-      if(imageFile.size > 500*1024){ toast('صورة المنتج كبيرة — فضّل أصغر من 500KB'); return; }
+      if(imageFile.size > 500*1024){ toast('صورة المنتج كبيرة — يُفضّل أن تكون أصغر من 500KB'); return; }
       image = await new Promise((resolve)=>{
         const reader = new FileReader();
         reader.onload = ()=>resolve(reader.result);
@@ -5519,21 +5513,21 @@ function openWarehouseItemModal(item){
     if(isNew){
       const qty = Number(wrap.querySelector('#wm_qty').value)||0;
       const date = wrap.querySelector('#wm_date').value || todayISO();
-      if(qty<=0){ toast('لازم تحط كمية أكبر من صفر'); return; }
+      if(qty<=0){ toast('يجب إدخال كمية أكبر من صفر'); return; }
       const it = {id:uid(), createdAt:Date.now(), name, brand, type, barcode, price, category, image, productionDate, expiryDate, expiryAlertDays, note, purchaseDate:date};
       DB.warehouseItems.push(it);
       const stockIn = {id:uid(), createdAt:Date.now(), itemId:it.id, qty, date, number:nextStockInNumber(), note:'رصيد ابتدائي'};
       DB.stockIns.push(stockIn);
       const ok = await Promise.all([save(KEYS.warehouseItems, DB.warehouseItems), save(KEYS.stockIns, DB.stockIns)]);
       wrap.remove();
-      toast(ok.every(Boolean)? 'تمت الإضافة إلى الستوك' : 'صار خطأ بالحفظ');
+      toast(ok.every(Boolean)? 'تمت الإضافة إلى المخزون' : 'حدث خطأ أثناء الحفظ');
       go(`#/warehouse-item/${it.id}`);
     } else {
       item.name = name; item.brand = brand; item.type = type; item.barcode = barcode; item.price = price; item.category = category; item.image = image;
       item.productionDate = productionDate; item.expiryDate = expiryDate; item.expiryAlertDays = expiryAlertDays; item.note = note;
       const ok = await save(KEYS.warehouseItems, DB.warehouseItems);
       wrap.remove();
-      toast(ok? 'تم حفظ التعديلات' : 'صار خطأ بالحفظ');
+      toast(ok? 'تم حفظ التعديلات' : 'حدث خطأ أثناء الحفظ');
       render();
     }
   });
@@ -5545,7 +5539,7 @@ function openDeleteWarehouseItemModal(item){
   wrap.innerHTML = `<div class="modal">
     <h3 style="color:var(--debit)">⚠ حذف المنتج نهائيًا</h3>
     <p style="font-size:13.5px; color:var(--ink-soft); line-height:1.7;">
-      رح يتحذف <b>${escapeHtml(item.name)}</b> نهائيًا مع كل سجلات الإضافة والسحب المرتبطة فيه. هيدا الإجراء ما بينرجع فيه.
+      سيتم حذف <b>${escapeHtml(item.name)}</b> نهائيًا مع كل سجلات الإضافة والسحب المرتبطة به. لا يمكن التراجع عن هذا الإجراء.
     </p>
     <div class="field"><label>اكتب اسم المنتج بالكامل للتأكيد</label><input type="text" id="wdel_confirm" placeholder="${escapeHtml(item.name)}"></div>
     <div class="row">
@@ -5558,7 +5552,7 @@ function openDeleteWarehouseItemModal(item){
   wrap.addEventListener('click', (e)=>{ if(e.target===wrap) wrap.remove(); });
   wrap.querySelector('#wdel_confirm_btn').addEventListener('click', async ()=>{
     const typed = wrap.querySelector('#wdel_confirm').value.trim();
-    if(typed !== item.name){ toast('لازم تكتب الاسم متل ما هو بالضبط'); return; }
+    if(typed !== item.name){ toast('يجب أن تكتب الاسم كما هو بالضبط'); return; }
     DB.warehouseItems = DB.warehouseItems.filter(x=>x.id!==item.id);
     DB.stockIns = DB.stockIns.filter(x=>x.itemId!==item.id);
     DB.stockOuts = DB.stockOuts.filter(x=>x.itemId!==item.id);
@@ -5639,7 +5633,7 @@ function bindItemDocFormEvents(){
   body.querySelectorAll('[data-rm]').forEach(btn=>{
     btn.addEventListener('click', ()=>{
       const idx = Number(btn.getAttribute('data-rm'));
-      if(_itemDocDraft.items.length<=1){ toast('لازم يبقى سطر واحد عالأقل'); return; }
+      if(_itemDocDraft.items.length<=1){ toast('يجب أن يبقى سطر واحد على الأقل'); return; }
       _itemDocDraft.items.splice(idx,1);
       render();
     });
@@ -5649,14 +5643,14 @@ function bindItemDocFormEvents(){
 
   const saveBtn = document.getElementById('saveInvoiceBtn');
   if(saveBtn) saveBtn.addEventListener('click', async ()=>{
-    if(!_itemDocDraft.number){ toast('لازم رقم '+cfg.title); return; }
-    if(!_itemDocDraft.date){ toast('لازم تاريخ'); return; }
+    if(!_itemDocDraft.number){ toast('الرقم مطلوب '+cfg.title); return; }
+    if(!_itemDocDraft.date){ toast('التاريخ مطلوب'); return; }
     if(cfg.numberUnique){
       const dupInv = DB[cfg.docArr].find(i=> i.number===_itemDocDraft.number && i.id!==_itemDocDraft.id);
-      if(dupInv){ toast('رقم '+cfg.title+' هيدا مستخدم لفاتورة تانية — لازم يكون وحداني'); return; }
+      if(dupInv){ toast('رقم '+cfg.title+' هذا الرقم مستخدم لفاتورة أخرى — يجب أن يكون فريدًا'); return; }
     }
     const hasItem = _itemDocDraft.items.some(it=>it.desc && Number(it.total)>0);
-    if(!hasItem){ toast('ضيف سطر واحد عالأقل فيه وصف ومبلغ'); return; }
+    if(!hasItem){ toast('أضف سطرًا واحدًا على الأقل يحتوي على وصف ومبلغ'); return; }
     let savedId;
     const isNewDoc = !_itemDocDraft.id;
     if(_itemDocDraft.id){
@@ -5679,7 +5673,7 @@ function bindItemDocFormEvents(){
         await save(KEYS.stockOuts, DB.stockOuts);
       }
     }
-    toast(ok? 'تم حفظ '+cfg.title:'صار خطأ بالحفظ');
+    toast(ok? 'تم حفظ '+cfg.title:'حدث خطأ أثناء الحفظ');
     _itemDocDraft = null;
     go(cfg.viewRoute(savedId));
   });
@@ -5699,9 +5693,9 @@ function bindPaymentFormEvents(){
   });
   const saveBtn = document.getElementById('saveReceiptBtn');
   saveBtn.addEventListener('click', async ()=>{
-    if(!_paymentDraft.number){ toast('لازم رقم'); return; }
-    if(!_paymentDraft.date){ toast('لازم تاريخ'); return; }
-    if(!(Number(_paymentDraft.amount)>0)){ toast('لازم مبلغ أكبر من صفر'); return; }
+    if(!_paymentDraft.number){ toast('الرقم مطلوب'); return; }
+    if(!_paymentDraft.date){ toast('التاريخ مطلوب'); return; }
+    if(!(Number(_paymentDraft.amount)>0)){ toast('يجب إدخال مبلغ أكبر من صفر'); return; }
     let savedId;
     if(_paymentDraft.id){
       const idx = DB[cfg.arr].findIndex(r=>r.id===_paymentDraft.id);
@@ -5714,7 +5708,7 @@ function bindPaymentFormEvents(){
       savedId = clean.id;
     }
     const ok = await save(KEYS[cfg.keyName], DB[cfg.arr]);
-    toast(ok? 'تم حفظ '+cfg.title:'صار خطأ بالحفظ');
+    toast(ok? 'تم حفظ '+cfg.title:'حدث خطأ أثناء الحفظ');
     _paymentDraft = null;
     go(cfg.viewRoute(savedId));
   });
@@ -5743,7 +5737,7 @@ function bindPaymentFormEvents(){
     bar.style.cssText = 'position:fixed;inset-inline:0;bottom:0;z-index:9999;padding:9px;'+
       'text-align:center;font-family:system-ui;font-size:13.5px;font-weight:700;color:#fff;'+
       'background:'+(a.days_left<=5 ? '#C0392B' : '#E08A2B');
-    bar.innerHTML = (a.trial ? 'تجربتك المجانية' : 'اشتراكك') + ' ينتهي بعد ' + a.days_left + ' يوم — ' +
+    bar.innerHTML = (a.trial ? 'تجربتك المجانية' : 'اشتراكك') + ' تنتهي بعد ' + a.days_left + ' يوم — ' +
       '<a href="/account?renew=' + (a.subscription_id||'') + '" style="color:#fff;text-decoration:underline">' +
       (a.trial ? 'اشترك الآن' : 'جدّد') + '</a>';
     document.addEventListener('DOMContentLoaded', ()=> document.body.appendChild(bar));

@@ -27,7 +27,7 @@ button{width:100%;margin-top:14px;padding:13px;border:0;border-radius:12px;
 <body>
 
 <h1>فحص الخريطة وتحديد الموقع</h1>
-<p class="s">افتح هالصفحة على نفس التلفون وابعت صورة للنتيجة</p>
+<p class="s">افتح هذه الصفحة على الهاتف نفسه وأرسل صورة للنتيجة</p>
 
 <div class="t" id="tbl"></div>
 
@@ -57,20 +57,20 @@ probe.className='leaflet-container'; probe.style.position='absolute';
 document.body.appendChild(probe);
 var cssOk=getComputedStyle(probe).overflow==='hidden';
 probe.remove();
-add('٢ · ملف تنسيق Leaflet', cssOk?'نزل':'ما نزل', cssOk?'ok':'bad',
-    cssOk?'':'المصدر unpkg.com محجوب أو النت قطع');
+add('٢ · ملف تنسيق Leaflet', cssOk?'تم التحميل':'لم يُحمَّل', cssOk?'ok':'bad',
+    cssOk?'':'المصدر unpkg.com محجوب أو انقطع الإنترنت');
 
 /* 3 — مكتبة Leaflet */
 var jsOk=(typeof L!=='undefined');
-add('٣ · مكتبة Leaflet', jsOk?'نزلت':'ما نزلت', jsOk?'ok':'bad',
+add('٣ · مكتبة Leaflet', jsOk?'تم التحميل':'لم تُحمَّل', jsOk?'ok':'bad',
     jsOk?('نسخة '+L.version):'');
 
 /* 4 — بلاطات الخريطة */
-add('٤ · بلاطات OpenStreetMap','عم نجرّب…','wait');
+add('٤ · بلاطات OpenStreetMap','جارٍ الاختبار…','wait');
 (function(){
   var im=new Image();
   var done=false;
-  var t=setTimeout(function(){ if(!done){ done=true; upd('ما وصلت (انتهى الوقت)','bad'); } },8000);
+  var t=setTimeout(function(){ if(!done){ done=true; upd('لم تصل (انتهت المهلة)','bad'); } },8000);
   function upd(v,c){
     clearTimeout(t);
     rows[3].v=v; rows[3].cls=c;
@@ -81,12 +81,12 @@ add('٤ · بلاطات OpenStreetMap','عم نجرّب…','wait');
   }
   im.onload=function(){ if(done)return; done=true; upd('وصلت','ok');
     document.getElementById('img').appendChild(im); };
-  im.onerror=function(){ if(done)return; done=true; upd('ما وصلت','bad'); };
+  im.onerror=function(){ if(done)return; done=true; upd('لم تصل','bad'); };
   im.src='https://tile.openstreetmap.org/8/149/104.png?t='+Date.now();
 })();
 
 /* 5 — حالة إذن الموقع */
-add('٥ · إذن الموقع','عم نشوف…','wait');
+add('٥ · إذن الموقع','جارٍ الفحص…','wait');
 function updRow(i,v,c,d){
   rows[i].v=v; rows[i].cls=c; if(d!==undefined) rows[i].d=d;
   document.getElementById('tbl').innerHTML=rows.map(function(r){
@@ -96,33 +96,33 @@ function updRow(i,v,c,d){
 }
 if(navigator.permissions&&navigator.permissions.query){
   navigator.permissions.query({name:'geolocation'}).then(function(s){
-    var map={granted:['مسموح','ok'],denied:['مرفوض','bad'],prompt:['بيسأل','wait']};
+    var map={granted:['مسموح','ok'],denied:['مرفوض','bad'],prompt:['يطلب الإذن','wait']};
     var r=map[s.state]||[s.state,''];
     updRow(4,r[0],r[1]);
   }).catch(function(){ updRow(4,'غير معروف',''); });
-}else{ updRow(4,'المتصفح ما بيدعم الفحص',''); }
+}else{ updRow(4,'المتصفح لا يدعم الفحص',''); }
 
 /* 6 — الخريطة نفسها */
-add('٦ · رسم الخريطة','عم نجرّب…','wait');
+add('٦ · رسم الخريطة','جارٍ الاختبار…','wait');
 setTimeout(function(){
-  if(typeof L==='undefined'){ updRow(5,'ما اشتغلت','bad','المكتبة مش موجودة'); return; }
+  if(typeof L==='undefined'){ updRow(5,'لم تعمل','bad','المكتبة غير موجودة'); return; }
   try{
     var m=L.map('map').setView([33.8547,35.8623],8);
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(m);
     var loaded=0;
-    m.on('tileload',function(){ loaded++; if(loaded===1) updRow(5,'اشتغلت','ok',loaded+' بلاطة'); });
+    m.on('tileload',function(){ loaded++; if(loaded===1) updRow(5,'تعمل','ok',loaded+' بلاطة'); });
     m.on('tileerror',function(){ updRow(5,'البلاطات محجوبة','bad',''); });
     setTimeout(function(){ m.invalidateSize();
-      if(!loaded) updRow(5,'ما ظهرت بلاطات','bad','');
+      if(!loaded) updRow(5,'لم تظهر بلاطات','bad','');
     },3000);
   }catch(e){ updRow(5,'خطأ','bad',String(e.message).slice(0,90)); }
 },400);
 
 /* 7 — تجربة الموقع */
-add('٧ · نتيجة تحديد الموقع','ما جرّبنا بعد','');
+add('٧ · نتيجة تحديد الموقع','لم نجرّب بعد','');
 document.getElementById('geo').addEventListener('click',function(){
-  updRow(6,'عم نجرّب…','wait','');
-  if(!navigator.geolocation){ updRow(6,'المتصفح ما بيدعم','bad',''); return; }
+  updRow(6,'جارٍ الاختبار…','wait','');
+  if(!navigator.geolocation){ updRow(6,'المتصفح لا يدعم','bad',''); return; }
   navigator.geolocation.getCurrentPosition(function(p){
     updRow(6,'نجحت','ok',p.coords.latitude.toFixed(5)+', '+p.coords.longitude.toFixed(5)+
       ' · دقة '+Math.round(p.coords.accuracy)+'م');
