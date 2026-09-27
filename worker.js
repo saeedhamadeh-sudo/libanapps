@@ -83,6 +83,16 @@ function sbHeaders(env) {
   const k = env.SUPABASE_SERVICE_KEY;
   return { apikey: k, Authorization: `Bearer ${k}` };
 }
+// مشرف المنصة؟ — عبر is_admin() بجلسة المستخدم نفسها، فتنطبق شروطها (ومنها التحقق بخطوتين)
+async function adminRows(env, request) {
+  const token = (request.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
+  if (!token) return [];
+  const r = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/is_admin`, {
+    method: 'POST', headers: { apikey: env.SUPABASE_ANON_KEY || 'sb_publishable_ypfm_aulpcqBpeFpyD_7iw_mA4DNlR5', Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: '{}'
+  });
+  if (!r.ok) return [];
+  return (await r.json()) === true ? [1] : [];
+}
 async function sbGet(env, path) {
   const r = await fetch(`${env.SUPABASE_URL}/rest/v1/${path}`, { headers: sbHeaders(env) });
   if (!r.ok) throw new Error('db read failed');
@@ -126,6 +136,8 @@ async function whishCreate(request, env) {
   const order = orders[0];
   if (!order) return json(404, { error: 'order not found' });
   if (order.status === 'paid') return json(400, { error: 'already paid' });
+  // فقط طلب جديد أو بانتظار الدفع — لا نسمح بإرجاع طلب قيد التحضير أو مُسلَّم إلى «بانتظار الدفع»
+  if (!['pending', 'awaiting_payment'].includes(order.status)) return json(400, { error: 'order not payable' });
 
   const rests = await sbGet(env,
     `restaurants?id=eq.${order.restaurant_id}&select=id,slug,name_en&limit=1`);
@@ -156,7 +168,7 @@ async function whishCreate(request, env) {
       return json(400, { error: (result.dialog && result.dialog.message) || 'payment rejected' });
     }
 
-    await sbPatch(env, `orders?id=eq.${order.id}`,
+    await sbPatch(env, `orders?id=eq.${order.id}&status=in.(pending,awaiting_payment)`,
       { status: 'awaiting_payment', whish_currency: currency });
 
     return json(200, { collectUrl: result.collectUrl });
@@ -230,8 +242,7 @@ async function whishSuccess(request, env) {
 async function whishFailure(request, env) {
   const { externalId, errorCode } = parseCallbackUrl(request.url) || {};
   if (!externalId) return json(400, { error: 'malformed callback' });
-  await sbPatch(env, `orders?id=eq.${Number(externalId)}&status=eq.awaiting_payment`,
-    { status: 'failed' });
+  // رابط الفشل يمكن لأي أحد استدعاؤه — لا نغيّر الحالة هنا؛ التأكيد يتم فقط بسؤال Whish في مسار النجاح/التحقق
   console.log('payment failed', externalId, errorCode);
   return json(200, { ok: true });
 }
@@ -317,7 +328,7 @@ async function buyVerify(request, env) {
 
   // صاحب العملية أو مشرف المنصة
   if (p.user_id !== me.id) {
-    const adm = await sbGet(env, `platform_admins?user_id=eq.${me.id}&select=user_id&limit=1`);
+    const adm = await adminRows(env, request);
     if (!adm.length) return json(403, { error: 'not allowed' });
   }
 
@@ -857,7 +868,7 @@ async function requirePlatformAdmin(request, env) {
   const me = await fetch(`${env.SUPABASE_URL}/auth/v1/user`, { headers: { apikey: env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${token}` } });
   if (!me.ok) return { err: json(401, { error: 'invalid session' }) };
   const meData = await me.json();
-  const admins = await sbGet(env, `platform_admins?user_id=eq.${meData.id}&select=user_id&limit=1`);
+  const admins = await adminRows(env, request);
   if (!admins.length) return { err: json(403, { error: 'not allowed' }) };
   return { me: meData };
 }
@@ -1011,8 +1022,7 @@ async function buySuccess(request, env) {
 async function buyFailure(request, env) {
   const { externalId } = parseCallbackUrl(request.url) || {};
   if (!externalId) return json(400, { error: 'malformed callback' });
-  await sbPatch(env, `purchases?id=eq.${Number(externalId)}&status=eq.awaiting_payment`,
-    { status: 'failed' });
+  // رابط الفشل يمكن لأي أحد استدعاؤه — لا نغيّر الحالة هنا؛ التأكيد يتم فقط بسؤال Whish في مسار النجاح/التحقق
   return json(200, { ok: true });
 }
 
@@ -1057,19 +1067,23 @@ async function portalToken(request, env) {
   // الرابط يُدخل بحساب خاص بالمؤسسة (portal_users) — وليس بحساب صاحبها —
   // فيصل إلى بيانات البرنامج فقط، لا إلى صفحة الحساب والاشتراكات والدفع.
   let portalRows;
-  try { portalRows = await sbGet(env, `portal_users?client_id=eq.${clientId}&select=user_id&limit=1`); }
+  try { portalRows = await sbGet(env, `portal_users?client_id=eq.${clientId}&select=*&limit=1`); }
   catch (e) { return json(200, { ok: false, reason: 'error', message: 'جدول portal_users غير موجود — شغّل db/upgrade-portal-users.sql على Supabase' }); }
 
   const adminHdr = { apikey: env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`, 'Content-Type': 'application/json' };
-  const email = `portal-${clientId}@portal.libanapps.local`;
-  if (!portalRows.length) {
+  // حساب موجود: نستعمل بريده المحفوظ. حساب جديد: بريد عشوائي لا يمكن تخمينه وتسجيله مسبقاً
+  const row = portalRows[0] || null;
+  const rnd = Array.from(crypto.getRandomValues(new Uint8Array(8)), b => b.toString(16).padStart(2, '0')).join('');
+  const email = row ? (row.email || `portal-${clientId}@portal.libanapps.local`) : `portal-${clientId}-${rnd}@portal.libanapps.local`;
+  if (!row) {
     const pw = Array.from(crypto.getRandomValues(new Uint8Array(24)), b => b.toString(16).padStart(2, '0')).join('');
     const cr = await fetch(`${env.SUPABASE_URL}/auth/v1/admin/users`, {
       method: 'POST', headers: adminHdr,
-      body: JSON.stringify({ email, password: pw, email_confirm: true, user_metadata: { portal: true, client_id: clientId } })
+      body: JSON.stringify({ email, password: pw, email_confirm: true,
+        user_metadata: { portal: true, client_id: clientId },
+        app_metadata: { portal: true, portal_client_id: clientId } })
     });
-    // 422 = الحساب موجود مسبقاً (طلبان في الوقت نفسه) — نكمل ونأخذ رقمه من رابط الدخول
-    if (!cr.ok && cr.status !== 422) return json(500, { error: 'تعذّر إنشاء حساب الرابط: ' + (await cr.text()).slice(0, 150) });
+    if (!cr.ok) return json(500, { error: 'تعذّر إنشاء حساب الرابط: ' + (await cr.text()).slice(0, 150) });
   }
 
   const linkRes = await fetch(`${env.SUPABASE_URL}/auth/v1/admin/generate_link`, {
@@ -1083,11 +1097,16 @@ async function portalToken(request, env) {
   const linkData = await linkRes.json();
   const hashedToken = linkData.hashed_token || (linkData.properties && linkData.properties.hashed_token);
   if (!hashedToken) return json(500, { error: 'لم يصدر رمز دخول من Supabase' });
+  const portalUserId = linkData.id || (linkData.user && linkData.user.id);
+  const appMeta = linkData.app_metadata || (linkData.user && linkData.user.app_metadata) || {};
+  // لا نصدر رمز دخول إلا لحساب الرابط الخاص بهذه المؤسسة نفسها
+  if (row ? portalUserId !== row.user_id : appMeta.portal_client_id !== clientId)
+    return json(500, { error: 'حساب الرابط لا يطابق المؤسسة — تواصل مع الدعم' });
 
-  if (!portalRows.length) {
-    const portalUserId = linkData.id || (linkData.user && linkData.user.id);
-    if (!portalUserId) return json(500, { error: 'لم يُعرف رقم حساب الرابط' });
-    const ins = await sbPost(env, 'portal_users?on_conflict=client_id',
+  if (!row) {
+    let ins = await sbPost(env, 'portal_users?on_conflict=client_id',
+      { user_id: portalUserId, client_id: clientId, email }, 'resolution=ignore-duplicates,return=minimal');
+    if (!ins.ok) ins = await sbPost(env, 'portal_users?on_conflict=client_id',
       { user_id: portalUserId, client_id: clientId }, 'resolution=ignore-duplicates,return=minimal');
     if (!ins.ok) return json(500, { error: 'تعذّر ربط حساب الرابط بالمؤسسة: ' + (await ins.text()).slice(0, 150) });
   }
@@ -1108,7 +1127,7 @@ async function createOwner(request, env) {
   const meData = await me.json();
 
   // 2) هل هو مشرف منصة؟
-  const admins = await sbGet(env, `platform_admins?user_id=eq.${meData.id}&select=user_id&limit=1`);
+  const admins = await adminRows(env, request);
   if (!admins.length) return json(403, { error: 'not allowed' });
 
   let body;
@@ -1199,7 +1218,7 @@ async function adminDeleteClient(request, env) {
   if (!me.ok) return json(401, { error: 'invalid session' });
   const meData = await me.json();
 
-  const admins = await sbGet(env, `platform_admins?user_id=eq.${meData.id}&select=user_id&limit=1`);
+  const admins = await adminRows(env, request);
   if (!admins.length) return json(403, { error: 'not allowed' });
 
   let body;
@@ -1249,7 +1268,7 @@ async function adminNewLicense(request, env) {
   if (!me.ok) return json(401, { error: 'invalid session' });
   const meData = await me.json();
 
-  const admins = await sbGet(env, `platform_admins?user_id=eq.${meData.id}&select=user_id&limit=1`);
+  const admins = await adminRows(env, request);
   if (!admins.length) return json(403, { error: 'not allowed' });
 
   let body;
@@ -1325,7 +1344,7 @@ async function adminExtendLicense(request, env) {
   if (!me.ok) return json(401, { error: 'invalid session' });
   const meData = await me.json();
 
-  const admins = await sbGet(env, `platform_admins?user_id=eq.${meData.id}&select=user_id&limit=1`);
+  const admins = await adminRows(env, request);
   if (!admins.length) return json(403, { error: 'not allowed' });
 
   let body;
@@ -1696,7 +1715,7 @@ async function storeWhishSuccess(request, env) {
 async function storeWhishFailure(request, env) {
   const { externalId } = parseCallbackUrl(request.url) || {};
   if (!externalId) return json(400, { error: 'malformed callback' });
-  await sbPatch(env, `store_orders?id=eq.${Number(externalId)}&status=eq.awaiting_payment`, { status: 'failed' });
+  // رابط الفشل يمكن لأي أحد استدعاؤه — لا نغيّر الحالة هنا؛ التأكيد يتم فقط بسؤال Whish في مسار النجاح/التحقق
   return json(200, { ok: true });
 }
 
@@ -1709,7 +1728,7 @@ async function ownerCheck(request, env, storeId) {
   if (!store) return { err: json(404, { error: 'store not found' }) };
   const cl = await sbGet(env, `clients?id=eq.${store.client_id}&select=user_id&limit=1`);
   let allowed = cl[0] && cl[0].user_id === me.id;
-  if (!allowed) allowed = (await sbGet(env, `platform_admins?user_id=eq.${me.id}&select=user_id&limit=1`)).length > 0;
+  if (!allowed) allowed = (await adminRows(env, request)).length > 0;
   if (!allowed) return { err: json(403, { error: 'not allowed' }) };
   return { store, me };
 }
@@ -1741,9 +1760,19 @@ async function importImage(request, env) {
   let r;
   try {
     // UA و Accept-Language متل متصفح حقيقي — مواقع كتير (خصوصاً خلف Cloudflare) بتحظر أي طلب شكلو "بوت"
-    r = await fetch(u.toString(), { signal: ctl.signal, redirect: 'follow', headers: {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-      'Accept': 'image/avif,image/webp,image/*,*/*;q=0.8', 'Accept-Language': 'en-US,en;q=0.9,ar;q=0.8', 'Referer': u.origin + '/' } });
+    // نتبع التحويلات بأنفسنا (حتى 4) ونتحقق من كل عنوان — لا تحويل إلى عناوين داخلية
+    let cur = u;
+    for (let hop = 0; ; hop++) {
+      r = await fetch(cur.toString(), { signal: ctl.signal, redirect: 'manual', headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'Accept': 'image/avif,image/webp,image/*,*/*;q=0.8', 'Accept-Language': 'en-US,en;q=0.9,ar;q=0.8', 'Referer': cur.origin + '/' } });
+      if (r.status < 300 || r.status >= 400) break;
+      const loc = r.headers.get('location');
+      if (!loc || hop >= 4) break;
+      let nx; try { nx = new URL(loc, cur); } catch { clearTimeout(to); return json(400, { error: 'url not allowed', reason: 'bad_url' }); }
+      if (!/^https?:$/.test(nx.protocol) || isBlockedHost(nx.hostname)) { clearTimeout(to); return json(400, { error: 'url not allowed', reason: 'bad_url' }); }
+      cur = nx;
+    }
   } catch (e) {
     clearTimeout(to);
     const reason = (e && e.name === 'AbortError') ? 'timeout' : 'network';
@@ -1763,6 +1792,11 @@ async function importImage(request, env) {
   if (!['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/avif'].includes(ct)) return json(415, { error: 'نوع الصورة غير مدعوم (المسموح: JPG وPNG وWebP وGIF وAVIF)', reason: 'not_image' });
   const buf = await r.arrayBuffer();
   if (buf.byteLength > 8 * 1024 * 1024) return json(413, { error: 'الصورة أكبر من 8MB', reason: 'too_large' });
+  // نتأكد من محتوى الملف نفسه (وليس اسمه) أنه صورة فعلاً
+  { const b = new Uint8Array(buf.slice(0, 16)); const str = String.fromCharCode.apply(null, b);
+    const isImg = (b[0] === 0xFF && b[1] === 0xD8) || str.startsWith('\x89PNG') || str.startsWith('GIF8')
+      || (str.startsWith('RIFF') && str.slice(8, 12) === 'WEBP') || str.slice(4, 12) === 'ftypavif' || str.slice(4, 8) === 'ftyp';
+    if (!isImg) return json(415, { error: 'الرابط ليس صورة', reason: 'not_image' }); }
   if (buf.byteLength < 200) return json(415, { error: 'ملف فارغ', reason: 'empty' });
   const ext = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif', 'image/avif': 'avif', 'image/svg+xml': 'svg' }[ct] || 'jpg';
   const path = `st-${o.store.id}/imp-${Date.now().toString(36)}-${randId(6)}.${ext}`;
@@ -1813,7 +1847,7 @@ async function storeDomain(request, env) {
   const clients = await sbGet(env, `clients?id=eq.${store.client_id}&select=user_id&limit=1`);
   let allowed = clients[0] && clients[0].user_id === me.id;
   if (!allowed) {
-    const adm = await sbGet(env, `platform_admins?user_id=eq.${me.id}&select=user_id&limit=1`);
+    const adm = await adminRows(env, request);
     allowed = adm.length > 0;
   }
   if (!allowed) return json(403, { error: 'not allowed' });
@@ -2001,7 +2035,7 @@ async function addonVerify(request, env) {
   const p = await addonRow(env, body.id);
   if (!p) return json(404, { error: 'purchase not found' });
   if (p.user_id !== me.id) {
-    const adm = await sbGet(env, `platform_admins?user_id=eq.${me.id}&select=user_id&limit=1`);
+    const adm = await adminRows(env, request);
     if (!adm.length) return json(403, { error: 'not allowed' });
   }
   if (p.status === 'paid') return json(200, { ok: true, already: true, kind: p.kind });
@@ -2035,7 +2069,7 @@ async function addonCallbackSuccess(request, env) {
 async function addonCallbackFailure(request, env) {
   const { externalId } = parseCallbackUrl(request.url) || {};
   if (!externalId) return json(400, { error: 'malformed callback' });
-  await sbPatch(env, `addon_purchases?id=eq.${Number(externalId)}&status=eq.awaiting_payment`, { status: 'failed' });
+  // رابط الفشل يمكن لأي أحد استدعاؤه — لا نغيّر الحالة هنا؛ التأكيد يتم فقط بسؤال Whish في مسار النجاح/التحقق
   return json(200, { ok: true });
 }
 

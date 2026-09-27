@@ -654,9 +654,43 @@ var sb=window.supabase.createClient(CFG.SUPABASE_URL,CFG.SUPABASE_ANON_KEY);
 var PRODUCTS=[], CLIENTS=[], SUBS=[];
 
 /* ---------- login ---------- */
+// التحقق بخطوتين للمشرف: إذا الحساب مفعّل عليه 2FA، لازم الرمز قبل أي صلاحية إدارية
+async function needMfa(){
+  try{
+    var l=await sb.auth.mfa.getAuthenticatorAssuranceLevel();
+    return !!(l.data && l.data.nextLevel==='aal2' && l.data.currentLevel!=='aal2');
+  }catch(e){ return false; }
+}
+function askMfa(){
+  return new Promise(function(resolve){
+    var m=$('#loginMsg');
+    var box=document.createElement('div'); box.id='mfaBox';
+    box.innerHTML='<label>رمز التحقق (6 أرقام)</label><input type="text" id="mfaCode" inputmode="numeric" maxlength="6" autocomplete="one-time-code">'+
+      '<div class="acts"><button class="btn" id="mfaBtn">تأكيد</button></div>';
+    m.parentNode.insertBefore(box,m);
+    $('#em').closest('.panel').querySelectorAll('#em,#pw,#loginBtn').forEach(function(x){ x.disabled=true; });
+    var go=async function(){
+      m.className='msg'; m.textContent='…';
+      try{
+        var f=(await sb.auth.mfa.listFactors()).data;
+        var t=(f&&f.totp||[]).filter(function(x){return x.status==='verified'})[0];
+        if(!t){ m.className='msg e'; m.textContent='لا يوجد تطبيق مصادقة مفعّل'; return; }
+        var ch=await sb.auth.mfa.challenge({factorId:t.id});
+        if(ch.error) throw ch.error;
+        var vf=await sb.auth.mfa.verify({factorId:t.id,challengeId:ch.data.id,code:$('#mfaCode').value.trim()});
+        if(vf.error){ m.className='msg e'; m.textContent='الرمز غير صحيح'; return; }
+        box.remove(); m.textContent=''; resolve(true);
+      }catch(err){ m.className='msg e'; m.textContent='تعذّر التحقق: '+(err.message||err); }
+    };
+    $('#mfaBtn').addEventListener('click',go);
+    $('#mfaCode').addEventListener('keydown',function(e){ if(e.key==='Enter') go(); });
+    $('#mfaCode').focus();
+  });
+}
 async function boot(){
   var s=await sb.auth.getSession();
   if(!s.data.session) return;
+  if(await needMfa()) await askMfa();
   var admin=await sb.rpc('is_admin');
   if(admin.error||!admin.data){
     $('#loginMsg').className='msg e';
