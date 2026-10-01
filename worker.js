@@ -83,16 +83,6 @@ function sbHeaders(env) {
   const k = env.SUPABASE_SERVICE_KEY;
   return { apikey: k, Authorization: `Bearer ${k}` };
 }
-// مشرف المنصة؟ — عبر is_admin() بجلسة المستخدم نفسها، فتنطبق شروطها (ومنها التحقق بخطوتين)
-async function adminRows(env, request) {
-  const token = (request.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
-  if (!token) return [];
-  const r = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/is_admin`, {
-    method: 'POST', headers: { apikey: env.SUPABASE_ANON_KEY || 'sb_publishable_ypfm_aulpcqBpeFpyD_7iw_mA4DNlR5', Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: '{}'
-  });
-  if (!r.ok) return [];
-  return (await r.json()) === true ? [1] : [];
-}
 async function sbGet(env, path) {
   const r = await fetch(`${env.SUPABASE_URL}/rest/v1/${path}`, { headers: sbHeaders(env) });
   if (!r.ok) throw new Error('db read failed');
@@ -136,8 +126,6 @@ async function whishCreate(request, env) {
   const order = orders[0];
   if (!order) return json(404, { error: 'order not found' });
   if (order.status === 'paid') return json(400, { error: 'already paid' });
-  // فقط طلب جديد أو بانتظار الدفع — لا نسمح بإرجاع طلب قيد التحضير أو مُسلَّم إلى «بانتظار الدفع»
-  if (!['pending', 'awaiting_payment'].includes(order.status)) return json(400, { error: 'order not payable' });
 
   const rests = await sbGet(env,
     `restaurants?id=eq.${order.restaurant_id}&select=id,slug,name_en&limit=1`);
@@ -168,7 +156,7 @@ async function whishCreate(request, env) {
       return json(400, { error: (result.dialog && result.dialog.message) || 'payment rejected' });
     }
 
-    await sbPatch(env, `orders?id=eq.${order.id}&status=in.(pending,awaiting_payment)`,
+    await sbPatch(env, `orders?id=eq.${order.id}`,
       { status: 'awaiting_payment', whish_currency: currency });
 
     return json(200, { collectUrl: result.collectUrl });
@@ -242,7 +230,8 @@ async function whishSuccess(request, env) {
 async function whishFailure(request, env) {
   const { externalId, errorCode } = parseCallbackUrl(request.url) || {};
   if (!externalId) return json(400, { error: 'malformed callback' });
-  // رابط الفشل يمكن لأي أحد استدعاؤه — لا نغيّر الحالة هنا؛ التأكيد يتم فقط بسؤال Whish في مسار النجاح/التحقق
+  await sbPatch(env, `orders?id=eq.${Number(externalId)}&status=eq.awaiting_payment`,
+    { status: 'failed' });
   console.log('payment failed', externalId, errorCode);
   return json(200, { ok: true });
 }
@@ -267,15 +256,7 @@ async function imageProxy(request, env, ctx, url) {
   const res = await fetch(target, { cf: { cacheEverything: true, cacheTtl: 604800 } });
   if (!res.ok) return new Response('not found', { status: 404 });
 
-  // صور نقطية فقط (وPDF) — لا SVG ولا HTML من نطاق الموقع، حتى لا يُنفَّذ سكربت مرفوع باسم صورة
-  const ctype = (res.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
-  const OK_TYPES = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif', 'image/avif', 'image/x-icon', 'image/vnd.microsoft.icon', 'application/pdf'];
-  if (!OK_TYPES.includes(ctype)) return new Response('unsupported file type', { status: 415 });
-
   const out = new Response(res.body, res);
-  out.headers.set('Content-Type', ctype);
-  out.headers.set('X-Content-Type-Options', 'nosniff');
-  if (ctype !== 'application/pdf') out.headers.set('Content-Security-Policy', "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; sandbox");
   out.headers.set('Cache-Control', 'public, max-age=604800, immutable');  // أسبوع
   out.headers.set('X-LibanApps-Cache', 'MISS');
   out.headers.delete('set-cookie');
@@ -314,7 +295,7 @@ async function generateActivationSerial(env, productCode, label, expMs) {
 //  بيناديها الزبون لما يرجع من صفحة الدفع، وبتناديها لوحتك كمان
 async function buyVerify(request, env) {
   const me = await currentUser(request, env);
-  if (!me) return json(401, { error: 'سجّل الدخول أولًا' });
+  if (!me) return json(401, { error: 'سجّل دخولك أولاً' });
 
   let body;
   try { body = await request.json(); } catch { return json(400, { error: 'bad json' }); }
@@ -328,7 +309,7 @@ async function buyVerify(request, env) {
 
   // صاحب العملية أو مشرف المنصة
   if (p.user_id !== me.id) {
-    const adm = await adminRows(env, request);
+    const adm = await sbGet(env, `platform_admins?user_id=eq.${me.id}&select=user_id&limit=1`);
     if (!adm.length) return json(403, { error: 'not allowed' });
   }
 
@@ -341,12 +322,12 @@ async function buyVerify(request, env) {
   try { st = await w.client.getPaymentStatus('USD', Number(p.id)); }
   catch (e) {
     console.error('verify status failed', e);
-    return json(502, { error: 'تعذّر التحقق من الدفعة لدى Whish' });
+    return json(502, { error: 'ما قدرنا نتحقق من الدفعة عند Whish' });
   }
 
   if (st.collectStatus !== 'success') {
     return json(200, { ok: false, status: st.collectStatus || 'pending',
-                       message: 'لم يُؤكَّد الدفع بعد' });
+                       message: 'ما تأكد الدفع بعد' });
   }
   // ملاحظة: رد getPaymentStatus من Whish ما بيرجّع حقل amount أصلاً
   // (رجّع فقط collectStatus و payerPhoneNumber) — فالمبلغ انحدد فعلياً
@@ -448,419 +429,48 @@ async function sha256Hex(s) {
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
-// نص الخطأ الحقيقي من Supabase — حتى ما يضيع سبب الفشل (مثلاً: الجدول مش موجود)
-async function sbErrText(r) {
-  let t = ''; try { t = await r.text(); } catch (e) {}
-  let m = t; try { const j = JSON.parse(t); m = j.message || j.hint || j.code || t; } catch (e) {}
-  if (/mfa_backup_codes/.test(m) && /(not find|does not exist|PGRST205|42P01)/i.test(t)) m = 'mfa_backup_codes table missing — run db/upgrade-mfa-backup-codes.sql';
-  return `HTTP ${r.status}${m ? ': ' + String(m).slice(0, 160) : ''}`;
-}
 async function mfaBackupGenerate(request, env) {
   const me = await currentUser(request, env);
-  if (!me) return json(401, { error: 'سجّل الدخول أولًا' });
+  if (!me) return json(401, { error: 'سجّل دخولك أولاً' });
   const codes = Array.from({ length: 8 }, genBackupCode);
   const hashes = await Promise.all(codes.map(sha256Hex));
   // نمسح القديمة (مستعملة أو لأ) ونحط دفعة جديدة — تفعيل جديد بيلغي الرموز السابقة
   const del = await fetch(`${env.SUPABASE_URL}/rest/v1/mfa_backup_codes?user_id=eq.${me.id}`, {
     method: 'DELETE', headers: sbHeaders(env)
   });
-  if (!del.ok) return json(500, { error: 'تعذّر تجديد الرموز الاحتياطية — ' + await sbErrText(del) });
+  if (!del.ok) return json(500, { error: 'تعذّر تجديد الرموز الاحتياطية' });
   const rows = hashes.map(h => ({ user_id: me.id, code_hash: h }));
   const ins = await fetch(`${env.SUPABASE_URL}/rest/v1/mfa_backup_codes`, {
-    method: 'POST', headers: { ...sbHeaders(env), 'Content-Type': 'application/json', Prefer: 'return=minimal' }, body: JSON.stringify(rows)
+    method: 'POST', headers: { ...sbHeaders(env), Prefer: 'return=minimal' }, body: JSON.stringify(rows)
   });
-  if (!ins.ok) return json(500, { error: 'تعذّر حفظ الرموز الاحتياطية — ' + await sbErrText(ins) });
+  if (!ins.ok) return json(500, { error: 'تعذّر حفظ الرموز الاحتياطية' });
   return json(200, { ok: true, codes }); // بترجع نص واضح مرة وحدة بس — ما بتنخزن أبداً
 }
 async function mfaBackupStatus(request, env) {
   const me = await currentUser(request, env);
-  if (!me) return json(401, { error: 'سجّل الدخول أولًا' });
+  if (!me) return json(401, { error: 'سجّل دخولك أولاً' });
   const rows = await sbGet(env, `mfa_backup_codes?user_id=eq.${me.id}&used_at=is.null&select=id`);
   return json(200, { ok: true, unused: rows.length });
 }
 async function mfaBackupVerify(request, env) {
   const me = await currentUser(request, env);
-  if (!me) return json(401, { error: 'سجّل الدخول أولًا' });
+  if (!me) return json(401, { error: 'سجّل دخولك أولاً' });
   let body; try { body = await request.json(); } catch { return json(400, { error: 'bad json' }); }
   const code = String(body.code || '').trim().toUpperCase();
-  if (!code) return json(400, { error: 'أدخل الرمز' });
+  if (!code) return json(400, { error: 'اكتب الرمز' });
   const hash = await sha256Hex(code);
   const rows = await sbGet(env, `mfa_backup_codes?user_id=eq.${me.id}&code_hash=eq.${hash}&used_at=is.null&select=id&limit=1`);
-  if (!rows.length) return json(200, { ok: false, error: 'الرمز غير صحيح أو سبق استخدامه' });
+  if (!rows.length) return json(200, { ok: false, error: 'الرمز غير صحيح أو مستعمل من قبل' });
   await sbPatch(env, `mfa_backup_codes?id=eq.${rows[0].id}`, { used_at: new Date().toISOString() });
   const left = await sbGet(env, `mfa_backup_codes?user_id=eq.${me.id}&used_at=is.null&select=id`);
   return json(200, { ok: true, remaining: left.length });
 }
-// تغيير كلمة المرور بعد رابط الاسترجاع لحساب محمي بالتحقق بخطوتين، بس بالرمز الاحتياطي
-// (لما يكون ضايع تطبيق المصادقة). الشرطين: جلسة الاسترجاع من البريد + رمز احتياطي صالح.
-async function resetWithBackup(request, env) {
-  const me = await currentUser(request, env);
-  if (!me) return json(401, { error: 'انتهت صلاحية الرابط أو سبق استخدامه — اطلب رابطًا جديدًا' });
-  let body; try { body = await request.json(); } catch { return json(400, { error: 'bad json' }); }
-  const code = String(body.code || '').trim().toUpperCase();
-  const password = String(body.password || '');
-  if (!code) return json(400, { error: 'أدخل الرمز' });
-  if (password.length < 6) return json(400, { error: 'كلمة المرور قصيرة (6 أحرف على الأقل)' });
-  const hash = await sha256Hex(code);
-  const rows = await sbGet(env, `mfa_backup_codes?user_id=eq.${me.id}&code_hash=eq.${hash}&used_at=is.null&select=id&limit=1`);
-  if (!rows.length) return json(200, { ok: false, error: 'الرمز غير صحيح أو سبق استخدامه' });
-  const up = await fetch(`${env.SUPABASE_URL}/auth/v1/admin/users/${me.id}`, {
-    method: 'PUT',
-    headers: { ...sbHeaders(env), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ password })
-  });
-  if (!up.ok) return json(500, { error: 'تعذّر تغيير كلمة المرور — ' + await sbErrText(up) });
-  await sbPatch(env, `mfa_backup_codes?id=eq.${rows[0].id}`, { used_at: new Date().toISOString() });
-  return json(200, { ok: true });
-}
 async function mfaBackupClear(request, env) {
   const me = await currentUser(request, env);
-  if (!me) return json(401, { error: 'سجّل الدخول أولًا' });
+  if (!me) return json(401, { error: 'سجّل دخولك أولاً' });
   await fetch(`${env.SUPABASE_URL}/rest/v1/mfa_backup_codes?user_id=eq.${me.id}`, { method: 'DELETE', headers: sbHeaders(env) });
   return json(200, { ok: true });
 }
-// ============================================================
-//  الدخول / التسجيل بكود واتس اب
-//  المزوّد بيتحدد من متغيرات Cloudflare (WA_PROVIDER ...) — شوف WHATSAPP-SETUP.md
-// ============================================================
-const WA_CODE_TTL_MIN = 10;      // صلاحية الكود بالدقايق
-const WA_MAX_ATTEMPTS = 5;       // محاولات لكل كود
-const WA_RESEND_SEC   = 60;      // أقل مدة بين كودين لنفس الرقم
-const WA_PER_PHONE_H  = 5;       // أقصى عدد أكواد لنفس الرقم بالساعة
-const WA_PER_IP_H     = 20;      // أقصى عدد أكواد من نفس الجهاز/الشبكة بالساعة
-const WA_EMAIL_DOMAIN = 'wa.libanapps.com';
-
-// نفس منطق public.norm_phone() بقاعدة البيانات
-function normPhone(p) {
-  let d = String(p || '').replace(/\D/g, '');
-  if (!d) return '';
-  if (d.startsWith('00')) d = d.slice(2);
-  if (d.startsWith('961')) return d;
-  if (d.startsWith('0')) d = d.slice(1);
-  if (d.length >= 7 && d.length <= 8) return '961' + d;
-  return d;
-}
-function validPhone(d) {
-  if (!/^\d{9,15}$/.test(d)) return false;
-  if (d.startsWith('961')) return /^961(3\d{6}|7[0169]\d{6}|8[01]\d{6}|[1-9]\d{6})$/.test(d);
-  return true;
-}
-function waCode() {
-  const r = crypto.getRandomValues(new Uint32Array(1))[0] % 1000000;
-  return String(r).padStart(6, '0');
-}
-function waFill(tpl, v) {
-  return String(tpl).replace(/\{\{\s*(\w+)\s*\}\}/g, (_, k) => (v[k] != null ? String(v[k]) : ''));
-}
-function waMessage(env, code) {
-  const tpl = env.WA_MESSAGE ||
-    'رمز الدخول إلى LibanApps: *{{code}}*\nصالح لمدة ' + WA_CODE_TTL_MIN + ' دقائق. لا تشاركه مع أحد.\n\nYour LibanApps code: {{code}}';
-  return waFill(tpl, { code });
-}
-
-// قالب Zavu — منخزّنو بالذاكرة ١٠ دقايق
-let ZAVU_TPL = { id: null, at: 0, tpl: null };
-async function zavuTemplate(env, auth) {
-  const id = String(env.WA_TEMPLATE).trim();
-  if (ZAVU_TPL.id === id && Date.now() - ZAVU_TPL.at < 600e3) return { tpl: ZAVU_TPL.tpl };
-  let tpl = null;
-  try {
-    const r = await fetch('https://api.zavu.dev/v1/templates/' + encodeURIComponent(id), { headers: { Authorization: auth } });
-    const t = await r.text();
-    if (r.status === 404) return { error: 'Zavu: القالب ' + id + ' غير موجود — تأكّد من WA_TEMPLATE' };
-    if (r.status === 401) return { error: 'Zavu 401: invalid_token — تأكّد من WA_API_TOKEN' };
-    if (r.ok) { const j = JSON.parse(t); tpl = j.template || j; }
-  } catch (e) {}
-  if (tpl && tpl.status && String(tpl.status).toLowerCase() !== 'approved') {
-    return { error: 'Zavu: القالب «' + (tpl.name || id) + '» حالته ' + tpl.status + ' — يجب أن يكون approved' };
-  }
-  ZAVU_TPL = { id, at: Date.now(), tpl };
-  return { tpl };
-}
-// ملخص القالب + شو بعتنا — بيطلع مع رسالة الخطأ حتى نعرف شو ما بيطابق (بدون أي مفتاح سري)
-function zavuDiag(tpl, content) {
-  const t = tpl || {};
-  const btns = (Array.isArray(t.buttons) ? t.buttons : []).map(b => (b && (b.type || b.otpType || b.otp_type)) || '?').join(',');
-  const vars = Array.isArray(t.variables) ? t.variables.map(v => (v && typeof v === 'object') ? (v.name || v.key) : v).join(',') : '';
-  const body = String(t.body || '').replace(/\s+/g, ' ').slice(0, 80);
-  const sent = content ? Object.keys(content.templateVariables || {}).join(',') + (content.templateButtonVariables ? ' +btn:' + Object.keys(content.templateButtonVariables).join(',') : '') : '';
-  return ` [tpl: ${t.category || '?'}/${t.language || '?'}/${t.status || '?'} · vars=${vars || '-'} · buttons=${btns || '-'} · header=${t.headerType || '-'} · body="${body}" · sent=${sent || '-'}]`;
-}
-function zavuTemplateContent(id, tpl, code) {
-  const content = { templateId: String(id).trim(), templateVariables: { '1': code } };
-  if (!tpl) return content;
-  // المتغيّر: مرقّم ({{1}}) أو باسم ({{code}})
-  let names = Array.isArray(tpl.variables) ? tpl.variables.map(v => (v && typeof v === 'object') ? (v.name || v.key) : v).filter(Boolean).map(String) : [];
-  if (!names.length && tpl.body) names = [...String(tpl.body).matchAll(/\{\{\s*([^}\s]+)\s*\}\}/g)].map(m => m[1]);
-  names = [...new Set(names)];
-  if (names.length) {
-    content.templateVariables = {};
-    for (const n of names) content.templateVariables[n] = code;   // قالب الكود فيه متغيّر واحد عادة
-  }
-  // قالب AUTHENTICATION (زر OTP / نسخ الكود): الكود بـ{{1}} بس — Zavu بيمرّرو للزر لحالو.
-  // إذا بعتنا متغيّر للزر كمان، Meta بترجّع (#100) Invalid parameter
-  const btns = Array.isArray(tpl.buttons) ? tpl.buttons : [];
-  const btype = b => String((b && (b.type || b.otpType || b.otp_type || b.subType)) || '').toLowerCase();
-  const isAuth = String(tpl.category || '').toUpperCase() === 'AUTHENTICATION' || btns.some(b => /otp|copy/.test(btype(b)));
-  if (isAuth) { content.templateVariables = { '1': code }; return content; }
-  // قوالب تانية: زر رابط ديناميكي بياخد الكود
-  const bv = {};
-  btns.forEach((b, i) => { if (/url/.test(btype(b))) bv[String(i)] = code; });
-  if (Object.keys(bv).length) content.templateButtonVariables = bv;
-  return content;
-}
-
-// بعت الرسالة — بيرجّع { ok, error? }
-async function sendWhatsApp(env, phoneDigits, code) {
-  const provider = String(env.WA_PROVIDER || '').trim().toLowerCase();
-  const message = waMessage(env, code);
-  const vars = { phone: phoneDigits, phone_plus: '+' + phoneDigits, code, message };
-  try {
-    if (provider === 'meta') {
-      // WhatsApp Cloud API — قالب Authentication (نص فيه الكود + زر نسخ الكود)
-      const body = {
-        messaging_product: 'whatsapp', to: phoneDigits, type: 'template',
-        template: {
-          name: env.WA_TEMPLATE || 'login_code',
-          language: { code: env.WA_TEMPLATE_LANG || 'ar' },
-          components: [
-            { type: 'body', parameters: [{ type: 'text', text: code }] },
-            { type: 'button', sub_type: 'url', index: '0', parameters: [{ type: 'text', text: code }] }
-          ]
-        }
-      };
-      const r = await fetch(`https://graph.facebook.com/v21.0/${env.WA_PHONE_ID}/messages`, {
-        method: 'POST',
-        headers: { Authorization: 'Bearer ' + env.WA_API_TOKEN, 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-      });
-      if (!r.ok) return { ok: false, error: 'Meta ' + r.status + ': ' + (await r.text()).slice(0, 200) };
-      return { ok: true };
-    }
-    if (provider === 'zavu') {
-      // Zavu — https://docs.zavu.dev/api-reference/send-a-message
-      // الأفضل قالب AUTHENTICATION (WA_TEMPLATE = tmpl_...) لأنو الرسالة العادية بتفشل
-      // إذا الزبون ما راسلك خلال ٢٤ ساعة (whatsapp_window_closed)
-      if (!env.WA_API_TOKEN) return { ok: false, error: 'WA_API_TOKEN missing — add it as a Secret in Cloudflare' };
-      const headers = { Authorization: 'Bearer ' + env.WA_API_TOKEN, 'Content-Type': 'application/json' };
-      if (env.WA_SENDER_ID) headers['Zavu-Sender'] = env.WA_SENDER_ID;
-      const body = { to: '+' + phoneDigits, channel: 'whatsapp', fallbackEnabled: env.WA_SMS_FALLBACK === '1' };
-      let diag = '';
-      if (env.WA_TEMPLATE) {
-        // منقرا القالب من Zavu حتى نعبّي متغيراتو وأزرارو بالشكل الصح (خطأ Meta #100 = شكل غلط)
-        const tp = await zavuTemplate(env, headers.Authorization);
-        if (tp.error) return { ok: false, error: tp.error };
-        body.messageType = 'template';
-        body.content = zavuTemplateContent(env.WA_TEMPLATE, tp.tpl, code);
-        diag = zavuDiag(tp.tpl, body.content);
-      } else {
-        body.messageType = 'text';
-        body.text = message;
-      }
-      const r = await fetch('https://api.zavu.dev/v1/messages', { method: 'POST', headers, body: JSON.stringify(body) });
-      const t = await r.text();
-      if (!r.ok) {
-        let m = t; try { const j = JSON.parse(t); m = (j.code ? j.code + ': ' : '') + (j.message || t); } catch (e) {}
-        return { ok: false, error: 'Zavu ' + r.status + ': ' + String(m).slice(0, 200) + diag };
-      }
-      // Zavu بيقبل الرسالة أول (queued) وبيبعتها بعدين — منتأكد من حالتها ثواني قليلة
-      // حتى إذا فشلت (قالب مش موافق عليه، رقم مش على واتس اب…) يبيّن السبب الحقيقي
-      let msgId = null; try { const j = JSON.parse(t); msgId = (j.message && j.message.id) || j.id || null; } catch (e) {}
-      if (!msgId) return { ok: true };
-      const waits = [1000, 1500, 2000];
-      for (const w of waits) {
-        await new Promise(res => setTimeout(res, w));
-        let m = null;
-        try {
-          const g = await fetch('https://api.zavu.dev/v1/messages/' + encodeURIComponent(msgId), { headers: { Authorization: headers.Authorization } });
-          if (g.ok) { const gj = await g.json(); m = gj.message || gj; }
-        } catch (e) {}
-        if (!m) continue;
-        if (m.status === 'failed') {
-          console.error('Zavu message failed', msgId, m.errorCode, m.errorMessage);
-          return { ok: false, error: 'Zavu: ' + [m.errorCode, m.errorMessage].filter(Boolean).join(' — ').slice(0, 220) + ' (' + msgId + ')' + diag };
-        }
-        if (['sent', 'delivered', 'read'].includes(m.status)) {
-          if (m.channel && m.channel !== 'whatsapp') console.log('Zavu fallback channel used:', m.channel);
-          return { ok: true, id: msgId };
-        }
-      }
-      console.log('Zavu message still pending', msgId);
-      return { ok: true, id: msgId };
-    }
-    if (provider === 'generic') {
-      // أي مزوّد عندو HTTP API: الرابط + التوكن + شكل الطلب من المتغيرات
-      if (!env.WA_API_URL) return { ok: false, error: 'WA_API_URL missing' };
-      const type = String(env.WA_BODY_TYPE || 'json').toLowerCase();
-      const headers = {};
-      if (env.WA_API_TOKEN) {
-        headers[env.WA_AUTH_HEADER || 'Authorization'] =
-          (env.WA_AUTH_PREFIX != null ? env.WA_AUTH_PREFIX : 'Bearer ') + env.WA_API_TOKEN;
-      }
-      const tpl = env.WA_BODY || '{"phone":"{{phone}}","message":"{{message}}"}';
-      let body;
-      if (type === 'form') {
-        headers['Content-Type'] = 'application/x-www-form-urlencoded';
-        const obj = JSON.parse(tpl);
-        body = new URLSearchParams(Object.fromEntries(Object.entries(obj).map(([k, v]) => [k, waFill(v, vars)]))).toString();
-      } else {
-        headers['Content-Type'] = 'application/json';
-        // منعبّي القيم كـJSON آمن (الرسالة فيها أسطر وعلامات)
-        const safe = {}; for (const k in vars) safe[k] = JSON.stringify(String(vars[k])).slice(1, -1);
-        body = waFill(tpl, safe);
-      }
-      const url = waFill(env.WA_API_URL, Object.fromEntries(Object.entries(vars).map(([k, v]) => [k, encodeURIComponent(v)])));
-      const r = await fetch(url, { method: 'POST', headers, body });
-      const t = await r.text();
-      if (!r.ok) return { ok: false, error: 'HTTP ' + r.status + ': ' + t.slice(0, 200) };
-      // بعض المزوّدين بيرجّعو 200 مع خطأ بالجسم
-      if (/"(error|errors)"\s*:\s*(?!null|false|""|\[\])/.test(t) && !/"sent"\s*:\s*"?true/.test(t)) {
-        return { ok: false, error: t.slice(0, 200) };
-      }
-      return { ok: true };
-    }
-    if (provider === 'debug' && env.WA_DEBUG_ALLOW === '1') {
-      return { ok: true, debug: true };   // للتجربة بس: الكود بيرجع بالرد
-    }
-    return { ok: false, error: 'WhatsApp provider not configured — WA_PROVIDER=' + JSON.stringify(env.WA_PROVIDER == null ? null : String(env.WA_PROVIDER)) };
-  } catch (e) {
-    return { ok: false, error: String(e && e.message || e).slice(0, 200) };
-  }
-}
-
-async function sbPost(env, path, body, prefer) {
-  return fetch(`${env.SUPABASE_URL}/rest/v1/${path}`, {
-    method: 'POST',
-    headers: { ...sbHeaders(env), 'Content-Type': 'application/json', Prefer: prefer || 'return=minimal' },
-    body: JSON.stringify(body)
-  });
-}
-async function waHash(env, phone, code) {
-  return sha256Hex(phone + ':' + code + ':' + String(env.SUPABASE_SERVICE_KEY || '').slice(-16));
-}
-
-// POST /api/otp/send  { phone }
-async function otpSend(request, env) {
-  if (String(env.WA_ENABLED || '') !== '1') return json(503, { error: 'تسجيل الدخول عبر واتساب متوقف حاليًا — سجّل الدخول بالبريد الإلكتروني' });
-  let body; try { body = await request.json(); } catch { return json(400, { error: 'bad json' }); }
-  const phone = normPhone(body.phone);
-  if (!validPhone(phone)) return json(400, { error: 'رقم الهاتف غير صحيح' });
-  const ip = request.headers.get('CF-Connecting-IP') || '';
-  const hourAgo = new Date(Date.now() - 3600e3).toISOString();
-
-  const recent = await sbGet(env, `phone_otps?phone=eq.${phone}&created_at=gte.${hourAgo}&select=created_at&order=created_at.desc`);
-  if (recent.length) {
-    const wait = WA_RESEND_SEC - Math.floor((Date.now() - new Date(recent[0].created_at).getTime()) / 1000);
-    if (wait > 0) return json(429, { error: 'انتظر قليلًا قبل طلب رمز جديد', wait });
-  }
-  if (recent.length >= WA_PER_PHONE_H) return json(429, { error: 'طلبت رموزًا كثيرة — حاول بعد ساعة' });
-  if (ip) {
-    const byIp = await sbGet(env, `phone_otps?ip=eq.${encodeURIComponent(ip)}&created_at=gte.${hourAgo}&select=id`);
-    if (byIp.length >= WA_PER_IP_H) return json(429, { error: 'طلبت رموزًا كثيرة — حاول بعد ساعة' });
-  }
-
-  const code = waCode();
-  const sent = await sendWhatsApp(env, phone, code);
-  if (!sent.ok) {
-    console.error('WhatsApp send failed:', sent.error);
-    return json(502, { error: 'تعذّر إرسال الرمز عبر واتساب — ' + sent.error });
-  }
-  const ins = await sbPost(env, 'phone_otps', {
-    phone, code_hash: await waHash(env, phone, code), ip,
-    expires_at: new Date(Date.now() + WA_CODE_TTL_MIN * 60e3).toISOString()
-  });
-  if (!ins.ok) return json(500, { error: 'تعذّر حفظ الرمز — ' + await sbErrText(ins) });
-  const out = { ok: true, phone: '+' + phone, resend_in: WA_RESEND_SEC };
-  if (sent.debug) out.debug_code = code;
-  return json(200, out);
-}
-
-// توكن دخول لمستخدم موجود (نفس طريقة البرامج: generate_link ← verifyOtp magiclink)
-async function waSessionFor(env, userId) {
-  const u = await fetch(`${env.SUPABASE_URL}/auth/v1/admin/users/${userId}`, { headers: sbHeaders(env) });
-  if (!u.ok) return { error: 'الحساب غير موجود' };
-  const email = (await u.json()).email;
-  if (!email) return { error: 'الحساب المرتبط ليس له بريد إلكتروني' };
-  const l = await fetch(`${env.SUPABASE_URL}/auth/v1/admin/generate_link`, {
-    method: 'POST', headers: { ...sbHeaders(env), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ type: 'magiclink', email })
-  });
-  if (!l.ok) return { error: 'تعذّر توليد رمز الدخول: ' + (await l.text()).slice(0, 150) };
-  const d = await l.json();
-  const tok = d.hashed_token || (d.properties && d.properties.hashed_token);
-  return tok ? { token: tok } : { error: 'لم يصدر رمز دخول من Supabase' };
-}
-
-// POST /api/otp/verify  { phone, code, name?, business? }
-async function otpVerify(request, env) {
-  let body; try { body = await request.json(); } catch { return json(400, { error: 'bad json' }); }
-  const phone = normPhone(body.phone);
-  const code = String(body.code || '').replace(/\D/g, '');
-  if (!validPhone(phone)) return json(400, { error: 'رقم الهاتف غير صحيح' });
-  if (code.length !== 6) return json(400, { error: 'أدخل الرمز المكوّن من ٦ أرقام' });
-
-  const now = new Date().toISOString();
-  const rows = await sbGet(env, `phone_otps?phone=eq.${phone}&used_at=is.null&expires_at=gt.${now}&select=id,code_hash,attempts&order=created_at.desc&limit=1`);
-  if (!rows.length) return json(200, { ok: false, error: 'انتهت صلاحية الرمز — اطلب رمزًا جديدًا' });
-  const otp = rows[0];
-  if (otp.attempts >= WA_MAX_ATTEMPTS) return json(200, { ok: false, error: 'محاولات كثيرة — اطلب رمزًا جديدًا' });
-  if (await waHash(env, phone, code) !== otp.code_hash) {
-    await sbPatch(env, `phone_otps?id=eq.${otp.id}`, { attempts: otp.attempts + 1 });
-    const left = WA_MAX_ATTEMPTS - otp.attempts - 1;
-    return json(200, { ok: false, error: left > 0 ? 'الرمز غير صحيح' : 'محاولات كثيرة — اطلب رمزًا جديدًا', left });
-  }
-
-  // مين صاحب الرقم؟
-  let userId = null;
-  const map = await sbGet(env, `phone_logins?phone=eq.${phone}&select=user_id&limit=1`);
-  if (map.length) userId = map[0].user_id;
-  if (!userId) {
-    // زبون قديم سجّل بالإيميل وحاطط هالرقم — الكود أثبت إنو الرقم إلو، منربطهم
-    const f = await sbPost(env, 'rpc/find_client_users_by_phone', { p_phone: phone }, 'return=representation');
-    const found = f.ok ? await f.json() : [];
-    if (found.length > 1) return json(200, { ok: false, error: 'هذا الرقم مرتبط بأكثر من حساب — سجّل الدخول بالبريد الإلكتروني وكلمة المرور' });
-    if (found.length === 1) {
-      userId = found[0].user_id;
-      await sbPost(env, 'phone_logins', { phone, user_id: userId }, 'resolution=ignore-duplicates,return=minimal');
-    }
-  }
-
-  let isNew = false;
-  if (!userId) {
-    // حساب جديد — منطلب الاسم قبل ما نستهلك الكود
-    const name = String(body.name || '').trim();
-    if (name.length < 2) return json(200, { ok: true, need_profile: true });
-    const email = `p${phone}@${WA_EMAIL_DOMAIN}`;
-    const pw = Array.from(crypto.getRandomValues(new Uint8Array(24)), b => b.toString(16).padStart(2, '0')).join('');
-    const cr = await fetch(`${env.SUPABASE_URL}/auth/v1/admin/users`, {
-      method: 'POST', headers: { ...sbHeaders(env), 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        email, password: pw, email_confirm: true,
-        user_metadata: { signup_source: 'site', signup_method: 'whatsapp', name, phone: '+' + phone, business: String(body.business || '').trim() }
-      })
-    });
-    if (cr.ok) {
-      userId = (await cr.json()).id;
-    } else {
-      // الحساب الداخلي موجود من قبل (مثلاً انحذف الربط) — منرجع نلاقيه
-      const t = await cr.text();
-      if (!/already|exists|registered/i.test(t)) return json(500, { error: 'تعذّر إنشاء الحساب: ' + t.slice(0, 150) });
-      const lk = await fetch(`${env.SUPABASE_URL}/auth/v1/admin/users?filter=${encodeURIComponent(email)}`, { headers: sbHeaders(env) });
-      const lj = lk.ok ? await lk.json() : {};
-      const hit = (lj.users || []).find(u => String(u.email).toLowerCase() === email);
-      if (!hit) return json(500, { error: 'تعذّر إنشاء الحساب' });
-      userId = hit.id;
-    }
-    await sbPost(env, 'phone_logins', { phone, user_id: userId }, 'resolution=ignore-duplicates,return=minimal');
-    isNew = true;
-  }
-
-  const s = await waSessionFor(env, userId);
-  if (s.error) return json(500, { error: s.error });
-  await sbPatch(env, `phone_otps?id=eq.${otp.id}`, { used_at: new Date().toISOString() });
-  return json(200, { ok: true, hashed_token: s.token, is_new: isNew });
-}
-
 async function requirePlatformAdmin(request, env) {
   const auth = request.headers.get('Authorization') || '';
   const token = auth.replace(/^Bearer\s+/i, '');
@@ -868,7 +478,7 @@ async function requirePlatformAdmin(request, env) {
   const me = await fetch(`${env.SUPABASE_URL}/auth/v1/user`, { headers: { apikey: env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${token}` } });
   if (!me.ok) return { err: json(401, { error: 'invalid session' }) };
   const meData = await me.json();
-  const admins = await adminRows(env, request);
+  const admins = await sbGet(env, `platform_admins?user_id=eq.${meData.id}&select=user_id&limit=1`);
   if (!admins.length) return { err: json(403, { error: 'not allowed' }) };
   return { me: meData };
 }
@@ -905,7 +515,7 @@ async function adminMfaDisable(request, env) {
 
 async function buyCreate(request, env) {
   const me = await currentUser(request, env);
-  if (!me) return json(401, { error: 'سجّل الدخول أولًا' });
+  if (!me) return json(401, { error: 'سجّل دخولك أولاً' });
 
   let body;
   try { body = await request.json(); } catch { return json(400, { error: 'bad json' }); }
@@ -940,7 +550,7 @@ async function buyCreate(request, env) {
   }
 
   const w = await platformWhish(env);
-  if (!w) return json(400, { error: 'الدفع الإلكتروني غير مفعّل حاليًا — تواصل معنا' });
+  if (!w) return json(400, { error: 'الدفع الإلكتروني غير مفعّل حالياً — تواصل معنا' });
 
   const site = env.WEBSITE_URL;
   try {
@@ -1022,7 +632,8 @@ async function buySuccess(request, env) {
 async function buyFailure(request, env) {
   const { externalId } = parseCallbackUrl(request.url) || {};
   if (!externalId) return json(400, { error: 'malformed callback' });
-  // رابط الفشل يمكن لأي أحد استدعاؤه — لا نغيّر الحالة هنا؛ التأكيد يتم فقط بسؤال Whish في مسار النجاح/التحقق
+  await sbPatch(env, `purchases?id=eq.${Number(externalId)}&status=eq.awaiting_payment`,
+    { status: 'failed' });
   return json(200, { ok: true });
 }
 
@@ -1061,33 +672,21 @@ async function portalToken(request, env) {
   if (sub.status === 'suspended') return json(200, { ok: false, reason: 'suspended' });
   if (new Date(sub.expires_at).getTime() < Date.now()) return json(200, { ok: false, reason: 'expired' });
 
-  const clientRows = await sbGet(env, `clients?id=eq.${clientId}&select=id&limit=1`);
-  if (!clientRows.length) return json(200, { ok: false, reason: 'no_client' });
+  const clientRows = await sbGet(env, `clients?id=eq.${clientId}&select=user_id&limit=1`);
+  if (!clientRows.length || !clientRows[0].user_id) return json(200, { ok: false, reason: 'no_client' });
+  const userId = clientRows[0].user_id;
 
-  // الرابط يُدخل بحساب خاص بالمؤسسة (portal_users) — وليس بحساب صاحبها —
-  // فيصل إلى بيانات البرنامج فقط، لا إلى صفحة الحساب والاشتراكات والدفع.
-  let portalRows;
-  try { portalRows = await sbGet(env, `portal_users?client_id=eq.${clientId}&select=*&limit=1`); }
-  catch (e) { return json(200, { ok: false, reason: 'error', message: 'جدول portal_users غير موجود — شغّل db/upgrade-portal-users.sql على Supabase' }); }
-
-  const adminHdr = { apikey: env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`, 'Content-Type': 'application/json' };
-  // حساب موجود: نستعمل بريده المحفوظ. حساب جديد: بريد عشوائي لا يمكن تخمينه وتسجيله مسبقاً
-  const row = portalRows[0] || null;
-  const rnd = Array.from(crypto.getRandomValues(new Uint8Array(8)), b => b.toString(16).padStart(2, '0')).join('');
-  const email = row ? (row.email || `portal-${clientId}@portal.libanapps.local`) : `portal-${clientId}-${rnd}@portal.libanapps.local`;
-  if (!row) {
-    const pw = Array.from(crypto.getRandomValues(new Uint8Array(24)), b => b.toString(16).padStart(2, '0')).join('');
-    const cr = await fetch(`${env.SUPABASE_URL}/auth/v1/admin/users`, {
-      method: 'POST', headers: adminHdr,
-      body: JSON.stringify({ email, password: pw, email_confirm: true,
-        user_metadata: { portal: true, client_id: clientId },
-        app_metadata: { portal: true, portal_client_id: clientId } })
-    });
-    if (!cr.ok) return json(500, { error: 'تعذّر إنشاء حساب الرابط: ' + (await cr.text()).slice(0, 150) });
-  }
+  const userRes = await fetch(`${env.SUPABASE_URL}/auth/v1/admin/users/${userId}`, {
+    headers: { apikey: env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}` }
+  });
+  if (!userRes.ok) return json(500, { error: 'user lookup failed' });
+  const userData = await userRes.json();
+  const email = userData.email;
+  if (!email) return json(500, { error: 'الحساب المرتبط بلا إيميل' });
 
   const linkRes = await fetch(`${env.SUPABASE_URL}/auth/v1/admin/generate_link`, {
-    method: 'POST', headers: adminHdr,
+    method: 'POST',
+    headers: { apikey: env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ type: 'magiclink', email })
   });
   if (!linkRes.ok) {
@@ -1096,20 +695,7 @@ async function portalToken(request, env) {
   }
   const linkData = await linkRes.json();
   const hashedToken = linkData.hashed_token || (linkData.properties && linkData.properties.hashed_token);
-  if (!hashedToken) return json(500, { error: 'لم يصدر رمز دخول من Supabase' });
-  const portalUserId = linkData.id || (linkData.user && linkData.user.id);
-  const appMeta = linkData.app_metadata || (linkData.user && linkData.user.app_metadata) || {};
-  // لا نصدر رمز دخول إلا لحساب الرابط الخاص بهذه المؤسسة نفسها
-  if (row ? portalUserId !== row.user_id : appMeta.portal_client_id !== clientId)
-    return json(500, { error: 'حساب الرابط لا يطابق المؤسسة — تواصل مع الدعم' });
-
-  if (!row) {
-    let ins = await sbPost(env, 'portal_users?on_conflict=client_id',
-      { user_id: portalUserId, client_id: clientId, email }, 'resolution=ignore-duplicates,return=minimal');
-    if (!ins.ok) ins = await sbPost(env, 'portal_users?on_conflict=client_id',
-      { user_id: portalUserId, client_id: clientId }, 'resolution=ignore-duplicates,return=minimal');
-    if (!ins.ok) return json(500, { error: 'تعذّر ربط حساب الرابط بالمؤسسة: ' + (await ins.text()).slice(0, 150) });
-  }
+  if (!hashedToken) return json(500, { error: 'ما طلع رمز دخول من Supabase' });
 
   return json(200, { ok: true, hashed_token: hashedToken });
 }
@@ -1127,7 +713,7 @@ async function createOwner(request, env) {
   const meData = await me.json();
 
   // 2) هل هو مشرف منصة؟
-  const admins = await adminRows(env, request);
+  const admins = await sbGet(env, `platform_admins?user_id=eq.${meData.id}&select=user_id&limit=1`);
   if (!admins.length) return json(403, { error: 'not allowed' });
 
   let body;
@@ -1170,7 +756,7 @@ async function createOwner(request, env) {
         const u = (list.users || []).find(x => (x.email || '').toLowerCase() === email);
         if (u) userId = u.id;
       }
-      if (!userId) return json(400, { error: 'البريد الإلكتروني مستخدم ولم نتمكن من جلبه' });
+      if (!userId) return json(400, { error: 'الإيميل مستعمل ولم نتمكن من جلبه' });
     } else {
       console.error('create user failed', txt);
       return json(400, { error: 'تعذّر إنشاء الحساب: ' + txt.slice(0, 140) });
@@ -1218,7 +804,7 @@ async function adminDeleteClient(request, env) {
   if (!me.ok) return json(401, { error: 'invalid session' });
   const meData = await me.json();
 
-  const admins = await adminRows(env, request);
+  const admins = await sbGet(env, `platform_admins?user_id=eq.${meData.id}&select=user_id&limit=1`);
   if (!admins.length) return json(403, { error: 'not allowed' });
 
   let body;
@@ -1240,7 +826,7 @@ async function adminDeleteClient(request, env) {
     return json(500, { error: 'تعذّر حذف سجل الزبون: ' + t.slice(0, 150) });
   }
   const deleted = await del.json();
-  if (!deleted.length) return json(500, { error: 'لم يُحذف أي صف' });
+  if (!deleted.length) return json(500, { error: 'ما انحذف ولا صف' });
 
   // 2) امسح حساب الدخول (auth) — بدون هذا، الزبون المحذوف بيضل يقدر يسجّل دخول
   let authDeleted = false, authError = null;
@@ -1268,7 +854,7 @@ async function adminNewLicense(request, env) {
   if (!me.ok) return json(401, { error: 'invalid session' });
   const meData = await me.json();
 
-  const admins = await adminRows(env, request);
+  const admins = await sbGet(env, `platform_admins?user_id=eq.${meData.id}&select=user_id&limit=1`);
   if (!admins.length) return json(403, { error: 'not allowed' });
 
   let body;
@@ -1344,7 +930,7 @@ async function adminExtendLicense(request, env) {
   if (!me.ok) return json(401, { error: 'invalid session' });
   const meData = await me.json();
 
-  const admins = await adminRows(env, request);
+  const admins = await sbGet(env, `platform_admins?user_id=eq.${meData.id}&select=user_id&limit=1`);
   if (!admins.length) return json(403, { error: 'not allowed' });
 
   let body;
@@ -1654,7 +1240,7 @@ async function payCreate(request, env) {
   if (order.status === 'paid') return json(400, { error: 'already paid' });
   if (!['awaiting_payment', 'pending'].includes(order.status)) return json(400, { error: 'order not payable' });
   const adapter = GATEWAYS[order.payment_method];
-  if (!adapter) return json(400, { error: 'هذا الطلب غير مخصص للدفع الإلكتروني' });
+  if (!adapter) return json(400, { error: 'هذه الطلبية مش لدفع أونلاين' });
   try {
     const c = await gwContext(request, env, order);
     const r = await adapter.create(c);
@@ -1715,20 +1301,20 @@ async function storeWhishSuccess(request, env) {
 async function storeWhishFailure(request, env) {
   const { externalId } = parseCallbackUrl(request.url) || {};
   if (!externalId) return json(400, { error: 'malformed callback' });
-  // رابط الفشل يمكن لأي أحد استدعاؤه — لا نغيّر الحالة هنا؛ التأكيد يتم فقط بسؤال Whish في مسار النجاح/التحقق
+  await sbPatch(env, `store_orders?id=eq.${Number(externalId)}&status=eq.awaiting_payment`, { status: 'failed' });
   return json(200, { ok: true });
 }
 
 // ---------- فحص المفاتيح من لوحة التحكم ----------
 async function ownerCheck(request, env, storeId) {
   const me = await currentUser(request, env);
-  if (!me) return { err: json(401, { error: 'سجّل الدخول أولًا' }) };
+  if (!me) return { err: json(401, { error: 'سجّل دخولك أولاً' }) };
   if (!/^[0-9a-f-]{36}$/i.test(String(storeId || ''))) return { err: json(400, { error: 'bad store' }) };
   const store = (await sbGet(env, `stores?id=eq.${storeId}&select=id,client_id,slug,name&limit=1`))[0];
   if (!store) return { err: json(404, { error: 'store not found' }) };
   const cl = await sbGet(env, `clients?id=eq.${store.client_id}&select=user_id&limit=1`);
   let allowed = cl[0] && cl[0].user_id === me.id;
-  if (!allowed) allowed = (await adminRows(env, request)).length > 0;
+  if (!allowed) allowed = (await sbGet(env, `platform_admins?user_id=eq.${me.id}&select=user_id&limit=1`)).length > 0;
   if (!allowed) return { err: json(403, { error: 'not allowed' }) };
   return { store, me };
 }
@@ -1737,9 +1323,9 @@ async function payTest(request, env) {
   const o = await ownerCheck(request, env, body.store_id); if (o.err) return o.err;
   const provider = String(body.provider || '');
   const gw = (await sbGet(env, `store_gateways?store_id=eq.${o.store.id}&provider=eq.${encodeURIComponent(provider)}&select=config&limit=1`))[0];
-  if (!gw) return json(400, { error: 'احفظ الإعدادات أولًا' });
+  if (!gw) return json(400, { error: 'احفظ الإعدادات أولاً' });
   const adapter = GATEWAYS[provider];
-  if (!adapter || !adapter.test) return json(200, { ok: true, note: 'لا يوجد فحص تلقائي لهذه البوابة — جرّب بطلب صغير.' });
+  if (!adapter || !adapter.test) return json(200, { ok: true, note: 'ما في فحص تلقائي لهذه البوابة — جرّب طلب صغير.' });
   try { return json(200, Object.assign({ ok: true }, await adapter.test({ env, cfg: gw.config || {}, store: o.store }))); }
   catch (e) { return json(200, { ok: false, error: String((e && e.message) || e) }); }
 }
@@ -1760,19 +1346,9 @@ async function importImage(request, env) {
   let r;
   try {
     // UA و Accept-Language متل متصفح حقيقي — مواقع كتير (خصوصاً خلف Cloudflare) بتحظر أي طلب شكلو "بوت"
-    // نتبع التحويلات بأنفسنا (حتى 4) ونتحقق من كل عنوان — لا تحويل إلى عناوين داخلية
-    let cur = u;
-    for (let hop = 0; ; hop++) {
-      r = await fetch(cur.toString(), { signal: ctl.signal, redirect: 'manual', headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-        'Accept': 'image/avif,image/webp,image/*,*/*;q=0.8', 'Accept-Language': 'en-US,en;q=0.9,ar;q=0.8', 'Referer': cur.origin + '/' } });
-      if (r.status < 300 || r.status >= 400) break;
-      const loc = r.headers.get('location');
-      if (!loc || hop >= 4) break;
-      let nx; try { nx = new URL(loc, cur); } catch { clearTimeout(to); return json(400, { error: 'url not allowed', reason: 'bad_url' }); }
-      if (!/^https?:$/.test(nx.protocol) || isBlockedHost(nx.hostname)) { clearTimeout(to); return json(400, { error: 'url not allowed', reason: 'bad_url' }); }
-      cur = nx;
-    }
+    r = await fetch(u.toString(), { signal: ctl.signal, redirect: 'follow', headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+      'Accept': 'image/avif,image/webp,image/*,*/*;q=0.8', 'Accept-Language': 'en-US,en;q=0.9,ar;q=0.8', 'Referer': u.origin + '/' } });
   } catch (e) {
     clearTimeout(to);
     const reason = (e && e.name === 'AbortError') ? 'timeout' : 'network';
@@ -1781,22 +1357,15 @@ async function importImage(request, env) {
   clearTimeout(to);
   if (!r.ok) {
     const reason = r.status === 403 ? 'blocked' : r.status === 404 ? 'not_found' : r.status === 429 ? 'rate_limited' : 'http_' + r.status;
-    return json(502, { error: 'أعاد المصدر ' + r.status, reason, status: r.status });
+    return json(502, { error: 'المصدر رجّع ' + r.status, reason, status: r.status });
   }
   let ct = (r.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
   const extFromUrl = (u.pathname.match(/\.([a-z0-9]{3,4})$/i) || [])[1];
   const byExt = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif', avif: 'image/avif', svg: 'image/svg+xml' };
   if (!ct.startsWith('image/')) ct = byExt[(extFromUrl || '').toLowerCase()] || '';
-  if (!ct.startsWith('image/')) return json(415, { error: 'الرابط ليس صورة', reason: 'not_image' });
-  // SVG قد يحتوي سكربتات — نقبل الصور النقطية فقط
-  if (!['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/avif'].includes(ct)) return json(415, { error: 'نوع الصورة غير مدعوم (المسموح: JPG وPNG وWebP وGIF وAVIF)', reason: 'not_image' });
+  if (!ct.startsWith('image/')) return json(415, { error: 'الرابط مش صورة', reason: 'not_image' });
   const buf = await r.arrayBuffer();
   if (buf.byteLength > 8 * 1024 * 1024) return json(413, { error: 'الصورة أكبر من 8MB', reason: 'too_large' });
-  // نتأكد من محتوى الملف نفسه (وليس اسمه) أنه صورة فعلاً
-  { const b = new Uint8Array(buf.slice(0, 16)); const str = String.fromCharCode.apply(null, b);
-    const isImg = (b[0] === 0xFF && b[1] === 0xD8) || str.startsWith('\x89PNG') || str.startsWith('GIF8')
-      || (str.startsWith('RIFF') && str.slice(8, 12) === 'WEBP') || str.slice(4, 12) === 'ftypavif' || str.slice(4, 8) === 'ftyp';
-    if (!isImg) return json(415, { error: 'الرابط ليس صورة', reason: 'not_image' }); }
   if (buf.byteLength < 200) return json(415, { error: 'ملف فارغ', reason: 'empty' });
   const ext = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif', 'image/avif': 'avif', 'image/svg+xml': 'svg' }[ct] || 'jpg';
   const path = `st-${o.store.id}/imp-${Date.now().toString(36)}-${randId(6)}.${ext}`;
@@ -1835,7 +1404,7 @@ function mapCf(res) {
 
 async function storeDomain(request, env) {
   const me = await currentUser(request, env);
-  if (!me) return json(401, { error: 'سجّل الدخول أولًا' });
+  if (!me) return json(401, { error: 'سجّل دخولك أولاً' });
   let body;
   try { body = await request.json(); } catch { return json(400, { error: 'bad json' }); }
   const storeId = String(body.store_id || '');
@@ -1847,7 +1416,7 @@ async function storeDomain(request, env) {
   const clients = await sbGet(env, `clients?id=eq.${store.client_id}&select=user_id&limit=1`);
   let allowed = clients[0] && clients[0].user_id === me.id;
   if (!allowed) {
-    const adm = await adminRows(env, request);
+    const adm = await sbGet(env, `platform_admins?user_id=eq.${me.id}&select=user_id&limit=1`);
     allowed = adm.length > 0;
   }
   if (!allowed) return json(403, { error: 'not allowed' });
@@ -1858,12 +1427,12 @@ async function storeDomain(request, env) {
   const action = body.action;
 
   if (action === 'add') {
-    if (existing) return json(400, { error: 'لديك نطاق مرتبط — احذفه أولًا' });
+    if (existing) return json(400, { error: 'عندك دومين مربوط — احذفه أولاً' });
     const domain = normalizeDomain(body.domain);
-    if (!domain) return json(400, { error: 'النطاق غير صالح — مثال: shop.mybrand.com' });
-    if (isPlatformHost(domain, env)) return json(400, { error: 'هذا النطاق محجوز للمنصة' });
+    if (!domain) return json(400, { error: 'الدومين غير صالح — مثال: shop.mybrand.com' });
+    if (isPlatformHost(domain, env)) return json(400, { error: 'هذا الدومين محجوز للمنصة' });
     const dup = await sbGet(env, `store_domains?domain=eq.${encodeURIComponent(domain)}&select=id&limit=1`);
-    if (dup.length) return json(400, { error: 'هذا النطاق مرتبط بمتجر آخر' });
+    if (dup.length) return json(400, { error: 'هذا الدومين مربوط بمتجر آخر' });
 
     const info = { cname_target: target };
     let cfId = null, mapped = { status: 'pending', cf_status: '', ssl_status: '' };
@@ -1880,15 +1449,15 @@ async function storeDomain(request, env) {
       headers: { ...sbHeaders(env), 'Content-Type': 'application/json', Prefer: 'return=representation' },
       body: JSON.stringify({ store_id: store.id, domain, cf_hostname_id: cfId, info, ...mapped })
     });
-    if (!ins.ok) return json(500, { error: 'تعذّر حفظ النطاق: ' + (await ins.text()).slice(0, 120) });
+    if (!ins.ok) return json(500, { error: 'تعذّر حفظ الدومين: ' + (await ins.text()).slice(0, 120) });
     const row = (await ins.json())[0];
     return json(200, { ok: true, domain: row, cname_target: target, manual: !cfOn,
-      message: cfOn ? undefined : 'تم تسجيل طلبك — سيُفعِّل فريق الدعم النطاق بعد أن تضيف سجل CNAME.' });
+      message: cfOn ? undefined : 'تم تسجيل طلبك — رح يتفعّل الدومين من قبل الدعم بعد ما تضيف سجل CNAME.' });
   }
 
-  if (!existing) return json(404, { error: 'لا يوجد نطاق مرتبط' });
+  if (!existing) return json(404, { error: 'ما في دومين مربوط' });
 
-  if (action === 'refresh') {
+  if (action === 'refresh' || action === 'check') {
     if (!(cfOn && existing.cf_hostname_id)) return json(200, { ok: true, domain: existing, cname_target: target });
     const j = await cfApi(env, 'GET', `/custom_hostnames/${existing.cf_hostname_id}`);
     if (!j.success) return json(400, { error: cfError(j) });
@@ -1953,208 +1522,6 @@ function withCache(res, pathname) {
   return new Response(res.body, { status: res.status, headers: h });
 }
 
-// ============================================================
-//  اشتراك نظام التوصيل ومقاعد الموظفين — دفع Whish من لوحة المطعم
-//  أرقام العمليات (addon_purchases) بتبلّش من 900000001 = externalId
-// ============================================================
-async function addonRow(env, id) {
-  const rows = await sbGet(env, `addon_purchases?id=eq.${Number(id)}&select=*,restaurants(slug)&limit=1`);
-  return rows[0];
-}
-async function addonProvision(env, id, txn) {
-  const r = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/provision_addon`, {
-    method: 'POST',
-    headers: { ...sbHeaders(env), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ p_id: Number(id), p_txn: txn || null })
-  });
-  if (!r.ok) { const t = await r.text(); console.error('provision_addon failed', t); throw new Error(t.slice(0, 120)); }
-  return r.json();
-}
-function amountOk(w, got, want, cur) {
-  if (got === undefined || got === null || got === '') return true;   // Whish أحياناً ما بيرجّع المبلغ
-  const g = Number(got);
-  return w.client.validateAmount(g, want, cur || 'USD') || (isFinite(g) && g >= want - 0.01);
-}
-async function addonPay(request, env) {
-  const me = await currentUser(request, env);
-  if (!me) return json(401, { error: 'سجّل الدخول أولًا' });
-  let body; try { body = await request.json(); } catch { return json(400, { error: 'bad json' }); }
-  let p = await addonRow(env, body.id);
-  if (!p) return json(404, { error: 'purchase not found' });
-  if (p.user_id !== me.id) return json(403, { error: 'not allowed' });
-  if (p.status === 'paid') return json(400, { error: 'مدفوعة مسبقاً' });
-
-  // رابط Whish صالح لمرة وحدة — إعادة المحاولة بدها رقم عملية جديد
-  if (p.status === 'awaiting_payment') {
-    const clone = await fetch(`${env.SUPABASE_URL}/rest/v1/addon_purchases`, {
-      method: 'POST',
-      headers: { ...sbHeaders(env), 'Content-Type': 'application/json', Prefer: 'return=representation' },
-      body: JSON.stringify({ user_id: p.user_id, restaurant_id: p.restaurant_id, kind: p.kind, seat_id: p.seat_id,
-                             seat_ids: p.seat_ids, qty: p.qty, days: p.days, amount_usd: p.amount_usd })
-    });
-    if (clone.ok) {
-      const made = await clone.json();
-      if (made && made[0]) {
-        await sbPatch(env, `addon_purchases?id=eq.${p.id}`, { status: 'cancelled' });
-        made[0].restaurants = p.restaurants; p = made[0];
-      }
-    }
-  }
-
-  const w = await platformWhish(env);
-  if (!w) return json(400, { error: 'الدفع الإلكتروني غير مفعّل حاليًا — تواصل معنا' });
-  const site = env.WEBSITE_URL;
-  const slug = (p.restaurants && p.restaurants.slug) || '';
-  const back = `${site}/${encodeURIComponent(slug)}/admin`;
-  const label = { delivery: 'Delivery system', seat_new: 'Driver seat', seat_renew: 'Driver seat renewal', renew_all: 'Delivery renewal' }[p.kind] || p.kind;
-  try {
-    const res = await w.client.createPayment({
-      amount: Number(p.amount_usd), currency: 'USD',
-      invoice: `LibanApps — ${label} #${p.id}`,
-      externalId: Number(p.id),
-      successCallbackUrl: `${site}/api/addon/callback-success`,
-      failureCallbackUrl: `${site}/api/addon/callback-failure`,
-      successRedirectUrl: `${back}?addon=${p.id}`,
-      failureRedirectUrl: `${back}?addon_failed=${p.id}`
-    });
-    if (!res.success) {
-      console.error('addon whish rejected', JSON.stringify(res));
-      return json(400, { error: (res.dialog && res.dialog.message) || 'رفضت بوابة الدفع العملية' });
-    }
-    await sbPatch(env, `addon_purchases?id=eq.${p.id}`, { status: 'awaiting_payment' });
-    return json(200, { collectUrl: res.collectUrl });
-  } catch (e) {
-    console.error('addon pay failed', JSON.stringify(e, Object.getOwnPropertyNames(e)));
-    return json(502, { error: 'بوابة الدفع: ' + ((e && e.dialog && e.dialog.message) || (e && (e.code || e.message)) || '') });
-  }
-}
-async function addonVerify(request, env) {
-  const me = await currentUser(request, env);
-  if (!me) return json(401, { error: 'سجّل الدخول أولًا' });
-  let body; try { body = await request.json(); } catch { return json(400, { error: 'bad json' }); }
-  const p = await addonRow(env, body.id);
-  if (!p) return json(404, { error: 'purchase not found' });
-  if (p.user_id !== me.id) {
-    const adm = await adminRows(env, request);
-    if (!adm.length) return json(403, { error: 'not allowed' });
-  }
-  if (p.status === 'paid') return json(200, { ok: true, already: true, kind: p.kind });
-  const w = await platformWhish(env);
-  if (!w) return json(400, { error: 'الدفع الإلكتروني غير مفعّل' });
-  let st;
-  try { st = await w.client.getPaymentStatus('USD', Number(p.id)); }
-  catch (e) { console.error('addon verify failed', e); return json(502, { error: 'تعذّر التحقق من الدفعة لدى Whish' }); }
-  if (st.collectStatus !== 'success') return json(200, { ok: false, status: st.collectStatus || 'pending' });
-  if (!amountOk(w, st.amount, Number(p.amount_usd), 'USD')) return json(400, { error: 'المبلغ غير مطابق' });
-  try { await addonProvision(env, p.id, st.transactionId); }
-  catch (e) { return json(500, { error: 'تعذّر التفعيل: ' + e.message }); }
-  return json(200, { ok: true, activated: true, kind: p.kind });
-}
-async function addonCallbackSuccess(request, env) {
-  const { externalId, currency } = parseCallbackUrl(request.url) || {};
-  if (!externalId) return json(400, { error: 'malformed callback' });
-  const p = await addonRow(env, externalId);
-  if (!p) return json(404, { error: 'unknown purchase' });
-  if (p.status === 'paid') return json(200, { ok: true, already: true });
-  const w = await platformWhish(env);
-  if (!w) return json(400, { error: 'no platform credentials' });
-  let st;
-  try { st = await w.client.getPaymentStatus(currency || 'USD', Number(externalId)); }
-  catch (e) { return json(502, { error: 'status check failed' }); }
-  if (st.collectStatus !== 'success') return json(400, { error: 'not confirmed' });
-  if (!amountOk(w, st.amount, Number(p.amount_usd), currency)) return json(400, { error: 'amount mismatch' });
-  try { await addonProvision(env, p.id, st.transactionId); } catch (e) { return json(500, { error: 'provision failed' }); }
-  return json(200, { ok: true });
-}
-async function addonCallbackFailure(request, env) {
-  const { externalId } = parseCallbackUrl(request.url) || {};
-  if (!externalId) return json(400, { error: 'malformed callback' });
-  // رابط الفشل يمكن لأي أحد استدعاؤه — لا نغيّر الحالة هنا؛ التأكيد يتم فقط بسؤال Whish في مسار النجاح/التحقق
-  return json(200, { ok: true });
-}
-
-// ============================================================
-//  استقبال مواقع أجهزة التتبع
-//  بيقبل: تطبيق Traccar Client (القديم والجديد) · Traccar Server forward
-//         · أي جهاز GPS بيبعت HTTP بصيغة OsmAnd أو JSON
-// ============================================================
-function numOr(v) { const n = Number(v); return (v === null || v === undefined || v === '' || !isFinite(n)) ? null : n; }
-function parseFix(v) {
-  if (v === null || v === undefined || v === '') return null;
-  const n = Number(v);
-  let d;
-  if (isFinite(n)) d = new Date(n > 1e12 ? n : n * 1000);   // ثواني أو ميلي ثانية
-  else d = new Date(String(v));
-  return isNaN(d.getTime()) ? null : d.toISOString();
-}
-async function trackPush(request, env, url) {
-  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY) return json(500, { error: 'server not configured' });
-  const q = Object.fromEntries(url.searchParams);
-  let p = { ...q }, j = null;
-
-  if (request.method === 'POST') {
-    const ct = (request.headers.get('content-type') || '').toLowerCase();
-    const raw = await request.text();
-    if (raw.length > 20000) return json(413, { error: 'too large' });
-    if (ct.includes('json') || /^\s*[\[{]/.test(raw)) {
-      try { j = JSON.parse(raw); } catch { return json(400, { error: 'bad json' }); }
-      if (Array.isArray(j)) j = j[j.length - 1] || {};
-    } else if (raw) {
-      Object.assign(p, Object.fromEntries(new URLSearchParams(raw)));
-    }
-  }
-
-  let id, lat, lng, kmh = null, heading = null, battery = null, fix = null;
-
-  if (j && j.location && j.location.coords) {
-    // Traccar Client الجديد (v9+): السرعة بالمتر/ثانية
-    const c = j.location.coords;
-    id = j.device_id || j.id || p.id;
-    lat = numOr(c.latitude); lng = numOr(c.longitude);
-    const ms = numOr(c.speed); kmh = ms !== null && ms >= 0 ? ms * 3.6 : null;
-    heading = numOr(c.heading);
-    const lvl = j.location.battery && numOr(j.location.battery.level);
-    battery = lvl !== null && lvl !== undefined && lvl >= 0 ? (lvl <= 1 ? lvl * 100 : lvl) : null;
-    fix = parseFix(j.location.timestamp);
-  } else if (j && j.position) {
-    // Traccar Server forward (json): السرعة بالعقدة
-    const ps = j.position, dv = j.device || {};
-    id = dv.uniqueId || p.id;
-    lat = numOr(ps.latitude); lng = numOr(ps.longitude);
-    const kn = numOr(ps.speed); kmh = kn !== null ? kn * 1.852 : null;
-    heading = numOr(ps.course);
-    battery = ps.attributes ? numOr(ps.attributes.batteryLevel) : null;
-    fix = parseFix(ps.fixTime || ps.deviceTime);
-  } else {
-    // OsmAnd (Traccar Client القديم وأغلب الأجهزة): السرعة بالعقدة
-    const s = j ? { ...p, ...j } : p;
-    id = s.id || s.deviceid || s.device_id || s.imei;
-    lat = numOr(s.lat ?? s.latitude); lng = numOr(s.lon ?? s.lng ?? s.longitude);
-    if (s.speed_kmh !== undefined) kmh = numOr(s.speed_kmh);
-    else { const kn = numOr(s.speed); kmh = kn !== null ? kn * 1.852 : null; }
-    heading = numOr(s.bearing ?? s.heading ?? s.course);
-    battery = numOr(s.batt ?? s.battery);
-    fix = parseFix(s.timestamp ?? s.time ?? s.fixtime);
-  }
-
-  if (!id || lat === null || lng === null) return json(400, { error: 'missing id/lat/lon' });
-
-  const r = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/device_ping`, {
-    method: 'POST',
-    headers: { ...sbHeaders(env), 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      p_identifier: String(id).slice(0, 64), p_key: String(p.key || (j && j.key) || ''),
-      p_lat: lat, p_lng: lng,
-      p_speed_kmh: kmh === null ? null : Math.round(kmh * 10) / 10,
-      p_heading: heading, p_battery: battery, p_fix_at: fix
-    })
-  });
-  if (!r.ok) { console.error('device_ping', r.status, await r.text()); return json(500, { error: 'db error' }); }
-  const result = await r.json();
-  // منرجّع 200 دايماً لحتى التطبيق ما يضل يعيد نفس النقطة بلا نهاية
-  return json(200, { result });
-}
-
 // ---------- أي صفحة نعرض لأي مسار ----------
 function pageFor(pathname) {
   var p = pathname.replace(/\/+$/, '') || '/';
@@ -2165,7 +1532,6 @@ function pageFor(pathname) {
   if (p === '/trade-info')    return '/product-trade.html';
   if (p === '/signup')        return '/signup.html';
   if (p === '/login')         return '/login.html';
-  if (p === '/reset')         return '/reset.html';
   if (p === '/account')       return '/account.html';
   if (p === '/alum')          return '/app-alum.html';
   if (p === '/trade')         return '/app-trade.html';
@@ -2173,8 +1539,6 @@ function pageFor(pathname) {
   if (/^\/portal-store\/[^/]+\/admin\/?$/.test(p)) return '/store-admin.html';
   if (/^\/portal-store\/[^/]+\/?$/.test(p)) return '/store.html';
   if (p.startsWith('/i/'))    return '/invoice.html';
-  if (p === '/t' || p.startsWith('/t/')) return '/track.html';    // رابط تتبع الطلب للزبون
-  if (p === '/d' || p.startsWith('/d/')) return '/driver.html';   // صفحة موظف التوصيل
   // رابط لوحة تحكم مطعم محدد: /اسم-المحل/admin
   if (/^\/[^/]+\/admin\/?$/.test(p)) return '/admin.html';
   // رابط برنامج ألمنيوم مخصص لزبون معيّن: /portal/اسم-محله
@@ -2208,19 +1572,6 @@ export default {
     // 1) الـAPI — أي مسار تحت /api/ يرجّع JSON دائماً، حتى لو صار خطأ داخلي
     if (url.pathname.startsWith('/api/')) {
       try {
-        if (url.pathname === '/api/addon/pay') {
-          if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
-          return await addonPay(request, env);
-        }
-        if (url.pathname === '/api/addon/verify') {
-          if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
-          return await addonVerify(request, env);
-        }
-        if (url.pathname === '/api/addon/callback-success') return await addonCallbackSuccess(request, env);
-        if (url.pathname === '/api/addon/callback-failure') return await addonCallbackFailure(request, env);
-        if (url.pathname === '/api/track/osmand' || url.pathname === '/api/track/push') {
-          return await trackPush(request, env, url);
-        }
         if (url.pathname === '/api/store-invoice') {
           if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
           return await storeInvoice(request, env);
@@ -2281,22 +1632,6 @@ export default {
         if (url.pathname === '/api/mfa/backup-codes/verify') {
           if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
           return await mfaBackupVerify(request, env);
-        }
-        if (url.pathname === '/api/otp/config') {
-          // الصفحة بتسأل: تبويب الواتس اب ظاهر أو لأ؟ (WA_ENABLED=1 بلوحة Cloudflare أو wrangler.toml)
-          return json(200, { enabled: String(env.WA_ENABLED || '') === '1' && !!String(env.WA_PROVIDER || '').trim() });
-        }
-        if (url.pathname === '/api/otp/send') {
-          if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
-          return await otpSend(request, env);
-        }
-        if (url.pathname === '/api/otp/verify') {
-          if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
-          return await otpVerify(request, env);
-        }
-        if (url.pathname === '/api/auth/reset-with-backup') {
-          if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
-          return await resetWithBackup(request, env);
         }
         if (url.pathname === '/api/mfa/backup-codes/clear') {
           if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
