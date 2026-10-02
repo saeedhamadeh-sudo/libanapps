@@ -293,6 +293,17 @@ ol.steps{padding-inline-start:20px;color:#344054}
 .ipick button:hover{border-color:var(--accent)}
 .ipick button.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
 .ci{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.rte2{border:1.5px solid var(--line);border-radius:12px;background:#fff;margin-top:6px;overflow:hidden}
+.rte2 .tb{display:flex;gap:6px;flex-wrap:wrap;padding:8px;border-bottom:1px solid var(--line);align-items:center;background:#F7F8FA}
+.rte2 .tb button{border:1px solid var(--line);border-radius:8px;padding:4px 10px;background:#fff;font-size:13px;font-weight:600;cursor:pointer}
+.rte2 .tb button:hover,.rte2 .tb button.on{border-color:var(--accent)}
+.rte2 .ed{min-height:150px;max-height:420px;overflow:auto;padding:12px 14px;outline:none;line-height:1.7;font-size:14px}
+.rte2 .ed ul,.rte2 .ed ol{padding-inline-start:24px;margin:6px 0}.rte2 .ed h4{margin:10px 0 4px;font-size:16px}.rte2 .ed a{color:#2563EB;text-decoration:underline}
+.rte2 .ed table{border-collapse:collapse}.rte2 .ed td,.rte2 .ed th{border:1px solid var(--line);padding:4px 8px}
+.rte2 textarea.src{display:none;width:100%;min-height:170px;border:0;border-radius:0;padding:12px 14px;font-family:ui-monospace,Menlo,monospace;font-size:13px;direction:ltr;text-align:left;outline:none}
+.rte2.srcm .ed{display:none}.rte2.srcm textarea.src{display:block}
+.catpick{max-height:190px;overflow:auto;border:1.5px solid var(--line);border-radius:10px;padding:4px;background:#fff}
+.cpk{display:flex;gap:8px;align-items:center;padding:5px 8px;cursor:pointer;border-radius:6px;font-size:14px}.cpk:hover{background:#F2F4F7}
 .rtb{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:14px 0 6px}
 .rtb button{border:1px solid var(--line);border-radius:8px;padding:4px 10px;background:#fff;font-size:13px;font-weight:600}
 .rtb button:hover{border-color:var(--accent)}
@@ -495,7 +506,9 @@ function catDescIds(id){ var r=[id],q=[id]; while(q.length){var x=q.shift(); CAT
 function pcatsA(p){return (p.category_ids&&p.category_ids.length)?p.category_ids:(p.category_id?[p.category_id]:[])}
 function catOpts(sel,skip){ var sk=skip?(Array.isArray(skip)?skip:[skip]):[]; return catTree().filter(function(x){return sk.indexOf(x.c.id)<0}).map(function(x){return '<option value="'+x.c.id+'"'+(sel===x.c.id?' selected':'')+'>'+new Array(x.d+1).join('— ')+esc(cName_(x.c))+'</option>'}).join(''); }
 /* ---------- نافذة ---------- */
+var MODAL_DIRTY=false;
 function openModal(title,body,onSave,saveLabel,wide){
+  MODAL_DIRTY=false;
   $('#modal').className='modal'+(wide?' lg':'');
   $('#modal').innerHTML='<div class="mh"><h3>'+esc(title)+'</h3><button class="x" data-mclose aria-label="'+L('إغلاق','Close')+'">×</button></div>'+
     '<div class="mb">'+body+'<div class="msg" id="mMsg"></div></div>'+
@@ -508,7 +521,8 @@ function openModal(title,body,onSave,saveLabel,wide){
     catch(e){ showMsg('mMsg',errTxt(e),false); b.disabled=false; }
   };
 }
-function closeModal(){ $('#ov').classList.remove('on'); $('#modal').innerHTML=''; }
+function closeModal(){ MODAL_DIRTY=false; $('#ov').classList.remove('on'); $('#modal').innerHTML=''; }
+['input','change'].forEach(function(ev){ document.addEventListener(ev,function(e){ if(e.target&&e.target.closest&&e.target.closest('#modal')) MODAL_DIRTY=true; },true); });
 function confirmBox(msg){ return window.confirm(msg); }
 
 /* ---------- رفع الصور: بدون قصّ، بنفس النسبة الطبيعية ---------- */
@@ -626,7 +640,21 @@ async function loadOrders(){
   var r=await sb.from('store_orders').select('*').eq('store_id',ST.id).order('created_at',{ascending:false}).limit(500);
   if(r.error) throw r.error; ORDERS=r.data||[]; paintNav(); return ORDERS;
 }
+async function purgeCancelled(days){
+  var cut=new Date(Date.now()-days*864e5).toISOString();
+  var r=await sb.from('store_orders').delete().eq('store_id',ST.id).eq('status','cancelled').lt('cancelled_at',cut).select('id');
+  if(r.error) throw r.error; return (r.data||[]).length;
+}
+async function saveAutoDel(){
+  var o={auto_del_cancelled:$('#oAD').checked,auto_del_days:Math.max(1,Math.min(365,Number($('#oADd').value)||3))};
+  var r=await sb.from('stores').update(o).eq('id',ST.id);
+  if(r.error){ alert(errTxt(r.error)+'\n\n'+L('شغّل ملف db/upgrade-store-v8.sql بـ Supabase أولاً.','Run db/upgrade-store-v8.sql in Supabase first.')); $('#oAD').checked=!!ST.auto_del_cancelled; return; }
+  Object.assign(ST,o);
+  if(o.auto_del_cancelled){ try{ var n=await purgeCancelled(o.auto_del_days); if(n){ await loadOrders(); renderOrders(); toast(L('انحفظ ✓ — انحذف '+n+' طلب ملغي قديم','Saved ✓ — deleted '+n+' old cancelled orders')); return; } }catch(e){} }
+  toast(o.auto_del_cancelled?L('تم تفعيل الحذف التلقائي ✓','Auto-delete enabled ✓'):L('تم إيقاف الحذف التلقائي','Auto-delete disabled'));
+}
 LOADERS.orders=async function(){
+  if(ST.auto_del_cancelled){ try{ await purgeCancelled(ST.auto_del_days||3); }catch(e){ console.warn(e); } }
   try{await loadOrders();}catch(e){return pageErr(e);} renderOrders();
 };
 function renderOrders(){
@@ -638,6 +666,7 @@ function renderOrders(){
   viewEl().innerHTML='<div class="card"><div class="tools"><input type="search" id="oQ" placeholder="'+L('بحث برقم الطلب أو الزبون…','Search order # or customer…')+'" value="'+esc(ordQ)+'">'+
     '<select id="oF"><option value="all">'+L('كل الحالات','All statuses')+' ('+ORDERS.length+')</option>'+Object.keys(STATUS).map(function(k){return '<option value="'+k+'"'+(ordFilter===k?' selected':'')+'>'+esc(stL(k))+' ('+(cnt[k]||0)+')</option>'}).join('')+'</select>'+
     '<button class="btn alt sp" id="oCsv">'+L('تصدير CSV','Export CSV')+'</button><button class="btn alt" id="oRef">'+L('تحديث','Refresh')+'</button></div>'+
+    '<div class="tools" style="background:var(--warn-soft);border:1px solid #F0DDA0;border-radius:10px;padding:10px 14px;gap:10px;margin-bottom:12px"><label class="sw" style="margin:0"><input type="checkbox" id="oAD"'+(ST.auto_del_cancelled?' checked':'')+'>'+L('احذف الطلبات الملغاة تلقائياً بعد','Auto-delete cancelled orders after')+'</label><input type="number" id="oADd" min="1" max="365" value="'+(ST.auto_del_days||3)+'" style="width:76px"><span>'+L('أيام من تاريخ الإلغاء','days from the cancellation date')+'</span><button class="btn alt sm" id="oPurge" style="margin-inline-start:auto">'+L('حذف الملغاة القديمة الآن','Delete old cancelled now')+'</button></div>'+
     (list.length?'<div class="wrapx"><table class="tbl"><thead><tr><th>#</th><th>'+L('التاريخ','Date')+'</th><th>'+L('الزبون','Customer')+'</th><th>'+L('الإجمالي','Total')+'</th><th>'+L('الدفع','Payment')+'</th><th>'+L('الحالة','Status')+'</th><th></th></tr></thead><tbody>'+
     list.map(function(o){
       return '<tr><td><b dir="ltr">'+esc(o.order_no)+'</b></td><td>'+esc(dt(o.created_at))+'</td><td>'+esc(o.customer_name)+'<div class="muted" dir="ltr" style="text-align:start">'+esc(o.customer_phone)+'</div></td>'+
@@ -647,6 +676,13 @@ function renderOrders(){
     }).join('')+'</tbody></table></div>':emptyBox('orders',L('ما في طلبات مطابقة','No matching orders'),L('الطلبات الجديدة رح تظهر هون','New orders will show up here')))+'</div>';
   $('#oQ').oninput=function(){ordQ=this.value;var p=this.selectionStart;renderOrders();var n=$('#oQ');n.focus();n.setSelectionRange(p,p);};
   $('#oF').onchange=function(){ordFilter=this.value;renderOrders();};
+  $('#oAD').onchange=saveAutoDel; $('#oADd').onchange=function(){ if($('#oAD').checked) saveAutoDel(); };
+  $('#oPurge').onclick=async function(){
+    var d=Math.max(1,Number($('#oADd').value)||3);
+    if(!confirmBox(L('حذف نهائي لكل الطلبات الملغاة اللي مرّ على إلغائها '+d+' أيام أو أكتر؟','Permanently delete all cancelled orders cancelled '+d+' or more days ago?'))) return;
+    try{ var n=await purgeCancelled(d); await loadOrders(); renderOrders(); toast(L('انحذف '+n+' طلب','Deleted '+n+' orders')); }
+    catch(e){ alert(errTxt(e)+'\n\n'+L('شغّل ملف db/upgrade-store-v8.sql بـ Supabase أولاً.','Run db/upgrade-store-v8.sql in Supabase first.')); }
+  };
 }
 function csvEsc(v){v=String(v==null?'':v);return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v}
 function downloadCsv(name,rows){
@@ -899,6 +935,61 @@ function editProduct(id){
 var PALETTE=[['أسود','Black','#111111'],['أبيض','White','#F5F5F3'],['رمادي','Gray','#8A8F98'],['كحلي','Navy','#1F3457'],['أزرق','Blue','#2F6FDE'],['أحمر','Red','#D03A3A'],
   ['أخضر','Green','#2F7D5B'],['بيج','Beige','#D9C7A6'],['بني','Brown','#7A5236'],['وردي','Pink','#E7A1B8'],['ذهبي','Gold','#D6B87A'],['فضي','Silver','#CFD3D8']];
 var SPEC_HINTS=['RAM','Storage','Screen','Processor','Battery','Camera','OS','Connectivity','Weight','Color'];
+
+/* ---------- محرّر وصف مرئي (بدل كود HTML) ---------- */
+var RT_TAG=/<\/?(p|br|ul|ol|li|table|tr|td|h[1-6]|strong|b|em|div|span|img|a)\b/i;
+function descToHtml(v){
+  v=String(v==null?'':v).replace(/\r/g,''); if(!v.trim()) return '';
+  if(RT_TAG.test(v)) return cleanHtml(v);
+  function inl(t){ t=esc(t); t=t.replace(/\*\*([^*\n]+)\*\*/g,'<strong>$1</strong>');
+    t=t.replace(/\[([^\]\n]+)\]\(((?:https?:\/\/|mailto:|tel:)[^\s)]+)\)/g,'<a href="$2" target="_blank" rel="noopener nofollow">$1</a>'); return t; }
+  var out=[],list=[],para=[];
+  function fL(){ if(list.length){out.push('<ul>'+list.map(function(x){return '<li>'+inl(x)+'</li>'}).join('')+'</ul>');list=[];} }
+  function fP(){ if(para.length){out.push('<p>'+para.map(inl).join('<br>')+'</p>');para=[];} }
+  v.split('\n').forEach(function(line){ var m;
+    if((m=line.match(/^\s*[-*•]\s+(.*)$/))){fP();list.push(m[1]);}
+    else if((m=line.match(/^\s*#{1,3}\s+(.*)$/))){fP();fL();out.push('<h4>'+inl(m[1])+'</h4>');}
+    else if(!line.trim()){fP();fL();} else {fL();para.push(line);} });
+  fP(); fL(); return out.join('');
+}
+function descSave(x){ x=String(x||'').trim(); if(!x) return ''; return RT_TAG.test(x)?cleanHtml(x):x; }
+function rteVal(ed){ var h=cleanHtml(ed.innerHTML); return (!h||(!ed.textContent.trim()&&!/<img/i.test(h)))?'':h; }
+function rteSync(w){ if(w.classList.contains('srcm')) return; w.querySelector('textarea.src').value=rteVal(w.querySelector('.ed')); }
+function rteBlock(id,label,val,dir){
+  var html=descToHtml(val);
+  function b(k,t,ttl){return '<button type="button" data-rx="'+k+'" title="'+esc(ttl||'')+'">'+t+'</button>';}
+  return '<div class="f"><span>'+label+'</span><div class="rte2" data-rte="'+id+'"><div class="tb">'+
+    b('bold','<b>B</b>',L('عريض','Bold'))+b('italic','<i>I</i>',L('مائل','Italic'))+b('underline','<u>U</u>',L('تحته خط','Underline'))+
+    b('h','H',L('عنوان','Heading'))+b('ul','• '+L('قائمة','List'))+b('ol','1. '+L('مرقّمة','Numbered'))+
+    b('link','🔗 '+L('رابط','Link'))+b('unlink',L('إزالة رابط','Unlink'))+b('clear','✕ '+L('مسح التنسيق','Clear format'))+
+    '<button type="button" data-rx="src" style="margin-inline-start:auto" title="HTML">&lt;/&gt; HTML</button></div>'+
+    '<div class="ed" contenteditable="true" dir="'+dir+'">'+html+'</div>'+
+    '<textarea class="src" id="'+id+'" dir="ltr" spellcheck="false">'+esc(html)+'</textarea></div></div>';
+}
+document.addEventListener('mousedown',function(e){ if(e.target.closest&&e.target.closest('.rte2 .tb button')) e.preventDefault(); });
+document.addEventListener('input',function(e){ var ed=e.target.closest&&e.target.closest('.rte2 .ed'); if(ed) rteSync(ed.closest('.rte2')); });
+document.addEventListener('paste',function(e){
+  var ed=e.target.closest&&e.target.closest('.rte2 .ed'); if(!ed) return; e.preventDefault();
+  var cd=e.clipboardData||window.clipboardData, h=cd.getData('text/html'), t=cd.getData('text/plain');
+  var ins=h?cleanHtml(h):(RT_TAG.test(t)?cleanHtml(t):esc(t).replace(/\n/g,'<br>'));
+  document.execCommand('insertHTML',false,ins); rteSync(ed.closest('.rte2'));
+});
+function rteClick(el){
+  var w=el.closest('.rte2'), ed=w.querySelector('.ed'), ta=w.querySelector('textarea.src'), k=el.dataset.rx;
+  if(k==='src'){
+    if(w.classList.contains('srcm')){ ed.innerHTML=cleanHtml(ta.value); w.classList.remove('srcm'); el.classList.remove('on'); ta.value=rteVal(ed); }
+    else { ta.value=rteVal(ed); w.classList.add('srcm'); el.classList.add('on'); }
+    return; }
+  if(w.classList.contains('srcm')) return;
+  ed.focus(); try{document.execCommand('defaultParagraphSeparator',false,'p');}catch(x){}
+  if(k==='h'){ var blk=(document.queryCommandValue('formatBlock')||'').toLowerCase(); document.execCommand('formatBlock',false,blk==='h4'?'p':'h4'); }
+  else if(k==='ul') document.execCommand('insertUnorderedList');
+  else if(k==='ol') document.execCommand('insertOrderedList');
+  else if(k==='link'){ var u=window.prompt(L('الرابط (https://…)','Link URL (https://…)'),'https://'); if(u&&u.trim()){ u=u.trim(); if(!/^(https?:|mailto:|tel:)/i.test(u)) u='https://'+u; document.execCommand('createLink',false,u); } }
+  else if(k==='clear'){ document.execCommand('removeFormat'); document.execCommand('formatBlock',false,'p'); }
+  else document.execCommand(k);
+  rteSync(w);
+}
 function readPe(){
   if(!$('#peName')) return;
   pe.name_ar=$('#peName').value; pe.name_en=$('#peNameEn').value; pe.desc_ar=$('#peDesc').value; pe.desc_en=$('#peDescEn').value;
@@ -929,9 +1020,8 @@ function renderEditor(){
    '<div class="pe"><div>'+
    '<div class="card"><h3>'+L('المعلومات الأساسية','Basic information')+'</h3><div class="g2" style="margin-top:14px"><label class="f"><span>'+L('الاسم بالعربي *','Arabic name *')+'</span><input type="text" id="peName" value="'+esc(p.name_ar)+'"></label>'+
    '<label class="f"><span>'+L('الاسم بالإنكليزي','English name')+'</span><input type="text" id="peNameEn" dir="ltr" value="'+esc(p.name_en)+'"></label></div>'+
-   '<div class="rtb" data-for="peDesc"><button type="button" data-rt="b"><b>B</b></button><button type="button" data-rt="h">H</button><button type="button" data-rt="l">• '+L('قائمة','List')+'</button><button type="button" data-rt="a">🔗 '+L('رابط','Link')+'</button><span class="muted">'+L('**عريض** · - قائمة · ## عنوان · [نص](https://رابط) · أو الصق الرابط مباشرة','**bold** · - list · ## heading · [text](https://link) · or paste a URL')+'</span></div>'+
-   '<label class="f"><span>'+L('الوصف بالعربي','Arabic description')+'</span><textarea id="peDesc" style="min-height:160px">'+esc(p.desc_ar)+'</textarea></label>'+
-   '<label class="f"><span>'+L('الوصف بالإنكليزي','English description')+'</span><textarea id="peDescEn" dir="ltr" style="min-height:120px">'+esc(p.desc_en)+'</textarea></label></div>'+
+   rteBlock('peDesc',L('الوصف بالعربي','Arabic description'),p.desc_ar,'rtl')+
+   rteBlock('peDescEn',L('الوصف بالإنكليزي','English description'),p.desc_en,'ltr')+'</div>'+
 
    '<div class="card"><h3>'+L('الصور والفيديو','Media')+'</h3><p class="sub">'+L('الأولى = الصورة الرئيسية، والثانية = بتظهر لما الزبون يقرّب الماوس على المنتج، والباقي بمعرض صفحة المنتج (بلا حد). اضغط أي صورة لتصير رئيسية.','1st = main image, 2nd = shown when the mouse hovers the product card, the rest fill the product-page gallery (no limit). Click an image to make it main.')+'</p>'+
    '<div class="mgal" id="peGal">'+p.imgs.map(function(u,i){return '<div class="m" data-mi="'+i+'"><img alt="" src="'+esc(thumbOf(u))+'">'+(i===0?'<span class="main">'+L('رئيسية','Main')+'</span>':(i===1?'<span class="main" style="background:#7c3aed">'+L('عند المرور','Hover')+'</span>':''))+'<button type="button" data-mrm="'+i+'" aria-label="x">×</button></div>'}).join('')+
@@ -996,7 +1086,7 @@ async function saveProduct(){
   var colors=p.colors.filter(function(c){return String(c.n).trim()}).map(function(c){var o={n:String(c.n).trim(),h:c.h||'#111111',on:c.on!==false}; if(c.img) o.img=c.img; return o;});
   var specs=p.specs.filter(function(s){return String(s.k).trim()||String(s.v).trim()}).map(function(s){return {k:String(s.k).trim(),v:String(s.v).trim()}});
   var attrs={}; Object.keys(p.attrs).forEach(function(k){var v=String(p.attrs[k]||'').trim(); if(v) attrs[k]=v;});
-  var o={store_id:ST.id,category_id:(p.category_ids&&p.category_ids[0])||null,category_ids:p.category_ids||[],name_ar:ar||en,name_en:en,desc_ar:p.desc_ar.trim(),desc_en:p.desc_en.trim(),price:price,compare_price:cmp,
+  var o={store_id:ST.id,category_id:(p.category_ids&&p.category_ids[0])||null,category_ids:p.category_ids||[],name_ar:ar||en,name_en:en,desc_ar:descSave(p.desc_ar),desc_en:descSave(p.desc_en),price:price,compare_price:cmp,
     sale_ends_at:cmp!=null?fromLocalInput(p.sale_ends_at):null,stock:sizes.length?null:num(p.stock),image_url:p.imgs[0]||'',images:p.imgs.slice(1),video_url:vid,
     is_active:p.is_active,is_hot:p.is_hot,is_new:p.is_new,is_featured:p.is_featured,brand:p.brand.trim(),sku:p.sku.trim(),opt_label:sizes.length?(p.opt_label||'').trim():'',
     sizes:sizes,colors:colors,specs:specs,attrs:attrs,sort:Number(p.sort)||0};
@@ -1610,16 +1700,20 @@ LOADERS.slides=async function(){
     var b=await sb.from('store_banners').select('*').eq('store_id',ST.id).order('sort'); if(b.error) throw b.error; BANNERS=b.data||[]; }catch(e){return pageErr(e);}
   renderSlides();
 };
+function catPick(id,sel){ sel=sel||[]; var tr=catTree();
+  return '<div class="catpick" id="'+id+'">'+(tr.length?tr.map(function(x){return '<label class="cpk" style="padding-inline-start:'+(8+x.d*18)+'px"><input type="checkbox" value="'+x.c.id+'"'+(sel.indexOf(x.c.id)>=0?' checked':'')+'><span>'+esc(cName_(x.c))+'</span></label>'}).join(''):'<span class="muted" style="padding:8px">'+L('ما في تصنيفات','No categories')+'</span>')+'</div>'; }
+function catIdsOf(s){ return (s.category_ids&&s.category_ids.length)?s.category_ids:(s.category_id?[s.category_id]:[]); }
+function catNamesOf(s){ return catIdsOf(s).map(catNameById).filter(Boolean).join(' + '); }
 function catNameById(id){var c=CATS.filter(function(x){return x.id===id})[0]; return c?cName_(c):'';}
 function renderSlides(){
   viewEl().innerHTML='<div class="card"><div class="tools"><b>'+SLIDES.length+' '+L('صورة','slides')+'</b><span class="muted">'+L('المقاس المقترح 1920×900 بكسل','Recommended size 1920×900 px')+'</span><button class="btn sp" id="sNew">+ '+L('صورة جديدة','New slide')+'</button></div>'+
     (SLIDES.length?'<div class="cards">'+SLIDES.map(function(s){
       return '<div class="cd"><img alt="" src="'+esc(thumbOf(s.image_url))+'"><div class="b"><b>'+esc(s.title||L('بدون عنوان','No title'))+'</b><div class="muted">'+esc(s.subtitle||'')+'</div>'+
-        (s.category_id?'<div class="muted">→ '+esc(catNameById(s.category_id))+'</div>':'')+'<div style="margin:6px 0">'+(s.is_active?'<span class="tag">'+L('ظاهرة','Visible')+'</span>':'<span class="tag off">'+L('مخفية','Hidden')+'</span>')+' <span class="tag off">#'+s.sort+'</span></div>'+
+        (catIdsOf(s).length?'<div class="muted">→ '+esc(catNamesOf(s))+'</div>':'')+'<div style="margin:6px 0">'+(s.is_active?'<span class="tag">'+L('ظاهرة','Visible')+'</span>':'<span class="tag off">'+L('مخفية','Hidden')+'</span>')+' <span class="tag off">#'+s.sort+'</span></div>'+
         '<div class="acts"><button class="btn alt sm" data-se="'+s.id+'">'+L('تعديل','Edit')+'</button><button class="btn dg sm" data-sd="'+s.id+'">'+L('حذف','Delete')+'</button></div></div></div>'}).join('')+'</div>'
       :emptyBox('slides',L('ما في صور','No slides'),L('بدونها بيظهر اسم المتجر مع تدرّج لوني','Without slides the store name is shown on a gradient')))+'</div>'+
     '<div class="card"><div class="tools"><div><h3 style="margin:0">'+L('بنرات تحت السلايدر','Banners under the slider')+'</h3><span class="muted">'+L('حتى 3، كل واحد صورة بتنقل الزبون لتصنيف — المقاس المقترح 800×360 بكسل','Up to 3, each an image linking to a category — recommended 800×360 px')+'</span></div><button class="btn sp" id="bNew">+ '+L('بنر جديد','New banner')+'</button></div>'+
-    (BANNERS.length?'<div class="cards">'+BANNERS.map(function(s){return '<div class="cd"><img alt="" src="'+esc(thumbOf(s.image_url))+'" style="aspect-ratio:2/1"><div class="b"><b>'+esc(s.title||L('بدون عنوان','No caption'))+'</b>'+(s.category_id?'<div class="muted">→ '+esc(catNameById(s.category_id))+'</div>':(s.link_url?'<div class="muted" dir="ltr">'+esc(s.link_url)+'</div>':''))+
+    (BANNERS.length?'<div class="cards">'+BANNERS.map(function(s){return '<div class="cd"><img alt="" src="'+esc(thumbOf(s.image_url))+'" style="aspect-ratio:2/1"><div class="b"><b>'+esc(s.title||L('بدون عنوان','No caption'))+'</b>'+(catIdsOf(s).length?'<div class="muted">→ '+esc(catNamesOf(s))+'</div>':(s.link_url?'<div class="muted" dir="ltr">'+esc(s.link_url)+'</div>':''))+
       '<div style="margin:6px 0">'+(s.is_active?'<span class="tag">'+L('ظاهر','Visible')+'</span>':'<span class="tag off">'+L('مخفي','Hidden')+'</span>')+' <span class="tag off">#'+s.sort+'</span></div><div class="acts"><button class="btn alt sm" data-be="'+s.id+'">'+L('تعديل','Edit')+'</button><button class="btn dg sm" data-bd="'+s.id+'">'+L('حذف','Delete')+'</button></div></div></div>'}).join('')+'</div>'
       :emptyBox('slides',L('ما في بنرات','No banners'),L('أضف حتى 3 مربعات بتظهر تحت السلايدر','Add up to 3 tiles shown under the slider')))+'</div>';
 }
@@ -1628,7 +1722,7 @@ function bannerModal(id){
   var pend=null;
   openModal(id?L('تعديل بنر','Edit banner'):L('بنر جديد','New banner'),
     '<div class="upl"><img id="bImgP" alt="" style="width:150px;height:75px;object-fit:cover" src="'+esc(thumbOf(s.image_url))+'" class="'+(s.image_url?'':'hidden')+'"><label class="f" style="margin:0;flex:1"><span>'+L('الصورة *','Image *')+'</span><input type="file" id="bImg" accept="image/*"></label></div>'+
-    '<div class="g2" style="margin-top:14px"><label class="f"><span>'+L('ينقل لتصنيف','Links to category')+'</span><select id="bCat"><option value="">— '+L('بدون','None')+' —</option>'+catOpts(s.category_id)+'</select></label>'+
+    '<div class="g2" style="margin-top:14px"><div class="f" style="grid-column:1/-1"><span>'+L('ينقل لتصنيف — بتقدر تختار أكتر من واحد وبتنعرض منتجاتهم كلها بصفحة وحدة ورا بعض','Links to categories — pick several to show all their products on one page, one after another')+'</span>'+catPick('bCat',catIdsOf(s))+'</div>'+
     '<label class="f"><span>'+L('أو رابط خارجي','Or an external link')+'</span><input type="url" id="bL" dir="ltr" value="'+esc(s.link_url||'')+'" placeholder="https://…"></label>'+
     '<label class="f"><span>'+L('عنوان صغير على الصورة (اختياري)','Small caption (optional)')+'</span><input type="text" id="bT" value="'+esc(s.title||'')+'"></label>'+
     '<label class="f"><span>'+L('الترتيب','Order')+'</span><input type="number" id="bS" value="'+s.sort+'"></label></div>'+
@@ -1637,7 +1731,8 @@ function bannerModal(id){
       if(!pend&&!s.image_url){showMsg('mMsg',L('اختار صورة','Choose an image'),false);return false;}
       var link=$('#bL').value.trim(); if(link&&!/^(https?:\/\/|\/)/i.test(link)){showMsg('mMsg',L('الرابط لازم يبلّش بـ https://','Link must start with https://'),false);return false;}
       var url=s.image_url; if(pend) url=await upload('banners',pend,1200);
-      var o={store_id:ST.id,image_url:url,title:$('#bT').value.trim(),category_id:$('#bCat').value||null,link_url:link,sort:Number($('#bS').value)||0,is_active:$('#bA').checked};
+      var o={store_id:ST.id,image_url:url,title:$('#bT').value.trim(),category_id:null,link_url:link,sort:Number($('#bS').value)||0,is_active:$('#bA').checked};
+      var cids=$$('#bCat input:checked').map(function(c){return c.value}); o.category_id=cids[0]||null; if(cids.length>1||(s.category_ids&&s.category_ids.length)) o.category_ids=cids;
       var r=id?await sb.from('store_banners').update(o).eq('id',id):await sb.from('store_banners').insert(o);
       if(r.error) throw r.error; await LOADERS.slides();
     });
@@ -1651,7 +1746,7 @@ function slideModal(id){
     '<div class="g2" style="margin-top:14px"><label class="f"><span>'+L('العنوان','Headline')+'</span><input type="text" id="sT" value="'+esc(s.title)+'"></label>'+
     '<label class="f"><span>'+L('نص صغير','Subtitle')+'</span><input type="text" id="sS" value="'+esc(s.subtitle)+'"></label>'+
     '<label class="f"><span>'+L('نص الزر','Button text')+'</span><input type="text" id="sC" value="'+esc(s.cta)+'"></label>'+
-    '<label class="f"><span>'+L('ينقل لتصنيف (الصورة كاملها قابلة للضغط)','Links to category (the whole image is clickable)')+'</span><select id="sCat"><option value="">— '+L('بدون','None')+' —</option>'+catOpts(s.category_id)+'</select></label>'+
+    '<div class="f" style="grid-column:1/-1"><span>'+L('ينقل لتصنيف — بتقدر تختار أكتر من واحد وبتنعرض منتجاتهم كلها بصفحة وحدة ورا بعض','Links to categories — pick several to show all their products on one page, one after another')+'</span>'+catPick('sCat',catIdsOf(s))+'</div>'+
     '<label class="f"><span>'+L('أو رابط خارجي','Or an external link')+'</span><input type="url" id="sL" dir="ltr" value="'+esc(s.link_url)+'" placeholder="https://…"></label>'+
     '<label class="f"><span>'+L('الترتيب','Order')+'</span><input type="number" id="sSort" value="'+s.sort+'"></label></div>'+
     '<label class="sw"><input type="checkbox" id="sAct"'+(s.is_active?' checked':'')+'>'+L('ظاهرة','Visible')+'</label>',
@@ -1659,7 +1754,8 @@ function slideModal(id){
       if(!pend&&!s.image_url){showMsg('mMsg',L('اختار صورة','Choose an image'),false);return false;}
       var link=$('#sL').value.trim(); if(link&&!/^(https?:\/\/|\/)/i.test(link)){showMsg('mMsg',L('الرابط لازم يبلّش بـ https://','Link must start with https://'),false);return false;}
       var url=s.image_url; if(pend) url=await upload('banners',pend,1920);
-      var o={store_id:ST.id,image_url:url,title:$('#sT').value.trim(),subtitle:$('#sS').value.trim(),cta:$('#sC').value.trim(),link_url:link,category_id:$('#sCat').value||null,sort:Number($('#sSort').value)||0,is_active:$('#sAct').checked};
+      var o={store_id:ST.id,image_url:url,title:$('#sT').value.trim(),subtitle:$('#sS').value.trim(),cta:$('#sC').value.trim(),link_url:link,category_id:null,sort:Number($('#sSort').value)||0,is_active:$('#sAct').checked};
+      var cids=$$('#sCat input:checked').map(function(c){return c.value}); o.category_id=cids[0]||null; if(cids.length>1||(s.category_ids&&s.category_ids.length)) o.category_ids=cids;
       var r=id?await sb.from('store_slides').update(o).eq('id',id):await sb.from('store_slides').insert(o);
       if(r.error) throw r.error; await LOADERS.slides();
     });
@@ -1913,6 +2009,7 @@ function renderSettings(){
    '<div class="card"><h3>SEO</h3><div class="g2" style="margin-top:14px"><label class="f"><span>'+L('عنوان الصفحة','Page title')+'</span><input type="text" id="sSeoT" value="'+esc(s.seo_title||'')+'" placeholder="'+esc(s.name)+'"></label>'+
    '<label class="f"><span>'+L('صورة المشاركة (Facebook/WhatsApp)','Share image (Facebook/WhatsApp)')+'</span><input type="file" id="sOg" accept="image/*"></label></div>'+
    '<label class="f"><span>'+L('وصف محركات البحث','Search description')+'</span><textarea id="sSeoD" style="min-height:70px">'+esc(s.seo_desc||'')+'</textarea></label></div>'+
+   '<div class="card"><h3>Sitemap <small>'+L('لمحركات البحث','for search engines')+'</small></h3><p class="sub">'+L('هذا رابط خريطة موقع متجرك (كل المنتجات). أضفه بـ Google Search Console › Sitemaps لتسهّل على Google فهرسة متجرك.','This is your store sitemap (all products). Add it in Google Search Console › Sitemaps so Google can index your store.')+'</p><div class="copy"><span id="smUrl" dir="ltr">'+esc(storeUrl()+'/sitemap.xml')+'</span><button class="btn alt sm" data-copy="smUrl">'+L('نسخ','Copy')+'</button><a class="btn alt sm" id="smOpen" target="_blank" rel="noopener" href="'+esc(storeUrl()+'/sitemap.xml')+'">'+L('فتح','Open')+'</a></div><div class="muted" id="smNote" style="margin-top:8px;font-size:13px"></div></div>'+
    '<div class="card"><label class="sw"><input type="checkbox" id="sAct"'+(s.is_active?' checked':'')+'>'+L('المتجر شغّال (إذا أطفأته بيظهر للزوار «متوقف مؤقتاً»)','Store is live (if off, visitors see “temporarily closed”)')+'</label></div>'+
    '<div class="stbar"><span class="msg" id="sMsg"></span><button class="btn" id="sSave">'+L('حفظ الإعدادات','Save settings')+'</button></div>'+
    backupCard();
@@ -1929,6 +2026,11 @@ function renderSettings(){
   $('#sLogo').onchange=function(){ setLogoPend=this.files[0]||null; if(setLogoPend){var u=URL.createObjectURL(setLogoPend); ['lpL','lpD'].forEach(function(id){var e=$('#'+id);e.src=u;e.style.display='';}); $('#lpN').style.display='none';} };
   $('#sFav').onchange=function(){ setFavPend=this.files[0]||null; if(setFavPend){var p=$('#favP'); p.src=URL.createObjectURL(setFavPend); p.style.display='';} };
   $('#sOg').onchange=function(){ setOgPend=this.files[0]||null; };
+  sb.from('store_domains').select('domain,status').eq('store_id',ST.id).then(function(r){
+    var d=(r.data||[]).filter(function(x){return x.status==='active'})[0], el=$('#smUrl'); if(!d||!el) return;
+    el.textContent='https://'+d.domain+'/sitemap.xml'; var op=$('#smOpen'); if(op) op.href=el.textContent;
+    $('#smNote').textContent=L('رابط دومينك الخاص. بتقدر تستعمل كمان: ','Your custom domain URL. You can also use: ')+storeUrl()+'/sitemap.xml';
+  });
 }
 async function saveSettings(){
   var b=$('#sSave'); b.disabled=true; showMsg('sMsg',L('عم نحفظ…','Saving…'));
@@ -2124,7 +2226,10 @@ function rerenderTab(){ paintNav(); paintLic(); paintShell(); LOADERS[curTab]();
 
 document.addEventListener('click',function(e){
   var t=e.target, el, id;
-  if(t.closest('[data-mclose]')||t.id==='ov'){closeModal();return;}
+  if(t.closest('[data-mclose]')){
+    if(MODAL_DIRTY&&$('#mSave')&&!confirmBox(L('عندك تعديلات ما انحفظت. بدك تسكّر وتخسرها؟','You have unsaved changes. Close and lose them?'))) return;
+    closeModal(); return; }
+  if(t.id==='ov') return; /* الضغط برا النافذة ما بيسكّرها */
   if((el=t.closest('#nav [data-tab]'))){goTab(el.dataset.tab);return;}
   if((el=t.closest('[data-go]'))){goTab(el.dataset.go);return;}
   if(t.closest('#menuBtn')){$('#side').classList.add('open');$('#scrim').classList.add('on');return;}
@@ -2206,6 +2311,7 @@ document.addEventListener('click',function(e){
   if((el=t.closest('[data-bd]'))){if(confirmBox(L('حذف البنر؟','Delete this banner?'))) sb.from('store_banners').delete().eq('id',el.dataset.bd).then(function(r){if(r.error)alert(errTxt(r.error));else LOADERS.slides();});return;}
   // icons picker + rich text toolbar + product reorder
   if((el=t.closest('[data-cico]'))){$$('#cIcons button').forEach(function(b){b.classList.toggle('on',b===el)});return;}
+  if((el=t.closest('[data-rx]'))){rteClick(el);return;}
   if((el=t.closest('[data-rt]'))){var ta=$('#'+el.closest('.rtb').dataset['for']), a0=ta.selectionStart, b0=ta.selectionEnd, sel=ta.value.slice(a0,b0), k=el.dataset.rt, ins;
     if(k==='b') ins='**'+(sel||L('نص عريض','bold text'))+'**'; else if(k==='h') ins='\n## '+(sel||L('عنوان','Heading'))+'\n'; else if(k==='l') ins='\n- '+(sel||L('عنصر','Item'))+'\n- '; else ins='['+(sel||L('نص الرابط','link text'))+'](https://)';
     ta.value=ta.value.slice(0,a0)+ins+ta.value.slice(b0); ta.focus(); ta.setSelectionRange(a0+ins.length,a0+ins.length); return;}
