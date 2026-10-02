@@ -1353,9 +1353,9 @@ async function ensureBrands(force){
   var r=await sb.from('store_brands').select('*').eq('store_id',ST.id).order('sort').order('name');
   if(r.error) throw r.error; BRANDS=r.data||[]; loaded.brands=1;
 }
-LOADERS.brands=async function(){ try{await ensureBrands(true);}catch(e){return pageErr(e);} renderBrands(); };
+LOADERS.brands=async function(){ try{await ensureBrands(true);await ensureProds();}catch(e){return pageErr(e);} renderBrands(); };
 function renderBrands(){
-  viewEl().innerHTML='<div class="card"><div class="tools"><b>'+BRANDS.length+' '+L('ماركة','brands')+'</b><span class="muted">'+L('رتّب بالأسهم — هيك بيصير ترتيبها بقائمة الاختيار بمحرر المنتج','Reorder with the arrows — this is the order shown when picking a brand on a product')+'</span>'+(BRANDS.length?'<button class="btn dg sm" id="brDelAll">'+L('حذف الكل','Delete all')+'</button>':'')+'<button class="btn sp" id="brNew">+ '+L('ماركة جديدة','New brand')+'</button></div>'+
+  viewEl().innerHTML='<div class="card"><div class="tools"><b>'+BRANDS.length+' '+L('ماركة','brands')+'</b><span class="muted">'+L('رتّب بالأسهم — هيك بيصير ترتيبها بقائمة الاختيار بمحرر المنتج','Reorder with the arrows — this is the order shown when picking a brand on a product')+'</span>'+(BRANDS.length?'<button class="btn dg sm" id="brDelAll">'+L('حذف الكل','Delete all')+'</button>':'')+'<button class="btn alt" id="brSmart" title="'+L('بيجمع الماركات من المنتجات ويوحّد الكتابة المختلفة','Collects brands from products and unifies different spellings')+'">✨ '+L('استيراد ذكي من المنتجات','Smart import from products')+'</button><button class="btn sp" id="brNew">+ '+L('ماركة جديدة','New brand')+'</button></div>'+
     (BRANDS.length?'<div class="wrapx"><table class="tbl"><thead><tr><th>'+L('الاسم','Name')+'</th><th>'+L('عدد المنتجات','Products')+'</th><th>'+L('الحالة','Status')+'</th><th></th></tr></thead><tbody>'+
     BRANDS.map(function(b,i){ var n=PRODS.some(function(p){return p.brand===b.name})?PRODS.filter(function(p){return p.brand===b.name}).length:'—';
       return '<tr><td><b>'+esc(b.name)+'</b></td><td>'+n+'</td><td>'+(b.is_active?'<span class="tag">'+L('ظاهرة بالقائمة','Listed')+'</span>':'<span class="tag off">'+L('مخفية','Hidden')+'</span>')+'</td>'+
@@ -1382,6 +1382,118 @@ async function moveBrand(id,dir){
   BRANDS.forEach(function(b,n){ if(b.sort!==n+1){b.sort=n+1; ups.push(sb.from('store_brands').update({sort:n+1}).eq('id',b.id));} });
   renderBrands();
   try{ var rs=await Promise.all(ups); rs.forEach(function(r){if(r.error) throw r.error;}); }catch(e){ alert(errTxt(e)); await ensureBrands(true); renderBrands(); }
+}
+
+/* ---------- استيراد الماركات الذكي من المنتجات ---------- */
+var BRAND_JUNK={na:1,none:1,null:1,nobrand:1,unknown:1,generic:1,other:1,others:1,noname:1,'بدون':1,'بدونماركه':1,'غيرمعروف':1,'اخري':1,'ماركهاخري':1,'عام':1,'لايوجد':1};
+function bNorm(s){
+  s=String(s==null?'':s).toLowerCase().replace(/[\u064B-\u065F\u0670\u0640]/g,'').replace(/[\u0623\u0625\u0622\u0671]/g,'\u0627').replace(/\u0649/g,'\u064A').replace(/\u0629/g,'\u0647').replace(/&/g,' and ');
+  s=s.replace(/(^|[^a-z0-9])(inc|ltd|llc|corp|corporation|co|company)(?=[^a-z0-9]|$)/g,'$1 ');
+  return s.replace(/[^\p{L}\p{N}]+/gu,' ').trim();
+}
+function bKey(s){return bNorm(s).replace(/ /g,'')}
+function bLev(a,b){
+  if(a===b) return 0; var m=a.length,n=b.length; if(!m) return n; if(!n) return m;
+  var prev=[],cur=[],i,j; for(j=0;j<=n;j++) prev[j]=j;
+  for(i=1;i<=m;i++){ cur[0]=i; for(j=1;j<=n;j++){ cur[j]=Math.min(prev[j]+1,cur[j-1]+1,prev[j-1]+(a.charAt(i-1)===b.charAt(j-1)?0:1)); } var t=prev; prev=cur; cur=t; }
+  return prev[n];
+}
+function bChunk(a,n){ var r=[]; for(var i=0;i<a.length;i+=n) r.push(a.slice(i,i+n)); return r; }
+async function smartBrands(){
+  var btn=$('#brSmart'); if(btn) btn.disabled=true;
+  try{ await ensureProds(true); await ensureBrands(true); }catch(e){ alert(errTxt(e)); if(btn) btn.disabled=false; return; }
+  if(btn) btn.disabled=false;
+  var exMap={}; BRANDS.forEach(function(b){ var k=bKey(b.name); if(k&&!exMap[k]) exMap[k]=b; });
+  // 1) جمع الأسماء وتجميعها بمفتاح موحّد (حروف كبيرة/صغيرة، مسافات، رموز، همزات...)
+  var map={};
+  PRODS.forEach(function(p){
+    var raw=String(p.brand||'').trim(); if(!raw) return; var k=bKey(raw); if(!k||k.length<2||/^\d+$/.test(k)||BRAND_JUNK[k]) return;
+    var g=map[k]||(map[k]={key:k,variants:{},count:0}); var rv=String(p.brand); g.variants[rv]=(g.variants[rv]||0)+1; g.count++;
+  });
+  var gs=Object.keys(map).map(function(k){return map[k]}).sort(function(a,b){return b.count-a.count});
+  // 2) دمج الأخطاء الإملائية القريبة (حرف أو حرفين) بالماركة الأكتر استعمالاً
+  var groups=[];
+  gs.forEach(function(g){
+    var th=g.key.length>=9?2:(g.key.length>=5?1:0), tgt=null;
+    if(th&&!exMap[g.key]){ for(var i=0;i<groups.length;i++){ var m=groups[i]; if(m.key.length>=5&&Math.abs(m.key.length-g.key.length)<=th&&bLev(m.key,g.key)<=th){tgt=m;break;} } }
+    if(tgt){ Object.keys(g.variants).forEach(function(v){tgt.variants[v]=(tgt.variants[v]||0)+g.variants[v]}); tgt.count+=g.count; tgt.fuzzy=true; tgt.keys.push(g.key); }
+    else{ g.keys=[g.key]; groups.push(g); }
+  });
+  groups.forEach(function(g){
+    var ex=null; g.keys.forEach(function(k){ if(!ex&&exMap[k]) ex=exMap[k]; });
+    var tr={}; Object.keys(g.variants).forEach(function(v){ var t=v.trim(); tr[t]=(tr[t]||0)+g.variants[v]; });
+    var vs=Object.keys(tr).map(function(v){return {v:v,c:tr[v]}}).sort(function(a,b){
+      return (b.c-a.c)||((/[a-z]/.test(b.v)&&/[A-Z]/.test(b.v)?1:0)-(/[a-z]/.test(a.v)&&/[A-Z]/.test(a.v)?1:0)); });
+    g.vlist=vs; g.name=ex?ex.name:vs[0].v; g.isNew=!ex;
+    g.unify=Object.keys(g.variants).filter(function(v){return v!==g.name}).map(function(v){return {v:v,c:g.variants[v]}}); g.unifyCnt=g.unify.reduce(function(a,x){return a+x.c},0);
+  });
+  var newG=groups.filter(function(g){return g.isNew}).sort(function(a,b){return b.count-a.count});
+  var unifyTotal=groups.reduce(function(a,g){return a+g.unifyCnt},0);
+  // 3) منتجات بلا ماركة واسمها بيبدأ باسم ماركة معروفة
+  var cand=[], seen={};
+  groups.forEach(function(g){ var k=bKey(g.name); seen[k]=1; cand.push({name:g.name,key:k,words:bNorm(g.name),g:g,ids:[]}); });
+  BRANDS.forEach(function(b){ var k=bKey(b.name); if(k&&!seen[k]){ seen[k]=1; cand.push({name:b.name,key:k,words:bNorm(b.name),g:null,ids:[]}); } });
+  cand.sort(function(a,b){return b.words.length-a.words.length});
+  var fillTotal=0;
+  PRODS.forEach(function(p){
+    if(String(p.brand||'').trim()) return;
+    var texts=[bNorm(p.name_en),bNorm(p.name_ar)].filter(Boolean);
+    for(var i=0;i<cand.length;i++){ var c=cand[i]; if(c.key.length<3) continue;
+      if(texts.some(function(t){return (t+' ').indexOf(c.words+' ')===0})){ c.ids.push(p.id); fillTotal++; break; } }
+  });
+  var chips='<div class="tools" style="margin-bottom:10px"><span class="chip ok">'+newG.length+' '+L('ماركة جديدة','new brands')+'</span><span class="chip">'+(groups.length-newG.length)+' '+L('موجودة مسبقاً','already exist')+'</span>'+(unifyTotal?'<span class="chip warn">'+unifyTotal+' '+L('منتج بكتابة مختلفة','products with different spelling')+'</span>':'')+'</div>';
+  if(!newG.length&&!unifyTotal&&!fillTotal){
+    openModal(L('استيراد ذكي للماركات','Smart brand import'),chips+'<p class="sub">'+(groups.length?L('كل ماركات منتجاتك موجودة بقائمة الماركات ومكتوبة بشكل موحّد. ما في شي ينضاف.','All your product brands are already in the brands list and spelled consistently. Nothing to add.'):L('ما لقينا أسماء ماركات بالمنتجات. عبّي حقل "الماركة" بالمنتجات أو استورد منتجاتك أولاً.','No brand names found on your products. Fill the "Brand" field on products, or import products first.'))+'</p>');
+    return;
+  }
+  var rowS='display:flex;gap:8px;align-items:flex-start;margin:8px 0;cursor:pointer';
+  var table=newG.length?'<div style="max-height:46vh;overflow:auto;border:1px solid var(--line);border-radius:10px"><table class="tbl" style="min-width:0"><thead><tr><th style="width:34px"><input type="checkbox" id="bsAll" checked></th><th>'+L('اسم الماركة (بتقدر تعدّله)','Brand name (editable)')+'</th><th>'+L('منتجات','Products')+'</th><th>'+L('كتابات موجودة','Spellings found')+'</th></tr></thead><tbody>'+
+    newG.map(function(g,i){ return '<tr><td><input type="checkbox" data-bsel="'+i+'" checked></td><td><input type="text" data-bsn="'+i+'" value="'+esc(g.name)+'" style="min-width:130px;width:100%"></td><td>'+g.count+'</td><td class="muted" style="font-size:12px">'+
+      (g.vlist.length>1?esc(g.vlist.map(function(x){return x.v+' ('+x.c+')'}).join(' ، '))+(g.fuzzy?' <span class="tag low" title="'+L('دمجنا كتابات متقاربة — تأكد إنها نفس الماركة','Merged similar spellings — check they are the same brand')+'">≈</span>':''):'—')+'</td></tr>'}).join('')+'</tbody></table></div>':'';
+  var opts='';
+  if(unifyTotal) opts+='<label style="'+rowS+'"><input type="checkbox" id="bsUni" checked><span>'+L('وحّد كتابة الماركة بالمنتجات ('+unifyTotal+' منتج) — مثلاً SAMSUNG و samsung ← Samsung','Unify brand spelling on products ('+unifyTotal+' products) — e.g. SAMSUNG and samsung → Samsung')+'</span></label>';
+  if(fillTotal) opts+='<label style="'+rowS+'"><input type="checkbox" id="bsFill"><span>'+L('عبّي الماركة لـ '+fillTotal+' منتج بلا ماركة اسمه بيبدأ باسم ماركة معروفة (مثلاً "Samsung Galaxy…")','Fill the brand on '+fillTotal+' products with no brand whose name starts with a known brand (e.g. "Samsung Galaxy…")')+'</span></label>';
+  openModal(L('استيراد ذكي للماركات','Smart brand import'),chips+table+(opts?'<div style="margin-top:12px">'+opts+'</div>':''),
+    async function(){
+      var sel=[], names={}, keys={}, i;
+      for(i=0;i<newG.length;i++){
+        var cb=$('[data-bsel="'+i+'"]'); if(!cb||!cb.checked) continue;
+        var nm=($('[data-bsn="'+i+'"]').value||'').trim(); if(!nm){showMsg('mMsg',L('في ماركة بدون اسم','A brand has no name'),false);return false;}
+        var k=bKey(nm); if(!k||exMap[k]||keys[k]){showMsg('mMsg',L('الاسم مكرر أو موجود مسبقاً: ','Duplicate or already existing name: ')+nm,false);return false;}
+        keys[k]=1; names[i]=nm; sel.push(i);
+      }
+      var doUni=!!($('#bsUni')&&$('#bsUni').checked), doFill=!!($('#bsFill')&&$('#bsFill').checked);
+      if(!sel.length&&!doUni&&!doFill){showMsg('mMsg',L('ما حددت شي','Nothing selected'),false);return false;}
+      var nameOf=new Map(); newG.forEach(function(g,idx){ if(names[idx]) nameOf.set(g,names[idx]); });
+      groups.forEach(function(g){ if(!g.isNew) nameOf.set(g,g.name); });
+      // إنشاء الماركات
+      var added=0;
+      if(sel.length){
+        var base=BRANDS.length?Math.max.apply(null,BRANDS.map(function(x){return x.sort||0})):0;
+        var rows=sel.map(function(i){return names[i]}).sort(function(a,b){return a.localeCompare(b)}).map(function(nm,n){return {store_id:ST.id,name:nm,is_active:true,sort:base+n+1}});
+        var r=await sb.from('store_brands').insert(rows);
+        if(r.error){
+          if(!/duplicate|unique/i.test(r.error.message||'')) throw r.error;
+          for(var j=0;j<rows.length;j++){ var r2=await sb.from('store_brands').insert(rows[j]); if(!r2.error) added++; else if(!/duplicate|unique/i.test(r2.error.message||'')) throw r2.error; }
+        } else added=rows.length;
+      }
+      // توحيد الكتابة
+      var unified=0, jobs=[];
+      if(doUni) groups.forEach(function(g){ var nm=nameOf.get(g); if(!nm||!g.unify.length) return;
+        bChunk(g.unify.map(function(x){return x.v}),40).forEach(function(vs){ jobs.push({vs:vs,nm:nm}); }); unified+=g.unifyCnt; });
+      // تعبئة الفاضي
+      var filled=0, fjobs=[];
+      if(doFill) cand.forEach(function(c){ if(!c.ids.length) return; var nm=c.g?nameOf.get(c.g):c.name; if(!nm) return;
+        bChunk(c.ids,80).forEach(function(ids){ fjobs.push({ids:ids,nm:nm}); }); filled+=c.ids.length; });
+      var rs=await Promise.all(jobs.map(function(j){return sb.from('store_products').update({brand:j.nm}).eq('store_id',ST.id).in('brand',j.vs)})
+        .concat(fjobs.map(function(j){return sb.from('store_products').update({brand:j.nm}).in('id',j.ids)})));
+      rs.forEach(function(r){ if(r.error) throw r.error; });
+      jobs.forEach(function(j){ PRODS.forEach(function(p){ if(j.vs.indexOf(p.brand)>=0) p.brand=j.nm; }); });
+      fjobs.forEach(function(j){ PRODS.forEach(function(p){ if(j.ids.indexOf(p.id)>=0) p.brand=j.nm; }); });
+      await ensureBrands(true); renderBrands();
+      toast(L('تم ✓ '+added+' ماركة جديدة'+(unified?' · وُحّدت '+unified+' منتج':'')+(filled?' · عُبّي '+filled+' منتج':''),'Done ✓ '+added+' new brands'+(unified?' · '+unified+' unified':'')+(filled?' · '+filled+' filled':'')));
+    }, L('إضافة للماركات','Add to brands'), true);
+  var all=$('#bsAll'); if(all) all.onchange=function(){ var on=this.checked; $$('[data-bsel]').forEach(function(c){c.checked=on}); };
 }
 async function quickAddBrand(name){
   name=String(name||'').trim(); if(!name) return null;
@@ -2038,6 +2150,7 @@ document.addEventListener('click',function(e){
   if((el=t.closest('[data-catfold]'))){CAT_COLLAPSE[el.dataset.catfold]=!CAT_COLLAPSE[el.dataset.catfold];renderCats();return;}
   if((el=t.closest('[data-cd]'))){if(confirmBox(L('حذف التصنيف؟ المنتجات بتبقى بدون تصنيف.','Delete this category? Its products will become uncategorized.'))) sb.from('store_categories').delete().eq('id',el.dataset.cd).then(function(r){if(r.error)alert(errTxt(r.error));else{loaded.cats=0;LOADERS.categories();}});return;}
   // brands
+  if(t.closest('#brSmart')){smartBrands();return;}
   if(t.closest('#brNew')){brandModal();return;}
   if((el=t.closest('[data-bre]'))){brandModal(el.dataset.bre);return;}
   if((el=t.closest('[data-brmv]'))){moveBrand(el.dataset.id,el.dataset.brmv);return;}
