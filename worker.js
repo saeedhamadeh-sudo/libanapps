@@ -1494,6 +1494,18 @@ async function resolveDomain(env, ctx, host) {
   domCache.set(host, { slug, exp: Date.now() + 60000 });
   return slug;
 }
+// بحث بدون أي أثر جانبي (ما بيفعّل دومين pending) — لمعرفة إذا النسخة التانية (www / بدون www) مسجّلة لنفس المتجر
+const peekCache = new Map();
+async function peekDomain(env, host) {
+  const c = peekCache.get(host);
+  if (c && c.exp > Date.now()) return c.slug;
+  try {
+    const rows = await sbGet(env, `store_domains?domain=eq.${encodeURIComponent(host)}&select=stores(slug)&limit=1`);
+    const slug = (rows[0] && rows[0].stores && rows[0].stores.slug) || null;
+    peekCache.set(host, { slug, exp: Date.now() + 60000 });
+    return slug;
+  } catch (e) { return null; }
+}
 // ---------- Sitemap / robots / SEO لكل متجر ----------
 function xmlEsc(v) { return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
 function attrEsc(v) { return xmlEsc(v == null ? '' : v); }
@@ -1525,11 +1537,11 @@ async function storeSitemap(env, slug, base) {
 }
 
 // عنوان ووصف وصورة المشاركة + canonical (+ JSON-LD للمنتج) ليشوفها غوغل وواتساب بدون تشغيل الجافاسكربت
-async function storeHead(env, url, slug) {
+async function storeHead(env, url, slug, primaryHost) {
   const st = (await sbGet(env, `stores?slug=eq.${encodeURIComponent(slug)}&select=id,name,tagline,seo_title,seo_desc,logo_url,og_image,currency_code&limit=1`))[0];
   if (!st) return null;
-  const origin = url.origin, canonBase = origin + url.pathname.replace(/\/+$/, '') + (url.pathname === '/' ? '' : '');
-  let title = st.seo_title || st.name || 'Store', desc = st.seo_desc || st.tagline || '', image = st.og_image || st.logo_url || '', canon = canonBase || origin + '/', ld = '';
+  const origin = url.origin, cOrigin = primaryHost ? 'https://' + primaryHost : origin, canonBase = cOrigin + (url.pathname.replace(/\/+$/, '') || '/');
+  let title = st.seo_title || st.name || 'Store', desc = st.seo_desc || st.tagline || '', image = st.og_image || st.logo_url || '', canon = canonBase, ld = '';
   const pid = url.searchParams.get('p');
   if (pid && /^[0-9a-f-]{36}$/i.test(pid)) {
     const pr = (await sbGet(env, `store_products?id=eq.${pid}&store_id=eq.${st.id}&is_active=eq.true&select=name_ar,name_en,desc_ar,desc_en,price,image_url,brand,sku&limit=1`))[0];
@@ -1558,12 +1570,12 @@ async function storeHead(env, url, slug) {
   return { title: `<title>${xmlEsc(title)}</title>`, tags };
 }
 
-async function serveStore(env, url, slug) {
+async function serveStore(env, url, slug, primaryHost) {
   const res = await env.ASSETS.fetch(new URL('/store.html', url.origin));
   let html = await res.text();
   html = html.replace('<!--STORE_BOOT-->', '<script>window.__STORE_SLUG__=' + JSON.stringify(slug) + ';</script>');
   try {
-    const h = await storeHead(env, url, slug);
+    const h = await storeHead(env, url, slug, primaryHost);
     if (h) html = html.replace('<title>Store</title>', () => h.title).replace('</head>', () => h.tags + '\n</head>');
   } catch (e) { /* بلا SEO إضافي لو فشلت القراءة — المتجر بيشتغل عادي */ }
   return new Response(html, {
@@ -1734,8 +1746,16 @@ export default {
 
     // 1.5) دومين خاص بمتجر زبون — أي مسار غير الـAPI والصور بيعرض متجره
     if (!isPlatformHost(url.hostname, env)) {
-      const slug = await resolveDomain(env, ctx, url.hostname.toLowerCase());
+      const host = url.hostname.toLowerCase();
+      let slug = await resolveDomain(env, ctx, host);
       if (slug === undefined) return new Response('Temporary error, try again', { status: 503 });
+      // www وبدون www بيشتغلوا مع بعض: لو واحد منهم بس مسجّل بنخدم التاني لنفس المتجر،
+      // وبنختار رابط أساسي واحد (canonical) حتى غوغل ما يعتبرهم موقعين مكرّرين
+      const altHost = host.startsWith('www.') ? host.slice(4) : 'www.' + host;
+      const altSlug = await peekDomain(env, altHost);
+      let primary = host;
+      if (!slug && altSlug) { slug = altSlug; primary = altHost; }
+      else if (slug && altSlug === slug && altHost.startsWith('www.')) primary = altHost;
       if (!slug) {
         return new Response('This domain is not connected to any store.', {
           status: 404, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
@@ -1751,7 +1771,7 @@ export default {
       if (/\.[a-z0-9]{2,5}$/i.test(url.pathname)) {
         return new Response('Not found', { status: 404, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
       }
-      return await serveStore(env, url, slug);
+      return await serveStore(env, url, slug, primary);
     }
 
     // 1.7) خريطة الموقع لمتجر على دومين المنصة: /portal-store/<slug>/sitemap.xml
