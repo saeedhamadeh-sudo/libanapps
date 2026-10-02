@@ -1494,10 +1494,65 @@ async function resolveDomain(env, ctx, host) {
   domCache.set(host, { slug, exp: Date.now() + 60000 });
   return slug;
 }
+// ---------- Sitemap / robots / SEO لكل متجر ----------
+function xmlEsc(v) { return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+function attrEsc(v) { return xmlEsc(v == null ? '' : v); }
+function plainText(h, n) { return String(h || '').replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim().slice(0, n || 160); }
+function imgPath(u) { const m = String(u || '').match(/\/storage\/v1\/object\/public\/(.+)$/); return m ? '/img/' + m[1] : String(u || ''); }
+
+// base: عنوان صفحة المتجر الرئيسية (دومين خاص: https://host/ — المنصة: https://host/portal-store/slug)
+async function storeSitemap(env, slug, base) {
+  const rows = await sbGet(env, `stores?slug=eq.${encodeURIComponent(slug)}&select=id&limit=1`);
+  if (!rows[0]) return new Response('Not found', { status: 404, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
+  const prods = await sbGet(env, `store_products?store_id=eq.${rows[0].id}&is_active=eq.true&select=id&order=sort.asc&limit=5000`);
+  const urls = [`<url><loc>${xmlEsc(base)}</loc><changefreq>daily</changefreq><priority>1.0</priority></url>`]
+    .concat(prods.map(p => `<url><loc>${xmlEsc(base + '?p=' + p.id)}</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>`));
+  const xml = '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' + urls.join('\n') + '\n</urlset>\n';
+  return new Response(xml, { status: 200, headers: { 'Content-Type': 'application/xml; charset=utf-8', 'Cache-Control': 'public, max-age=3600' } });
+}
+
+// عنوان ووصف وصورة المشاركة + canonical (+ JSON-LD للمنتج) ليشوفها غوغل وواتساب بدون تشغيل الجافاسكربت
+async function storeHead(env, url, slug) {
+  const st = (await sbGet(env, `stores?slug=eq.${encodeURIComponent(slug)}&select=id,name,tagline,seo_title,seo_desc,logo_url,og_image,currency_code&limit=1`))[0];
+  if (!st) return null;
+  const origin = url.origin, canonBase = origin + url.pathname.replace(/\/+$/, '') + (url.pathname === '/' ? '' : '');
+  let title = st.seo_title || st.name || 'Store', desc = st.seo_desc || st.tagline || '', image = st.og_image || st.logo_url || '', canon = canonBase || origin + '/', ld = '';
+  const pid = url.searchParams.get('p');
+  if (pid && /^[0-9a-f-]{36}$/i.test(pid)) {
+    const pr = (await sbGet(env, `store_products?id=eq.${pid}&store_id=eq.${st.id}&is_active=eq.true&select=name_ar,name_en,desc_ar,desc_en,price,image_url,brand,sku&limit=1`))[0];
+    if (pr) {
+      const nm = pr.name_en || pr.name_ar;
+      title = nm + ' | ' + (st.name || '');
+      desc = plainText(pr.desc_en || pr.desc_ar, 160) || desc;
+      if (pr.image_url) image = pr.image_url;
+      canon = canonBase + '?p=' + pid;
+      ld = '<script type="application/ld+json">' + JSON.stringify({
+        '@context': 'https://schema.org', '@type': 'Product', name: nm, description: desc,
+        image: image ? [origin + imgPath(image)] : undefined, sku: pr.sku || undefined,
+        brand: pr.brand ? { '@type': 'Brand', name: pr.brand } : undefined,
+        offers: { '@type': 'Offer', price: String(pr.price), priceCurrency: st.currency_code || 'USD', availability: 'https://schema.org/InStock', url: canon }
+      }).replace(/</g, '\\u003c') + '</script>';
+    }
+  }
+  const tags = [
+    desc ? `<meta name="description" content="${attrEsc(desc)}">` : '',
+    `<link rel="canonical" href="${attrEsc(canon)}">`,
+    `<meta property="og:title" content="${attrEsc(title)}">`,
+    desc ? `<meta property="og:description" content="${attrEsc(desc)}">` : '',
+    image ? `<meta property="og:image" content="${attrEsc(origin + imgPath(image))}">` : '',
+    `<meta property="og:url" content="${attrEsc(canon)}">`, ld
+  ].join('\n');
+  return { title: `<title>${xmlEsc(title)}</title>`, tags };
+}
+
 async function serveStore(env, url, slug) {
   const res = await env.ASSETS.fetch(new URL('/store.html', url.origin));
   let html = await res.text();
   html = html.replace('<!--STORE_BOOT-->', '<script>window.__STORE_SLUG__=' + JSON.stringify(slug) + ';</script>');
+  try {
+    const h = await storeHead(env, url, slug);
+    if (h) html = html.replace('<title>Store</title>', () => h.title).replace('</head>', () => h.tags + '\n</head>');
+  } catch (e) { /* بلا SEO إضافي لو فشلت القراءة — المتجر بيشتغل عادي */ }
   return new Response(html, {
     status: 200,
     headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' }
@@ -1675,11 +1730,25 @@ export default {
       if (url.pathname.replace(/\/+$/, '').endsWith('/admin')) {
         return Response.redirect(`${env.WEBSITE_URL}/portal-store/${slug}/admin`, 302);
       }
+      if (url.pathname === '/sitemap.xml') return await storeSitemap(env, slug, 'https://' + url.hostname + '/');
+      if (url.pathname === '/robots.txt') {
+        return new Response('User-agent: *\nAllow: /\nSitemap: https://' + url.hostname + '/sitemap.xml\n',
+          { status: 200, headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'public, max-age=3600' } });
+      }
       if (/\.[a-z0-9]{2,5}$/i.test(url.pathname)) {
         return new Response('Not found', { status: 404, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
       }
       return await serveStore(env, url, slug);
     }
+
+    // 1.7) خريطة الموقع لمتجر على دومين المنصة: /portal-store/<slug>/sitemap.xml
+    const smm = url.pathname.match(/^\/portal-store\/([^/]+)\/sitemap\.xml$/);
+    if (smm) {
+      const sl = decodeURIComponent(smm[1]).toLowerCase();
+      return await storeSitemap(env, sl, url.origin + '/portal-store/' + encodeURIComponent(sl));
+    }
+    const spm = url.pathname.match(/^\/portal-store\/([^/]+)\/?$/);
+    if (spm && request.method === 'GET') return await serveStore(env, url, decodeURIComponent(spm[1]).toLowerCase());
 
     // 2) طلب لملف حقيقي (فيه امتداد صريح متل .css / .js / .png) — نخدمه متل ما هو
     if (/\.[a-z0-9]{2,5}$/i.test(url.pathname)) {
