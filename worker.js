@@ -1485,13 +1485,13 @@ async function resolveDomain(env, ctx, host) {
   try {
     const rows = await sbGet(env, `store_domains?domain=eq.${encodeURIComponent(host)}&select=id,status,stores(slug)&limit=1`);
     row = rows[0];
-  } catch (e) { return undefined; }            // خطأ مؤقت — ما منخزّنه
+  } catch (e) { return c ? c.slug : undefined; }   // خطأ مؤقت: منستعمل آخر قيمة معروفة بدل ما نرجّع 503 لغوغل
   const slug = (row && row.stores && row.stores.slug) || null;
   // وصلنا طلب على هالدومين = Cloudflare فعّله؛ منحدّث الحالة تلقائياً
   if (row && row.status === 'pending' && ctx && ctx.waitUntil) {
     ctx.waitUntil(sbPatch(env, `store_domains?id=eq.${row.id}`, { status: 'active', verified_at: new Date().toISOString() }));
   }
-  domCache.set(host, { slug, exp: Date.now() + 60000 });
+  domCache.set(host, { slug, exp: Date.now() + (slug ? 300000 : 60000) });
   return slug;
 }
 // بحث بدون أي أثر جانبي (ما بيفعّل دومين pending) — لمعرفة إذا النسخة التانية (www / بدون www) مسجّلة لنفس المتجر
@@ -1506,6 +1506,43 @@ async function peekDomain(env, host) {
     return slug;
   } catch (e) { return null; }
 }
+
+// ---------- مسارات المتجر القديم (WooCommerce) ----------
+const LEGACY_HOME = /^\/(shop|cart|checkout|my-account|account|wishlist|compare|product-category|product-tag|category|tag|brand|brands|page|blog|store|home)(\/|$)/i;
+const storeIdCache = new Map();
+async function storeIdOf(env, slug) {
+  const c = storeIdCache.get(slug);
+  if (c && c.exp > Date.now()) return c.id;
+  const r = await sbGet(env, `stores?slug=eq.${encodeURIComponent(slug)}&select=id&limit=1`);
+  const id = (r[0] && r[0].id) || null;
+  if (id) storeIdCache.set(slug, { id, exp: Date.now() + 300000 });
+  return id;
+}
+function slugWords(s) {
+  let t = String(s || ''); try { t = decodeURIComponent(t); } catch (e) {}
+  return t.toLowerCase().replace(/['\u2019]/g, '').split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+}
+// بيحاول يلاقي المنتج الجديد من اسم المنتج بالرابط القديم (/product/اسم-المنتج/)
+async function findProductBySlug(env, storeSlug, words, strict) {
+  const sid = await storeIdOf(env, storeSlug); if (!sid || !words.length) return null;
+  const pat = encodeURIComponent('*' + words.slice(0, 8).join('*') + '*');
+  const rows = await sbGet(env, `store_products?store_id=eq.${sid}&is_active=eq.true&or=(name_en.ilike.${pat},name_ar.ilike.${pat})&select=id,name_en,name_ar&limit=10`);
+  const want = words.join('-');
+  for (const r of rows) for (const n of [r.name_en, r.name_ar]) if (n && slugWords(n).join('-') === want) return r.id;
+  if (!strict || !rows.length) return null;
+  rows.sort((a, b) => Math.min((a.name_en || 'x'.repeat(999)).length, (a.name_ar || 'x'.repeat(999)).length) - Math.min((b.name_en || 'x'.repeat(999)).length, (b.name_ar || 'x'.repeat(999)).length));
+  return rows[0].id;
+}
+// بيرجّع: id المنتج | 'home' (صفحة وظيفية قديمة: سلة/حسابي/تصنيف…) | null (ما في مقابل → 404 حقيقي)
+async function legacyRoute(env, storeSlug, path) {
+  const segs = path.split('/').filter(Boolean); if (!segs.length) return null;
+  const isProd = ['product', 'products', 'item', 'shop'].includes(segs[0].toLowerCase()) && segs.length >= 2;
+  if (!isProd && LEGACY_HOME.test(path)) return 'home';
+  const words = slugWords(segs[segs.length - 1]);
+  if (words.length < (isProd ? 1 : 2)) return null;
+  try { return await findProductBySlug(env, storeSlug, words, isProd); } catch (e) { return null; }
+}
+
 // ---------- Sitemap / robots / SEO لكل متجر ----------
 function xmlEsc(v) { return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
 function attrEsc(v) { return xmlEsc(v == null ? '' : v); }
@@ -1529,7 +1566,7 @@ async function storeSitemap(env, slug, base) {
     const urls = [`<url><loc>${xmlEsc(base)}</loc><lastmod>${day}</lastmod><changefreq>daily</changefreq><priority>1.0</priority></url>`]
       .concat(ids.map(id => `<url><loc>${xmlEsc(base + '?p=' + id)}</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>`));
     const xml = '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' + urls.join('\n') + '\n</urlset>\n';
-    return new Response(xml, { status: 200, headers: { 'Content-Type': 'application/xml; charset=utf-8', 'Cache-Control': 'public, max-age=3600', 'X-Robots-Tag': 'noindex' } });
+    return new Response(xml, { status: 200, headers: { 'Content-Type': 'application/xml; charset=utf-8', 'Cache-Control': 'public, max-age=3600' } });
   } catch (e) {
     console.error('sitemap error', e);
     return txt(503, 'Sitemap temporarily unavailable');
@@ -1748,7 +1785,7 @@ export default {
     if (!isPlatformHost(url.hostname, env)) {
       const host = url.hostname.toLowerCase();
       let slug = await resolveDomain(env, ctx, host);
-      if (slug === undefined) return new Response('Temporary error, try again', { status: 503 });
+      if (slug === undefined) return new Response('Temporary error, try again', { status: 503, headers: { 'Retry-After': '120', 'Cache-Control': 'no-store' } });
       // www وبدون www بيشتغلوا مع بعض: لو واحد منهم بس مسجّل بنخدم التاني لنفس المتجر،
       // وبنختار رابط أساسي واحد (canonical) حتى غوغل ما يعتبرهم موقعين مكرّرين
       const altHost = host.startsWith('www.') ? host.slice(4) : 'www.' + host;
@@ -1770,6 +1807,15 @@ export default {
       }
       if (/\.[a-z0-9]{2,5}$/i.test(url.pathname)) {
         return new Response('Not found', { status: 404, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
+      }
+      // أي مسار غير الجذر ما بيستعمله المتجر الجديد (بيشتغل بـ / و ?p= و #) — يعني رابط قديم أو غلط
+      const lpath = url.pathname.replace(/\/+$/, '') || '/';
+      if (lpath !== '/' && (request.method === 'GET' || request.method === 'HEAD')) {
+        const hit = await legacyRoute(env, slug, lpath);
+        if (hit === 'home') return Response.redirect('https://' + url.hostname + '/', 301);
+        if (hit) return Response.redirect('https://' + url.hostname + '/?p=' + hit, 301);
+        const shell = await serveStore(env, url, slug, primary);       // 404 حقيقي (مش 200) + بنعرض المتجر للزائر
+        return new Response(shell.body, { status: 404, headers: shell.headers });
       }
       return await serveStore(env, url, slug, primary);
     }
