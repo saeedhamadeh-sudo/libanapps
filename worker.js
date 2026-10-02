@@ -1509,6 +1509,8 @@ async function peekDomain(env, host) {
 
 // ---------- مسارات المتجر القديم (WooCommerce) ----------
 const LEGACY_HOME = /^\/(shop|cart|checkout|my-account|account|wishlist|compare|product-category|product-tag|category|tag|brand|brands|page|blog|store|home)(\/|$)/i;
+// سبام مزروع بالموقع القديم (كازينو/قمار/أدوية…): منرجّع 410 Gone مباشرة بدون ما نسأل قاعدة البيانات — بيخلّي غوغل يشيله أسرع
+const SPAM_PATH = /(^|-)(casino|casinos|poker|pokies|pokie|slot|slots|roulette|blackjack|gambling|gamble|betting|jackpot|baccarat|sportsbook|lottery|spins|deposit|australia|payday|viagra|cialis)(-|$)/i;
 const storeIdCache = new Map();
 async function storeIdOf(env, slug) {
   const c = storeIdCache.get(slug);
@@ -1539,6 +1541,7 @@ async function legacyRoute(env, storeSlug, path) {
   const isProd = ['product', 'products', 'item', 'shop'].includes(segs[0].toLowerCase()) && segs.length >= 2;
   if (!isProd && LEGACY_HOME.test(path)) return 'home';
   const words = slugWords(segs[segs.length - 1]);
+  if (!isProd && SPAM_PATH.test(words.join('-'))) return 'gone';
   if (words.length < (isProd ? 1 : 2)) return null;
   try { return await findProductBySlug(env, storeSlug, words, isProd); } catch (e) { return null; }
 }
@@ -1812,6 +1815,7 @@ export default {
       const lpath = url.pathname.replace(/\/+$/, '') || '/';
       if (lpath !== '/' && (request.method === 'GET' || request.method === 'HEAD')) {
         const hit = await legacyRoute(env, slug, lpath);
+        if (hit === 'gone') return new Response('410 Gone', { status: 410, headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'public, max-age=86400' } });
         if (hit === 'home') return Response.redirect('https://' + url.hostname + '/', 301);
         if (hit) return Response.redirect('https://' + url.hostname + '/?p=' + hit, 301);
         const shell = await serveStore(env, url, slug, primary);       // 404 حقيقي (مش 200) + بنعرض المتجر للزائر
