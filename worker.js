@@ -1502,13 +1502,26 @@ function imgPath(u) { const m = String(u || '').match(/\/storage\/v1\/object\/pu
 
 // base: عنوان صفحة المتجر الرئيسية (دومين خاص: https://host/ — المنصة: https://host/portal-store/slug)
 async function storeSitemap(env, slug, base) {
-  const rows = await sbGet(env, `stores?slug=eq.${encodeURIComponent(slug)}&select=id&limit=1`);
-  if (!rows[0]) return new Response('Not found', { status: 404, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
-  const prods = await sbGet(env, `store_products?store_id=eq.${rows[0].id}&is_active=eq.true&select=id&order=sort.asc&limit=5000`);
-  const urls = [`<url><loc>${xmlEsc(base)}</loc><changefreq>daily</changefreq><priority>1.0</priority></url>`]
-    .concat(prods.map(p => `<url><loc>${xmlEsc(base + '?p=' + p.id)}</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>`));
-  const xml = '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' + urls.join('\n') + '\n</urlset>\n';
-  return new Response(xml, { status: 200, headers: { 'Content-Type': 'application/xml; charset=utf-8', 'Cache-Control': 'public, max-age=3600' } });
+  const txt = (st, m) => new Response(m, { status: st, headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' } });
+  try {
+    const rows = await sbGet(env, `stores?slug=eq.${encodeURIComponent(slug)}&select=id&limit=1`);
+    if (!rows[0]) return txt(404, 'Store not found');
+    // Supabase بيقطع الرد عند 1000 صف — منجيب على دفعات لحد ما نخلّص (حد غوغل 50,000 رابط)
+    const ids = [];
+    for (let off = 0; off < 50000; off += 1000) {
+      const part = await sbGet(env, `store_products?store_id=eq.${rows[0].id}&is_active=eq.true&select=id&order=sort.asc,id.asc&limit=1000&offset=${off}`);
+      part.forEach(p => ids.push(p.id));
+      if (part.length < 1000) break;
+    }
+    const day = new Date().toISOString().slice(0, 10);
+    const urls = [`<url><loc>${xmlEsc(base)}</loc><lastmod>${day}</lastmod><changefreq>daily</changefreq><priority>1.0</priority></url>`]
+      .concat(ids.map(id => `<url><loc>${xmlEsc(base + '?p=' + id)}</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>`));
+    const xml = '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' + urls.join('\n') + '\n</urlset>\n';
+    return new Response(xml, { status: 200, headers: { 'Content-Type': 'application/xml; charset=utf-8', 'Cache-Control': 'public, max-age=3600', 'X-Robots-Tag': 'noindex' } });
+  } catch (e) {
+    console.error('sitemap error', e);
+    return txt(503, 'Sitemap temporarily unavailable');
+  }
 }
 
 // عنوان ووصف وصورة المشاركة + canonical (+ JSON-LD للمنتج) ليشوفها غوغل وواتساب بدون تشغيل الجافاسكربت
