@@ -527,7 +527,9 @@ function confirmBox(msg){ return window.confirm(msg); }
 
 /* ---------- رفع الصور: بدون قصّ، بنفس النسبة الطبيعية ---------- */
 function outType(f){var t=(f&&f.type)||''; return /png|webp|gif|svg/i.test(t)?{mime:'image/png',ext:'png'}:{mime:'image/jpeg',ext:'jpg'}}
-function shrink(file,max){
+/* صور المنتجات والبنرات بتنحفظ WebP (أخف بـ 60–90% من PNG/JPG) — اللوغو وصورة المشاركة بتبقى PNG/JPG لتوافق فيسبوك وواتساب */
+var WEBP_BUCKETS={items:1,banners:1};
+function shrink(file,max,webp){
   var out=outType(file);
   return new Promise(function(res,rej){
     var fr=new FileReader();
@@ -535,15 +537,19 @@ function shrink(file,max){
       im.onload=function(){var s=Math.min(1,max/Math.max(im.width,im.height));
         var cv=document.createElement('canvas'); cv.width=Math.round(im.width*s); cv.height=Math.round(im.height*s);
         var c=cv.getContext('2d'); c.clearRect(0,0,cv.width,cv.height); c.drawImage(im,0,0,cv.width,cv.height);
-        cv.toBlob(function(b){b?res(b):rej(new Error(L('تعذّر تحويل الصورة','Could not process image')))},out.mime,0.88)};
+        var fail=function(){rej(new Error(L('تعذّر تحويل الصورة','Could not process image')))};
+        var plain=function(){cv.toBlob(function(b){b?res(b):fail()},out.mime,0.88)};
+        if(webp) cv.toBlob(function(b){ if(b&&b.type==='image/webp') res(b); else plain(); },'image/webp',0.82); else plain();
+      };
       im.onerror=function(){rej(new Error(L('ملف الصورة غير صالح','Invalid image file')))}; im.src=fr.result};
     fr.onerror=function(){rej(new Error(L('تعذّرت قراءة الملف','Could not read file')))}; fr.readAsDataURL(file);
   });
 }
 async function upload(bucket,file,max){
-  var out=outType(file), blob=await shrink(file,max||1000);
+  var blob=await shrink(file,max||1000,!!WEBP_BUCKETS[bucket]), out=outType(file);
+  if(blob.type==='image/webp') out={mime:'image/webp',ext:'webp'};
   var path='st-'+ST.id+'/'+Date.now()+'-'+Math.random().toString(36).slice(2,7)+'.'+out.ext;
-  var up=await sb.storage.from(bucket).upload(path,blob,{contentType:out.mime});
+  var up=await sb.storage.from(bucket).upload(path,blob,{contentType:out.mime,cacheControl:'31536000'});
   if(up.error) throw up.error;
   return sb.storage.from(bucket).getPublicUrl(path).data.publicUrl;
 }
