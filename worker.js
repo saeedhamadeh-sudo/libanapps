@@ -247,18 +247,31 @@ async function imageProxy(request, env, ctx, url) {
   const path = url.pathname.replace(/^\/img\//, '');
   if (!path || path.indexOf('..') >= 0) return new Response('bad path', { status: 400 });
 
+  // ?w=480 → نسخة مصغّرة (وبصيغة WebP للمتصفحات اللي بتدعمها). بنقرّب العرض لأقرب مقاس جاهز عشان ما يتكاثر عدد النسخ
+  const SIZES = [160, 240, 320, 480, 640, 800, 1024, 1280, 1600];
+  const wq = parseInt(url.searchParams.get('w') || '', 10);
+  const w = wq > 0 ? (SIZES.find(x => x >= wq) || SIZES[SIZES.length - 1]) : 0;
+  const webp = w && /image\/webp/i.test(request.headers.get('Accept') || '') && /\.(png|jpe?g)$/i.test(path);
+  const keyUrl = new URL(url.origin + url.pathname);
+  if (w) keyUrl.searchParams.set('w', String(w) + (webp ? 'w' : 'o'));
+
   const cache = caches.default;
-  const key = new Request(url.toString(), { method: 'GET' });
+  const key = new Request(keyUrl.toString(), { method: 'GET' });
   const hit = await cache.match(key);
   if (hit) return hit;
 
   const target = `${env.SUPABASE_URL}/storage/v1/object/public/${path}`;
-  const res = await fetch(target, { cf: { cacheEverything: true, cacheTtl: 604800 } });
+  const cf = { cacheEverything: true, cacheTtl: 604800 };
+  if (w) cf.image = { width: w, fit: 'scale-down', quality: 80, ...(webp ? { format: 'webp' } : {}) };
+  let res = await fetch(target, { cf });
+  // لو ميزة تصغير الصور مش مفعّلة بحساب Cloudflare، بنرجع للصورة الأصلية بدل ما نفشل
+  if (w && !res.ok) res = await fetch(target, { cf: { cacheEverything: true, cacheTtl: 604800 } });
   if (!res.ok) return new Response('not found', { status: 404 });
 
   const out = new Response(res.body, res);
   out.headers.set('Cache-Control', 'public, max-age=604800, immutable');  // أسبوع
   out.headers.set('X-LibanApps-Cache', 'MISS');
+  if (w) out.headers.set('Vary', 'Accept');
   out.headers.delete('set-cookie');
   if (ctx && ctx.waitUntil) ctx.waitUntil(cache.put(key, out.clone()));
   return out;
