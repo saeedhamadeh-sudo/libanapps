@@ -1280,6 +1280,10 @@ var $$=function(s,r){return Array.prototype.slice.call((r||document).querySelect
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
 function safeUrl(u){u=String(u||'').trim();return /^(https?:\/\/|\/(?!\/))/i.test(u)?u:''}
 function img(u){ if(!u) return ''; var m=String(u).match(/\/storage\/v1\/object\/public\/(.+)$/); return m?('/img/'+m[1]):u }
+/* صور بمقاسات متعددة: بنطلب من الـ worker نسخة مصغّرة (?w=) بدل الصورة الأصلية الكبيرة */
+function imgw(u,w){ var r=img(u); return (r&&r.indexOf('/img/')===0)?r+'?w='+w:r }
+function imgs(u,ws,sizes){ var r=img(u); if(!r||r.indexOf('/img/')!==0) return ' src="'+esc(r)+'"';
+  return ' src="'+esc(r+'?w='+ws[Math.min(1,ws.length-1)])+'" srcset="'+ws.map(function(w){return esc(r+'?w='+w)+' '+w+'w'}).join(', ')+'" sizes="'+sizes+'"'; }
 function ytId(u){ u=String(u||'').trim(); if(/^[A-Za-z0-9_-]{11}$/.test(u)) return u;
   var m=u.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?(?:[^#]*&)?v=|embed\/|shorts\/|live\/|v\/))([A-Za-z0-9_-]{11})/); return m?m[1]:'' }
 function lsGet(k){try{return localStorage.getItem(k)}catch(e){return null}}
@@ -1505,7 +1509,7 @@ function navCats(){ return topCats().filter(function(c){return catCount(c.id)>0|
 function renderHeader(){
   var el=S.theme==='electro';
   $('#logoA').setAttribute('href',location.pathname);
-  $('#logoA').innerHTML=S.logo_url?'<img alt="'+esc(S.name)+'" src="'+esc(img(S.logo_url))+'">':'<b>'+esc(S.name)+'</b>';
+  $('#logoA').innerHTML=S.logo_url?'<img alt="'+esc(S.name)+'" src="'+esc(imgw(S.logo_url,320))+'">':'<b>'+esc(S.name)+'</b>';
   $('#menuBtn').innerHTML=IC.menu; $('#menuBtn').setAttribute('aria-label',T.menu);
   var top=navCats();
   $('#hdNav').innerHTML=top.map(function(c){return '<a href="#shop" data-cat="'+esc(c.id)+'">'+esc(tx(c,'name'))+'</a>'}).join('');
@@ -1578,7 +1582,7 @@ function renderHero(){
   box.innerHTML=sl.map(function(s,i){
     var hasTxt=!!(s.title||s.subtitle||s.cta), go=slideGo(s);
     var cta=s.cta?(go?'<span class="btn">'+esc(s.cta)+'</span>':'<a class="btn" href="#shop" data-cat="all">'+esc(s.cta)+'</a>'):'';
-    return '<div class="slide'+(hasTxt?'':' notxt')+(go?' lk':'')+'"'+(go?' data-slk="'+esc(go)+'" role="link" tabindex="0"':'')+'><div class="s-img'+(s.image_url?'':' fb')+'">'+(s.image_url?'<img alt="'+esc(s.title||'')+'" '+(i?'loading="lazy" ':'fetchpriority="high" ')+'src="'+esc(img(s.image_url))+'">':'')+'</div>'+
+    return '<div class="slide'+(hasTxt?'':' notxt')+(go?' lk':'')+'"'+(go?' data-slk="'+esc(go)+'" role="link" tabindex="0"':'')+'><div class="s-img'+(s.image_url?'':' fb')+'">'+(s.image_url?'<img alt="'+esc(s.title||'')+'" '+(i?'loading="lazy" ':'fetchpriority="high" ')+imgs(s.image_url,[640,1024,1600],'100vw')+'>':'')+'</div>'+
       (hasTxt?'<div class="s-txt">'+(s.title?'<h2>'+esc(s.title)+'</h2>':'')+(s.subtitle?'<p>'+esc(s.subtitle)+'</p>':'')+cta+'</div>':'')+
       (n>1?'<div class="s-idx"><span dir="ltr">'+String(i+1).padStart(2,'0')+' / '+String(n).padStart(2,'0')+'</span></div>':'')+'</div>';
   }).join('');
@@ -1608,7 +1612,7 @@ function renderBanners(){
   sec.classList.remove('hidden'); var box=$('#bnrIn'); box.style.setProperty('--bn',bs.length);
   box.innerHTML=bs.map(function(x){
     var go=slideGo(x), cap=x.title?'<span class="cap">'+esc(x.title)+'</span>':'';
-    return '<a class="bn'+(go?'':' nolink')+'" '+(go?'href="#shop" data-slk="'+esc(go)+'"':'')+'><img alt="'+esc(x.title||'')+'" loading="lazy" src="'+esc(img(x.image_url))+'">'+cap+'</a>';
+    return '<a class="bn'+(go?'':' nolink')+'" '+(go?'href="#shop" data-slk="'+esc(go)+'"':'')+'><img alt="'+esc(x.title||'')+'" loading="lazy" decoding="async"'+imgs(x.image_url,[480,800],'(min-width:720px) 33vw, 100vw')+'>'+cap+'</a>';
   }).join('');
 }
 function goSlide(i){
@@ -1633,7 +1637,7 @@ function renderCatSection(){
   var shown=withP.slice(0,cnt); $('#ct').style.setProperty('--n',Math.min(shown.length,S.theme==='aurum'?3:4));
   $('#ct').innerHTML=shown.map(function(x){
     var nm=tx(x.c,'name');
-    return '<a class="tile" href="#shop" data-cat="'+esc(x.c.id)+'">'+(x.im?'<img alt="" loading="lazy" src="'+esc(img(x.im))+'">':'<div class="init">'+esc(nm.charAt(0))+'</div>')+
+    return '<a class="tile" href="#shop" data-cat="'+esc(x.c.id)+'">'+(x.im?'<img alt="" loading="lazy" decoding="async" src="'+esc(imgw(x.im,320))+'">':'<div class="init">'+esc(nm.charAt(0))+'</div>')+
       '<div class="cap"><b>'+esc(nm)+'</b><small>'+esc(fillT(T.results,{n:x.n}))+'</small></div></a>';
   }).join('');
 }
@@ -1684,8 +1688,8 @@ function renderNew(){
 
 function cardElectro(p){
   var so=soldOut(p), n=tx(p,'name'), sale=isSale(p), needs=hasSizes(p)||hasColors(p);
-  var im=p.image_url?'<img loading="lazy" decoding="async" alt="" src="'+esc(img(p.image_url))+'">':'<div class="noimg">'+esc(n.charAt(0))+'</div>';
-  var im2=(p.images&&p.images[0])?'<img class="im2" loading="lazy" alt="" src="'+esc(img(p.images[0]))+'">':'';
+  var im=p.image_url?'<img loading="lazy" decoding="async" alt=""'+imgs(p.image_url,[240,320,480,640],'(min-width:1040px) 22vw, (min-width:720px) 30vw, 48vw')+'>':'<div class="noimg">'+esc(n.charAt(0))+'</div>';
+  var im2=(p.images&&p.images[0])?'<img class="im2" loading="lazy" decoding="async" alt=""'+imgs(p.images[0],[240,320,480,640],'(min-width:1040px) 22vw, (min-width:720px) 30vw, 48vw')+'>':'';
   var bd='<div class="bds">'+(p.is_new?'<span class="bd new">'+esc(T.newB)+'</span>':'')+(sale?'<span class="bd sale" dir="ltr">-'+pct(p)+'%</span>':'')+'</div>';
   var tools='<div class="etools"><button class="wl" type="button" data-wl="'+esc(p.id)+'" aria-pressed="'+(wish.indexOf(p.id)>=0)+'" aria-label="'+esc(T.wishT)+'">'+IC.heart+'</button><button class="qv" type="button" data-qv="'+esc(p.id)+'" aria-label="'+esc(T.quickView)+'">'+IC.search+'</button></div>';
   var act=so?'<div class="eact"><span class="eadd dis">'+esc(T.sold)+'</span></div>':
@@ -1699,8 +1703,8 @@ function cardElectro(p){
 function cardHTML(p){
   if(S.theme==='electro') return cardElectro(p);
   var so=soldOut(p), n=tx(p,'name'), sale=isSale(p), sizes=hasSizes(p)?sortSizes(p.sizes):[];
-  var im=p.image_url?'<img loading="lazy" decoding="async" alt="" src="'+esc(img(p.image_url))+'">':'<div class="noimg">'+esc(n.charAt(0))+'</div>';
-  var im2=(p.images&&p.images[0])?'<img class="im2" loading="lazy" alt="" src="'+esc(img(p.images[0]))+'">':'';
+  var im=p.image_url?'<img loading="lazy" decoding="async" alt=""'+imgs(p.image_url,[240,320,480,640],'(min-width:1040px) 22vw, (min-width:720px) 30vw, 48vw')+'>':'<div class="noimg">'+esc(n.charAt(0))+'</div>';
+  var im2=(p.images&&p.images[0])?'<img class="im2" loading="lazy" decoding="async" alt=""'+imgs(p.images[0],[240,320,480,640],'(min-width:1040px) 22vw, (min-width:720px) 30vw, 48vw')+'>':'';
   var bd='<div class="bds">'+(sale?'<span class="bd sale" dir="ltr">-'+pct(p)+'%</span>':'')+(p.is_new?'<span class="bd new">'+esc(T.newB)+'</span>':'')+'</div>';
   var needs=hasSizes(p)||hasColors(p);
   var qa=so?'':'<button class="qa" type="button" data-qa="'+esc(p.id)+'" aria-label="'+esc(T.addQ)+'">'+IC.plus+'<span>'+esc(needs?T.view:T.add)+'</span></button>';
@@ -1818,7 +1822,7 @@ function renderFoot(){
   if(S.address) contact.push('<p>'+esc(S.address)+'</p>');
   var topCats=navCats().slice(0,5);
   $('#foot').innerHTML='<div class="wrap"><div class="fgrid">'+
-    '<div>'+(S.logo_url?'<div class="flogo"><img alt="'+esc(S.name)+'" src="'+esc(img(S.logo_url))+'"></div>':'<h4>'+esc(S.name)+'</h4>')+(S.tagline?'<p>'+esc(S.tagline)+'</p>':'')+(S.footer_note?'<p>'+esc(S.footer_note)+'</p>':'')+
+    '<div>'+(S.logo_url?'<div class="flogo"><img alt="'+esc(S.name)+'" loading="lazy" src="'+esc(imgw(S.logo_url,320))+'"></div>':'<h4>'+esc(S.name)+'</h4>')+(S.tagline?'<p>'+esc(S.tagline)+'</p>':'')+(S.footer_note?'<p>'+esc(S.footer_note)+'</p>':'')+
       (soc.length?'<div style="margin-top:14px">'+soc.map(function(x){return '<a target="_blank" rel="noopener" href="'+esc(safeUrl(x[1]))+'" style="display:inline-block;margin-inline-end:16px">'+x[0]+'</a>'}).join('')+'</div>':'')+'</div>'+
     '<div><h4>'+esc(T.shopL)+'</h4><a href="#shop" data-cat="all">'+esc(T.allProducts)+'</a>'+topCats.map(function(c){return '<a href="#shop" data-cat="'+esc(c.id)+'">'+esc(tx(c,'name'))+'</a>'}).join('')+'</div>'+
     '<div><h4>'+esc(T.help)+'</h4><button class="fl" type="button" data-track>'+esc(T.trackO)+'</button>'+PAGES.map(function(p){return '<button class="fl" type="button" data-page="'+esc(p.id)+'">'+esc(p.title)+'</button>'}).join('')+contact.join('')+'</div>'+
@@ -1884,10 +1888,10 @@ function renderPV(){
   var n=tx(p,'name'), d=tx(p,'desc'), up=unitPrice(p,pvSel.size), optP=(up!==Number(p.price)), sale=isSale(p)&&!optP, so=soldOut(p), media=mediaOf(p), chain=catChain(primaryCat(p));
   var cur=media[pvMedia]||media[0];
   var main=!cur?'<div class="noimg" style="position:absolute;inset:0;display:grid;place-items:center;font-size:80px;opacity:.3">'+esc(n.charAt(0))+'</div>':
-    cur.t==='i'?'<img alt="'+esc(n)+'" src="'+esc(img(cur.u))+'">':
+    cur.t==='i'?'<img alt="'+esc(n)+'" fetchpriority="high"'+imgs(cur.u,[640,1024,1280],'(min-width:900px) 50vw, 100vw')+'>':
     '<div class="vp" data-playvid="'+esc(cur.id)+'"><img alt="" src="https://i.ytimg.com/vi/'+esc(cur.id)+'/hqdefault.jpg"><span class="play">'+IC.play+'</span></div>';
   var thumbs=media.length>1?media.map(function(m,i){
-    return '<button type="button" data-pm="'+i+'" aria-pressed="'+(i===pvMedia)+'"><img alt="" src="'+esc(m.t==='i'?img(m.u):'https://i.ytimg.com/vi/'+m.id+'/default.jpg')+'">'+(m.t==='v'?'<span class="vt">'+IC.play+'</span>':'')+'</button>'}).join(''):'';
+    return '<button type="button" data-pm="'+i+'" aria-pressed="'+(i===pvMedia)+'"><img alt="" loading="lazy" src="'+esc(m.t==='i'?imgw(m.u,160):'https://i.ytimg.com/vi/'+m.id+'/default.jpg')+'">'+(m.t==='v'?'<span class="vt">'+IC.play+'</span>':'')+'</button>'}).join(''):'';
   var opts='';
   if(hasColors(p)){
     var sel=p.colors.filter(function(c){return c.n===pvSel.color})[0];
@@ -2035,7 +2039,7 @@ function head(title,back){
 }
 function lineHTML(l){
   var p=byId[l.id]; if(!p) return ''; var n=tx(p,'name'), v=[l.size,l.color].filter(Boolean).join(' · ');
-  return '<div class="li"><div class="lt">'+(p.image_url?'<img alt="" src="'+esc(img(p.image_url))+'">':'')+'</div><div><h4>'+esc(n)+'</h4>'+(v?'<div class="var">'+esc(v)+'</div>':'')+
+  return '<div class="li"><div class="lt">'+(p.image_url?'<img alt="" src="'+esc(imgw(p.image_url,160))+'">':'')+'</div><div><h4>'+esc(n)+'</h4>'+(v?'<div class="var">'+esc(v)+'</div>':'')+
     '<div class="pr"><b>'+money(unitPrice(p,l.size))+'</b>'+(isSale(p)&&unitPrice(p,l.size)===Number(p.price)?'<s>'+money(p.compare_price)+'</s>':'')+'</div>'+
     '<div class="qty"><button type="button" data-lq="-1" data-k="'+esc(lk(l))+'" aria-label="-">−</button><span>'+l.q+'</span><button type="button" data-lq="1" data-k="'+esc(lk(l))+'" aria-label="+">+</button></div></div>'+
     '<button class="rm" type="button" data-lrm="'+esc(lk(l))+'">'+esc(T.remove)+'</button></div>';
@@ -2063,7 +2067,7 @@ function renderDrawer(){
   } else if(drawerView==='wish'){
     var items=wish.map(function(id){return byId[id]}).filter(Boolean);
     h=head(T.wishT+(items.length?' ('+items.length+')':''))+'<div class="db">'+(items.length?items.map(function(p){
-      return '<div class="li" style="grid-template-columns:78px 1fr auto"><div class="lt" data-id="'+esc(p.id)+'" style="cursor:pointer">'+(p.image_url?'<img alt="" src="'+esc(img(p.image_url))+'">':'')+'</div><div><h4>'+esc(tx(p,'name'))+'</h4><div class="pr"><b>'+money(p.price)+'</b>'+(isSale(p)?'<s>'+money(p.compare_price)+'</s>':'')+'</div>'+
+      return '<div class="li" style="grid-template-columns:78px 1fr auto"><div class="lt" data-id="'+esc(p.id)+'" style="cursor:pointer">'+(p.image_url?'<img alt="" src="'+esc(imgw(p.image_url,160))+'">':'')+'</div><div><h4>'+esc(tx(p,'name'))+'</h4><div class="pr"><b>'+money(p.price)+'</b>'+(isSale(p)?'<s>'+money(p.compare_price)+'</s>':'')+'</div>'+
         '<button class="btn alt sm" type="button" data-wopen="'+esc(p.id)+'" style="margin-top:8px">'+esc(T.view)+'</button></div><button class="rm" type="button" data-wl="'+esc(p.id)+'">'+esc(T.remove)+'</button></div>'}).join(''):
       '<div style="text-align:center;padding:60px 10px;color:var(--muted)"><b style="display:block;color:var(--text);font-size:18px;margin-bottom:6px">'+esc(T.wishE)+'</b>'+esc(T.wishHint)+'</div>')+'</div>';
   } else if(drawerView==='checkout'){
@@ -2173,7 +2177,7 @@ function doSearch(q){
   q=String(q||'').trim().toLowerCase(); var box=$('#sRes'); if(!box) return;
   if(!q){box.innerHTML='<p style="color:var(--muted)">'+esc(T.searchH)+'</p>';return;}
   var res=PRODS.filter(function(p){return (p.name_ar+' '+p.name_en+' '+(p.brand||'')+' '+(p.sku||'')).toLowerCase().indexOf(q)>=0}).slice(0,10);
-  box.innerHTML=res.length?res.map(function(p){return '<button class="sr" type="button" data-sopen="'+esc(p.id)+'"><span class="t">'+(p.image_url?'<img alt="" src="'+esc(img(p.image_url))+'">':'')+'</span><span><b>'+esc(tx(p,'name'))+'</b>'+(p.brand?'<br><small style="color:var(--muted)">'+esc(p.brand)+'</small>':'')+'</span><span class="pr"><b>'+money(p.price)+'</b></span></button>'}).join('')+
+  box.innerHTML=res.length?res.map(function(p){return '<button class="sr" type="button" data-sopen="'+esc(p.id)+'"><span class="t">'+(p.image_url?'<img alt="" loading="lazy" src="'+esc(imgw(p.image_url,160))+'">':'')+'</span><span><b>'+esc(tx(p,'name'))+'</b>'+(p.brand?'<br><small style="color:var(--muted)">'+esc(p.brand)+'</small>':'')+'</span><span class="pr"><b>'+money(p.price)+'</b></span></button>'}).join('')+
     '<div style="padding:18px 0"><button class="btn alt" type="button" data-sall="'+esc(q)+'">'+esc(T.viewAll)+' ('+PRODS.filter(function(p){return (p.name_ar+' '+p.name_en+' '+(p.brand||'')).toLowerCase().indexOf(q)>=0}).length+')</button></div>':'<div class="empty"><b>'+esc(T.noRes)+'</b>'+esc(T.noResS)+'</div>';
 }
 var mOpen=false;
@@ -2261,7 +2265,7 @@ function liveSearch(qraw){
   var res=all.slice(0,8);
   hr.innerHTML = res.length ? res.map(function(p){
       var n=tx(p,'name');
-      return '<button type="button" class="sr" data-hsopen="'+esc(p.id)+'"><span class="t">'+(p.image_url?'<img alt="" src="'+esc(img(p.image_url))+'">':'')+'</span><h4>'+hiBold(n,q)+'</h4><span class="pr2">'+money(p.price)+'</span></button>';
+      return '<button type="button" class="sr" data-hsopen="'+esc(p.id)+'"><span class="t">'+(p.image_url?'<img alt="" loading="lazy" src="'+esc(imgw(p.image_url,160))+'">':'')+'</span><h4>'+hiBold(n,q)+'</h4><span class="pr2">'+money(p.price)+'</span></button>';
     }).join('') + (all.length>res.length||all.length ? '<button type="button" class="foot" data-hsall="'+esc(q)+'">'+esc(fillT(T.viewAllN,{n:all.length}))+'</button>' : '')
     : '<div class="none">'+esc(T.noMatch)+'</div>';
   hr.classList.add('show');
