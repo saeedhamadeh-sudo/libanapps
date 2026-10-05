@@ -273,7 +273,7 @@ async function imageProxy(request, env, ctx, url) {
 
   const target = `${env.SUPABASE_URL}/storage/v1/object/public/${path}`;
   const cf = { cacheEverything: true, cacheTtl: 604800 };
-  if (w) cf.image = { width: w, fit: 'scale-down', quality: 80, ...(webp ? { format: 'webp' } : {}) };
+  if (w) cf.image = { width: w, fit: 'scale-down', quality: webp ? 74 : 80, ...(webp ? { format: 'webp' } : {}) };
   let res = await fetch(target, { cf });
   // لو ميزة تصغير الصور مش مفعّلة بحساب Cloudflare، بنرجع للصورة الأصلية بدل ما نفشل
   if (w && !res.ok) res = await fetch(target, { cf: { cacheEverything: true, cacheTtl: 604800 } });
@@ -288,7 +288,7 @@ async function imageProxy(request, env, ctx, url) {
   out.headers.set('Content-Type', ctype);
   out.headers.set('X-Content-Type-Options', 'nosniff');
   if (ctype !== 'application/pdf') out.headers.set('Content-Security-Policy', "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; sandbox");
-  out.headers.set('Cache-Control', 'public, max-age=604800, immutable');  // أسبوع
+  out.headers.set('Cache-Control', 'public, max-age=31536000, immutable');  // سنة — كل صورة مرفوعة إلها اسم جديد
   out.headers.set('X-LibanApps-Cache', 'MISS');
   if (w) out.headers.set('Vary', 'Accept');
   out.headers.delete('set-cookie');
@@ -2085,8 +2085,23 @@ async function serveStore(env, url, slug, primaryHost) {
   let html = await res.text();
   const spUrl = url.pathname.startsWith('/portal-store/') ? '/portal-store/' + encodeURIComponent(slug) + '/_sp.json' : '/_sp.json';
   html = html.replace('<!--STORE_BOOT-->', '<script>window.__STORE_SLUG__=' + JSON.stringify(slug) + ';window.__SP_URL__=' + JSON.stringify(spUrl) + ';</script>');
+  // بيانات المتجر بتنطلب مع أول بايتات الصفحة، مش بعد ما يخلص تحميل الـHTML كلو (نفس طلب fetch تبع الصفحة → ما بتنطلب مرتين)
+  html = html.replace('<meta charset="utf-8">', () => '<meta charset="utf-8">\n<link rel="preload" href="' + attrEsc(spUrl) + '" as="fetch" crossorigin>');
   try { // preload لصورة أول سلايد (عنصر الـ LCP) عشان تنطلب من أول الصفحة مش بعد ما توصل البيانات
     const e = await Promise.race([storePublicData(env, slug), new Promise(r => setTimeout(() => r(null), 700))]); // ما بنأخّر الصفحة أكتر من 0.7ث لو الكاش بارد
+    const st0 = e && e.data && e.data.ok && e.data.store;
+    // خطوط الثيم بتنطلب من أول الصفحة (بدون ما توقف الرسم) بدل ما تستنى وصول البيانات
+    if (st0 && !url.searchParams.get('theme')) {
+      const fontQ = (key, re) => { const m = html.match(re); return m ? m[1] : ''; };
+      const th = /^[a-z]+$/.test(st0.theme || '') ? st0.theme : 'nova';
+      const q1 = fontQ(th, new RegExp('\\n ' + th + ":'(family=[^']+)'")) || fontQ('nova', /\n nova:'(family=[^']+)'/);
+      const fp = /^[a-z]+$/.test(st0.font_pair || '') ? st0.font_pair : '';
+      const q2 = fp ? fontQ(fp, new RegExp('\\n ' + fp + ":\\{q:'(family=[^']+)'")) : '';
+      const link = (id, q) => `<link rel="preload" as="style" id="${id}" href="https://fonts.googleapis.com/css2?${attrEsc(q)}&display=swap" onload="this.onload=null;this.rel='stylesheet'">`;
+      let tags = q1 ? link('fontlink', q1) : '';
+      if (q2) tags += link('fontlink2', q2);
+      if (tags) html = html.replace('</head>', () => tags + '\n</head>');
+    }
     const s0 = e && e.data && e.data.ok && (e.data.slides || [])[0];
     const r0 = s0 && s0.image_url ? imgPath(s0.image_url) : '';
     if (r0.startsWith('/img/')) {
@@ -2517,10 +2532,15 @@ export default {
       if (url.pathname.replace(/\/+$/, '').endsWith('/admin')) {
         return Response.redirect(`${env.WEBSITE_URL}/portal-store/${slug}/admin`, 302);
       }
+      // رابط واحد للموقع: النسخة التانية (www أو بدونها) بتتحوّل 301 للأساسية
+      // حتى غوغل ما يشوف موقعين مكرّرين، والـSitemap يكون على نفس الدومين اللي بالـSearch Console
+      if (host !== primary && (request.method === 'GET' || request.method === 'HEAD')) {
+        return Response.redirect('https://' + primary + url.pathname + url.search, 301);
+      }
       if (url.pathname === '/_sp.json') return await storePublicResponse(env, slug);
-      if (url.pathname === '/sitemap.xml') return await storeSitemap(env, slug, 'https://' + url.hostname + '/');
+      if (url.pathname === '/sitemap.xml') return await storeSitemap(env, slug, 'https://' + primary + '/');
       if (url.pathname === '/robots.txt') {
-        return new Response('User-agent: *\nAllow: /\nSitemap: https://' + url.hostname + '/sitemap.xml\n',
+        return new Response('User-agent: *\nAllow: /\nSitemap: https://' + primary + '/sitemap.xml\n',
           { status: 200, headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'public, max-age=3600' } });
       }
       if (/\.[a-z0-9]{2,5}$/i.test(url.pathname)) {
