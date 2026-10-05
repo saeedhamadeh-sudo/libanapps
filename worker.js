@@ -259,7 +259,7 @@ async function imageProxy(request, env, ctx, url) {
   if (!path || path.indexOf('..') >= 0) return new Response('bad path', { status: 400 });
 
   // ?w=480 → نسخة مصغّرة (وبصيغة WebP للمتصفحات اللي بتدعمها). بنقرّب العرض لأقرب مقاس جاهز عشان ما يتكاثر عدد النسخ
-  const SIZES = [160, 240, 320, 480, 640, 800, 1024, 1280, 1600];
+  const SIZES = [160, 240, 320, 360, 480, 640, 800, 1024, 1280, 1600];
   const wq = parseInt(url.searchParams.get('w') || '', 10);
   const w = wq > 0 ? (SIZES.find(x => x >= wq) || SIZES[SIZES.length - 1]) : 0;
   const webp = w && /image\/webp/i.test(request.headers.get('Accept') || '') && /\.(png|jpe?g)$/i.test(path);
