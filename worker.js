@@ -1624,10 +1624,45 @@ async function storeHead(env, url, slug, primaryHost) {
   return { title: `<title>${xmlEsc(title)}</title>`, tags };
 }
 
+// نسخة مخبّأة من store_public (60 ثانية بالـ isolate + stale-on-error) — بتتخدم من نفس دومين المتجر بدل رحلة CORS لـ Supabase
+const spCache = new Map();
+async function storePublicData(env, slug) {
+  const now = Date.now(), hit = spCache.get(slug);
+  if (hit && now - hit.t < 60000) return hit;
+  try {
+    const r = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/store_public`, {
+      method: 'POST', headers: { ...sbHeaders(env), 'Content-Type': 'application/json' }, body: JSON.stringify({ p_slug: slug })
+    });
+    if (!r.ok) throw new Error('sp ' + r.status);
+    const text = await r.text(), data = JSON.parse(text);
+    if (spCache.size > 200) spCache.clear();
+    const e = { t: now, text, data }; spCache.set(slug, e); return e;
+  } catch (e) {
+    if (hit && now - hit.t < 600000) return hit;
+    return null;
+  }
+}
+async function storePublicResponse(env, slug) {
+  if (!/^[a-z0-9][a-z0-9-]{0,62}$/.test(slug)) return new Response('Not found', { status: 404 });
+  const e = await storePublicData(env, slug);
+  if (!e) return new Response('{"error":"unavailable"}', { status: 503, headers: { 'Content-Type': 'application/json', 'Retry-After': '5', 'Cache-Control': 'no-store' } });
+  return new Response(e.text, { status: 200, headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'public, max-age=30, stale-while-revalidate=300', 'X-Robots-Tag': 'noindex' } });
+}
+
 async function serveStore(env, url, slug, primaryHost) {
   const res = await env.ASSETS.fetch(new URL('/store.html', url.origin));
   let html = await res.text();
-  html = html.replace('<!--STORE_BOOT-->', '<script>window.__STORE_SLUG__=' + JSON.stringify(slug) + ';</script>');
+  const spUrl = url.pathname.startsWith('/portal-store/') ? '/portal-store/' + encodeURIComponent(slug) + '/_sp.json' : '/_sp.json';
+  html = html.replace('<!--STORE_BOOT-->', '<script>window.__STORE_SLUG__=' + JSON.stringify(slug) + ';window.__SP_URL__=' + JSON.stringify(spUrl) + ';</script>');
+  try { // preload لصورة أول سلايد (عنصر الـ LCP) عشان تنطلب من أول الصفحة مش بعد ما توصل البيانات
+    const e = await storePublicData(env, slug);
+    const s0 = e && e.data && e.data.ok && (e.data.slides || [])[0];
+    const r0 = s0 && s0.image_url ? imgPath(s0.image_url) : '';
+    if (r0.startsWith('/img/')) {
+      const ws = [640, 1024, 1600];
+      html = html.replace('</head>', () => `<link rel="preload" as="image" fetchpriority="high" href="${attrEsc(r0 + '?w=1024')}" imagesrcset="${attrEsc(ws.map(w => r0 + '?w=' + w + ' ' + w + 'w').join(', '))}" imagesizes="100vw">\n</head>`);
+    }
+  } catch (e) { /* بدون preload */ }
   try {
     const h = await storeHead(env, url, slug, primaryHost);
     if (h) html = html.replace('<title>Store</title>', () => h.title).replace('</head>', () => h.tags + '\n</head>');
@@ -1817,6 +1852,7 @@ export default {
       if (url.pathname.replace(/\/+$/, '').endsWith('/admin')) {
         return Response.redirect(`${env.WEBSITE_URL}/portal-store/${slug}/admin`, 302);
       }
+      if (url.pathname === '/_sp.json') return await storePublicResponse(env, slug);
       if (url.pathname === '/sitemap.xml') return await storeSitemap(env, slug, 'https://' + url.hostname + '/');
       if (url.pathname === '/robots.txt') {
         return new Response('User-agent: *\nAllow: /\nSitemap: https://' + url.hostname + '/sitemap.xml\n',
@@ -1844,6 +1880,8 @@ export default {
       const sl = decodeURIComponent(smm[1]).toLowerCase();
       return await storeSitemap(env, sl, url.origin + '/portal-store/' + encodeURIComponent(sl));
     }
+    const spj = url.pathname.match(/^\/portal-store\/([^/]+)\/_sp\.json$/);
+    if (spj) return await storePublicResponse(env, decodeURIComponent(spj[1]).toLowerCase());
     const spm = url.pathname.match(/^\/portal-store\/([^/]+)\/?$/);
     if (spm && request.method === 'GET') return await serveStore(env, url, decodeURIComponent(spm[1]).toLowerCase());
 
