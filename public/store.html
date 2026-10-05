@@ -117,6 +117,8 @@ svg.i{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.6;stro
   border-radius:var(--r-btn);background:var(--brand);color:var(--brand-ink);font-weight:600;font-size:14.5px;
   border:1.5px solid var(--brand);transition:transform .18s var(--ease,ease),filter .18s,background .18s,color .18s;white-space:nowrap}
 .btn:hover{filter:brightness(1.1)}
+[data-lm],[data-lm2]{--brand-dk:color-mix(in srgb,var(--brand) 82%,#000)}
+@supports (color:color-mix(in srgb,red 50%,blue)){[data-lm].btn,[data-lm2].btn{background:var(--brand-dk);border-color:var(--brand-dk)}}
 .btn:active{transform:scale(.98)}
 .btn.alt{background:transparent;color:var(--text);border-color:var(--line)}
 .btn.alt:hover{border-color:var(--text);filter:none}
@@ -1098,7 +1100,7 @@ footer.ft{margin-top:clamp(50px,8vw,120px);background:var(--surface);border-top:
 </head>
 <body>
 <!--STORE_BOOT-->
-<script>(function(){var s=window.__STORE_SLUG__,C=window.LIBANAPPS;if(!s||!C||!window.fetch)return;window.__SP=fetch(C.SUPABASE_URL+"/rest/v1/rpc/store_public",{method:"POST",headers:{apikey:C.SUPABASE_ANON_KEY,Authorization:"Bearer "+C.SUPABASE_ANON_KEY,"Content-Type":"application/json"},body:JSON.stringify({p_slug:s})}).then(function(r){return r.ok?r.json():null}).catch(function(){return null});window.__SPS=s;})();</script>
+<script>(function(){var s=window.__STORE_SLUG__,C=window.LIBANAPPS;if(!s||!C||!window.fetch)return;window.__SP=fetch(window.__SP_URL__||"/_sp.json").then(function(r){return r.ok?r.json():null}).catch(function(){return null});window.__SPS=s;})();</script>
 <div id="state" class="state"><div class="box"><div class="spin" role="status" aria-label="loading"></div></div></div>
 
 <div id="app" class="hidden">
@@ -1613,7 +1615,7 @@ function renderBanners(){
   sec.classList.remove('hidden'); var box=$('#bnrIn'); box.style.setProperty('--bn',bs.length);
   box.innerHTML=bs.map(function(x){
     var go=slideGo(x), cap=x.title?'<span class="cap">'+esc(x.title)+'</span>':'';
-    return '<a class="bn'+(go?'':' nolink')+'" aria-label="'+esc(x.title||S.name||'')+'" '+(go?'href="#shop" data-slk="'+esc(go)+'"':'')+'><img alt="'+esc(x.title||'')+'" loading="lazy" decoding="async"'+imgs(x.image_url,[480,800],'(min-width:720px) 33vw, 100vw')+'>'+cap+'</a>';
+    return '<a class="bn'+(go?'':' nolink')+'" '+(go?'aria-label="'+esc(x.title||S.name||'')+'" href="#shop" data-slk="'+esc(go)+'"':'')+'><img alt="'+esc(x.title||'')+'" loading="lazy" decoding="async"'+imgs(x.image_url,[480,800],'(min-width:720px) 33vw, 100vw')+'>'+cap+'</a>';
   }).join('');
 }
 function goSlide(i){
