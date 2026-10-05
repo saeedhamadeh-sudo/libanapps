@@ -1655,7 +1655,7 @@ async function serveStore(env, url, slug, primaryHost) {
   const spUrl = url.pathname.startsWith('/portal-store/') ? '/portal-store/' + encodeURIComponent(slug) + '/_sp.json' : '/_sp.json';
   html = html.replace('<!--STORE_BOOT-->', '<script>window.__STORE_SLUG__=' + JSON.stringify(slug) + ';window.__SP_URL__=' + JSON.stringify(spUrl) + ';</script>');
   try { // preload لصورة أول سلايد (عنصر الـ LCP) عشان تنطلب من أول الصفحة مش بعد ما توصل البيانات
-    const e = await storePublicData(env, slug);
+    const e = await Promise.race([storePublicData(env, slug), new Promise(r => setTimeout(() => r(null), 700))]); // ما بنأخّر الصفحة أكتر من 0.7ث لو الكاش بارد
     const s0 = e && e.data && e.data.ok && (e.data.slides || [])[0];
     const r0 = s0 && s0.image_url ? imgPath(s0.image_url) : '';
     if (r0.startsWith('/img/')) {
