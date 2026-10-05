@@ -2113,18 +2113,45 @@ async function storePublicData(env, slug, ctx) {
     return null;
   }
 }
+// ---------- llms.txt: ملخّص المتجر لأدوات الذكاء الاصطناعي (llmstxt.org) ----------
+async function storeLlms(env, slug, base, ctx) {
+  const txt = (st, m) => new Response(m, { status: st, headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'public, max-age=3600' } });
+  const e = await storePublicData(env, slug, ctx);
+  if (!e || !e.data || !e.data.ok) return txt(503, 'Temporarily unavailable');
+  const d = e.data, st = d.store || {}, P = d.products || [], C = d.categories || [];
+  const one = v => String(v || '').replace(/\s+/g, ' ').trim();
+  const nm = x => one(x.name_en || x.name_ar || x.name);
+  const lines = ['# ' + one(st.name || slug), ''];
+  const about = one(st.seo_desc || st.tagline);
+  lines.push('> ' + (about || ('Online store ' + one(st.name) + ' — ' + P.length + ' products, order online with delivery.')), '');
+  const info = [];
+  if (st.phone) info.push('Phone: ' + one(st.phone));
+  if (st.whatsapp) info.push('WhatsApp: https://wa.me/' + String(st.whatsapp).replace(/\D/g, ''));
+  if (st.currency_code) info.push('Currency: ' + one(st.currency_code));
+  if (info.length) lines.push(...info, '');
+  lines.push('## Store', '', `- [Home](${base}): all categories and products`, `- [Sitemap](${base}sitemap.xml): every product page`, '');
+  const top = C.filter(c => !c.parent_id).slice(0, 40);
+  if (top.length) lines.push('## Categories', '', ...top.map(c => `- ${nm(c)}${c.name_ar && c.name_en ? ' (' + one(c.name_ar) + ')' : ''}`), '');
+  const feat = P.filter(p => p.is_hot || p.is_new).concat(P).filter((p, i, a) => a.indexOf(p) === i).slice(0, 60);
+  if (feat.length) lines.push('## Products', '', ...feat.map(p => `- [${nm(p)}](${base}?p=${p.id}): ${p.price} ${one(st.currency_code || '')}`.trim()), '');
+  return txt(200, lines.join('\n'));
+}
+
 // ---------- نسخة خفيفة من بيانات المتجر لأول رسم للصفحة ----------
 //  الصفحة الرئيسية بتحتاج بس: الأقسام (Hot / جديد / أحدث المنتجات)، أول صفحة من الشبكة،
 //  صورة لكل تصنيف، وعدد منتجات كل تصنيف. الباقي (~900 منتج) بينزل بالخلفية بعد ما تبين الصفحة.
 function storeLite(d, pid) {
-  const P = d.products || [], C = d.categories || [];
+  const P = d.products || [], C = d.categories || [], st = d.store || {};
+  const cfg = k => (st.section_settings && st.section_settings[k]) || {};
+  const num = (v, lo, hi, def) => { const n = Number(v); return n > 0 ? Math.max(lo, Math.min(hi, n)) : def; };
+  const electro = st.theme === 'electro';
   const keep = new Set(), add = p => keep.add(p.id);
-  P.filter(p => p.is_hot).slice(0, 48).forEach(add);
-  P.filter(p => p.is_new).slice(0, 48).forEach(add);
-  P.filter(p => !p.is_new).slice().sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)) || ((b.sort || 0) - (a.sort || 0)))
-    .slice(0, 48).forEach(add);
-  P.slice(0, 24).forEach(add);
-  if (pid) P.filter(p => p.id === pid).forEach(add);
+  // نفس الأعداد اللي بترسمها الصفحة بكل قسم — حتى ما يتغيّر طول الصفحة لما توصل كل المنتجات
+  P.filter(p => p.is_hot).slice(0, num(cfg('hot').count, 2, 48, 48)).forEach(add);
+  P.filter(p => p.is_new).slice(0, electro ? num(cfg('new').count, 4, 48, 16) : num(cfg('new').count, 2, 24, 12)).forEach(add);
+  if (electro) P.filter(p => !p.is_new).slice().sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)) || ((b.sort || 0) - (a.sort || 0)))
+    .slice(0, num(cfg('latest').count, 4, 48, 16)).forEach(add);
+  if (!electro) P.slice(0, 24).forEach(add);           // أول صفحة من الشبكة (بثيم Electro الشبكة مخفية بالرئيسية)
   // عدد منتجات كل تصنيف (مع فروعه) — نفس حساب catCount بالصفحة
   const byId = {}, kids = {};
   C.forEach(c => { byId[c.id] = c; });
@@ -2137,9 +2164,19 @@ function storeLite(d, pid) {
     let n = 0, first = null;
     for (const p of P) if (pc(p).some(x => ids.has(x))) { n++; if (!first) first = p; }
     counts[c.id] = n;
-    if (first && (!c.parent_id || !byId[c.parent_id])) add(first);   // صورة بطاقة التصنيف
+    if (first && !c.image_url && (!c.parent_id || !byId[c.parent_id])) add(first);   // صورة بطاقة التصنيف
   });
-  return Object.assign({}, d, { products: P.filter(p => keep.has(p.id)), lite: true, cat_counts: counts, total_products: P.length });
+  // الكرت بيحتاج صورة تانية وحدة ومواصفتين بس؛ المنتج المطلوب بالرابط (?p=) بيضل كامل
+  const slim = p => {
+    if (p.id === pid) return p;
+    const o = Object.assign({}, p, { _lt: 1 });
+    if (Array.isArray(o.images)) o.images = o.images.slice(0, 1);
+    if (Array.isArray(o.specs)) o.specs = o.specs.slice(0, 2);
+    delete o.attrs; delete o.video_url; delete o.ext_id; delete o.opt_label;
+    return o;
+  };
+  if (pid) P.filter(p => p.id === pid).forEach(add);
+  return Object.assign({}, d, { products: P.filter(p => keep.has(p.id)).map(slim), lite: true, cat_counts: counts, total_products: P.length });
 }
 
 async function storePublicResponse(env, slug, url, ctx) {
@@ -2616,6 +2653,7 @@ export default {
         return new Response('User-agent: *\nAllow: /\nSitemap: https://' + primary + '/sitemap.xml\n',
           { status: 200, headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'public, max-age=3600' } });
       }
+      if (url.pathname === '/llms.txt') return await storeLlms(env, slug, 'https://' + primary + '/', ctx);
       if (/\.[a-z0-9]{2,5}$/i.test(url.pathname)) {
         return new Response('Not found', { status: 404, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
       }
