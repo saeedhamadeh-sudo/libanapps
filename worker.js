@@ -2057,18 +2057,58 @@ async function storeHead(env, url, slug, primaryHost) {
 
 // نسخة مخبّأة من store_public (60 ثانية بالـ isolate + stale-on-error) — بتتخدم من نفس دومين المتجر بدل رحلة CORS لـ Supabase
 const spCache = new Map();
-async function storePublicData(env, slug) {
-  const now = Date.now(), hit = spCache.get(slug);
-  if (hit && now - hit.t < 60000) return hit;
+// بيانات المتجر: ذاكرة الـisolate (60ث) + كاش Cloudflare المشترك بكل مركز بيانات.
+// Cloudflare بيشغّل نسخ كتير من الـworker، وكل وحدة ذاكرتها فاضية بالبداية — بدون الكاش المشترك
+// أغلب الزوار (وغوغل) كانوا يستنّوا Supabase كل مرة (1–3 ثواني). هلق: منرجّع النسخة المحفوظة فوراً
+// ومنجدّدها بالخلفية إذا صار عمرها أكتر من دقيقة.
+const SP_FRESH = 60000, SP_STALE = 3600000;
+function spKey(slug) { return new Request('https://sp-cache.libanapps.internal/v1/' + encodeURIComponent(slug)); }
+async function spFetch(env, slug) {
+  const r = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/store_public`, {
+    method: 'POST', headers: { ...sbHeaders(env), 'Content-Type': 'application/json' }, body: JSON.stringify({ p_slug: slug })
+  });
+  if (!r.ok) throw new Error('sp ' + r.status);
+  const text = await r.text(), data = JSON.parse(text);
+  const e = { t: Date.now(), text, data };
+  if (spCache.size > 200) spCache.clear();
+  spCache.set(slug, e);
   try {
-    const r = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/store_public`, {
-      method: 'POST', headers: { ...sbHeaders(env), 'Content-Type': 'application/json' }, body: JSON.stringify({ p_slug: slug })
-    });
-    if (!r.ok) throw new Error('sp ' + r.status);
-    const text = await r.text(), data = JSON.parse(text);
-    if (spCache.size > 200) spCache.clear();
-    const e = { t: now, text, data }; spCache.set(slug, e); return e;
-  } catch (e) {
+    await caches.default.put(spKey(slug), new Response(text, { headers: {
+      'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=' + (SP_STALE / 1000), 'X-SP-Time': String(e.t) } }));
+  } catch (er) { /* بدون كاش مشترك — منكمّل */ }
+  return e;
+}
+const spInflight = new Map();
+function spRefresh(env, slug) {
+  if (spInflight.has(slug)) return spInflight.get(slug);
+  const pr = spFetch(env, slug).finally(() => spInflight.delete(slug));
+  spInflight.set(slug, pr);
+  return pr;
+}
+async function storePublicData(env, slug, ctx) {
+  const now = Date.now(), hit = spCache.get(slug);
+  if (hit && now - hit.t < SP_FRESH) return hit;
+  // كاش Cloudflare المشترك
+  if (!hit) {
+    try {
+      const c = await caches.default.match(spKey(slug));
+      if (c) {
+        const t = Number(c.headers.get('X-SP-Time')) || 0, text = await c.text();
+        if (now - t < SP_STALE) {
+          const e = { t, text, data: JSON.parse(text) };
+          spCache.set(slug, e);
+          if (now - t >= SP_FRESH) { const pr = spRefresh(env, slug).catch(() => null); if (ctx && ctx.waitUntil) ctx.waitUntil(pr); }
+          return e;
+        }
+      }
+    } catch (er) { /* منكمّل لـSupabase */ }
+  } else if (now - hit.t < SP_STALE) {
+    // نسخة قديمة بالذاكرة: منرجّعها فوراً ومنجدّد بالخلفية
+    const pr = spRefresh(env, slug).catch(() => null); if (ctx && ctx.waitUntil) ctx.waitUntil(pr);
+    return hit;
+  }
+  try { return await spRefresh(env, slug); }
+  catch (e) {
     if (hit && now - hit.t < 600000) return hit;
     return null;
   }
@@ -2102,9 +2142,9 @@ function storeLite(d, pid) {
   return Object.assign({}, d, { products: P.filter(p => keep.has(p.id)), lite: true, cat_counts: counts, total_products: P.length });
 }
 
-async function storePublicResponse(env, slug, url) {
+async function storePublicResponse(env, slug, url, ctx) {
   if (!/^[a-z0-9][a-z0-9-]{0,62}$/.test(slug)) return new Response('Not found', { status: 404 });
-  const e = await storePublicData(env, slug);
+  const e = await storePublicData(env, slug, ctx);
   if (!e) return new Response('{"error":"unavailable"}', { status: 503, headers: { 'Content-Type': 'application/json', 'Retry-After': '5', 'Cache-Control': 'no-store' } });
   if (url && url.searchParams.get('lite') && e.data && e.data.ok && Array.isArray(e.data.products)) {
     const pid = url.searchParams.get('p');
@@ -2118,13 +2158,13 @@ async function storePublicResponse(env, slug, url) {
   return new Response(e.text, { status: 200, headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'public, max-age=30, stale-while-revalidate=300', 'X-Robots-Tag': 'noindex' } });
 }
 
-async function serveStore(env, url, slug, primaryHost) {
+async function serveStore(env, url, slug, primaryHost, ctx) {
   const res = await env.ASSETS.fetch(new URL('/store.html', url.origin));
   let html = await res.text();
   const spUrl = url.pathname.startsWith('/portal-store/') ? '/portal-store/' + encodeURIComponent(slug) + '/_sp.json' : '/_sp.json';
   html = html.replace('<!--STORE_BOOT-->', '<!--SPD--><script>window.__STORE_SLUG__=' + JSON.stringify(slug) + ';window.__SP_URL__=' + JSON.stringify(spUrl) + ';</script>');
   try { // preload لصورة أول سلايد (عنصر الـ LCP) عشان تنطلب من أول الصفحة مش بعد ما توصل البيانات
-    const e = await Promise.race([storePublicData(env, slug), new Promise(r => setTimeout(() => r(null), 700))]); // ما بنأخّر الصفحة أكتر من 0.7ث لو الكاش بارد
+    const e = await Promise.race([storePublicData(env, slug, ctx), new Promise(r => setTimeout(() => r(null), 700))]); // ما بنأخّر الصفحة أكتر من 0.7ث لو الكاش بارد
     // بيانات أول شاشة جوّا الصفحة نفسها — بتوفّر طلب كامل قبل ما يبين أي شي (الكاملة بتنزل بالخلفية متل قبل)
     if (e && e.data && e.data.ok && Array.isArray(e.data.products)) {
       const pid = url.searchParams.get('p');
@@ -2570,7 +2610,7 @@ export default {
       if (host !== primary && (request.method === 'GET' || request.method === 'HEAD')) {
         return Response.redirect('https://' + primary + url.pathname + url.search, 301);
       }
-      if (url.pathname === '/_sp.json') return await storePublicResponse(env, slug, url);
+      if (url.pathname === '/_sp.json') return await storePublicResponse(env, slug, url, ctx);
       if (url.pathname === '/sitemap.xml') return await storeSitemap(env, slug, 'https://' + primary + '/');
       if (url.pathname === '/robots.txt') {
         return new Response('User-agent: *\nAllow: /\nSitemap: https://' + primary + '/sitemap.xml\n',
@@ -2586,10 +2626,10 @@ export default {
         if (hit === 'gone') return new Response('410 Gone', { status: 410, headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'public, max-age=86400' } });
         if (hit === 'home') return Response.redirect('https://' + url.hostname + '/', 301);
         if (hit) return Response.redirect('https://' + url.hostname + '/?p=' + hit, 301);
-        const shell = await serveStore(env, url, slug, primary);       // 404 حقيقي (مش 200) + بنعرض المتجر للزائر
+        const shell = await serveStore(env, url, slug, primary, ctx);       // 404 حقيقي (مش 200) + بنعرض المتجر للزائر
         return new Response(shell.body, { status: 404, headers: shell.headers });
       }
-      return await serveStore(env, url, slug, primary);
+      return await serveStore(env, url, slug, primary, ctx);
     }
 
     // 1.7) خريطة الموقع لمتجر على دومين المنصة: /portal-store/<slug>/sitemap.xml
@@ -2599,9 +2639,9 @@ export default {
       return await storeSitemap(env, sl, url.origin + '/portal-store/' + encodeURIComponent(sl));
     }
     const spj = url.pathname.match(/^\/portal-store\/([^/]+)\/_sp\.json$/);
-    if (spj) return await storePublicResponse(env, decodeURIComponent(spj[1]).toLowerCase(), url);
+    if (spj) return await storePublicResponse(env, decodeURIComponent(spj[1]).toLowerCase(), url, ctx);
     const spm = url.pathname.match(/^\/portal-store\/([^/]+)\/?$/);
-    if (spm && request.method === 'GET') return await serveStore(env, url, decodeURIComponent(spm[1]).toLowerCase());
+    if (spm && request.method === 'GET') return await serveStore(env, url, decodeURIComponent(spm[1]).toLowerCase(), null, ctx);
 
     // 2) طلب لملف حقيقي (فيه امتداد صريح متل .css / .js / .png) — نخدمه متل ما هو
     if (/\.[a-z0-9]{2,5}$/i.test(url.pathname)) {
