@@ -2073,10 +2073,48 @@ async function storePublicData(env, slug) {
     return null;
   }
 }
-async function storePublicResponse(env, slug) {
+// ---------- نسخة خفيفة من بيانات المتجر لأول رسم للصفحة ----------
+//  الصفحة الرئيسية بتحتاج بس: الأقسام (Hot / جديد / أحدث المنتجات)، أول صفحة من الشبكة،
+//  صورة لكل تصنيف، وعدد منتجات كل تصنيف. الباقي (~900 منتج) بينزل بالخلفية بعد ما تبين الصفحة.
+function storeLite(d, pid) {
+  const P = d.products || [], C = d.categories || [];
+  const keep = new Set(), add = p => keep.add(p.id);
+  P.filter(p => p.is_hot).slice(0, 48).forEach(add);
+  P.filter(p => p.is_new).slice(0, 48).forEach(add);
+  P.filter(p => !p.is_new).slice().sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)) || ((b.sort || 0) - (a.sort || 0)))
+    .slice(0, 48).forEach(add);
+  P.slice(0, 24).forEach(add);
+  if (pid) P.filter(p => p.id === pid).forEach(add);
+  // عدد منتجات كل تصنيف (مع فروعه) — نفس حساب catCount بالصفحة
+  const byId = {}, kids = {};
+  C.forEach(c => { byId[c.id] = c; });
+  C.forEach(c => { if (c.parent_id && byId[c.parent_id]) (kids[c.parent_id] = kids[c.parent_id] || []).push(c.id); });
+  const pc = p => (p.category_ids && p.category_ids.length) ? p.category_ids : (p.category_id ? [p.category_id] : []);
+  const counts = {};
+  C.forEach(c => {
+    const ids = new Set([c.id]), q = [c.id]; let g = 0;
+    while (q.length && g++ < 80) (kids[q.shift()] || []).forEach(k => { if (!ids.has(k)) { ids.add(k); q.push(k); } });
+    let n = 0, first = null;
+    for (const p of P) if (pc(p).some(x => ids.has(x))) { n++; if (!first) first = p; }
+    counts[c.id] = n;
+    if (first && (!c.parent_id || !byId[c.parent_id])) add(first);   // صورة بطاقة التصنيف
+  });
+  return Object.assign({}, d, { products: P.filter(p => keep.has(p.id)), lite: true, cat_counts: counts, total_products: P.length });
+}
+
+async function storePublicResponse(env, slug, url) {
   if (!/^[a-z0-9][a-z0-9-]{0,62}$/.test(slug)) return new Response('Not found', { status: 404 });
   const e = await storePublicData(env, slug);
   if (!e) return new Response('{"error":"unavailable"}', { status: 503, headers: { 'Content-Type': 'application/json', 'Retry-After': '5', 'Cache-Control': 'no-store' } });
+  if (url && url.searchParams.get('lite') && e.data && e.data.ok && Array.isArray(e.data.products)) {
+    const pid = url.searchParams.get('p');
+    let txt;
+    try {
+      if (pid && /^[0-9a-f-]{36}$/i.test(pid)) txt = JSON.stringify(storeLite(e.data, pid));
+      else txt = e.liteText || (e.liteText = JSON.stringify(storeLite(e.data)));
+    } catch (er) { txt = e.text; }    // أي خطأ: منرجّع النسخة الكاملة — الصفحة بتشتغل فيها عادي
+    return new Response(txt, { status: 200, headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'public, max-age=30, stale-while-revalidate=300', 'X-Robots-Tag': 'noindex' } });
+  }
   return new Response(e.text, { status: 200, headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'public, max-age=30, stale-while-revalidate=300', 'X-Robots-Tag': 'noindex' } });
 }
 
@@ -2522,7 +2560,7 @@ export default {
       if (host !== primary && (request.method === 'GET' || request.method === 'HEAD')) {
         return Response.redirect('https://' + primary + url.pathname + url.search, 301);
       }
-      if (url.pathname === '/_sp.json') return await storePublicResponse(env, slug);
+      if (url.pathname === '/_sp.json') return await storePublicResponse(env, slug, url);
       if (url.pathname === '/sitemap.xml') return await storeSitemap(env, slug, 'https://' + primary + '/');
       if (url.pathname === '/robots.txt') {
         return new Response('User-agent: *\nAllow: /\nSitemap: https://' + primary + '/sitemap.xml\n',
@@ -2551,7 +2589,7 @@ export default {
       return await storeSitemap(env, sl, url.origin + '/portal-store/' + encodeURIComponent(sl));
     }
     const spj = url.pathname.match(/^\/portal-store\/([^/]+)\/_sp\.json$/);
-    if (spj) return await storePublicResponse(env, decodeURIComponent(spj[1]).toLowerCase());
+    if (spj) return await storePublicResponse(env, decodeURIComponent(spj[1]).toLowerCase(), url);
     const spm = url.pathname.match(/^\/portal-store\/([^/]+)\/?$/);
     if (spm && request.method === 'GET') return await serveStore(env, url, decodeURIComponent(spm[1]).toLowerCase());
 
