@@ -2,9 +2,16 @@
 <html lang="ar" dir="rtl" data-theme="nova">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Store</title>
 <meta name="theme-color" content="#ffffff">
+<script>
+window.LIBANAPPS = {
+  SUPABASE_URL: 'https://moriwmhlgugmjzddwfgv.supabase.co',
+  SUPABASE_ANON_KEY: 'sb_publishable_ypfm_aulpcqBpeFpyD_7iw_mA4DNlR5'
+};
+</script>
+<link rel="preconnect" href="https://moriwmhlgugmjzddwfgv.supabase.co" crossorigin>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <style>
@@ -939,12 +946,12 @@ footer.ft{margin-top:clamp(50px,8vw,120px);background:var(--surface);border-top:
 .eq button{width:100%;height:36px;font-size:17px;color:#222529;display:grid;place-items:center;background:#fff}
 .eq button:hover{background:#f4f4f4}
 .eq span{display:grid;place-items:center;border-inline:1px solid var(--line);font-size:13.5px;font-weight:700}
-.eadd{width:100%;display:flex;align-items:center;justify-content:center;gap:7px;height:40px;background:var(--brand);color:#fff;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.01em;padding:0 8px;white-space:nowrap;transition:filter .15s}
+.eadd{width:100%;display:flex;align-items:center;justify-content:center;gap:7px;height:40px;background:#555;background:color-mix(in srgb,var(--brand) 82%,#000);color:#fff;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.01em;padding:0 8px;white-space:nowrap;transition:filter .15s}
 .eadd:hover{filter:brightness(1.15)}
 .eadd svg{width:17px;height:17px;stroke-width:2}
 .eadd.dis{background:#e7e7e7;color:#777;cursor:default}
 [data-theme="electro"] .ec .cb{padding:12px 4px 4px;align-items:center;text-align:center;gap:5px}
-[data-theme="electro"] .ec .pc{display:block;font-size:10.5px;color:#8a8f96;text-transform:uppercase;letter-spacing:.02em;font-weight:500;line-height:1.4}
+[data-theme="electro"] .ec .pc{display:block;font-size:10.5px;color:#5c616a;text-transform:uppercase;letter-spacing:.02em;font-weight:500;line-height:1.4}
 [data-theme="electro"] .ec .cb h3{font-size:13.5px;font-weight:500;min-height:2.8em;color:var(--text)}
 [data-theme="electro"] .ec:hover .cb h3{color:var(--brand)}
 [data-theme="electro"] .ec .stars{justify-content:center}
@@ -1091,6 +1098,7 @@ footer.ft{margin-top:clamp(50px,8vw,120px);background:var(--surface);border-top:
 </head>
 <body>
 <!--STORE_BOOT-->
+<script>(function(){var s=window.__STORE_SLUG__,C=window.LIBANAPPS;if(!s||!C||!window.fetch)return;window.__SP=fetch(C.SUPABASE_URL+"/rest/v1/rpc/store_public",{method:"POST",headers:{apikey:C.SUPABASE_ANON_KEY,Authorization:"Bearer "+C.SUPABASE_ANON_KEY,"Content-Type":"application/json"},body:JSON.stringify({p_slug:s})}).then(function(r){return r.ok?r.json():null}).catch(function(){return null});window.__SPS=s;})();</script>
 <div id="state" class="state"><div class="box"><div class="spin" role="status" aria-label="loading"></div></div></div>
 
 <div id="app" class="hidden">
@@ -1141,13 +1149,6 @@ footer.ft{margin-top:clamp(50px,8vw,120px);background:var(--surface);border-top:
 <div class="lb" id="lb"><img alt=""></div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-<script>
-window.LIBANAPPS = {
-  SUPABASE_URL: 'https://moriwmhlgugmjzddwfgv.supabase.co',
-  SUPABASE_ANON_KEY: 'sb_publishable_ypfm_aulpcqBpeFpyD_7iw_mA4DNlR5'
-};
-</script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.0/dist/umd/supabase.min.js"></script>
 <script>
 (function(){
 "use strict";
@@ -1293,7 +1294,8 @@ function ssSet(k,v){try{sessionStorage.setItem(k,v)}catch(e){}}
 var tt; function toast(m){var t=$('#toast');t.textContent=m;t.classList.add('on');clearTimeout(tt);tt=setTimeout(function(){t.classList.remove('on')},2400)}
 function fillT(s,o){return String(s).replace(/\{(\w+)\}/g,function(m,k){return o&&o[k]!==undefined?o[k]:m})}
 
-var sb=null, S=null, CATS=[], PRODS=[], SLIDES=[], BANNERS=[], POP=null, PAGES=[], byId={}, catById={}, newShown=16, latShown=16;
+function rpc(fn,args){var C=window.LIBANAPPS;return fetch(C.SUPABASE_URL+'/rest/v1/rpc/'+fn,{method:'POST',headers:{apikey:C.SUPABASE_ANON_KEY,Authorization:'Bearer '+C.SUPABASE_ANON_KEY,'Content-Type':'application/json'},body:JSON.stringify(args||{})}).then(function(r){return r.json().catch(function(){return null}).then(function(j){return r.ok?{data:j,error:null}:{data:null,error:j||{message:'http '+r.status}}})}).catch(function(e){return {data:null,error:e}});}
+var S=null, CATS=[], PRODS=[], SLIDES=[], BANNERS=[], POP=null, PAGES=[], byId={}, catById={}, newShown=16, latShown=16;
 var L='ar', T=I18N.ar;
 var F0=function(){return {sale:false,isnew:false,instock:false,sizes:[],colors:[],brands:[],min:'',max:''}};
 var view={cat:'all',multi:null,q:'',sort:'def',f:F0(),mode:'home'};
@@ -1441,8 +1443,7 @@ function metaSet(sel,attr,val){var e=$(sel);if(!e){e=document.createElement('met
 async function boot(){
   var slug=slugFromUrl(); var pre=lsGet('lang:'+slug); setLang(pre==='en'?'en':'ar');
   if(!slug){applyTheme('nova');showState('notfound');return;}
-  try{sb=window.supabase.createClient(window.LIBANAPPS.SUPABASE_URL,window.LIBANAPPS.SUPABASE_ANON_KEY);}catch(e){applyTheme('nova');showState('err');return;}
-  var r; try{r=await sb.rpc('store_public',{p_slug:slug});}catch(e){r={error:e};}
+  var r; try{var pre0=(window.__SPS===slug&&window.__SP)?await window.__SP:null; r=pre0?{data:pre0}:await rpc('store_public',{p_slug:slug});}catch(e){r={error:e};}
   if(r.error||!r.data){applyTheme('nova');showState('err');return;}
   var d=r.data;
   if(!d.ok){
@@ -1612,7 +1613,7 @@ function renderBanners(){
   sec.classList.remove('hidden'); var box=$('#bnrIn'); box.style.setProperty('--bn',bs.length);
   box.innerHTML=bs.map(function(x){
     var go=slideGo(x), cap=x.title?'<span class="cap">'+esc(x.title)+'</span>':'';
-    return '<a class="bn'+(go?'':' nolink')+'" '+(go?'href="#shop" data-slk="'+esc(go)+'"':'')+'><img alt="'+esc(x.title||'')+'" loading="lazy" decoding="async"'+imgs(x.image_url,[480,800],'(min-width:720px) 33vw, 100vw')+'>'+cap+'</a>';
+    return '<a class="bn'+(go?'':' nolink')+'" aria-label="'+esc(x.title||S.name||'')+'" '+(go?'href="#shop" data-slk="'+esc(go)+'"':'')+'><img alt="'+esc(x.title||'')+'" loading="lazy" decoding="async"'+imgs(x.image_url,[480,800],'(min-width:720px) 33vw, 100vw')+'>'+cap+'</a>';
   }).join('');
 }
 function goSlide(i){
@@ -1696,7 +1697,7 @@ function cardElectro(p){
     needs?'<div class="eact"><button class="eadd" type="button" data-qa="'+esc(p.id)+'">'+IC.arrow+'<span>'+esc(T.selectOpts)+'</span></button></div>':
     '<div class="eact"><div class="eq"><button type="button" data-eq="-1" aria-label="-">−</button><span>1</span><button type="button" data-eq="1" aria-label="+">+</button></div><button class="eadd" type="button" data-eadd="'+esc(p.id)+'">'+IC.bag+'<span>'+esc(T.add)+'</span></button></div>';
   var cats=catChain(primaryCat(p)).map(function(c){return esc(tx(c,'name'))}).join(', ');
-  return '<article class="card ec'+(so?' sold':'')+'" data-id="'+esc(p.id)+'" tabindex="0" role="link" aria-label="'+esc(n)+'"><div class="ph">'+im+im2+bd+(so?'<span class="bd so">'+esc(T.sold)+'</span>':'')+tools+'</div>'+act+
+  return '<article class="card ec'+(so?' sold':'')+'" data-id="'+esc(p.id)+'" tabindex="0" role="link"><div class="ph">'+im+im2+bd+(so?'<span class="bd so">'+esc(T.sold)+'</span>':'')+tools+'</div>'+act+
     '<div class="cb">'+(cats?'<span class="pc">'+cats+'</span>':'')+'<h3>'+esc(n)+'</h3>'+((p.rating_count)?stars(p.rating_avg,p.rating_count):stars(0,1,true))+
     '<div class="pr'+(sale?' sl':'')+'">'+(varPrice(p)?'<small class="fr">'+esc(T.fromL)+'</small>':'')+'<b>'+money(p.price)+'</b>'+(sale?'<s>'+money(p.compare_price)+'</s>':'')+'</div></div></article>';
 }
@@ -1711,7 +1712,7 @@ function cardHTML(p){
   var qsz=(!so&&sizes.length&&S.theme!=='pulse')?'<div class="qsz">'+sizes.slice(0,8).map(function(s){return '<button type="button" data-qsz="'+esc(p.id)+'" data-size="'+esc(s.n)+'"'+(sizeAvail(s)?'':' disabled')+'>'+esc(s.n)+'</button>'}).join('')+'</div>':'';
   var sws=hasColors(p)?'<div class="sws">'+p.colors.slice(0,5).map(function(c){return '<i title="'+esc(c.n)+'" style="background:'+esc(/^#[0-9a-f]{3,8}$/i.test(c.h||'')?c.h:'#ccc')+'"></i>'}).join('')+(p.colors.length>5?'<small>+'+(p.colors.length-5)+'</small>':'')+'</div>':'';
   var specs=(S.store_type==='electronics'&&p.specs&&p.specs.length)?'<div class="chips-s">'+p.specs.slice(0,2).map(function(s){return '<span>'+esc(s.v||s.k)+'</span>'}).join('')+'</div>':'';
-  return '<article class="card'+(so?' sold':'')+'" data-id="'+esc(p.id)+'" tabindex="0" role="link" aria-label="'+esc(n)+'">'+
+  return '<article class="card'+(so?' sold':'')+'" data-id="'+esc(p.id)+'" tabindex="0" role="link">'+
     '<div class="ph">'+im+im2+bd+(so?'<span class="bd so">'+esc(T.sold)+'</span>':'')+
     '<button class="wl" type="button" data-wl="'+esc(p.id)+'" aria-pressed="'+(wish.indexOf(p.id)>=0)+'" aria-label="'+esc(T.wishT)+'">'+IC.heart+'</button>'+qsz+(S.theme==='pulse'?'':qa)+'</div>'+
     '<div class="cb">'+(catById[p.category_id]?'<span class="pc">'+esc(tx(catById[p.category_id],'name'))+'</span>':'')+(p.brand?'<span class="br">'+esc(p.brand)+'</span>':'')+'<h3>'+esc(n)+'</h3>'+((S.theme==='electro'&&!p.rating_count)?stars(0,1,true):stars(p.rating_avg,p.rating_count))+sws+specs+
@@ -1864,7 +1865,7 @@ function allCatsOf(p){ var seen={},out=[]; pcats(p).forEach(function(id){catChai
 function loadDesc(p){
   if(p._dd||p._dl||p.desc_ar!==undefined||p.desc_en!==undefined){p._dd=1;return;}
   p._dl=1;
-  sb.rpc('store_product_detail',{p_slug:S.slug,p_id:p.id}).then(function(r){
+  rpc('store_product_detail',{p_slug:S.slug,p_id:p.id}).then(function(r){
     if(r.data){p.desc_ar=r.data.desc_ar||'';p.desc_en=r.data.desc_en||'';} else {p.desc_ar='';p.desc_en='';}
     p._dd=1; if(curP&&curP.id===p.id){var w=$('#pvw'),st=w.scrollTop; renderPV(); w.scrollTop=st;}
   });
@@ -1951,7 +1952,7 @@ function renderTab(){
 }
 async function loadReviews(p){
   if(!S.reviews_enabled||reviewsCache[p.id]) return;
-  try{var r=await sb.rpc('store_reviews',{p_slug:S.slug,p_product:p.id}); reviewsCache[p.id]=r.data||[];}catch(e){reviewsCache[p.id]=[];}
+  try{var r=await rpc('store_reviews',{p_slug:S.slug,p_product:p.id}); reviewsCache[p.id]=r.data||[];}catch(e){reviewsCache[p.id]=[];}
   if(curP&&curP.id===p.id&&pvTab==='rev') renderReviews();
 }
 var rvStars=5;
@@ -2015,7 +2016,7 @@ function calc(){
 }
 async function applyCoupon(code){
   var c=calc(); code=String(code||'').trim(); if(!code) return null;
-  var r; try{r=await sb.rpc('check_store_coupon',{p_slug:S.slug,p_code:code,p_subtotal:c.sub});}catch(e){r={error:e};}
+  var r; try{r=await rpc('check_store_coupon',{p_slug:S.slug,p_code:code,p_subtotal:c.sub});}catch(e){r={error:e};}
   var d=r.data;
   if(r.error||!d||!d.ok){var why=d&&d.reason;
     return {ok:false,msg:why==='expired'?T.couponExp:why==='used_up'?T.couponUsed:why==='min_order'?fillT(T.couponMin,{n:fmt(d.min)}):T.couponBad};}
@@ -2119,7 +2120,7 @@ async function placeOrder(){
   busy=true; var btn=$('#coBtn'); btn.disabled=true; btn.textContent=T.sending;
   var lines=cart.map(function(l){return {id:l.id,qty:l.q,size:l.size||'',color:l.color||''}});
   var r; try{
-    r=await sb.rpc('store_place_order',{p_slug:S.slug,p_name:form.name,p_phone:form.phone,p_email:form.email,p_method:method,p_zone:zone||'',
+    r=await rpc('store_place_order',{p_slug:S.slug,p_name:form.name,p_phone:form.phone,p_email:form.email,p_method:method,p_zone:zone||'',
       p_city:form.city,p_address:form.address,p_note:form.note,p_payment:pay,p_coupon:coupon?coupon.code:'',p_lines:lines});
   }catch(e){r={error:e};}
   busy=false; btn.disabled=false; btn.textContent=T.confirm;
@@ -2146,7 +2147,7 @@ async function placeOrder(){
   drawerView='done'; renderDrawer();
 }
 async function refreshStockHint(){
-  try{var r=await sb.rpc('store_public',{p_slug:S.slug}); if(r.data&&r.data.ok){PRODS=r.data.products||PRODS;byId={};PRODS.forEach(function(p){byId[p.id]=p});renderShop();}}catch(e){}
+  try{var r=await rpc('store_public',{p_slug:S.slug}); if(r.data&&r.data.ok){PRODS=r.data.products||PRODS;byId={};PRODS.forEach(function(p){byId[p.id]=p});renderShop();}}catch(e){}
 }
 async function showPayResult(token){
   lastOrder={paid:false,failed:false}; drawerView='payres'; renderDrawer(); $('#ovC').classList.add('on'); if(!openCart.on){lock(true);openCart.on=true;}
@@ -2154,7 +2155,7 @@ async function showPayResult(token){
   async function poll(){
     tries++; var d=null;
     try{var r=await fetch('/api/store/pay/verify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:token})}); d=await r.json();}catch(e){}
-    if(!d||!d.ok){ try{var rr=await sb.rpc('store_order_status',{p_token:token}); d=rr.data?{ok:true,status:rr.data.status,paid:rr.data.status==='paid',order_no:rr.data.order_no}:null;}catch(e){} }
+    if(!d||!d.ok){ try{var rr=await rpc('store_order_status',{p_token:token}); d=rr.data?{ok:true,status:rr.data.status,paid:rr.data.status==='paid',order_no:rr.data.order_no}:null;}catch(e){} }
     if(d&&d.ok){
       lastOrder={paid:!!d.paid,failed:false,order_no:d.order_no};
       if(d.paid||d.status==='failed'||d.status==='cancelled'||tries>=5){ if(!d.paid) lastOrder.failed=true; renderDrawer(); if(d.paid){cart=[];saveCart();syncCounts();} return; }
@@ -2367,12 +2368,12 @@ document.addEventListener('focusin',function(e){ if(e.target.id==='sbIn'&&e.targ
 document.addEventListener('submit',async function(e){
   var f=e.target; e.preventDefault();
   if(f.id==='nlF'){var em=f.elements[0].value.trim(), m=$('#nlM'); m.className='note';
-    try{var r=await sb.rpc('store_subscribe',{p_slug:S.slug,p_email:em}); if(r.error) throw r.error; m.classList.add('ok');m.textContent=T.subsOk;f.reset();}catch(x){m.classList.add('no');m.textContent=T.subsBad;} return;}
+    try{var r=await rpc('store_subscribe',{p_slug:S.slug,p_email:em}); if(r.error) throw r.error; m.classList.add('ok');m.textContent=T.subsOk;f.reset();}catch(x){m.classList.add('no');m.textContent=T.subsBad;} return;}
   if(f.id==='rvF'){var p=curP; if(!p) return;
-    try{var r2=await sb.rpc('store_add_review',{p_slug:S.slug,p_product:p.id,p_name:f.elements.n.value,p_rating:rvStars,p_body:f.elements.b.value});
+    try{var r2=await rpc('store_add_review',{p_slug:S.slug,p_product:p.id,p_name:f.elements.n.value,p_rating:rvStars,p_body:f.elements.b.value});
       if(r2.error) throw r2.error; toast(r2.data&&r2.data.approved?T.revOk2:T.revOk); f.reset(); delete reviewsCache[p.id]; loadReviews(p);}catch(x){toast(T.err);} return;}
   if(f.id==='trF'){var res=false;
-    try{var r3=await sb.rpc('store_track_order',{p_slug:S.slug,p_order_no:f.elements.no.value,p_phone:f.elements.ph.value}); if(r3.data&&r3.data.ok) res=r3.data;}catch(x){}
+    try{var r3=await rpc('store_track_order',{p_slug:S.slug,p_order_no:f.elements.no.value,p_phone:f.elements.ph.value}); if(r3.data&&r3.data.ok) res=r3.data;}catch(x){}
     openModal(trackHTML(res)); return;}
 });
 document.addEventListener('keydown',function(e){
