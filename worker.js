@@ -2085,23 +2085,8 @@ async function serveStore(env, url, slug, primaryHost) {
   let html = await res.text();
   const spUrl = url.pathname.startsWith('/portal-store/') ? '/portal-store/' + encodeURIComponent(slug) + '/_sp.json' : '/_sp.json';
   html = html.replace('<!--STORE_BOOT-->', '<script>window.__STORE_SLUG__=' + JSON.stringify(slug) + ';window.__SP_URL__=' + JSON.stringify(spUrl) + ';</script>');
-  // بيانات المتجر بتنطلب مع أول بايتات الصفحة، مش بعد ما يخلص تحميل الـHTML كلو (نفس طلب fetch تبع الصفحة → ما بتنطلب مرتين)
-  html = html.replace('<meta charset="utf-8">', () => '<meta charset="utf-8">\n<link rel="preload" href="' + attrEsc(spUrl) + '" as="fetch" crossorigin>');
   try { // preload لصورة أول سلايد (عنصر الـ LCP) عشان تنطلب من أول الصفحة مش بعد ما توصل البيانات
     const e = await Promise.race([storePublicData(env, slug), new Promise(r => setTimeout(() => r(null), 700))]); // ما بنأخّر الصفحة أكتر من 0.7ث لو الكاش بارد
-    const st0 = e && e.data && e.data.ok && e.data.store;
-    // خطوط الثيم بتنطلب من أول الصفحة (بدون ما توقف الرسم) بدل ما تستنى وصول البيانات
-    if (st0 && !url.searchParams.get('theme')) {
-      const fontQ = (key, re) => { const m = html.match(re); return m ? m[1] : ''; };
-      const th = /^[a-z]+$/.test(st0.theme || '') ? st0.theme : 'nova';
-      const q1 = fontQ(th, new RegExp('\\n ' + th + ":'(family=[^']+)'")) || fontQ('nova', /\n nova:'(family=[^']+)'/);
-      const fp = /^[a-z]+$/.test(st0.font_pair || '') ? st0.font_pair : '';
-      const q2 = fp ? fontQ(fp, new RegExp('\\n ' + fp + ":\\{q:'(family=[^']+)'")) : '';
-      const link = (id, q) => `<link rel="preload" as="style" id="${id}" href="https://fonts.googleapis.com/css2?${attrEsc(q)}&display=swap" onload="this.onload=null;this.rel='stylesheet'">`;
-      let tags = q1 ? link('fontlink', q1) : '';
-      if (q2) tags += link('fontlink2', q2);
-      if (tags) html = html.replace('</head>', () => tags + '\n</head>');
-    }
     const s0 = e && e.data && e.data.ok && (e.data.slides || [])[0];
     const r0 = s0 && s0.image_url ? imgPath(s0.image_url) : '';
     if (r0.startsWith('/img/')) {
