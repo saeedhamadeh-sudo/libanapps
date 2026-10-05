@@ -1612,6 +1612,7 @@ async function storeHead(env, url, slug, primaryHost) {
       }).replace(/</g, '\\u003c') + '</script>';
     }
   }
+  if (!desc) desc = [st.name, st.tagline].filter(Boolean).join(' — ') || title;
   const tags = [
     desc ? `<meta name="description" content="${attrEsc(desc)}">` : '',
     `<link rel="canonical" href="${attrEsc(canon)}">`,
