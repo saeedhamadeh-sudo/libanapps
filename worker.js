@@ -2122,9 +2122,19 @@ async function serveStore(env, url, slug, primaryHost) {
   const res = await env.ASSETS.fetch(new URL('/store.html', url.origin));
   let html = await res.text();
   const spUrl = url.pathname.startsWith('/portal-store/') ? '/portal-store/' + encodeURIComponent(slug) + '/_sp.json' : '/_sp.json';
-  html = html.replace('<!--STORE_BOOT-->', '<script>window.__STORE_SLUG__=' + JSON.stringify(slug) + ';window.__SP_URL__=' + JSON.stringify(spUrl) + ';</script>');
+  html = html.replace('<!--STORE_BOOT-->', '<!--SPD--><script>window.__STORE_SLUG__=' + JSON.stringify(slug) + ';window.__SP_URL__=' + JSON.stringify(spUrl) + ';</script>');
   try { // preload لصورة أول سلايد (عنصر الـ LCP) عشان تنطلب من أول الصفحة مش بعد ما توصل البيانات
     const e = await Promise.race([storePublicData(env, slug), new Promise(r => setTimeout(() => r(null), 700))]); // ما بنأخّر الصفحة أكتر من 0.7ث لو الكاش بارد
+    // بيانات أول شاشة جوّا الصفحة نفسها — بتوفّر طلب كامل قبل ما يبين أي شي (الكاملة بتنزل بالخلفية متل قبل)
+    if (e && e.data && e.data.ok && Array.isArray(e.data.products)) {
+      const pid = url.searchParams.get('p');
+      let lt = null;
+      try { lt = (pid && /^[0-9a-f-]{36}$/i.test(pid)) ? JSON.stringify(storeLite(e.data, pid)) : (e.liteText || (e.liteText = JSON.stringify(storeLite(e.data)))); } catch (er) { lt = null; }
+      if (lt) {
+        const safe = lt.replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
+        html = html.replace('<!--SPD-->', () => '<script>window.__SPD__=' + safe + ';</script>');
+      }
+    }
     const s0 = e && e.data && e.data.ok && (e.data.slides || [])[0];
     const r0 = s0 && s0.image_url ? imgPath(s0.image_url) : '';
     if (r0.startsWith('/img/')) {
