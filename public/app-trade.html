@@ -7006,11 +7006,13 @@ function openWarehouseItemModal(item, presetBarcode, opts){
         <input type="file" id="wm_image" accept="image/*" style="flex:1;">
       </div>
     </div>`;
+  const curStock = item ? currentStock(item.id) : 0;
   const qtyFields = (isNew && !opts.onSaved)? `
     <div class="grid grid-2">
       <div class="field"><label>الكمية ${auto?'المتوفرة':'*'}</label><input type="number" id="wm_qty" class="num" value="${auto?'':'0'}" placeholder="0"></div>
       <div class="field"><label>التاريخ</label><input type="date" id="wm_date" value="${todayISO()}"></div>
-    </div>` : '';
+    </div>` : (!isNew ? `
+    <div class="field"><label>الكمية الحالية في المستودع (عدّلها لتصحيح الجرد)</label><input type="number" step="any" id="wm_qty" class="num" value="${curStock}"></div>` : '');
   const prodExpFields = `<div class="grid grid-2">
       <div class="field"><label>تاريخ الإنتاج</label><input type="date" id="wm_prod_date" value="${escapeHtml(v('productionDate'))}"></div>
       <div class="field" data-cats="${auto?'batteries,oils':''}"><label>تاريخ الانتهاء / الصلاحية</label><input type="date" id="wm_exp_date" value="${escapeHtml(v('expiryDate'))}"></div>
@@ -7071,7 +7073,8 @@ function openWarehouseItemModal(item, presetBarcode, opts){
     </div>
 
     <div class="grid grid-3">
-      ${(isNew && !opts.onSaved)? `<div class="field"><label>الكمية</label><input type="number" id="wm_qty" class="num" placeholder="0"></div>` : ''}
+      ${(isNew && !opts.onSaved)? `<div class="field"><label>الكمية</label><input type="number" id="wm_qty" class="num" placeholder="0"></div>`
+        : (!isNew ? `<div class="field"><label>الكمية (تعديل الجرد)</label><input type="number" step="any" id="wm_qty" class="num" value="${curStock}"></div>` : '')}
       <div class="field"><label>وحدة القياس</label>
         <input type="text" id="wm_uom" list="wm_uom_list" value="${escapeHtml(v('uom'))}" placeholder="حبة، طقم، كرتون، لتر">
         <datalist id="wm_uom_list">${uoms.map(c=>`<option value="${escapeHtml(c)}">`).join('')}</datalist>
@@ -7260,11 +7263,24 @@ function openWarehouseItemModal(item, presetBarcode, opts){
       go(`#/warehouse-item/${it.id}`);
     } else {
       if(dup){ toast(`هذا الباركود مستخدم للمنتج «${dup.name}» — لا يمكن تكرار الباركود`); return; }
+      const qtyEl = $('#wm_qty');
+      const newQty = qtyEl && qtyEl.value.trim()!=='' ? Number(qtyEl.value) : null;
+      if(newQty!==null && !Number.isFinite(newQty)){ toast('الكمية غير صحيحة'); return; }
       Object.assign(item, d);
       if(auto) ITEM_EXTRA_KEYS.forEach(k=>{ if(d[k]==='' || (Array.isArray(d[k]) && !d[k].length)) delete item[k]; });
-      const ok = await save(KEYS.warehouseItems, DB.warehouseItems);
+      const saves = [save(KEYS.warehouseItems, DB.warehouseItems)];
+      // تعديل الكمية: نسجّل حركة تسوية (إضافة أو سحب) بالفرق، فيبقى كشف حركة الصنف صحيحاً
+      const diff = newQty===null ? 0 : Math.round((newQty - currentStock(item.id))*1000)/1000;
+      if(diff>0){
+        DB.stockIns.push({id:uid(), createdAt:Date.now(), itemId:item.id, qty:diff, date:todayISO(), number:nextStockInNumber(), note:'تعديل الكمية (جرد)'});
+        saves.push(save(KEYS.stockIns, DB.stockIns));
+      } else if(diff<0){
+        DB.stockOuts.push({id:uid(), createdAt:Date.now(), itemId:item.id, qty:-diff, date:todayISO(), number:nextStockOutNumber(), note:'تعديل الكمية (جرد)'});
+        saves.push(save(KEYS.stockOuts, DB.stockOuts));
+      }
+      const ok = (await Promise.all(saves)).every(Boolean);
       wrap.remove();
-      toast(ok? 'تم حفظ التعديلات' : 'حدث خطأ أثناء الحفظ');
+      toast(ok? ('تم حفظ التعديلات'+(diff? ' — الكمية الآن '+fmtQty(currentStock(item.id)) : '')) : 'حدث خطأ أثناء الحفظ');
       render();
     }
   });
