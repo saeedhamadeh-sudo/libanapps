@@ -697,7 +697,8 @@ function settingsToDb(s){
     workers_enabled: !!s.workersEnabled,
     // ترتيب الصفحة الرئيسية محفوظ داخل product_lists._ui (بدون عمود جديد)
     product_lists: Object.assign({}, s.productLists||{}, {_ui:{hubOrder: Array.isArray(s.hubOrder)? s.hubOrder : null,
-      vatRate: (s.vatRate===undefined || s.vatRate===null || s.vatRate==='') ? null : Number(s.vatRate)}})
+      vatRate: (s.vatRate===undefined || s.vatRate===null || s.vatRate==='') ? null : Number(s.vatRate),
+      businessTypeLocked: !!s.businessTypeLocked}})
   };
 }
 function applySettingsFromDb(row, base){
@@ -731,7 +732,8 @@ function applySettingsFromDb(row, base){
     workersEnabled: row.workers_enabled!=null? !!row.workers_enabled : base.workersEnabled,
     productLists: row.product_lists!=null? row.product_lists : base.productLists,
     hubOrder: (row.product_lists && row.product_lists._ui && Array.isArray(row.product_lists._ui.hubOrder)) ? row.product_lists._ui.hubOrder : base.hubOrder,
-    vatRate: (row.product_lists && row.product_lists._ui && row.product_lists._ui.vatRate!=null) ? Number(row.product_lists._ui.vatRate) : base.vatRate
+    vatRate: (row.product_lists && row.product_lists._ui && row.product_lists._ui.vatRate!=null) ? Number(row.product_lists._ui.vatRate) : base.vatRate,
+    businessTypeLocked: (row.product_lists && row.product_lists._ui && row.product_lists._ui.businessTypeLocked!=null) ? !!row.product_lists._ui.businessTypeLocked : base.businessTypeLocked
   };
 }
 async function syncSettingsToSupabase(settings){
@@ -1362,6 +1364,8 @@ const BUSINESS_TYPES = [
   {key:'auto', label:'محل إطارات وبطاريات وزيوت'}
 ];
 function isAutoShop(){ return DB.settings && DB.settings.businessType==='auto'; }
+// نوع النشاط يُثبَّت بعد أول حفظ (محل الإطارات المختار سابقاً يُعتبر مثبّتاً) — مشرف المنصة فقط يغيّره
+function businessTypeLocked(){ return !!(DB.settings && (DB.settings.businessTypeLocked || DB.settings.businessType==='auto')); }
 function daysSince(iso){
   if(!iso) return null;
   const d = new Date(iso+'T00:00:00'); if(isNaN(d)) return null;
@@ -5140,6 +5144,7 @@ function itemDocFormView(kind, doc, partyId, isReturn){
     <div id="itemsBody">
       ${d.items.map((it,idx)=>itemRow(it,idx)).join('')}
     </div>
+    ${isAutoShop() && kind==='purchase' && !d.isReturn && d.addToStock ? purchaseLineDatalists() : ''}
     <div class="add-item-row"><button class="btn btn-sm btn-primary" id="addItemBtn">+ إضافة سطر</button></div>
 
     <div class="field" style="max-width:220px"><label>حسم (اختياري) $</label><input type="number" id="f_discount" class="num" value="${d.discount||0}"></div>
@@ -5166,16 +5171,95 @@ function itemRowProductOptions(it, query){
   if(sel && !products.includes(sel)) products.unshift(sel);
   const label = p=>{
     const spec = [p.tireSize, p.amperage, p.viscosity, p.sku].filter(Boolean).join(' • ');
-    return p.name + (spec && !p.name.includes(spec)? ' — '+spec : '') + ' (المتوفر: '+fmtQty(currentStock(p.id))+')';
+    const showStock = !_itemDocDraft || _itemDocDraft.__kind==='purchase';   // فاتورة المبيعات لا تُظهر الكمية المتوفرة
+    return p.name + (spec && !p.name.includes(spec)? ' — '+spec : '') + (showStock? ' (المتوفر: '+fmtQty(currentStock(p.id))+')' : '');
   };
   return `<option value="">— اختر منتجًا من المستودع${it.cat? ' ('+escapeHtml(it.cat)+')':''} —</option>
     ${products.slice(0,300).map(p=>`<option value="${p.id}" data-name="${escapeHtml(p.name)}" ${it.productId===p.id?'selected':''}>${escapeHtml(label(p))}</option>`).join('')}`;
+}
+function applyPurchaseLineToProduct(w, it){
+  const setIf = (k, v)=>{ v = (v===undefined||v===null) ? '' : String(v).trim(); if(v!=='') w[k] = v; };
+  if(it.cat) w.category = it.cat;
+  ['sku','brand','madeIn','tireSize','amperage','oilType','viscosity','uom'].forEach(k=>setIf(k, it[k]));
+  if(it.barcode && !findItemByBarcode(it.barcode, w.id)) w.barcode = String(it.barcode).trim();
+  if(it.mfgYear && /^\d{4}$/.test(String(it.mfgYear))) w.mfgYear = String(it.mfgYear);
+  if(it.compatText) w.compat = String(it.compatText).split(/[،,]/).map(x=>x.trim()).filter(Boolean);
+  if(it.vatRate!=='' && it.vatRate!==undefined) w.vatRate = Number(it.vatRate);
+  if(it.margin!=='' && it.margin!==undefined && it.margin!==null) w.margin = Number(it.margin);
+  if(it.salePrice!=='' && it.salePrice!==undefined && Number(it.salePrice)>0) w.price = Number(it.salePrice);
+  if(!w.status) w.status = 'available';
+  if(!w.name || w.name==='منتج بدون اسم') w.name = String(it.desc||'').trim() || autoItemDisplayName({...w});
+}
+// اسم المنتج على فاتورة المبيعات: الاسم + سنة الصنع (قابل للتعديل)
+function salesLineDesc(w){
+  if(!w) return '';
+  return w.name + (isAutoShop() && w.mfgYear && !String(w.name).includes(String(w.mfgYear)) ? ' — سنة الصنع '+w.mfgYear : '');
+}
+// خانات بند فاتورة المشتريات (محل الإطارات) — نفس بيانات المنتج في المستودع
+const PLINE_FIELDS = ['barcode','sku','brand','madeIn','tireSize','amperage','oilType','viscosity','compatText','mfgYear','uom','vatRate','margin','salePrice'];
+function lineFromProduct(it, w){
+  it.barcode = w.barcode||''; it.sku = w.sku||''; it.brand = w.brand||''; it.madeIn = w.madeIn||'';
+  it.tireSize = w.tireSize||''; it.amperage = w.amperage||''; it.oilType = w.oilType||''; it.viscosity = w.viscosity||'';
+  it.compatText = (w.compat||[]).join('، '); it.mfgYear = w.mfgYear||''; it.uom = w.uom||'';
+  it.vatRate = itemVatRate(w); it.margin = (w.margin===undefined||w.margin===null)? '' : w.margin; it.salePrice = w.price||'';
+}
+function lineCostVat(it){
+  if(it.price===''||it.price===undefined||it.price===null) return null;
+  const vat = (it.vatRate===''||it.vatRate===undefined||it.vatRate===null) ? settingsVatRate() : Number(it.vatRate);
+  return Math.round(Number(it.price)*(1+vat/100)*100)/100;
+}
+function purchaseLineFieldsHtml(it){
+  const key = autoCategoryKey(it.cat);
+  const show = cats=>!key || key==='other' || cats.includes(key);
+  const dl = (listKey)=>`plist_${listKey}`;
+  const f = (field, label, opts={})=>`<div class="field"><label>${label}</label><input type="${opts.type||'text'}" ${opts.step?`step="${opts.step}"`:''} class="it-f ${opts.num===false?'':'num'}" data-f="${field}" ${opts.list?`list="${dl(opts.list)}"`:''} value="${escapeHtml(it[field]??'')}" placeholder="${opts.ph||''}" ${opts.ro?'readonly style="opacity:.85; font-weight:800;"':''}></div>`;
+  const cv = lineCostVat(it);
+  return `<div class="pline-fields" style="background:var(--paper); border:1px dashed var(--line); border-radius:10px; padding:10px; margin-bottom:10px;">
+    <div style="font-size:12px; font-weight:800; color:var(--bronze-deep); margin-bottom:6px;">بيانات المنتج في المستودع ${it.productId? '(تُحدَّث عند الحفظ)' : '(يُنشأ منتج جديد عند الحفظ)'}</div>
+    <div class="grid grid-3">
+      ${f('sku','كود المنتج (SKU)')}
+      ${f('barcode','الباركود')}
+      ${f('brand','الشركة المصنعة',{list:'brands', num:false})}
+    </div>
+    <div class="grid grid-3">
+      ${f('madeIn','بلد المنشأ',{list:'countries', num:false})}
+      ${show(['tires'])? f('tireSize','المقاس',{list:'tireSizes'}) : ''}
+      ${show(['batteries'])? f('amperage','السعة والأمبير',{list:'amps'}) : ''}
+      ${show(['oils'])? f('oilType','نوع الزيت',{list:'oilTypes', num:false}) : ''}
+      ${show(['oils'])? f('viscosity','اللزوجة',{list:'viscosities'}) : ''}
+      ${show(['parts','accessories'])? f('compatText','توافق المركبات (افصل بفاصلة)',{num:false, list:'carModels'}) : ''}
+      ${show(['tires','oils','parts','accessories'])? f('mfgYear','سنة الصنع',{type:'number', ph:String(new Date().getFullYear())}) : ''}
+      ${f('uom','وحدة القياس',{list:'uoms', num:false})}
+    </div>
+  </div>`;
+}
+function purchaseLinePricingHtml(it){
+  const cv = lineCostVat(it);
+  const f = (field, label, opts={})=>`<div class="field"><label>${label}</label><input type="number" step="0.01" class="it-f num" data-f="${field}" value="${escapeHtml(it[field]??'')}"></div>`;
+  return `<div class="pline-pricing" style="background:var(--paper); border:1px dashed var(--line); border-radius:10px; padding:10px; margin-bottom:10px;">
+    <div class="grid grid-3">
+      ${f('vatRate','TVA %')}
+      <div class="field"><label>التكلفة شامل الضريبة $</label><input type="text" class="it-costvat num" readonly style="opacity:.85; font-weight:800;" value="${cv===null?'':cv.toFixed(2)}"></div>
+      ${f('margin','هامش الربح %')}
+    </div>
+    <div class="grid grid-2">
+      ${f('salePrice','سعر البيع $ (تلقائي أو يدوي)')}
+    </div>
+  </div>`;
+}
+function purchaseLineDatalists(){
+  const lists = {brands:getProductList('brands'), countries:getProductList('countries'), tireSizes:getProductList('tireSizes'), amps:getProductList('amps'),
+    oilTypes:getProductList('oilTypes'), viscosities:getProductList('viscosities'), carModels:getProductList('carModels'),
+    uoms:Array.from(new Set([...DEFAULT_UOMS, ...DB.warehouseItems.map(x=>x.uom).filter(Boolean)]))};
+  return Object.keys(lists).map(k=>`<datalist id="plist_${k}">${lists[k].map(v=>`<option value="${escapeHtml(v)}">`).join('')}</datalist>`).join('');
 }
 function itemRow(it, idx){
   const computedTotal = Math.round((Number(it.qty)||0) * (Number(it.price)||0) * 100)/100;
   if(isAutoShop()){
     const d = _itemDocDraft || {};
     const canCreate = d.__kind==='purchase' && !d.isReturn;
+    const isPurch = d.__kind==='purchase' && !d.isReturn;
+    if(isPurch && it.vatRate===undefined) it.vatRate = settingsVatRate();
     return `<div class="item-card" data-idx="${idx}">
     <div class="item-card-head">
       <span>بند ${idx+1}</span>
@@ -5196,12 +5280,14 @@ function itemRow(it, idx){
         ${canCreate? `<button type="button" class="btn btn-sm btn-primary it-newprod" title="منتج جديد بكل بياناته">➕ منتج جديد</button>` : ''}
       </div>
     </div>
-    <div class="field"><label>اسم المنتج (يُملأ تلقائياً عند الاختيار)</label><input type="text" class="it-desc" value="${escapeHtml(it.desc)}" placeholder="اسم المنتج"></div>
+    <div class="field"><label>اسم المنتج ${d.__kind==='invoice'? '(يُملأ تلقائياً مع سنة الصنع — قابل للتعديل)' : '(يُملأ تلقائياً عند الاختيار)'}</label><input type="text" class="it-desc" value="${escapeHtml(it.desc)}" placeholder="اسم المنتج"></div>
+    ${isPurch && d.addToStock ? purchaseLineFieldsHtml(it) : ''}
     <div class="grid grid-3">
       <div class="field"><label>الكمية</label><input type="number" class="it-qty num" value="${it.qty}"></div>
-      <div class="field"><label>السعر الإفرادي $</label><input type="number" class="it-price num" value="${it.price}"></div>
+      <div class="field"><label>${isPurch? 'سعر التكلفة الإفرادي $' : 'السعر الإفرادي $'}</label><input type="number" class="it-price num" value="${it.price}"></div>
       <div class="field"><label>السعر الإجمالي $ (تلقائي)</label><input type="number" class="it-total num" value="${computedTotal}" disabled style="opacity:.75;"></div>
     </div>
+    ${isPurch && d.addToStock ? purchaseLinePricingHtml(it) : ''}
   </div>`;
   }
   const products = DB.warehouseItems.slice().sort((a,b)=>a.name.localeCompare(b.name,'ar'));
@@ -5458,9 +5544,15 @@ function settingsView(){
   `;
   const bizCard = `<div class="card">
     <h2><span class="dot"></span> 🏪 نوع النشاط والتبويبات</h2>
-    <div class="field" style="max-width:420px;"><label>نوع العمل الذي يُستعمل له البرنامج</label>
-      <select id="s_biz_type">${BUSINESS_TYPES.map(b=>`<option value="${b.key}" ${(s.businessType||'supermarket')===b.key?'selected':''}>${b.label}</option>`).join('')}</select>
-    </div>
+    ${businessTypeLocked() && !PLATFORM_ADMIN
+      ? `<div class="field" style="max-width:420px;"><label>نوع العمل الذي يُستعمل له البرنامج</label>
+          <div style="padding:10px 12px; border:1px solid var(--line); border-radius:8px; background:var(--paper); font-weight:800;">🔒 ${escapeHtml((BUSINESS_TYPES.find(b=>b.key===(s.businessType||'supermarket'))||BUSINESS_TYPES[0]).label)}</div>
+          <div style="font-size:11.5px; color:var(--ink-soft); margin-top:4px;">نوع النشاط ثابت بعد اختياره — لتغييره تواصل مع إدارة LibanApps.</div>
+        </div>`
+      : `<div class="field" style="max-width:420px;"><label>نوع العمل الذي يُستعمل له البرنامج ${PLATFORM_ADMIN? '<span style="font-size:11px; color:var(--bronze-deep);">(مشرف المنصة: يمكنك التغيير دائماً)</span>' : ''}</label>
+          <select id="s_biz_type">${BUSINESS_TYPES.map(b=>`<option value="${b.key}" ${(s.businessType||'supermarket')===b.key?'selected':''}>${b.label}</option>`).join('')}</select>
+          ${!PLATFORM_ADMIN? `<div style="font-size:11.5px; color:var(--debit); margin-top:4px;">⚠️ بعد الحفظ لا يمكن تغيير نوع النشاط.</div>` : ''}
+        </div>`}
     <p style="font-size:12px; color:var(--ink-soft); line-height:1.7;">«محل إطارات وبطاريات وزيوت» يفعّل خانات المنتج الخاصة (SKU، المقاس، DOT، الأمبير، اللزوجة، توافق المركبات، موقع التخزين، حد الطلب، سعر التكلفة...) وخانات الزيت في صفحة الزبون (العداد السابق وتاريخ الغيار).</p>
     <div class="field">
       <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
@@ -6071,7 +6163,16 @@ function bindEvents(){
 
   const saveBizBtn = document.getElementById('saveBizBtn');
   if(saveBizBtn) saveBizBtn.addEventListener('click', async ()=>{
-    DB.settings.businessType = document.getElementById('s_biz_type').value || 'supermarket';
+    const bizSel = document.getElementById('s_biz_type');
+    if(bizSel){
+      const newType = bizSel.value || 'supermarket';
+      if(!PLATFORM_ADMIN && !businessTypeLocked()){
+        const lbl = (BUSINESS_TYPES.find(b=>b.key===newType)||{}).label||newType;
+        if(!confirm('سيتم تثبيت نوع النشاط على «'+lbl+'» ولا يمكن تغييره لاحقاً. هل أنت متأكد؟')) return;
+      }
+      DB.settings.businessType = newType;
+      DB.settings.businessTypeLocked = true;
+    }
     DB.settings.workersEnabled = document.getElementById('s_workers_enabled').checked;
     const vatEl = document.getElementById('s_vat_rate');
     if(vatEl){
@@ -7250,6 +7351,12 @@ function bindItemDocFormEvents(){
         if(productSelect.value){
           const opt = productSelect.querySelector(`option[value="${productSelect.value}"]`);
           it.desc = opt ? opt.getAttribute('data-name') : it.desc;
+          const w0 = DB.warehouseItems.find(x=>x.id===productSelect.value);
+          if(w0 && _itemDocDraft.__kind==='invoice') it.desc = salesLineDesc(w0);
+          if(w0 && isAutoShop() && _itemDocDraft.__kind==='purchase' && !_itemDocDraft.isReturn){
+            lineFromProduct(it, w0);
+            if(Number(w0.costPrice)>0 && !(Number(it.price)>0)) it.price = Number(w0.costPrice);
+          }
           // تعبئة السعر تلقائياً إذا كان فارغاً: تكلفة للمشتريات، سعر بيع للفواتير
           const w = DB.warehouseItems.find(x=>x.id===productSelect.value);
           if(w && !(Number(it.price)>0)){
@@ -7269,6 +7376,36 @@ function bindItemDocFormEvents(){
       if(w && it.cat && autoCategoryKey(w.category)!==autoCategoryKey(it.cat)) it.productId = '';
       render();
     });
+    // خانات بيانات المنتج في بند المشتريات + التسعير (تكلفة + TVA + هامش = سعر بيع)
+    const r2 = n=>Math.round(n*100)/100;
+    const lineIt = ()=>_itemDocDraft.items[Number(tr.getAttribute('data-idx'))];
+    const setF = (field, val)=>{ const el = tr.querySelector(`.it-f[data-f="${field}"]`); if(el) el.value = val; };
+    const refreshPricing = (source)=>{
+      const it = lineIt();
+      const cv = lineCostVat(it);
+      const cvEl = tr.querySelector('.it-costvat'); if(cvEl) cvEl.value = cv===null? '' : cv.toFixed(2);
+      if(source==='salePrice'){
+        if(cv && it.salePrice!=='' && it.salePrice!==undefined){ it.margin = r2((Number(it.salePrice)/cv-1)*100); setF('margin', it.margin); }
+      } else if(it.margin!=='' && it.margin!==undefined && it.margin!==null && cv!==null){
+        it.salePrice = r2(cv*(1+Number(it.margin)/100)).toFixed(2); setF('salePrice', it.salePrice);
+      }
+    };
+    tr.querySelectorAll('.it-f').forEach(inp=>inp.addEventListener('input', ()=>{
+      const it = lineIt(); const field = inp.getAttribute('data-f');
+      it[field] = inp.value;
+      if(field==='barcode'){
+        const hit = findItemByBarcode(inp.value);
+        if(hit && hit.id!==it.productId && productSelect){
+          toast('الباركود موجود للمنتج «'+hit.name+'» — تم اختياره');
+          productSelect.innerHTML = itemRowProductOptions({...it, cat:''}, '');
+          productSelect.value = hit.id; it.cat = ''; productSelect.dispatchEvent(new Event('change'));
+          return;
+        }
+      }
+      if(['vatRate','margin','salePrice'].includes(field)) refreshPricing(field);
+    }));
+    const priceEl = tr.querySelector('.it-price');
+    if(priceEl && tr.querySelector('.pline-pricing')) priceEl.addEventListener('input', ()=>refreshPricing('price'));
     const pSearch = tr.querySelector('.it-psearch');
     if(pSearch && productSelect){
       let t = null;
@@ -7302,7 +7439,7 @@ function bindItemDocFormEvents(){
       if(it.cat) openWarehouseItemModal(null, null, Object.assign(opts, {category:it.cat}));
       else openAddItemChooser(cat=>openWarehouseItemModal(null, null, Object.assign(opts, {category:cat})));
     });
-    tr.querySelectorAll('input:not(.it-psearch)').forEach(inp=>{
+    tr.querySelectorAll('input:not(.it-psearch):not(.it-f):not(.it-costvat)').forEach(inp=>{
       inp.addEventListener('input', ()=>{
         recalcItemRow(tr);
         const idx = Number(tr.getAttribute('data-idx'));
@@ -7334,6 +7471,13 @@ function bindItemDocFormEvents(){
       const dupInv = DB[cfg.docArr].find(i=> i.number===_itemDocDraft.number && i.id!==_itemDocDraft.id);
       if(dupInv){ toast('رقم '+cfg.title+' هذا الرقم مستخدم لفاتورة أخرى — يجب أن يكون فريدًا'); return; }
     }
+    if(isAutoShop() && _itemDocDraft.__kind==='purchase' && !_itemDocDraft.isReturn){
+      _itemDocDraft.items.forEach(it=>{
+        if(String(it.desc||'').trim() || it.productId) return;
+        const hasData = ['sku','brand','tireSize','amperage','viscosity','oilType','barcode'].some(k=>String(it[k]||'').trim());
+        if(hasData) it.desc = autoItemDisplayName({category:it.cat, brand:it.brand, tireSize:it.tireSize, amperage:it.amperage, viscosity:it.viscosity, oilType:it.oilType, sku:it.sku, barcode:it.barcode});
+      });
+    }
     const hasItem = _itemDocDraft.items.some(it=>it.desc && Number(it.total)>0);
     if(!hasItem){ toast('أضف سطرًا واحدًا على الأقل يحتوي على وصف ومبلغ'); return; }
     let savedId;
@@ -7346,7 +7490,8 @@ function bindItemDocFormEvents(){
         if(it.productId || !String(it.desc||'').trim() || !(Number(it.qty)>0)) return;
         if(_itemDocDraft.isReturn) return;
         const nm = normalizeSearchText(it.desc);
-        let w = DB.warehouseItems.find(x=>normalizeSearchText(x.name)===nm);
+        let w = (it.barcode && findItemByBarcode(it.barcode)) || (isAutoShop() ? null : DB.warehouseItems.find(x=>normalizeSearchText(x.name)===nm));
+        if(!w && isAutoShop()) w = DB.warehouseItems.find(x=>normalizeSearchText(x.name)===nm && (!it.sku || x.sku===it.sku));
         if(!w){
           w = {id:uid(), createdAt:Date.now(), name:String(it.desc).trim(), brand:'', type:'', barcode:'', price:0, category:'', image:null,
                productionDate:'', expiryDate:'', expiryAlertDays:null, note:'', purchaseDate:_itemDocDraft.date};
@@ -7359,9 +7504,15 @@ function bindItemDocFormEvents(){
         _itemDocDraft.items.forEach(it=>{
           const w = it.productId && DB.warehouseItems.find(x=>x.id===it.productId);
           if(!w) return;
-          if(Number(it.price)>0){ w.costPrice = Number(it.price); repriceFromMargin(w); }
+          if(isAutoShop()) applyPurchaseLineToProduct(w, it);
+          if(Number(it.price)>0){ w.costPrice = Number(it.price); if(!(isAutoShop() && it.salePrice!=='' && it.salePrice!==undefined)) repriceFromMargin(w); }
           if(!w.supplierId) w.supplierId = _itemDocDraft.supplierId;
         });
+        if(isAutoShop()){
+          // القيم الجديدة المكتوبة يدوياً تُضاف إلى اللوائح
+          const listMap = {brand:'brands', madeIn:'countries', tireSize:'tireSizes', amperage:'amps', oilType:'oilTypes', viscosity:'viscosities'};
+          for(const it of _itemDocDraft.items){ for(const f in listMap){ const v = String(it[f]||'').trim(); if(v && !getProductList(listMap[f]).some(x=>normalizeSearchText(x)===normalizeSearchText(v))) await addToProductList(listMap[f], v); } }
+        }
       }
     }
     if(_itemDocDraft.id){
