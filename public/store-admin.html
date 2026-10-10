@@ -754,6 +754,18 @@ async function ensureProds(force){
 }
 function cName_(c){return (LANG==='en'?(c.name_en||c.name_ar):(c.name_ar||c.name_en))||''}
 LOADERS.categories=async function(){ try{await ensureCats(true);await ensureProds();}catch(e){return pageErr(e);} renderCats(); };
+function sysCat(){ return CATS.filter(function(c){return c.is_system})[0]||null; }
+async function ensureUncatCat(){
+  var c=sysCat(); if(c) return c.id;
+  var sort=(CATS.length?Math.max.apply(null,CATS.map(function(x){return x.sort||0}))+1:1);
+  var r=await sb.from('store_categories').insert({store_id:ST.id,name_ar:'منتجات بدون تصنيف',name_en:'Products without category',is_system:true,is_active:true,sort:sort}).select().single();
+  if(r.error){
+    var r2=await sb.from('store_categories').select('*').eq('store_id',ST.id).eq('is_system',true).limit(1);
+    if(r2.data&&r2.data[0]){ CATS.push(r2.data[0]); return r2.data[0].id; }
+    throw r.error;
+  }
+  CATS.push(r.data); return r.data.id;
+}
 var CAT_COLLAPSE={};
 function catAncestorCollapsed(c){
   var p=c.parent_id, g=0;
@@ -762,14 +774,14 @@ function catAncestorCollapsed(c){
 }
 function renderCats(){
   var tree=catTree();
-  viewEl().innerHTML='<div class="card"><div class="tools"><b>'+CATS.length+' '+L('تصنيف','categories')+'</b><span class="muted">'+L('الأسهم بترتّب بين إخوة نفس المستوى — التصنيفات الرئيسية بالأحمر والفرعية بالأسود','Arrows reorder within the same level — top categories in red, sub-categories in black')+'</span>'+(CATS.length?'<button class="btn dg sm" id="catDelAll">'+L('حذف الكل','Delete all')+'</button>':'')+'<button class="btn sp" id="cNew">+ '+L('تصنيف جديد','New category')+'</button></div>'+
+  viewEl().innerHTML='<div class="card"><div class="tools"><b>'+CATS.length+' '+L('تصنيف','categories')+'</b><span class="muted">'+L('الأسهم بترتّب بين إخوة نفس المستوى — التصنيفات الرئيسية بالأحمر والفرعية بالأسود','Arrows reorder within the same level — top categories in red, sub-categories in black')+'</span>'+(CATS.filter(function(c){return !c.is_system}).length?'<button class="btn dg sm" id="catDelAll">'+L('حذف الكل','Delete all')+'</button>':'')+'<button class="btn sp" id="cNew">+ '+L('تصنيف جديد','New category')+'</button></div>'+
     (CATS.length?'<div class="wrapx"><table class="tbl"><thead><tr><th></th><th>'+L('الاسم','Name')+'</th><th>'+L('المنتجات','Products')+'</th><th>'+L('الترتيب','Order')+'</th><th>'+L('الحالة','Status')+'</th><th></th></tr></thead><tbody>'+
     tree.filter(function(x){return !catAncestorCollapsed(x.c)}).map(function(x){ var c=x.c, sibs=tree.filter(function(y){return (y.c.parent_id||'')===(c.parent_id||'')}), si=sibs.findIndex(function(y){return y.c.id===c.id});
       var n=PRODS.filter(function(p){return pcatsA(p).indexOf(c.id)>=0}).length, kids=kidsOf(c.id), collapsed=!!CAT_COLLAPSE[c.id];
       var toggle=kids.length?'<button type="button" class="cattoggle" data-catfold="'+c.id+'" aria-label="'+(collapsed?L('إظهار الفرعية','Expand'):L('إخفاء الفرعية','Collapse'))+'">'+(collapsed?'▸':'▾')+'</button>':'<span class="cattoggle sp"></span>';
-      return '<tr><td>'+(c.image_url?'<img class="thumb" alt="" src="'+esc(thumbOf(c.image_url))+'">':'<div class="thumb" style="display:grid;place-items:center;color:var(--muted)">'+(c.icon?cicon(c.icon):'')+'</div>')+'</td><td style="padding-inline-start:'+(14+x.d*20)+'px"><div style="display:flex;align-items:center;gap:4px">'+toggle+'<div><b class="'+(x.d?'cat-sub':'cat-top')+'">'+(x.d?'↳ ':'')+esc(c.name_ar)+'</b>'+(kids.length?' <span class="muted" style="font-size:12px">('+kids.length+')</span>':'')+'<div class="muted" dir="ltr" style="text-align:start">'+esc(c.name_en||'')+'</div></div></div></td><td>'+n+'</td><td>'+c.sort+'</td>'+
+      return '<tr><td>'+(c.image_url?'<img class="thumb" alt="" src="'+esc(thumbOf(c.image_url))+'">':'<div class="thumb" style="display:grid;place-items:center;color:var(--muted)">'+(c.icon?cicon(c.icon):'')+'</div>')+'</td><td style="padding-inline-start:'+(14+x.d*20)+'px"><div style="display:flex;align-items:center;gap:4px">'+toggle+'<div><b class="'+(x.d?'cat-sub':'cat-top')+'">'+(x.d?'↳ ':'')+esc(c.name_ar)+'</b>'+(c.is_system?' <span class="tag off" title="'+L('تصنيف تلقائي لمنتجات بلا تصنيف — ما بينحذف','Automatic bucket for products with no category — cannot be deleted')+'">'+L('تلقائي','Auto')+'</span>':'')+(kids.length?' <span class="muted" style="font-size:12px">('+kids.length+')</span>':'')+'<div class="muted" dir="ltr" style="text-align:start">'+esc(c.name_en||'')+'</div></div></div></td><td>'+n+'</td><td>'+c.sort+'</td>'+
         '<td>'+(c.is_active?'<span class="tag">'+L('ظاهر','Visible')+'</span>':'<span class="tag off">'+L('مخفي','Hidden')+'</span>')+'</td>'+
-        '<td class="acts"><button class="btn alt ic sm" data-cmv="up" data-id="'+c.id+'"'+(si===0?' disabled':'')+'>▲</button><button class="btn alt ic sm" data-cmv="down" data-id="'+c.id+'"'+(si===sibs.length-1?' disabled':'')+'>▼</button><button class="btn alt sm" data-ce="'+c.id+'">'+L('تعديل','Edit')+'</button><button class="btn dg sm" data-cd="'+c.id+'">'+L('حذف','Delete')+'</button></td></tr>'}).join('')+'</tbody></table></div>'
+        '<td class="acts"><button class="btn alt ic sm" data-cmv="up" data-id="'+c.id+'"'+(si===0?' disabled':'')+'>▲</button><button class="btn alt ic sm" data-cmv="down" data-id="'+c.id+'"'+(si===sibs.length-1?' disabled':'')+'>▼</button><button class="btn alt sm" data-ce="'+c.id+'">'+L('تعديل','Edit')+'</button>'+(c.is_system?'':'<button class="btn dg sm" data-cd="'+c.id+'">'+L('حذف','Delete')+'</button>')+'</td></tr>'}).join('')+'</tbody></table></div>'
       :emptyBox('categories',L('ما في تصنيفات','No categories yet'),L('أنشئ تصنيفات ليتنظّم متجرك ويظهر قسم التصنيفات بالواجهة','Create categories to organize your store and show the category section')))+'</div>';
 }
 function catModal(id){
@@ -796,8 +808,8 @@ function catModal(id){
 /* ============================================================
    المنتجات
    ============================================================ */
-var pQ='', pCat='all', pe=null;
-LOADERS.products=async function(){ try{await Promise.all([ensureCats(),ensureProds(true),ensureBrands()]);}catch(e){return pageErr(e);} pe=null; renderProds(); };
+var pQ='', pCat='all', pe=null, pSel={};
+LOADERS.products=async function(){ try{await Promise.all([ensureCats(),ensureProds(true),ensureBrands()]);}catch(e){return pageErr(e);} pe=null; pSel={}; renderProds(); };
 function prodStock(p){
   if(p.sizes&&p.sizes.length){var on=p.sizes.filter(function(s){return s.on!==false}), off=p.sizes.length-on.length;
     var tot=on.every(function(s){return s.s!=null})?on.reduce(function(a,s){return a+Number(s.s||0)},0):null;
@@ -808,19 +820,44 @@ function renderProds(){
   var q=pQ.trim().toLowerCase();
   var list=PRODS.filter(function(p){ if(pCat!=='all'&&!pcatsA(p).some(function(c){return catDescIds(pCat).indexOf(c)>=0})) return false;
     if(q&&(p.name_ar+' '+p.name_en+' '+(p.brand||'')+' '+(p.sku||'')).toLowerCase().indexOf(q)<0) return false; return true;});
+  var listIds={}; list.forEach(function(p){listIds[p.id]=1;});
+  Object.keys(pSel).forEach(function(id){ if(!listIds[id]) delete pSel[id]; });
+  var selCount=Object.keys(pSel).length, allOn=list.length&&list.every(function(p){return pSel[p.id]});
   viewEl().innerHTML='<div class="card"><div class="tools"><input type="search" id="pQ" placeholder="'+L('بحث بالاسم أو الماركة أو الرمز…','Search name, brand or SKU…')+'" value="'+esc(pQ)+'">'+
     '<select id="pCatF"><option value="all">'+L('كل التصنيفات','All categories')+'</option>'+catOpts(pCat)+'</select>'+
     (pCat!=='all'&&!q?'<span class="chip info">'+L('رتّب المنتجات بالأسهم ▲▼','Reorder with ▲▼')+'</span>':'')+'<span class="muted">'+list.length+' '+L('منتج','products')+'</span>'+(PRODS.length?'<button class="btn dg sm" id="prodDelAll">'+L('حذف الكل','Delete all')+'</button>':'')+'<button class="btn sp" id="pNew">+ '+L('منتج جديد','New product')+'</button></div>'+
-    (list.length?'<div class="wrapx"><table class="tbl"><thead><tr><th>'+L('المنتج','Product')+'</th><th>'+L('السعر','Price')+'</th><th>'+L('المخزون','Stock')+'</th><th>'+L('الحالة','Status')+'</th><th></th></tr></thead><tbody>'+
+    (selCount?'<div class="tools" style="background:var(--chip,#f4f4f5);border-radius:8px;margin-top:8px;flex-wrap:wrap">'+
+      '<b>'+selCount+' '+L('منتج محدد','selected')+'</b>'+
+      '<select id="pBulkCat"><option value="">'+L('اختر تصنيف…','Choose category…')+'</option>'+catOpts('')+'</select>'+
+      '<button class="btn sp sm" id="pBulkApply">'+L('تعيين التصنيف','Assign category')+'</button>'+
+      '<button class="btn alt sm" id="pSelClear">'+L('إلغاء التحديد','Clear selection')+'</button>'+
+      '</div>':'')+
+    (list.length?'<div class="wrapx"><table class="tbl"><thead><tr><th><input type="checkbox" id="pSelAll"'+(allOn?' checked':'')+'></th><th>'+L('المنتج','Product')+'</th><th>'+L('السعر','Price')+'</th><th>'+L('المخزون','Stock')+'</th><th>'+L('الحالة','Status')+'</th><th></th></tr></thead><tbody>'+
     list.map(function(p,pi){
       var sale=Number(p.compare_price)>Number(p.price), mv=(pCat!=='all'&&!q);
-      return '<tr><td><div class="pcell">'+(p.image_url?'<img class="thumb" alt="" src="'+esc(thumbOf(p.image_url))+'">':'<div class="thumb"></div>')+'<div><b>'+esc(pName(p))+'</b><span class="muted">'+esc([p.brand,p.sku].filter(Boolean).join(' · '))+'</span></div></div></td>'+
+      return '<tr><td><input type="checkbox" class="pSelChk" data-id="'+p.id+'"'+(pSel[p.id]?' checked':'')+'></td><td><div class="pcell">'+(p.image_url?'<img class="thumb" alt="" src="'+esc(thumbOf(p.image_url))+'">':'<div class="thumb"></div>')+'<div><b>'+esc(pName(p))+'</b><span class="muted">'+esc([p.brand,p.sku].filter(Boolean).join(' · '))+'</span></div></div></td>'+
         '<td><b>'+esc(fm(p.price))+'</b>'+(sale?'<div class="muted" style="text-decoration:line-through">'+esc(fm(p.compare_price))+'</div>':'')+'</td><td>'+esc(prodStock(p))+'</td>'+
         '<td>'+(p.is_active?'<span class="tag">'+L('ظاهر','Live')+'</span>':'<span class="tag off">'+L('مخفي','Hidden')+'</span>')+(p.is_new?' <span class="tag new">'+L('جديد','New')+'</span>':'')+(p.is_hot?' <span class="tag hot">Hot</span>':'')+(sale?' <span class="tag low">Sale</span>':'')+'</td>'+
         '<td class="acts">'+(mv?'<button class="btn alt ic sm" data-pmv="up" data-id="'+p.id+'"'+(pi===0?' disabled':'')+'>▲</button><button class="btn alt ic sm" data-pmv="down" data-id="'+p.id+'"'+(pi===list.length-1?' disabled':'')+'>▼</button>':'')+'<button class="btn alt sm" data-pe="'+p.id+'">'+L('تعديل','Edit')+'</button><button class="btn alt sm" data-pdup="'+p.id+'">'+L('نسخ','Duplicate')+'</button><button class="btn dg sm" data-pd="'+p.id+'">'+L('حذف','Delete')+'</button></td></tr>'}).join('')+'</tbody></table></div>'
       :emptyBox('products',L('ما في منتجات','No products yet'),L('أضف أول منتج لمتجرك','Add your first product')))+'</div>';
   $('#pQ').oninput=function(){pQ=this.value;var p=this.selectionStart;renderProds();var n=$('#pQ');n.focus();n.setSelectionRange(p,p);};
   $('#pCatF').onchange=function(){pCat=this.value;renderProds();};
+  if($('#pSelAll')) $('#pSelAll').onchange=function(){var ck=this.checked; list.forEach(function(p){ if(ck) pSel[p.id]=1; else delete pSel[p.id]; }); renderProds();};
+  $$('.pSelChk').forEach(function(ch){ ch.onchange=function(){ if(this.checked) pSel[this.dataset.id]=1; else delete pSel[this.dataset.id]; renderProds(); }; });
+  if($('#pSelClear')) $('#pSelClear').onclick=function(){ pSel={}; renderProds(); };
+  if($('#pBulkApply')) $('#pBulkApply').onclick=async function(){
+    var catId=$('#pBulkCat').value; if(!catId){ alert(L('اختر تصنيف أولاً','Choose a category first')); return; }
+    var ids=Object.keys(pSel); if(!ids.length) return;
+    var cname=cName_(CATS.filter(function(c){return c.id===catId})[0]||{});
+    if(!confirmBox(L('تعيين تصنيف «'+cname+'» لـ '+ids.length+' منتج؟','Assign “'+cname+'” to '+ids.length+' product(s)?'))) return;
+    this.disabled=true;
+    try{
+      var ups=ids.map(function(id){ return sb.from('store_products').update({category_id:catId,category_ids:[catId]}).eq('id',id); });
+      var rs=await Promise.all(ups); var bad=rs.filter(function(r){return r.error});
+      if(bad.length){ alert(errTxt(bad[0].error)); } else toast(L('تم تعيين التصنيف','Category assigned'));
+      pSel={}; loaded.prods=0; await ensureProds(true); renderProds();
+    }catch(e){ alert(errTxt(e)); }
+  };
 }
 async function moveCat(id,dir){
   var tree=catTree(), c=CATS.filter(function(x){return x.id===id})[0]; if(!c) return;
@@ -2399,11 +2436,38 @@ document.addEventListener('click',function(e){
   if((el=t.closest('[data-ce]'))){catModal(el.dataset.ce);return;}
   if((el=t.closest('[data-cmv]'))){moveCat(el.dataset.id,el.dataset.cmv);return;}
   if(t.closest('#catDelAll')){
-    if(confirmBox(L('حذف كل التصنيفات ('+CATS.length+')؟ المنتجات بتضل موجودة بس بتصير بدون تصنيف. ما في تراجع.','Delete all categories ('+CATS.length+')? Products stay but become uncategorized. This cannot be undone.'))){
-      sb.from('store_categories').delete().eq('store_id',ST.id).then(function(r){ if(r.error){alert(errTxt(r.error));return;} CATS=[]; loaded.cats=0; toast(L('تم حذف كل التصنيفات','All categories deleted')); LOADERS.categories(); });
+    if(confirmBox(L('حذف كل التصنيفات ('+CATS.filter(function(c){return !c.is_system}).length+')؟ كل المنتجات بترجع لتصنيف «منتجات بدون تصنيف». ما في تراجع.','Delete all categories ('+CATS.filter(function(c){return !c.is_system}).length+')? All products will move to “Products without category”. This cannot be undone.'))){
+      (async function(){
+        try{
+          var rd=await sb.from('store_categories').delete().eq('store_id',ST.id).neq('is_system',true); if(rd.error) throw rd.error;
+          CATS=CATS.filter(function(c){return c.is_system});
+          var uc=await ensureUncatCat();
+          var ru=await sb.from('store_products').update({category_id:uc,category_ids:[uc]}).eq('store_id',ST.id); if(ru.error) throw ru.error;
+          loaded.cats=0; loaded.prods=0; toast(L('تم حذف كل التصنيفات','All categories deleted'));
+          await Promise.all([ensureCats(true),ensureProds(true)]); renderCats();
+        }catch(e){ alert(errTxt(e)); }
+      })();
     } return;}
   if((el=t.closest('[data-catfold]'))){CAT_COLLAPSE[el.dataset.catfold]=!CAT_COLLAPSE[el.dataset.catfold];renderCats();return;}
-  if((el=t.closest('[data-cd]'))){if(confirmBox(L('حذف التصنيف؟ المنتجات بتبقى بدون تصنيف.','Delete this category? Its products will become uncategorized.'))) sb.from('store_categories').delete().eq('id',el.dataset.cd).then(function(r){if(r.error)alert(errTxt(r.error));else{loaded.cats=0;LOADERS.categories();}});return;}
+  if((el=t.closest('[data-cd]'))){
+    var cid0=el.dataset.cd, cc0=CATS.filter(function(x){return x.id===cid0})[0];
+    if(cc0&&cc0.is_system){ alert(L('هذا تصنيف تلقائي ولا يمكن حذفه','This is an automatic category and cannot be deleted')); return; }
+    if(confirmBox(L('حذف التصنيف؟ المنتجات فيه بتنتقل لتصنيف «منتجات بدون تصنيف».','Delete this category? Its products will move to “Products without category”.'))){
+      (async function(){
+        try{
+          var uc=await ensureUncatCat();
+          var affected=PRODS.filter(function(p){return pcatsA(p).indexOf(cid0)>=0});
+          var ups=affected.map(function(p){
+            var cids=pcatsA(p).filter(function(x){return x!==cid0}); if(!cids.length) cids=[uc];
+            return sb.from('store_products').update({category_id:cids[0],category_ids:cids}).eq('id',p.id);
+          });
+          var rs=await Promise.all(ups); var bad=rs.filter(function(r){return r.error}); if(bad.length) throw bad[0].error;
+          var rd=await sb.from('store_categories').delete().eq('id',cid0); if(rd.error) throw rd.error;
+          loaded.cats=0; loaded.prods=0;
+          await Promise.all([ensureCats(true),ensureProds(true)]); renderCats();
+        }catch(e){ alert(errTxt(e)); }
+      })();
+    } return;}
   // brands
   if(t.closest('#brNew')){brandModal();return;}
   if((el=t.closest('[data-bre]'))){brandModal(el.dataset.bre);return;}
