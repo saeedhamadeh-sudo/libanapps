@@ -390,6 +390,7 @@ async function save(key, value){
   try{
     localStorage.setItem(skey(key), JSON.stringify(value));
   }catch(e){ console.error('storage error', key, e); return false; }
+  if(key===KEYS.warehouseItems || key===KEYS.stockIns || key===KEYS.stockOuts || key===KEYS.suppliers) invalidateWarehouseCaches();
   if(key===KEYS.settings){
     syncSettingsToSupabase(value);
     syncUsersToSupabase(value.users||[]);
@@ -1684,7 +1685,28 @@ function normalizeSearchText(s){
     .replace(/\s+/g,' ').trim();
 }
 function compactSearchText(s){ return normalizeSearchText(s).replace(/[^a-z0-9؀-ۿ]/g,''); }
+// كاش لنص البحث وأرصدة المخزون — يُفرَّغ عند أي حفظ للمستودع أو الحركات، فيبقى البحث سريعاً مع آلاف الأصناف
+let _whHayCache = new WeakMap();
+let _stockMapCache = null;
+function invalidateWarehouseCaches(){ _whHayCache = new WeakMap(); _stockMapCache = null; }
+function stockMap(){
+  const c = _stockMapCache;
+  if(c && c.ins===DB.stockIns && c.outs===DB.stockOuts && c.nIn===DB.stockIns.length && c.nOut===DB.stockOuts.length) return c.m;
+  const m = new Map();
+  DB.stockIns.forEach(x=>{ if(!x.deleted) m.set(x.itemId, (m.get(x.itemId)||0) + (Number(x.qty)||0)); });
+  DB.stockOuts.forEach(x=>{ if(!x.deleted) m.set(x.itemId, (m.get(x.itemId)||0) - (Number(x.qty)||0)); });
+  _stockMapCache = {m, ins:DB.stockIns, outs:DB.stockOuts, nIn:DB.stockIns.length, nOut:DB.stockOuts.length};
+  return m;
+}
+function fastStock(id){ return stockMap().get(id) || 0; }
 function warehouseItemHaystack(it){
+  const cached = _whHayCache.get(it);
+  if(cached) return cached;
+  const h = buildWarehouseItemHaystack(it);
+  _whHayCache.set(it, h);
+  return h;
+}
+function buildWarehouseItemHaystack(it){
   const sup = it.supplierId ? DB.suppliers.find(s=>s.id===it.supplierId) : null;
   const parts = [it.name, it.brand, it.type, it.barcode, it.sku, it.category, it.subCategory, it.madeIn, it.location, it.uom,
     it.tireSize, it.dot, it.loadSpeed, it.amperage, it.oilType, it.viscosity, (it.compat||[]).join(' '), it.note, it.dims,
@@ -4731,8 +4753,25 @@ function bindReportsEvents(){
     go('#/reports?'+qs.toString());
   });
 }
+// فلتر نوع المنتج في صفحة المستودع (محل الإطارات) — يبقى محفوظاً أثناء التنقل
+let _whCatFilter = '';
+function warehouseFilteredByCat(){
+  if(!isAutoShop() || !_whCatFilter) return DB.warehouseItems;
+  if(_whCatFilter==='other') return DB.warehouseItems.filter(it=>{ const k = autoCategoryKey(it.category); return !k || k==='other'; });
+  return DB.warehouseItems.filter(it=>autoCategoryKey(it.category)===_whCatFilter);
+}
+function warehouseCatChipsHtml(){
+  const counts = {}; let other = 0;
+  DB.warehouseItems.forEach(it=>{ const k = autoCategoryKey(it.category); if(!k || k==='other') other++; else counts[k]=(counts[k]||0)+1; });
+  const chip = (key, label)=>`<button type="button" class="btn btn-sm wh-cat-chip ${_whCatFilter===key?'btn-primary':''}" data-wh-cat="${key}" style="border-radius:999px;">${label}</button>`;
+  return `<div id="whCatChips" style="display:flex; flex-wrap:wrap; gap:6px; margin-top:10px;">
+    ${chip('', 'الكل ('+DB.warehouseItems.length+')')}
+    ${AUTO_CATEGORIES.map(c=>chip(c.key, (AUTO_CATEGORY_ICONS[c.key]||'')+' '+c.label+' ('+(counts[c.key]||0)+')')).join('')}
+    ${other? chip('other', '📦 أخرى ('+other+')') : ''}
+  </div>`;
+}
 function warehouseHubView(){
-  const items = DB.warehouseItems.slice().sort((a,b)=>String(a.name||'').localeCompare(String(b.name||''),'ar'));
+  const items = warehouseFilteredByCat().slice().sort((a,b)=>String(a.name||'').localeCompare(String(b.name||''),'ar'));
   const auto = isAutoShop();
   const low = auto ? lowStockItems() : [];
   const stockValue = auto ? DB.warehouseItems.reduce((s,it)=>{ const q=currentStock(it.id); const cv=itemCostWithVat(it); return s + (q>0 && cv? q*cv : 0); },0) : 0;
@@ -4753,6 +4792,7 @@ function warehouseHubView(){
     <div class="action-row" style="margin-top:10px;">
       <button class="btn" data-nav="#/warehouse-print">🖨 طباعة جرد المستودع</button>
     </div>
+    ${auto? warehouseCatChipsHtml() : ''}
     <div id="whTableWrap" style="margin-top:14px;">
     ${warehouseItemTable(items)}
     </div>
@@ -4763,7 +4803,7 @@ function warehouseItemTable(items, isSearch){
   if(!items.length) return `<div class="empty"><div class="big">${isSearch? 'لا توجد نتائج مطابقة' : 'لا توجد منتجات في المستودع بعد'}</div></div>`;
   if(isAutoShop()){
     const rowsHtml = items.slice(0,500).map(it=>{
-      const stock = currentStock(it.id);
+      const stock = fastStock(it.id);
       const spec = [it.sku, it.tireSize, it.amperage, it.viscosity, it.oilType && !it.viscosity ? it.oilType : ''].filter(Boolean).filter(x=>!String(it.name||'').includes(x)).join(' • ');
       const avail = normItemStatus(it.status)==='available';
       const cv = itemCostWithVat(it);
@@ -4781,7 +4821,7 @@ function warehouseItemTable(items, isSearch){
     <div class="table-scroll"><table><thead><tr><th>المنتج</th><th>الماركة</th><th>الحالة</th><th>سنة الصنع</th><th>الكمية</th><th>التكلفة شامل الضريبة</th><th>سعر البيع</th></tr></thead><tbody>${rowsHtml}</tbody></table></div>`;
   }
   const rowsHtml = items.map(it=>{
-    const stock = currentStock(it.id);
+    const stock = fastStock(it.id);
     const stockCls = stock<0 ? 'bal-pos' : 'bal-zero';
     const expDays = daysUntilExpiry(it);
     const expiring = expDays!==null && expDays<=itemExpiryAlertDays(it);
@@ -6084,9 +6124,14 @@ function bindEvents(){
   const whSearchEl = document.getElementById('whSearch');
   if(whSearchEl){
     let _whT = null;
+    document.querySelectorAll('[data-wh-cat]').forEach(b=>b.addEventListener('click', ()=>{
+      _whCatFilter = b.getAttribute('data-wh-cat');
+      document.querySelectorAll('[data-wh-cat]').forEach(x=>x.classList.toggle('btn-primary', x===b));
+      runWhSearch();   // نفس البحث المكتوب، داخل النوع المختار — بدون إعادة رسم الصفحة
+    }));
     const runWhSearch = ()=>{
       const q = whSearchEl.value;
-      const rows = smartSearchWarehouse(q);
+      const rows = smartSearchWarehouse(q, warehouseFilteredByCat());
       document.getElementById('whTableWrap').innerHTML = warehouseItemTable(rows, !!q.trim());
       document.querySelectorAll('#whTableWrap [data-nav]').forEach(el=>{
         el.addEventListener('click', (e)=>{ e.stopPropagation(); go(el.getAttribute('data-nav')); });
