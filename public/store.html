@@ -1100,7 +1100,11 @@ footer.ft{margin-top:clamp(50px,8vw,120px);background:var(--surface);border-top:
 </head>
 <body>
 <!--STORE_BOOT-->
-<script>(function(){var s=window.__STORE_SLUG__,C=window.LIBANAPPS;if(!s||!C||!window.fetch)return;var pq=location.search.match(/[?&]p=([0-9a-f-]{36})/i);window.__SP=window.__SPD__?Promise.resolve(window.__SPD__):fetch((window.__SP_URL__||"/_sp.json")+"?lite=1"+(pq?"&p="+pq[1]:"")).then(function(r){return r.ok?r.json():null}).catch(function(){return null});window.__SPS=s;})();</script>
+<script>(function(){var s=window.__STORE_SLUG__,C=window.LIBANAPPS;if(!s||!C||!window.fetch)return;var pq=location.search.match(/[?&]p=([0-9a-f-]{36})/i);
+  if(window.__SPD__){window.__SP=Promise.resolve(window.__SPD__);window.__SPS=s;return;}
+  var ac=(typeof AbortController!=='undefined')?new AbortController():null, tid=ac?setTimeout(function(){ac.abort();},10000):null;
+  window.__SP=fetch((window.__SP_URL__||"/_sp.json")+"?lite=1"+(pq?"&p="+pq[1]:""),ac?{signal:ac.signal}:{}).then(function(r){if(tid)clearTimeout(tid);return r.ok?r.json():null}).catch(function(){if(tid)clearTimeout(tid);return null});
+  window.__SPS=s;})();</script>
 <div id="state" class="state"><div class="box"><div class="spin" role="status" aria-label="loading"></div></div></div>
 
 <div id="app" class="hidden">
@@ -1172,7 +1176,7 @@ ar:{dir:'rtl',other:'EN',search:'ابحث عن منتج، ماركة…',searchH
  city:'المدينة',zone:'منطقة التوصيل',zonePh:'اختر المنطقة',address:'العنوان بالتفصيل',note:'ملاحظات للطلب (اختياري)',method:'طريقة الاستلام',ship:'توصيل',
  pickup:'استلام من المتجر',payment:'طريقة الدفع',cod:'الدفع عند الاستلام',codS:'نقداً عند استلام الطلب',confirm:'تأكيد الطلب',sending:'جارٍ إرسال الطلب…',
  back:'رجوع',required:'املأ هذه الحقول',minOrder:'الحد الأدنى للطلب: {n}',ok:'تم استلام طلبك!',orderNo:'رقم الطلب',sendWa:'أرسل الطلب على واتساب',
- waHint:'اضغط الزر ثم «إرسال» لتصل تفاصيل الطلب للمتجر مباشرة',keep:'أكمل التسوق',err:'حدث خطأ، حاول مرة أخرى',errStock:'الكمية غير متوفرة: {n}',
+ waHint:'اضغط الزر ثم «إرسال» لتصل تفاصيل الطلب للمتجر مباشرة',keep:'أكمل التسوق',err:'حدث خطأ، حاول مرة أخرى',retry:'إعادة المحاولة',errStock:'الكمية غير متوفرة: {n}',
  errZone:'اختر منطقة التوصيل',unavailable:'المتجر غير متاح حالياً',closedT:'هذا المتجر متوقف مؤقتاً',closedS:'تواصل مع صاحب المتجر لمعرفة التفاصيل',
  notFoundT:'لم نعثر على هذا المتجر',notFoundS:'تأكد من الرابط وحاول مرة أخرى',notReadyT:'المتجر قيد الإعداد',notReadyS:'عد وحاول بعد قليل',
  payWait:'جارٍ التحقق من الدفع…',paid:'تم الدفع بنجاح',payFail:'لم يتأكد الدفع بعد',payFailS:'إذا سُحب المبلغ من حسابك فتواصل معنا واذكر وقت طلبك',recheck:'تحقق مجدداً',
@@ -1204,7 +1208,7 @@ en:{dir:'ltr',other:'عربي',search:'Search products, brands…',searchH:'Sear
  city:'City',zone:'Delivery zone',zonePh:'Select your zone',address:'Full address',note:'Order notes (optional)',method:'Receiving method',ship:'Delivery',
  pickup:'Store pickup',payment:'Payment',cod:'Cash on delivery',codS:'Pay in cash when it arrives',confirm:'Place order',sending:'Sending your order…',
  back:'Back',required:'Please fill the required fields',minOrder:'Minimum order: {n}',ok:'Order received!',orderNo:'Order number',sendWa:'Send order on WhatsApp',
- waHint:'Tap the button, then press Send so the store gets your details',keep:'Keep shopping',err:'Something went wrong, please try again',errStock:'Not enough stock: {n}',
+ waHint:'Tap the button, then press Send so the store gets your details',keep:'Keep shopping',err:'Something went wrong, please try again',retry:'Retry',errStock:'Not enough stock: {n}',
  errZone:'Select a delivery zone',unavailable:'This store is unavailable',closedT:'This store is temporarily closed',closedS:'Contact the store owner for details',
  notFoundT:'Store not found',notFoundS:'Check the link and try again',notReadyT:'Store is being set up',notReadyS:'Please check back soon',
  payWait:'Confirming your payment…',paid:'Payment successful',payFail:'Payment not confirmed yet',payFailS:'If you were charged, contact us with your order number',recheck:'Check again',
@@ -1296,7 +1300,7 @@ function ssSet(k,v){try{sessionStorage.setItem(k,v)}catch(e){}}
 var tt; function toast(m){var t=$('#toast');t.textContent=m;t.classList.add('on');clearTimeout(tt);tt=setTimeout(function(){t.classList.remove('on')},2400)}
 function fillT(s,o){return String(s).replace(/\{(\w+)\}/g,function(m,k){return o&&o[k]!==undefined?o[k]:m})}
 
-function rpc(fn,args){var C=window.LIBANAPPS;return fetch(C.SUPABASE_URL+'/rest/v1/rpc/'+fn,{method:'POST',headers:{apikey:C.SUPABASE_ANON_KEY,Authorization:'Bearer '+C.SUPABASE_ANON_KEY,'Content-Type':'application/json'},body:JSON.stringify(args||{})}).then(function(r){return r.json().catch(function(){return null}).then(function(j){return r.ok?{data:j,error:null}:{data:null,error:j||{message:'http '+r.status}}})}).catch(function(e){return {data:null,error:e}});}
+function rpc(fn,args){var C=window.LIBANAPPS;return fetchTO(C.SUPABASE_URL+'/rest/v1/rpc/'+fn,{method:'POST',headers:{apikey:C.SUPABASE_ANON_KEY,Authorization:'Bearer '+C.SUPABASE_ANON_KEY,'Content-Type':'application/json'},body:JSON.stringify(args||{})},12000).then(function(r){return r.json().catch(function(){return null}).then(function(j){return r.ok?{data:j,error:null}:{data:null,error:j||{message:'http '+r.status}}})}).catch(function(e){return {data:null,error:e}});}
 var S=null, CATS=[], PRODS=[], SLIDES=[], BANNERS=[], POP=null, PAGES=[], byId={}, catById={}, newShown=16, latShown=16;
 /* LITE: أول رسم بنسخة خفيفة من المنتجات، والكاملة بتنزل بالخلفية (loadFull) */
 var LITE=false, FULLDONE=false, CATCNT=null, TOTALP=0, FULLP=null, GRID_STEP=24, gridShown=24, gridKey='', gridObs=null;
@@ -1437,9 +1441,18 @@ function showState(kind,store){
   var st=$('#state'); st.classList.remove('hidden'); $('#app').classList.add('hidden');
   var map={notfound:[T.notFoundT,T.notFoundS],notready:[T.notReadyT,T.notReadyS],closed:[T.closedT,T.closedS],err:[T.err,'']}[kind]||[T.err,''];
   var wa=store&&store.whatsapp?('<a class="btn" target="_blank" rel="noopener" href="https://wa.me/'+esc(String(store.whatsapp).replace(/\D/g,''))+'">WhatsApp</a>'):'';
+  var retry=kind==='err'?'<button type="button" class="btn" id="stRetry">'+esc(T.retry)+'</button>':'';
   st.innerHTML='<div class="box">'+(store&&store.logo_url?'<img class="lg" alt="" src="'+esc(img(store.logo_url))+'">':'')+
     (store&&store.name&&!store.logo_url?'<p style="margin:0 0 6px;font-weight:700">'+esc(store.name)+'</p>':'')+
-    '<h1>'+esc(map[0])+'</h1><p>'+esc(map[1])+'</p>'+wa+'</div>';
+    '<h1>'+esc(map[0])+'</h1><p>'+esc(map[1])+'</p>'+retry+wa+'</div>';
+  if(kind==='err'){var rb=$('#stRetry'); if(rb) rb.onclick=function(){location.reload();};}
+}
+// fetch بحد زمني — بشبكة موبايل ضعيفة ممكن الطلب يعلق بدون ما يرجّع خطأ ولا نتيجة،
+// فبيضل اللودر دايراً لحد ما تنتهي مهلة طويلة جداً. هيك منوقف الانتظار بعد مدة معقولة ومنعتبرها فشل.
+function fetchTO(url,opts,ms){
+  var ac=(typeof AbortController!=='undefined')?new AbortController():null;
+  var id=ac?setTimeout(function(){ac.abort();},ms||10000):null;
+  return fetch(url,Object.assign({},opts||{},ac?{signal:ac.signal}:{})).finally(function(){if(id)clearTimeout(id);});
 }
 function metaSet(sel,attr,val){var e=$(sel);if(!e){e=document.createElement('meta');var m=sel.match(/\[(\w+):?(\w*)="([^"]+)"\]/);
   if(m){e.setAttribute(m[1]+(m[2]?':'+m[2]:''),m[3]);} document.head.appendChild(e);} e.setAttribute(attr,val)}
