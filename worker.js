@@ -2223,9 +2223,12 @@ async function serveStore(env, url, slug, primaryHost, ctx) {
     const h = await storeHead(env, url, slug, primaryHost);
     if (h) html = html.replace('<title>Store</title>', () => h.title).replace('</head>', () => h.tags + '\n</head>');
   } catch (e) { /* بلا SEO إضافي لو فشلت القراءة — المتجر بيشتغل عادي */ }
+  // 20ث كاش بالمتصفح/الحافة: بيتفادى تحميل الصفحة كاملة (200+ كيلوبايت) من جديد بزيارات متكرّرة
+  // قريبة (رجوع للخلف، فتح نفس الصفحة بتاب تاني)، وبنفس هامش التحديث يلي بيانات المتجر أصلاً
+  // بتتحمّل عليه (SP_FRESH = 60ث) فما في خطر تعرض بيانات قديمة بشكل ملحوظ.
   return new Response(html, {
     status: 200,
-    headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' }
+    headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=20, stale-while-revalidate=120' }
   });
 }
 
