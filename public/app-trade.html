@@ -4940,19 +4940,38 @@ function warehouseTxnView(kind, id){
   </div>`;
 }
 function warehouseInventoryPrintView(){
-  const items = DB.warehouseItems.slice().sort((a,b)=>a.name.localeCompare(b.name,'ar'));
+  const auto = isAutoShop();
+  const items = warehouseFilteredByCat().slice().sort((a,b)=>String(a.name||'').localeCompare(String(b.name||''),'ar'));
+  const catLabel = auto && _whCatFilter ? (_whCatFilter==='other' ? 'أخرى' : ((AUTO_CATEGORIES.find(c=>c.key===_whCatFilter)||{}).label||'')) : '';
+  let totCost = 0, totSale = 0;
   const rows = items.map((it,idx)=>{
-    const stock = currentStock(it.id);
-    const cust = it.customerId ? DB.customers.find(c=>c.id===it.customerId) : null;
+    const stock = fastStock(it.id);
+    if(!auto){
+      return `<tr>
+        <td class="num">${idx+1}</td>
+        <td>${escapeHtml(it.name)}</td>
+        <td>${escapeHtml(it.brand||'—')}</td>
+        <td>${escapeHtml(it.category||'—')}</td>
+        <td class="num">${fmtQty(stock)}</td>
+        <td class="num">${it.price? fmtMoney(it.price) : '—'}</td>
+      </tr>`;
+    }
+    const cv = itemCostWithVat(it);
+    if(stock>0){ if(cv) totCost += stock*cv; if(Number(it.price)) totSale += stock*Number(it.price); }
     return `<tr>
       <td class="num">${idx+1}</td>
       <td>${escapeHtml(it.name)}</td>
       <td>${escapeHtml(it.brand||'—')}</td>
-      <td>${escapeHtml(it.type||'—')}</td>
-      <td class="num">${fmtQty(stock)}</td>
-      <td>${cust? escapeHtml(cust.name) : 'حر'}</td>
+      <td>${escapeHtml(it.category||'—')}</td>
+      <td class="num">${escapeHtml(it.mfgYear||'—')}</td>
+      <td class="num">${fmtQty(stock)} ${escapeHtml(it.uom||'')}</td>
+      <td class="num">${cv!==null? fmtMoney(cv) : '—'}</td>
+      <td class="num">${it.price? fmtMoney(it.price) : '—'}</td>
     </tr>`;
   }).join('');
+  const head = auto
+    ? `<th>#</th><th>اسم المنتج</th><th>الماركة</th><th>الفئة</th><th>سنة الصنع</th><th>الكمية الحالية</th><th>التكلفة شامل الضريبة</th><th>سعر البيع</th>`
+    : `<th>#</th><th>اسم المنتج</th><th>الماركة</th><th>القسم</th><th>الكمية الحالية</th><th>سعر البيع</th>`;
   return `
   <div class="doc-actions no-print">
     <button class="btn btn-primary" onclick="printWithFilename('Warehouse-Inventory-${todayISO()}')">🖨 طباعة</button>
@@ -4962,8 +4981,11 @@ function warehouseInventoryPrintView(){
     <div class="doc-info">
       <div class="r"><span>التاريخ:</span><b class="num">${fmtDate(todayISO())}</b></div>
       <div class="r"><span>عدد الأصناف:</span><b class="num">${items.length}</b></div>
+      ${catLabel? `<div class="r"><span>الفئة:</span><b>${escapeHtml(catLabel)}</b></div>` : ''}
     </div>
-    <table><thead><tr><th>#</th><th>اسم المنتج</th><th>الماركة</th><th>النوع</th><th>الكمية الحالية</th><th>تابع لـ</th></tr></thead><tbody>${rows}</tbody></table>
+    <table><thead><tr>${head}</tr></thead><tbody>${rows}</tbody>
+    ${auto? `<tfoot><tr style="font-weight:800;"><td colspan="6">قيمة المخزون</td><td class="num">${fmtMoney(totCost)}</td><td class="num">${fmtMoney(totSale)}</td></tr></tfoot>` : ''}
+    </table>
     <div class="sig">التوقيع</div>
   </div>`;
 }
