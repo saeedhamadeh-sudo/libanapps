@@ -4763,6 +4763,14 @@ function bindReportsEvents(){
 }
 // فلتر نوع المنتج في صفحة المستودع (محل الإطارات) — يبقى محفوظاً أثناء التنقل
 let _whCatFilter = '';
+let _whSearchQ = '';   // نص البحث الحالي — يُستعمل أيضاً في طباعة الجرد
+function whCatLabel(key){ return key==='other' ? 'أخرى' : ((AUTO_CATEGORIES.find(c=>c.key===key)||{}).label||''); }
+function whPrintBtnLabel(){
+  const bits = [];
+  if(isAutoShop() && _whCatFilter) bits.push(whCatLabel(_whCatFilter));
+  if(_whSearchQ.trim()) bits.push('بحث: '+_whSearchQ.trim());
+  return '🖨 طباعة جرد المستودع' + (bits.length? ' ('+bits.join(' — ')+')' : '');
+}
 function warehouseFilteredByCat(){
   if(!isAutoShop() || !_whCatFilter) return DB.warehouseItems;
   if(_whCatFilter==='other') return DB.warehouseItems.filter(it=>{ const k = autoCategoryKey(it.category); return !k || k==='other'; });
@@ -4779,7 +4787,7 @@ function warehouseCatChipsHtml(){
   </div>`;
 }
 function warehouseHubView(){
-  const items = warehouseFilteredByCat().slice().sort((a,b)=>String(a.name||'').localeCompare(String(b.name||''),'ar'));
+  const items = smartSearchWarehouse(_whSearchQ, warehouseFilteredByCat());
   const auto = isAutoShop();
   const low = auto ? lowStockItems() : [];
   const stockValue = auto ? DB.warehouseItems.reduce((s,it)=>{ const q=currentStock(it.id); const cv=itemCostWithVat(it); return s + (q>0 && cv? q*cv : 0); },0) : 0;
@@ -4793,16 +4801,16 @@ function warehouseHubView(){
   <div class="card">
     <h2><span class="dot"></span> المستودع</h2>
     <div class="search-row">
-      <input type="text" id="whSearch" autocomplete="off" placeholder="${auto?'🔍 بحث ذكي: اسم، باركود، SKU، مقاس (2055516)، لزوجة، أمبير، موديل سيارة، سنة الصنع...':'🔍 ابحث بالاسم أو الماركة أو النوع أو الباركود...'}">
+      <input type="text" id="whSearch" autocomplete="off" value="${escapeHtml(_whSearchQ)}" placeholder="${auto?'🔍 بحث ذكي: اسم، باركود، SKU، مقاس (2055516)، لزوجة، أمبير، موديل سيارة، سنة الصنع...':'🔍 ابحث بالاسم أو الماركة أو النوع أو الباركود...'}">
       <button type="button" class="btn btn-sm" id="whSearchScan" title="مسح باركود">📷</button>
       <button class="btn btn-primary" id="addWhItemBtn">+ إضافة إلى المخزون</button>
     </div>
     <div class="action-row" style="margin-top:10px;">
-      <button class="btn" data-nav="#/warehouse-print">🖨 طباعة جرد المستودع</button>
+      <button class="btn" id="whPrintBtn" data-nav="#/warehouse-print">${escapeHtml(whPrintBtnLabel())}</button>
     </div>
     ${auto? warehouseCatChipsHtml() : ''}
     <div id="whTableWrap" style="margin-top:14px;">
-    ${warehouseItemTable(items)}
+    ${warehouseItemTable(items, !!_whSearchQ.trim())}
     </div>
   </div>
   ${appFooter()}`;
@@ -4949,8 +4957,8 @@ function warehouseTxnView(kind, id){
 }
 function warehouseInventoryPrintView(){
   const auto = isAutoShop();
-  const items = warehouseFilteredByCat().slice().sort((a,b)=>String(a.name||'').localeCompare(String(b.name||''),'ar'));
-  const catLabel = auto && _whCatFilter ? (_whCatFilter==='other' ? 'أخرى' : ((AUTO_CATEGORIES.find(c=>c.key===_whCatFilter)||{}).label||'')) : '';
+  const items = smartSearchWarehouse(_whSearchQ, warehouseFilteredByCat());
+  const catLabel = auto && _whCatFilter ? whCatLabel(_whCatFilter) : '';
   let totCost = 0, totSale = 0;
   const rows = items.map((it,idx)=>{
     const stock = fastStock(it.id);
@@ -4981,8 +4989,10 @@ function warehouseInventoryPrintView(){
     ? `<th class="inv-idx">#</th><th>اسم المنتج</th><th>الماركة</th><th>الفئة</th><th>سنة الصنع</th><th>الكمية الحالية</th><th>التكلفة شامل الضريبة</th><th>سعر البيع</th>`
     : `<th class="inv-idx">#</th><th>اسم المنتج</th><th>الماركة</th><th>القسم</th><th>الكمية الحالية</th><th>سعر البيع</th>`;
   return `
-  <div class="doc-actions no-print">
-    <button class="btn btn-primary" onclick="printWithFilename('Warehouse-Inventory-${todayISO()}')">🖨 طباعة</button>
+  <div class="doc-actions no-print" style="flex-direction:column; align-items:stretch;">
+    ${auto? `<div style="display:flex; flex-wrap:wrap; gap:6px; align-items:center;"><span style="font-size:12.5px; color:var(--ink-soft);">اطبع:</span>${warehouseCatChipsHtml().replace(/^\s*<div id="whCatChips" style="[^"]*">/, '<span style="display:contents;">').replace(/<\/div>\s*$/, '</span>').replace(/data-wh-cat=/g, 'data-whp-cat=')}</div>` : ''}
+    ${_whSearchQ.trim()? `<div style="font-size:12.5px;">🔍 مطبوع حسب البحث: <b>${escapeHtml(_whSearchQ.trim())}</b> <button class="btn btn-sm" id="whpClearSearch">✕ إلغاء البحث</button></div>` : ''}
+    <div style="display:flex; justify-content:flex-end;"><button class="btn btn-primary" onclick="printWithFilename('Warehouse-Inventory-${todayISO()}')">🖨 طباعة</button></div>
   </div>
   <div class="doc">
     ${docHead('جرد المستودع')}
@@ -4990,6 +5000,7 @@ function warehouseInventoryPrintView(){
       <div class="r"><span>التاريخ:</span><b class="num">${fmtDate(todayISO())}</b></div>
       <div class="r"><span>عدد الأصناف:</span><b class="num">${items.length}</b></div>
       ${catLabel? `<div class="r"><span>الفئة:</span><b>${escapeHtml(catLabel)}</b></div>` : ''}
+      ${_whSearchQ.trim()? `<div class="r"><span>بحث:</span><b>${escapeHtml(_whSearchQ.trim())}</b></div>` : ''}
     </div>
     <div class="table-scroll">
     <table class="inv-table"><thead><tr>${head}</tr></thead><tbody>${rows}</tbody>
@@ -6153,16 +6164,22 @@ function bindEvents(){
     const item = DB.warehouseItems.find(x=>x.id===parts[1]);
     deleteWhItemBtn.addEventListener('click', ()=>openDeleteWarehouseItemModal(item));
   }
+  document.querySelectorAll('[data-whp-cat]').forEach(b=>b.addEventListener('click', ()=>{ _whCatFilter = b.getAttribute('data-whp-cat'); render(); }));
+  const whpClear = document.getElementById('whpClearSearch');
+  if(whpClear) whpClear.addEventListener('click', ()=>{ _whSearchQ = ''; render(); });
   const whSearchEl = document.getElementById('whSearch');
   if(whSearchEl){
     let _whT = null;
     document.querySelectorAll('[data-wh-cat]').forEach(b=>b.addEventListener('click', ()=>{
       _whCatFilter = b.getAttribute('data-wh-cat');
       document.querySelectorAll('[data-wh-cat]').forEach(x=>x.classList.toggle('btn-primary', x===b));
-      runWhSearch();   // نفس البحث المكتوب، داخل النوع المختار — بدون إعادة رسم الصفحة
+      runWhSearch();
+      const pb = document.getElementById('whPrintBtn'); if(pb) pb.textContent = whPrintBtnLabel();   // نفس البحث المكتوب، داخل النوع المختار — بدون إعادة رسم الصفحة
     }));
     const runWhSearch = ()=>{
       const q = whSearchEl.value;
+      _whSearchQ = q;
+      const pb = document.getElementById('whPrintBtn'); if(pb) pb.textContent = whPrintBtnLabel();
       const rows = smartSearchWarehouse(q, warehouseFilteredByCat());
       document.getElementById('whTableWrap').innerHTML = warehouseItemTable(rows, !!q.trim());
       document.querySelectorAll('#whTableWrap [data-nav]').forEach(el=>{
