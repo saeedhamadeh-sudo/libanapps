@@ -213,12 +213,20 @@
     .doc table th, .doc table td{padding:8px 14px;}
   }
 
-  .modal-bg{position:fixed; inset:0; background:rgba(30,42,56,.5); display:flex; align-items:center; justify-content:center; z-index:50; padding:16px;}
-  .modal{background:#fff; border-radius:var(--radius); padding:20px; max-width:420px; width:100%; box-shadow:var(--shadow); max-height:90vh; overflow-y:auto; -webkit-overflow-scrolling:touch;}
+  .modal-bg{position:fixed; inset:0; background:rgba(30,42,56,.5); display:flex; align-items:center; justify-content:center; z-index:50; padding:16px; overscroll-behavior:contain; touch-action:pan-y;}
+  .modal{background:#fff; border-radius:var(--radius); padding:20px; max-width:420px; width:100%; box-shadow:var(--shadow); max-height:90vh; max-height:calc(100dvh - 32px); overflow-y:auto; -webkit-overflow-scrolling:touch; overscroll-behavior:contain;}
+  .modal-wide{max-width:760px;}
+  .modal-sticky-actions{position:sticky; bottom:-20px; background:#fff; margin:12px -20px -20px; padding:10px 20px 14px; border-top:1px solid var(--line); z-index:2;}
+  body:has(.modal-bg){overflow:hidden;}   /* الصفحة خلف النافذة لا تتحرك أثناء التمرير داخلها */
+  @media (max-width:600px){
+    .modal-bg{align-items:flex-start; padding:10px;}
+    .modal{max-height:calc(100dvh - 20px); padding:16px;}
+    .modal-sticky-actions{bottom:-16px; margin:12px -16px -16px; padding:10px 16px 12px;}
+  }
   .modal h3{font-family:var(--font-display); margin:0 0 12px;}
   .modal .row{display:flex; gap:8px; justify-content:flex-end; margin-top:16px;}
 
-  .toast{position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:var(--ink); color:#fff; padding:10px 18px; border-radius:8px; font-size:13.5px; z-index:100; box-shadow:var(--shadow); opacity:0; transition:opacity .25s ease;}
+  .toast{position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:var(--ink); color:#fff; padding:10px 18px; border-radius:8px; font-size:13.5px; z-index:100; box-shadow:var(--shadow); opacity:0; transition:opacity .25s ease; pointer-events:none;}
   .toast.show{opacity:1;}
 
   .type-toggle{display:flex; gap:6px;}
@@ -1374,7 +1382,6 @@ function openOilChangeModal(cust){
   </div>`;
   document.body.appendChild(wrap);
   wrap.querySelector('#oc_cancel').addEventListener('click', ()=>wrap.remove());
-  wrap.addEventListener('click', e=>{ if(e.target===wrap) wrap.remove(); });
   wrap.querySelector('#oc_save').addEventListener('click', async ()=>{
     cust.oilOdometer = wrap.querySelector('#oc_odo').value.trim();
     cust.oilChangeDate = wrap.querySelector('#oc_date').value || '';
@@ -1729,7 +1736,6 @@ function openBarcodeScannerModal(onScan, continuous){
       }
     });
     wrap.querySelector('#bc_cancel').addEventListener('click', ()=>wrap.remove());
-    wrap.addEventListener('click', (e)=>{ if(e.target===wrap) wrap.remove(); });
     return;
   }
   wrap.innerHTML = `<div class="modal">
@@ -1755,7 +1761,6 @@ function openBarcodeScannerModal(onScan, continuous){
     if(stream) stream.getTracks().forEach(t=>t.stop());
   }
   wrap.querySelector('#bc_cancel').addEventListener('click', ()=>{ cleanup(); wrap.remove(); });
-  wrap.addEventListener('click', (e)=>{ if(e.target===wrap){ cleanup(); wrap.remove(); } });
   const manualOkBtn = wrap.querySelector('#bc_manual_ok');
   if(manualOkBtn) manualOkBtn.addEventListener('click', ()=>{
     const val = wrap.querySelector('#bc_manual_input').value.trim();
@@ -3264,7 +3269,6 @@ function openWorkerAccountModal(account){
   </div>`;
   document.body.appendChild(wrap);
   wrap.querySelector('#wa_cancel').addEventListener('click', ()=>wrap.remove());
-  wrap.addEventListener('click', (e)=>{ if(e.target===wrap) wrap.remove(); });
   wrap.querySelector('#wa_save').addEventListener('click', async ()=>{
     const workerId = isNew ? wrap.querySelector('#wa_worker').value : account.workerId;
     const username = wrap.querySelector('#wa_username').value.trim();
@@ -3304,7 +3308,6 @@ function openDeleteWorkerAccountModal(account){
   </div>`;
   document.body.appendChild(wrap);
   wrap.querySelector('#dwa_cancel').addEventListener('click', ()=>wrap.remove());
-  wrap.addEventListener('click', (e)=>{ if(e.target===wrap) wrap.remove(); });
   wrap.querySelector('#dwa_confirm').addEventListener('click', async ()=>{
     DB.workerAccounts = (DB.workerAccounts||[]).filter(a=>a.id!==account.id);
     const ok = await save(KEYS.workerAccounts, DB.workerAccounts);
@@ -3484,7 +3487,6 @@ function closeMyShiftModal(){
   </div>`;
   document.body.appendChild(wrap);
   wrap.querySelector('#cs_cancel').addEventListener('click', ()=>wrap.remove());
-  wrap.addEventListener('click', (e)=>{ if(e.target===wrap) wrap.remove(); });
   wrap.querySelector('#cs_confirm').addEventListener('click', async ()=>{
     shift.closingCountedUSD = Number(wrap.querySelector('#cs_usd').value)||0;
     shift.closingCountedLBP = Number(wrap.querySelector('#cs_lbp').value)||0;
@@ -3774,7 +3776,6 @@ function openCategoryImageModal(category){
   </div>`;
   document.body.appendChild(wrap);
   wrap.querySelector('#ci_cancel').addEventListener('click', ()=>wrap.remove());
-  wrap.addEventListener('click', (e)=>{ if(e.target===wrap) wrap.remove(); });
   const removeBtn = wrap.querySelector('#ci_remove');
   if(removeBtn) removeBtn.addEventListener('click', async ()=>{
     DB.settings.categoryImages = DB.settings.categoryImages || {};
@@ -3819,7 +3820,6 @@ function openPosCustomerPickerModal(ticket){
   </div>`;
   document.body.appendChild(wrap);
   wrap.querySelector('#pc_cancel').addEventListener('click', ()=>wrap.remove());
-  wrap.addEventListener('click', (e)=>{ if(e.target===wrap) wrap.remove(); });
   function pick(id){
     if(id==='__walkin__'){ ticket.customerId=null; ticket.customerLabel='زبون عابر'; }
     else{ const c=DB.customers.find(x=>x.id===id); if(c){ ticket.customerId=c.id; ticket.customerLabel=c.name; } }
@@ -3860,7 +3860,6 @@ function openPosReturnModal(){
   </div>`;
   document.body.appendChild(wrap);
   wrap.querySelector('#ret_cancel').addEventListener('click', ()=>wrap.remove());
-  wrap.addEventListener('click', (e)=>{ if(e.target===wrap) wrap.remove(); });
   if(!posInvoices.length) return;
   const sel = wrap.querySelector('#ret_invoice');
   function renderItems(){
@@ -3940,7 +3939,6 @@ function openPosPaymentModal(currency){
   input.addEventListener('input', updateChange);
   updateChange();
   wrap.querySelector('#pp_cancel').addEventListener('click', ()=>wrap.remove());
-  wrap.addEventListener('click', (e)=>{ if(e.target===wrap) wrap.remove(); });
   wrap.querySelector('#pp_confirm').addEventListener('click', ()=>{
     const received = Number(input.value)||0;
     wrap.remove();
@@ -4280,7 +4278,6 @@ function openCashMovementModal(type, currency, shift){
   </div>`;
   document.body.appendChild(wrap);
   wrap.querySelector('#cm_cancel').addEventListener('click', ()=>wrap.remove());
-  wrap.addEventListener('click', (e)=>{ if(e.target===wrap) wrap.remove(); });
   wrap.querySelector('#cm_save').addEventListener('click', async ()=>{
     const amount = Number(wrap.querySelector('#cm_amount').value);
     if(!amount || amount<=0){ toast('يجب إدخال مبلغ أكبر من صفر'); return; }
@@ -4331,7 +4328,6 @@ function openDayCloseModal(){
   </div>`;
   document.body.appendChild(wrap);
   wrap.querySelector('#dc_cancel').addEventListener('click', ()=>wrap.remove());
-  wrap.addEventListener('click', (e)=>{ if(e.target===wrap) wrap.remove(); });
   wrap.querySelector('#dc_confirm').addEventListener('click', async ()=>{
     const countedUSD = Number(wrap.querySelector('#dc_usd').value)||0;
     const countedLBP = Number(wrap.querySelector('#dc_lbp').value)||0;
@@ -5543,7 +5539,6 @@ function openCustomerAccountModal(account){
   </div>`;
   document.body.appendChild(wrap);
   wrap.querySelector('#ca_cancel').addEventListener('click', ()=>wrap.remove());
-  wrap.addEventListener('click', (e)=>{ if(e.target===wrap) wrap.remove(); });
   wrap.querySelector('#ca_save').addEventListener('click', async ()=>{
     const customerId = isNew ? wrap.querySelector('#ca_customer').value : account.customerId;
     const username = wrap.querySelector('#ca_username').value.trim();
@@ -5582,7 +5577,6 @@ function openDeleteCustomerAccountModal(account){
   </div>`;
   document.body.appendChild(wrap);
   wrap.querySelector('#dca_cancel').addEventListener('click', ()=>wrap.remove());
-  wrap.addEventListener('click', (e)=>{ if(e.target===wrap) wrap.remove(); });
   wrap.querySelector('#dca_confirm').addEventListener('click', async ()=>{
     DB.customerAccounts = (DB.customerAccounts||[]).filter(a=>a.id!==account.id);
     const ok = await save(KEYS.customerAccounts, DB.customerAccounts);
@@ -6123,7 +6117,6 @@ function openCustomerModal(cust){
   </div>`;
   document.body.appendChild(wrap);
   wrap.querySelector('#m_cancel').addEventListener('click', ()=>wrap.remove());
-  wrap.addEventListener('click', (e)=>{ if(e.target===wrap) wrap.remove(); });
   wrap.querySelector('#m_save').addEventListener('click', async ()=>{
     const name = wrap.querySelector('#m_name').value.trim();
     if(!name){ toast('يجب كتابة اسم الزبون'); return; }
@@ -6190,7 +6183,6 @@ function openUserModal(user){
   </div>`;
   document.body.appendChild(wrap);
   wrap.querySelector('#um_cancel').addEventListener('click', ()=>wrap.remove());
-  wrap.addEventListener('click', (e)=>{ if(e.target===wrap) wrap.remove(); });
   const presetBtn = wrap.querySelector('#um_preset_cashier');
   if(presetBtn) presetBtn.addEventListener('click', ()=>{
     wrap.querySelectorAll('.user-perm-chk').forEach(c=>{ c.checked = (c.value==='pos'); });
@@ -6256,7 +6248,6 @@ function openDeleteUserModal(user){
   </div>`;
   document.body.appendChild(wrap);
   wrap.querySelector('#dum_cancel').addEventListener('click', ()=>wrap.remove());
-  wrap.addEventListener('click', (e)=>{ if(e.target===wrap) wrap.remove(); });
   wrap.querySelector('#dum_confirm').addEventListener('click', async ()=>{
     DB.settings.users = (DB.settings.users||[]).filter(u=>u.id!==user.id);
     const ok = await save(KEYS.settings, DB.settings);
@@ -6302,7 +6293,6 @@ function open2FASetupModal(user){
     wrap.querySelector('#qr2fa_container').innerHTML = '<div style="font-size:12px; color:var(--debit);">حدث خطأ في عرض QR — استخدم الإدخال اليدوي بالأسفل.</div>';
   }
   wrap.querySelector('#setup2fa_cancel').addEventListener('click', ()=>wrap.remove());
-  wrap.addEventListener('click', (e)=>{ if(e.target===wrap) wrap.remove(); });
   wrap.querySelector('#setup2fa_confirm').addEventListener('click', async ()=>{
     const code = wrap.querySelector('#setup2fa_code').value.trim();
     const ok = await verifyTotp(secret, code);
@@ -6330,7 +6320,6 @@ function openDelete2FAModal(user){
   </div>`;
   document.body.appendChild(wrap);
   wrap.querySelector('#d2fa_cancel').addEventListener('click', ()=>wrap.remove());
-  wrap.addEventListener('click', (e)=>{ if(e.target===wrap) wrap.remove(); });
   wrap.querySelector('#d2fa_confirm').addEventListener('click', async ()=>{
     user.totpEnabled = false;
     user.totpSecret = null;
@@ -6359,7 +6348,6 @@ function openAddBudgetCategoryModal(){
   </div>`;
   document.body.appendChild(wrap);
   wrap.querySelector('#bc_cancel').addEventListener('click', ()=>wrap.remove());
-  wrap.addEventListener('click', (e)=>{ if(e.target===wrap) wrap.remove(); });
   wrap.querySelector('#bc_save').addEventListener('click', async ()=>{
     const name = wrap.querySelector('#bc_name').value.trim();
     if(!name){ toast('يجب كتابة اسم الحقل'); return; }
@@ -6392,7 +6380,6 @@ function openEditBudgetCategoryModal(cat){
   </div>`;
   document.body.appendChild(wrap);
   wrap.querySelector('#ebc_cancel').addEventListener('click', ()=>wrap.remove());
-  wrap.addEventListener('click', (e)=>{ if(e.target===wrap) wrap.remove(); });
   wrap.querySelector('#ebc_save').addEventListener('click', async ()=>{
     const name = wrap.querySelector('#ebc_name').value.trim();
     if(!name){ toast('يجب كتابة اسم الحقل'); return; }
@@ -6418,7 +6405,6 @@ function openDeleteBudgetCategoryModal(cat){
   </div>`;
   document.body.appendChild(wrap);
   wrap.querySelector('#dbc_cancel').addEventListener('click', ()=>wrap.remove());
-  wrap.addEventListener('click', (e)=>{ if(e.target===wrap) wrap.remove(); });
   wrap.querySelector('#dbc_confirm').addEventListener('click', async ()=>{
     DB.budgetCategories = DB.budgetCategories.filter(c=>c.id!==cat.id);
     DB.budgetEntries = DB.budgetEntries.filter(e=>e.categoryId!==cat.id);
@@ -6445,7 +6431,6 @@ function openAddBudgetEntryModal(categoryId){
   </div>`;
   document.body.appendChild(wrap);
   wrap.querySelector('#be_cancel').addEventListener('click', ()=>wrap.remove());
-  wrap.addEventListener('click', (e)=>{ if(e.target===wrap) wrap.remove(); });
   wrap.querySelector('#be_save').addEventListener('click', async ()=>{
     const amount = Number(wrap.querySelector('#be_amount').value);
     if(!(amount>0)){ toast('يجب إدخال مبلغ أكبر من صفر'); return; }
@@ -6476,7 +6461,6 @@ function openFactoryResetModal(){
   </div>`;
   document.body.appendChild(wrap);
   wrap.querySelector('#wipe_cancel').addEventListener('click', ()=>wrap.remove());
-  wrap.addEventListener('click', (e)=>{ if(e.target===wrap) wrap.remove(); });
   wrap.querySelector('#wipe_next').addEventListener('click', ()=>{
     const typed = wrap.querySelector('#wipe_confirm').value.trim();
     if(typed !== 'WIPE ALL'){ toast('يجب أن تكتب WIPE ALL بالضبط'); return; }
@@ -6532,7 +6516,6 @@ function openLogoutModal(){
   </div>`;
   document.body.appendChild(wrap);
   wrap.querySelector('#logout_cancel').addEventListener('click', ()=>wrap.remove());
-  wrap.addEventListener('click', (e)=>{ if(e.target===wrap) wrap.remove(); });
   wrap.querySelector('#logout_backup_confirm').addEventListener('click', async ()=>{
     downloadBackupFile();
     wrap.remove();
@@ -6558,7 +6541,6 @@ function openDeleteCustomerModal(cust){
   </div>`;
   document.body.appendChild(wrap);
   wrap.querySelector('#del_cancel').addEventListener('click', ()=>wrap.remove());
-  wrap.addEventListener('click', (e)=>{ if(e.target===wrap) wrap.remove(); });
   wrap.querySelector('#del_confirm_btn').addEventListener('click', async ()=>{
     const typed = wrap.querySelector('#del_confirm').value.trim();
     if(typed !== cust.name){ toast('يجب أن تكتب اسم الزبون كما هو بالضبط'); return; }
@@ -6614,7 +6596,6 @@ function openPartyModal(kind, party){
   </div>`;
   document.body.appendChild(wrap);
   wrap.querySelector('#m_cancel').addEventListener('click', ()=>wrap.remove());
-  wrap.addEventListener('click', (e)=>{ if(e.target===wrap) wrap.remove(); });
   wrap.querySelector('#m_save').addEventListener('click', async ()=>{
     const name = wrap.querySelector('#m_name').value.trim();
     if(!name){ toast('يجب أن تكتب الاسم'); return; }
@@ -6664,7 +6645,6 @@ function openDeletePartyModal(kind, party){
   </div>`;
   document.body.appendChild(wrap);
   wrap.querySelector('#del_cancel').addEventListener('click', ()=>wrap.remove());
-  wrap.addEventListener('click', (e)=>{ if(e.target===wrap) wrap.remove(); });
   wrap.querySelector('#del_confirm_btn').addEventListener('click', async ()=>{
     const typed = wrap.querySelector('#del_confirm').value.trim();
     if(typed !== party.name){ toast('يجب أن تكتب الاسم كما هو بالضبط'); return; }
@@ -6820,7 +6800,7 @@ function openWarehouseItemModal(item, presetBarcode){
 
     ${sec('🛡 السلامة والتحكم')}
     <div class="grid grid-2">
-      <div class="field" data-cats="batteries,oils"><label>رابط ورقة السلامة (MSDS)</label><input type="url" id="wm_msds" style="direction:ltr; text-align:left;" value="${escapeHtml(v('msds'))}" placeholder="https://..."></div>
+      <div class="field" data-cats="batteries,oils"><label>رابط ورقة السلامة (MSDS)</label><input type="text" inputmode="url" id="wm_msds" style="direction:ltr; text-align:left;" value="${escapeHtml(v('msds'))}" placeholder="https://..."></div>
       <div class="field"><label>حالة الصنف</label>
         <select id="wm_status">${ITEM_STATUSES.map(s=>`<option value="${s.key}" ${(v('status')||'active')===s.key?'selected':''}>${s.label}</option>`).join('')}</select>
       </div>
@@ -6829,10 +6809,10 @@ function openWarehouseItemModal(item, presetBarcode){
     <div class="field"><label>ملاحظات</label><input type="text" id="wm_note" value="${escapeHtml(v('note'))}"></div>`;
   }
 
-  wrap.innerHTML = `<div class="modal" style="${auto?'max-width:760px; max-height:92vh; overflow:auto;':''}">
+  wrap.innerHTML = `<div class="modal ${auto?'modal-wide':''}">
     <h3>${isNew? 'إضافة إلى المخزون' : 'تعديل بيانات المنتج'}</h3>
     ${body}
-    <div class="row">
+    <div class="row modal-sticky-actions">
       <button class="btn" id="wm_cancel">إلغاء</button>
       <button class="btn btn-primary" id="wm_save">${isNew?'إضافة':'حفظ'}</button>
     </div>
@@ -6841,7 +6821,6 @@ function openWarehouseItemModal(item, presetBarcode){
   const $ = sel=>wrap.querySelector(sel);
   const val = sel=>{ const el=$(sel); if(!el) return ''; const x = (el.value||'').trim(); return x==='__add__'?'':x; };
   $('#wm_cancel').addEventListener('click', ()=>wrap.remove());
-  wrap.addEventListener('click', (e)=>{ if(e.target===wrap) wrap.remove(); });
 
   // تنبيه فوري إذا الباركود موجود لمنتج آخر
   const hint = $('#wm_barcode_hint');
@@ -6969,7 +6948,6 @@ function openDeleteWarehouseItemModal(item){
   </div>`;
   document.body.appendChild(wrap);
   wrap.querySelector('#wdel_cancel').addEventListener('click', ()=>wrap.remove());
-  wrap.addEventListener('click', (e)=>{ if(e.target===wrap) wrap.remove(); });
   wrap.querySelector('#wdel_confirm_btn').addEventListener('click', async ()=>{
     const typed = wrap.querySelector('#wdel_confirm').value.trim();
     if(typed !== item.name){ toast('يجب أن تكتب الاسم كما هو بالضبط'); return; }
