@@ -698,7 +698,8 @@ function settingsToDb(s){
     // ترتيب الصفحة الرئيسية محفوظ داخل product_lists._ui (بدون عمود جديد)
     product_lists: Object.assign({}, s.productLists||{}, {_ui:{hubOrder: Array.isArray(s.hubOrder)? s.hubOrder : null,
       vatRate: (s.vatRate===undefined || s.vatRate===null || s.vatRate==='') ? null : Number(s.vatRate),
-      businessTypeLocked: !!s.businessTypeLocked}})
+      businessTypeLocked: !!s.businessTypeLocked,
+      posPrintFormat: s.posPrintFormat||'thermal80'}})
   };
 }
 function applySettingsFromDb(row, base){
@@ -733,7 +734,8 @@ function applySettingsFromDb(row, base){
     productLists: row.product_lists!=null? row.product_lists : base.productLists,
     hubOrder: (row.product_lists && row.product_lists._ui && Array.isArray(row.product_lists._ui.hubOrder)) ? row.product_lists._ui.hubOrder : base.hubOrder,
     vatRate: (row.product_lists && row.product_lists._ui && row.product_lists._ui.vatRate!=null) ? Number(row.product_lists._ui.vatRate) : base.vatRate,
-    businessTypeLocked: (row.product_lists && row.product_lists._ui && row.product_lists._ui.businessTypeLocked!=null) ? !!row.product_lists._ui.businessTypeLocked : base.businessTypeLocked
+    businessTypeLocked: (row.product_lists && row.product_lists._ui && row.product_lists._ui.businessTypeLocked!=null) ? !!row.product_lists._ui.businessTypeLocked : base.businessTypeLocked,
+    posPrintFormat: (row.product_lists && row.product_lists._ui && row.product_lists._ui.posPrintFormat) ? row.product_lists._ui.posPrintFormat : base.posPrintFormat
   };
 }
 async function syncSettingsToSupabase(settings){
@@ -4092,7 +4094,8 @@ async function completePosSale(currency, received, due){
     }
     customerId = walkin.id;
   }
-  const invItems = ticket.cart.map(l=>({id:uid(), productId:l.itemId, desc:l.name, qty:l.qty, price:l.price, total:l.price*l.qty}));
+  const invItems = ticket.cart.map(l=>{ const w = DB.warehouseItems.find(x=>x.id===l.itemId);
+    return {id:uid(), productId:l.itemId, desc: w? salesLineDesc(w) : l.name, qty:l.qty, price:l.price, total:Math.round(l.price*l.qty*100)/100}; });
   const inv = {id:uid(), customerId, number:nextInvoiceNumber(), date, docType:'بيع نقطة بيع (POS)', exchangeRate:rate, items:invItems, discount:posDiscountUSD(ticket), createdAt:now, cashierUsername:currentUser.username};
   DB.invoices.push(inv);
   ticket.cart.forEach(l=>{
@@ -4128,7 +4131,7 @@ async function renderReceiptToCanvas(inv, currency, totalUSD, rate, customerLabe
   const lineH = 34, pad = 14;
   const rows = inv.items.length;
   const extra = (inv.discount?1:0) + ((received!=null)?2:0) + (inv.cashierUsername?1:0);
-  const H = 300 + rows*lineH + extra*lineH + 150; // مسافة بيضاء إضافية بالأسفل حتى ما تنقص آخر جملة عند قص الورق
+  const H = 900 + rows*lineH*3 + extra*lineH;   // مساحة كبيرة ثم نقصّ على الطول الفعلي
   const canvas = document.createElement('canvas');
   canvas.width = W; canvas.height = H;
   const ctx = canvas.getContext('2d');
@@ -4141,11 +4144,20 @@ async function renderReceiptToCanvas(inv, currency, totalUSD, rate, customerLabe
     ctx.fillText(text, W/2, y);
     y += size + 10;
   }
-  function line(text, size, bold, align){
+  // سطر طويل يُقسَّم على عدة أسطر حسب العرض
+  function wrapLines(text, size, bold, maxW){
     ctx.font = (bold?'bold ':'')+size+'px Arial';
-    ctx.textAlign = align||'right';
-    ctx.fillText(text, align==='left'? pad : W-pad, y);
-    y += size + 8;
+    const words = String(text||'').split(' '); const out = []; let cur = '';
+    words.forEach(w=>{ const t = cur? cur+' '+w : w; if(ctx.measureText(t).width > maxW && cur){ out.push(cur); cur = w; } else cur = t; });
+    if(cur) out.push(cur);
+    return out;
+  }
+  function para(text, size, bold, align){
+    wrapLines(text, size, bold, W-2*pad).forEach(l=>{
+      ctx.font = (bold?'bold ':'')+size+'px Arial'; ctx.textAlign = align||'right';
+      ctx.fillText(l, align==='center'? W/2 : W-pad, y); y += size + 6;
+    });
+    y += 2;
   }
   function rowLR(left, right, size, bold){
     ctx.font = (bold?'bold ':'')+size+'px Arial';
@@ -4159,26 +4171,50 @@ async function renderReceiptToCanvas(inv, currency, totalUSD, rate, customerLabe
     ctx.strokeStyle='#000'; ctx.stroke();
     y += 14;
   }
+  const cust = DB.customers.find(c=>c.id===inv.customerId);
+  const partyName = (customerLabel && customerLabel!=='زبون عابر') ? customerLabel : (cust? cust.name : '');
+  const totals = computeInvoiceTotal(inv);
+  const fmtPay = v=> currency==='USD' ? '$'+Number(v).toFixed(2) : fmtNum(v)+' '+secCurLabel();
   if(s.companyName) center(s.companyName, 26, true);
+  if(s.companyTag) center(s.companyTag, 16, false);
   if(s.companyPhone) center(s.companyPhone, 18, false);
+  center(inv.docType||'فاتورة بيع', 20, true);
   dashed();
-  line('فاتورة #'+inv.number+' — '+fmtDate(inv.date), 18, false);
-  if(customerLabel && customerLabel!=='زبون عابر') line('الزبون: '+customerLabel, 18, false);
-  if(inv.cashierUsername) line('الموظف: '+inv.cashierUsername, 16, false);
+  rowLR(partyName, 'المطلوب من:', 18, false);
+  rowLR(cust? (cust.accountNumber||'—') : '—', 'رقم الحساب:', 18, false);
+  rowLR(String(inv.number), 'رقم الفاتورة:', 18, false);
+  rowLR(fmtDate(inv.date), 'التاريخ:', 18, false);
+  if(inv.cashierUsername) rowLR(inv.cashierUsername, 'الموظف:', 16, false);
   dashed();
+  rowLR('السعر الإجمالي', 'اسم المنتج', 16, true);
   inv.items.forEach(it=>{
-    rowLR('$'+Number(it.total).toFixed(2), it.qty+' × '+it.desc, 19, false);
+    para(it.desc, 19, true);
+    rowLR(fmtMoney(it.total), fmtQty(it.qty)+' × '+fmtMoney(it.price), 18, false);
   });
   dashed();
-  if(inv.discount){ rowLR('-$'+Number(inv.discount).toFixed(2), 'حسم', 18, false); }
-  rowLR('$'+totalUSD.toFixed(2)+' / '+fmtNum(totalUSD*rate)+' '+secCurLabel(), 'الإجمالي', 22, true);
-  line('طريقة الدفع: '+(currency==='USD'?'نقد دولار':'نقد '+secCurLabel()), 17, false);
-  if(received!=null && changeDue!=null){
-    rowLR(currency==='USD'?'$'+Number(received).toFixed(2):fmtNum(received)+' '+secCurLabel(), 'المقبوض', 18, false);
-    rowLR(currency==='USD'?'$'+Number(changeDue).toFixed(2):fmtNum(changeDue)+' '+secCurLabel(), 'الباقي', 18, true);
+  if(totals.discount>0){
+    rowLR(fmtMoney(totals.subtotal), 'مجموع البنود', 18, false);
+    rowLR('-'+fmtMoney(totals.discount), 'الحسم', 18, false);
   }
-  center('شكراً لزيارتكم 🙏', 18, false);
-  return canvas;
+  rowLR(fmtMoney(totals.totalUSD), 'المجموع $', 22, true);
+  rowLR(fmtLBP(totals.totalLBP), 'المجموع '+secCurLabel(), 20, true);
+  para(amountWords(totals.totalUSD), 16, false, 'center');
+  dashed();
+  rowLR(currency==='USD'?'نقد دولار':'نقد '+secCurLabel(), 'طريقة الدفع', 17, false);
+  if(received!=null && changeDue!=null){
+    rowLR(fmtPay(received), 'المقبوض', 18, false);
+    rowLR(fmtPay(changeDue), 'الباقي', 18, true);
+  }
+  y += 10;
+  para('التوقيع: ....................', 17, false);
+  center('شكراً لزيارتكم', 18, false);
+  y += 120;   // مسافة بيضاء بالأسفل حتى ما تنقص آخر جملة عند قص الورق
+  const out = document.createElement('canvas');
+  out.width = W; out.height = Math.min(H, Math.ceil(y));
+  const octx = out.getContext('2d');
+  octx.fillStyle = '#fff'; octx.fillRect(0,0,out.width,out.height);
+  octx.drawImage(canvas, 0, 0);
+  return out;
 }
 function canvasToEscPosRaster(canvas){
   const ctx = canvas.getContext('2d');
@@ -4249,19 +4285,94 @@ async function printReceiptRaw(inv, currency, totalUSD, rate, customerLabel, rec
     return true;
   }catch(e){ console.error('raw print failed', e && e.message); toast('⚠️ فشلت الطباعة المباشرة: '+(e&&e.message||'')); return false; }
 }
+function posPrintFormat(){ return (DB.settings && DB.settings.posPrintFormat==='a4') ? 'a4' : 'thermal80'; }
+function posPaymentLinesHtml(currency, received, changeDue, small){
+  const fs = small ? '11.5px' : '13px';
+  const fmt = v=> currency==='USD' ? '$'+Number(v).toFixed(2) : fmtNum(v)+' '+secCurLabel();
+  return `<div style="display:flex; justify-content:space-between; font-size:${fs};"><span>طريقة الدفع</span><span>${currency==='USD'?'نقد دولار':'نقد '+secCurLabel()}</span></div>
+    ${(received!=null && changeDue!=null)? `
+    <div style="display:flex; justify-content:space-between; font-size:${fs};"><span>المقبوض</span><span class="num">${fmt(received)}</span></div>
+    <div style="display:flex; justify-content:space-between; font-size:${fs}; font-weight:800;"><span>الباقي</span><span class="num">${fmt(changeDue)}</span></div>` : ''}`;
+}
+// فاتورة POS بنفس خانات فاتورة المبيعات — على ورق 80 ملم أو A4 حسب الإعدادات
+function posReceiptHtml(inv, currency, totalUSD, rate, customerLabel, received, changeDue, format){
+  const s = DB.settings;
+  const cust = DB.customers.find(c=>c.id===inv.customerId);
+  const partyName = (customerLabel && customerLabel!=='زبون عابر') ? customerLabel : (cust? cust.name : '');
+  const totals = computeInvoiceTotal(inv);
+  if(format==='a4'){
+    const tmp = document.createElement('div');
+    tmp.innerHTML = itemDocPrintView('invoice', inv);
+    tmp.querySelectorAll('.doc-actions, .no-print').forEach(x=>x.remove());
+    const doc = tmp.querySelector('.doc');
+    if(doc){
+      const sig = doc.querySelector('.sig');
+      const extra = document.createElement('div');
+      extra.style.cssText = 'margin-top:12px; max-width:320px; margin-inline-start:auto; border:1px solid #ccc; border-radius:8px; padding:8px 12px;';
+      extra.innerHTML = (inv.cashierUsername? `<div style="display:flex; justify-content:space-between; font-size:13px;"><span>الموظف</span><span>${escapeHtml(inv.cashierUsername)}</span></div>` : '') + posPaymentLinesHtml(currency, received, changeDue, false);
+      if(sig) doc.insertBefore(extra, sig); else doc.appendChild(extra);
+    }
+    return tmp.innerHTML;
+  }
+  const th = 'style="text-align:start; border-bottom:1px solid #000; padding:2px 1px; font-size:10px; background:#fff; color:#000; font-weight:800; white-space:normal;"';
+  return `
+    <div style="text-align:center; font-size:13px;">
+      ${s.logo? `<img src="${s.logo}" style="height:40px; width:auto; margin-bottom:4px;">` : ''}
+      <div style="font-weight:800; font-size:14px;">${escapeHtml(s.companyName||'')}</div>
+      ${s.companyTag? `<div style="font-size:10.5px;">${escapeHtml(s.companyTag)}</div>` : ''}
+      <div style="font-size:11px;">${escapeHtml(s.companyPhone||'')}</div>
+      <div style="font-weight:800; font-size:13px; margin-top:4px;">${escapeHtml(inv.docType||'فاتورة بيع')}</div>
+      <div style="border-top:1px dashed #000; margin:6px 0;"></div>
+    </div>
+    <div style="font-size:11px; line-height:1.6;">
+      <div style="display:flex; justify-content:space-between;"><span>المطلوب من:</span><b>${escapeHtml(partyName)}</b></div>
+      <div style="display:flex; justify-content:space-between;"><span>رقم الحساب:</span><b class="num">${escapeHtml(cust? cust.accountNumber||'—' : '—')}</b></div>
+      <div style="display:flex; justify-content:space-between;"><span>رقم الفاتورة:</span><b class="num">${escapeHtml(inv.number)}</b></div>
+      <div style="display:flex; justify-content:space-between;"><span>التاريخ:</span><b class="num">${fmtDate(inv.date)}</b></div>
+      ${inv.cashierUsername? `<div style="display:flex; justify-content:space-between;"><span>الموظف:</span><b>${escapeHtml(inv.cashierUsername)}</b></div>` : ''}
+    </div>
+    <div style="border-top:1px dashed #000; margin:6px 0;"></div>
+    <table style="width:100%; font-size:11px; border-collapse:collapse;">
+      <thead><tr><th ${th}>اسم المنتج</th><th ${th}>الكمية</th><th ${th}>السعر الإفرادي</th><th ${th}>السعر الإجمالي</th></tr></thead>
+      <tbody>
+        ${inv.items.map(it=>`<tr><td style="text-align:start; padding:3px 1px; width:46%;">${escapeHtml(it.desc)}</td><td class="num" style="text-align:center;">${fmtQty(it.qty)}</td><td class="num">${fmtMoney(it.price)}</td><td class="num">${fmtMoney(it.total)}</td></tr>`).join('')}
+      </tbody>
+    </table>
+    <div style="border-top:1px dashed #000; margin:6px 0;"></div>
+    <div style="font-size:11.5px;">
+      ${totals.discount>0? `<div style="display:flex; justify-content:space-between;"><span>مجموع البنود</span><span class="num">${fmtMoney(totals.subtotal)}</span></div>
+      <div style="display:flex; justify-content:space-between;"><span>الحسم</span><span class="num">-${fmtMoney(totals.discount)}</span></div>` : ''}
+      <div style="display:flex; justify-content:space-between; font-weight:800; font-size:13px;"><span>المجموع $</span><span class="num">${fmtMoney(totals.totalUSD)}</span></div>
+      <div style="display:flex; justify-content:space-between; font-weight:800;"><span>المجموع ${secCurLabel()}</span><span class="num">${fmtLBP(totals.totalLBP)}</span></div>
+      <div style="font-size:10.5px; margin-top:4px; border:1px dashed #000; padding:4px; text-align:center;">${amountWords(totals.totalUSD)}</div>
+    </div>
+    <div style="border-top:1px dashed #000; margin:6px 0;"></div>
+    ${posPaymentLinesHtml(currency, received, changeDue, true)}
+    <div style="font-size:11px; margin-top:14px;">التوقيع: ....................</div>
+    <div style="text-align:center; font-size:11px; margin-top:10px;">شكراً لزيارتكم 🙏</div>
+    <div style="height:50px;"></div>`;
+}
 async function printPosReceipt(inv, currency, totalUSD, rate, customerLabel, received, changeDue){
+  const format = posPrintFormat();
   // البلوتوث (BLE) ما عاد نجرّب الطباعة المباشرة فيه — أثبتت الاختبارات إنو ما بيوصل
   // للطابعات يلي بتشتغل Classic/SPP (زي RPP300-B). الاعتماد صار على نافذة الطباعة
   // العادية + تطبيق RawBT (Classic Bluetooth) لهالحالة.
-  if(DB.settings.posPrinterVendorId && DB.settings.posPrinterType!=='bluetooth'){
+  if(format==='thermal80' && DB.settings.posPrinterVendorId && DB.settings.posPrinterType!=='bluetooth'){
     const ok = await printReceiptRaw(inv, currency, totalUSD, rate, customerLabel, received, changeDue);
     if(ok) return;
     // فشلت الطباعة المباشرة عبر USB — نرجع لنافذة الطباعة العادية
   }
-  const s = DB.settings;
+  const old = document.getElementById('pos-receipt-print'); if(old) old.remove();
+  const oldSt = document.getElementById('pos-receipt-print-style'); if(oldSt) oldSt.remove();
   const styleEl = document.createElement('style');
   styleEl.id = 'pos-receipt-print-style';
-  styleEl.textContent = `
+  styleEl.textContent = format==='a4' ? `
+    @page{ size: A4 portrait; margin: 10mm; }
+    @media print{
+      body *{ visibility:hidden; }
+      #pos-receipt-print, #pos-receipt-print *{ visibility:visible; }
+      #pos-receipt-print{ position:absolute; inset-inline-start:0; top:0; width:100%; }
+    }` : `
     @page{ size: 80mm auto; margin: 2mm; }
     @media print{
       body *{ visibility:hidden; }
@@ -4271,43 +4382,19 @@ async function printPosReceipt(inv, currency, totalUSD, rate, customerLabel, rec
   document.head.appendChild(styleEl);
   const wrap = document.createElement('div');
   wrap.id = 'pos-receipt-print';
+  wrap.setAttribute('data-format', format);
   wrap.style.cssText = 'display:none;';
-  wrap.innerHTML = `
-    <div style="text-align:center; font-size:13px;">
-      ${s.logo? `<img src="${s.logo}" style="height:40px; width:auto; margin-bottom:4px;">` : ''}
-      <div style="font-weight:800; font-size:14px;">${escapeHtml(s.companyName||'')}</div>
-      <div style="font-size:11px;">${escapeHtml(s.companyPhone||'')}</div>
-      <div style="border-top:1px dashed #000; margin:6px 0;"></div>
-      <div style="text-align:start; font-size:11px;">فاتورة #${escapeHtml(inv.number)} — ${fmtDate(inv.date)}</div>
-      ${(customerLabel && customerLabel!=='زبون عابر')? `<div style="text-align:start; font-size:11px;">الزبون: ${escapeHtml(customerLabel)}</div>` : ''}
-      ${inv.cashierUsername? `<div style="text-align:start; font-size:10.5px;">الموظف: ${escapeHtml(inv.cashierUsername)}</div>` : ''}
-      <div style="border-top:1px dashed #000; margin:6px 0;"></div>
-    </div>
-    <table style="width:100%; font-size:11.5px; border-collapse:collapse;">
-      <thead><tr><th style="text-align:start;">الصنف</th><th>ك</th><th>سعر</th><th>إجمالي</th></tr></thead>
-      <tbody>
-        ${inv.items.map(it=>`<tr><td style="text-align:start;">${escapeHtml(it.desc)}</td><td class="num">${it.qty}</td><td class="num">${Number(it.price).toFixed(2)}</td><td class="num">${Number(it.total).toFixed(2)}</td></tr>`).join('')}
-      </tbody>
-    </table>
-    <div style="border-top:1px dashed #000; margin:6px 0;"></div>
-    ${inv.discount? `<div style="display:flex; justify-content:space-between; font-size:11.5px;"><span>حسم</span><span>-$${Number(inv.discount).toFixed(2)}</span></div>` : ''}
-    <div style="display:flex; justify-content:space-between; font-weight:800; font-size:13px;">
-      <span>الإجمالي</span><span>$${totalUSD.toFixed(2)} / ${fmtNum(totalUSD*rate)} ${secCurLabel()}</span>
-    </div>
-    <div style="text-align:center; font-size:11px; margin-top:8px;">طريقة الدفع: ${currency==='USD'?'نقد دولار':'نقد '+secCurLabel()}</div>
-    ${(received!=null && changeDue!=null)? `
-    <div style="display:flex; justify-content:space-between; font-size:11.5px; margin-top:4px;"><span>المقبوض</span><span>${currency==='USD'?'$'+Number(received).toFixed(2):fmtNum(received)+' '+secCurLabel()}</span></div>
-    <div style="display:flex; justify-content:space-between; font-size:11.5px; font-weight:800;"><span>الباقي</span><span>${currency==='USD'?'$'+Number(changeDue).toFixed(2):fmtNum(changeDue)+' '+secCurLabel()}</span></div>` : ''}
-    <div style="text-align:center; font-size:11px; margin-top:10px;">شكراً لزيارتكم 🙏</div>
-    <div style="height:50px;"></div>`;
+  wrap.innerHTML = posReceiptHtml(inv, currency, totalUSD, rate, customerLabel, received, changeDue, format);
   document.body.appendChild(wrap);
-  const showForPrint = ()=>{ wrap.style.display='block'; };
+  const prevTitle = document.title;
+  document.title = 'POS-Invoice-'+safeText(inv.number);
   const cleanup = ()=>{
     wrap.remove();
     const st = document.getElementById('pos-receipt-print-style'); if(st) st.remove();
+    document.title = prevTitle;
   };
   window.addEventListener('afterprint', cleanup, {once:true});
-  showForPrint();
+  wrap.style.display = 'block';
   setTimeout(()=>{ window.print(); setTimeout(cleanup, 1500); }, 60);
 }
 /* ---------- فتح درج الصندوق تلقائياً عبر الطابعة (WebUSB) ---------- */
@@ -5634,6 +5721,13 @@ function settingsView(){
         <input type="checkbox" id="s_pos_autodrawer" ${s.posAutoOpenDrawer!==false?'checked':''}> افتح درج الصندوق تلقائياً عند القبض
       </label>
     </div>
+    <div class="field" style="max-width:360px;"><label>حجم ورقة فاتورة POS</label>
+      <select id="s_pos_print_format">
+        <option value="thermal80" ${posPrintFormat()==='thermal80'?'selected':''}>🧾 طابعة حرارية 80 ملم</option>
+        <option value="a4" ${posPrintFormat()==='a4'?'selected':''}>📄 ورقة A4</option>
+      </select>
+      <div style="font-size:11.5px; color:var(--ink-soft); margin-top:4px;">الفاتورة تُظهر نفس خانات فاتورة المبيعات في الحالتين.</div>
+    </div>
     <div class="field">
       <label>الطابعة الحرارية (٨٠ ملم) — لفتح الدرج تلقائياً عبرها</label>
       <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
@@ -6139,6 +6233,8 @@ function bindEvents(){
   const savePosSettingsBtn = document.getElementById('saveposSettingsBtn');
   if(savePosSettingsBtn) savePosSettingsBtn.addEventListener('click', async ()=>{
     DB.settings.posAutoOpenDrawer = document.getElementById('s_pos_autodrawer').checked;
+    const pf = document.getElementById('s_pos_print_format');
+    if(pf) DB.settings.posPrintFormat = pf.value==='a4' ? 'a4' : 'thermal80';
     const ok = await save(KEYS.settings, DB.settings);
     toast(ok? 'تم حفظ إعدادات POS':'حدث خطأ أثناء الحفظ');
     render();
