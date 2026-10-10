@@ -238,6 +238,12 @@
   .hub-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-bottom:18px;}
   @media(max-width:900px){.hub-grid{grid-template-columns:repeat(2,1fr);}}
   @media(max-width:640px){.hub-grid{grid-template-columns:1fr;}}
+  .hub-editing .hub-slot{position:relative; border:2px dashed var(--bronze); border-radius:16px; padding:4px; background:var(--paper); cursor:grab;}
+  .hub-editing .hub-card{cursor:grab; pointer-events:none;}
+  .hub-slot.dragging{opacity:.45;}
+  .hub-slot.drop-target{border-color:var(--credit); background:#eaf6ee;}
+  .hub-slot-bar{display:flex; justify-content:space-between; align-items:center; gap:6px; padding:6px 4px 2px;}
+  .hub-handle{font-size:22px; cursor:grab; padding:2px 12px; touch-action:none; user-select:none; color:var(--bronze-deep);}
   .hub-card{background:var(--white); border:1px solid var(--line); border-radius:14px; padding:22px 18px; text-align:center; box-shadow:var(--shadow); cursor:pointer; transition:transform .1s ease, box-shadow .15s ease;}
   .pos-tile-grid{display:grid; grid-template-columns:repeat(auto-fill, minmax(140px, 1fr)); gap:12px; margin-top:12px;}
   .pos-tile{background:var(--white); border:1.5px solid var(--line); border-radius:14px; padding:10px; text-align:center; cursor:pointer;
@@ -687,7 +693,9 @@ function settingsToDb(s){
     trial_started_at: s.trialStartedAt||null, license_serial: s.licenseSerial||null,
     license_expires_at: s.licenseExpiresAt||null, license_label: s.licenseLabel||null,
     business_type: s.businessType||'supermarket', favicon: s.favicon||null,
-    workers_enabled: !!s.workersEnabled, product_lists: s.productLists||null
+    workers_enabled: !!s.workersEnabled,
+    // ترتيب الصفحة الرئيسية محفوظ داخل product_lists._ui (بدون عمود جديد)
+    product_lists: Object.assign({}, s.productLists||{}, {_ui:{hubOrder: Array.isArray(s.hubOrder)? s.hubOrder : null}})
   };
 }
 function applySettingsFromDb(row, base){
@@ -719,7 +727,8 @@ function applySettingsFromDb(row, base){
     businessType: row.business_type!=null? row.business_type : base.businessType,
     favicon: row.favicon!=null? row.favicon : base.favicon,
     workersEnabled: row.workers_enabled!=null? !!row.workers_enabled : base.workersEnabled,
-    productLists: row.product_lists!=null? row.product_lists : base.productLists
+    productLists: row.product_lists!=null? row.product_lists : base.productLists,
+    hubOrder: (row.product_lists && row.product_lists._ui && Array.isArray(row.product_lists._ui.hubOrder)) ? row.product_lists._ui.hubOrder : base.hubOrder
   };
 }
 async function syncSettingsToSupabase(settings){
@@ -1871,7 +1880,7 @@ function nextBudgetEntryNumber(){
 }
 
 /* ============================= ROUTER / RENDER ============================= */
-function go(hash){ location.hash = hash; }
+function go(hash){ _hubEditMode = false; _hubDraftOrder = null; location.hash = hash; }
 window.addEventListener('hashchange', render);
 
 function currentRoute(){
@@ -2757,56 +2766,56 @@ function hubView(){
     </tbody></table></div>
   </div>` : '';
   const allCards = [
-    {perm:'pos', html:`<div class="hub-card" data-nav="#/pos">
+    {key:'pos', perm:'pos', html:`<div class="hub-card" data-nav="#/pos">
       <div class="hub-icon">🧾</div>
       <div class="hub-title">نقطة البيع (POS)</div>
       <div class="hub-sub">بيع سريع بالباركود</div>
       <div class="hub-amt" style="color:var(--steel)">افتح شاشة البيع</div>
     </div>`},
-    {perm:'pos', html:`<div class="hub-card" data-nav="#/journal">
+    {key:'journal', perm:'pos', html:`<div class="hub-card" data-nav="#/journal">
       <div class="hub-icon">📒</div>
       <div class="hub-title">اليوميات</div>
       <div class="hub-sub">كل حركات اليوم في مكان واحد</div>
       <div class="hub-amt" style="color:var(--steel)">فواتير، إيصالات، سندات</div>
     </div>`},
-    {perm:'pos', html:`<div class="hub-card" data-nav="#/reports">
+    {key:'reports', perm:'pos', html:`<div class="hub-card" data-nav="#/reports">
       <div class="hub-icon">📊</div>
       <div class="hub-title">التقارير</div>
       <div class="hub-sub">يومي، شهري، سنوي، أو فترة محددة</div>
       <div class="hub-amt" style="color:var(--steel)">قابلة للطباعة</div>
     </div>`},
-    {perm:'customers', html:`<div class="hub-card" data-nav="#/customers">
+    {key:'customers', perm:'customers', html:`<div class="hub-card" data-nav="#/customers">
       <div class="hub-icon">👤</div>
       <div class="hub-title">الزبائن</div>
       <div class="hub-sub">${DB.customers.length} زبون</div>
       <div class="hub-amt owe">${fmtMoney(custOwed)} مستحق</div>
     </div>`},
-    {perm:'suppliers', html:`<div class="hub-card" data-nav="#/suppliers">
+    {key:'suppliers', perm:'suppliers', html:`<div class="hub-card" data-nav="#/suppliers">
       <div class="hub-icon">🚚</div>
       <div class="hub-title">الموردون</div>
       <div class="hub-sub">${DB.suppliers.length} مورد</div>
       <div class="hub-amt owe">${fmtMoney(supOwed)} مستحق علينا</div>
     </div>`},
-    {perm:'warehouse', html:`<div class="hub-card" data-nav="#/warehouse">
+    {key:'warehouse', perm:'warehouse', html:`<div class="hub-card" data-nav="#/warehouse">
       <div class="hub-icon">📦</div>
       <div class="hub-title">المستودع</div>
       <div class="hub-sub">${DB.warehouseItems.length} صنف</div>
       <div class="hub-amt" style="color:${expiring.length?'var(--debit)':'var(--steel)'}">${expiring.length? expiring.length+' صنف يقترب من انتهاء صلاحيته ⚠️' : 'كل شيء على ما يرام'}</div>
     </div>`},
-    ...(workersEnabled()? [{perm:'workers', html:`<div class="hub-card" data-nav="#/workers">
+    ...(workersEnabled()? [{key:'workers', perm:'workers', html:`<div class="hub-card" data-nav="#/workers">
       <div class="hub-icon">👷</div>
       <div class="hub-title">العمال</div>
       <div class="hub-sub">${DB.workers.length} عامل</div>
       <div class="hub-amt owe">${fmtMoney(DB.workers.reduce((s,w)=>{const b=workerBalance(w.id); return s + (b>0?b:0);},0))} مستحق لهم</div>
     </div>`}] : []),
-    {perm:'budget', html:`<div class="hub-card" data-nav="#/budget">
+    {key:'budget', perm:'budget', html:`<div class="hub-card" data-nav="#/budget">
       <div class="hub-icon">💰</div>
       <div class="hub-title">الميزانية</div>
       <div class="hub-sub">${DB.budgetCategories.length} حقل</div>
       <div class="hub-amt" style="color:var(--steel)">مقبوضات ومدفوعات</div>
     </div>`}
   ];
-  const visibleCards = allCards.filter(c=>hasPermission(c.perm)).map(c=>c.html).join('');
+  const visibleCards = allCards.filter(c=>hasPermission(c.perm));
   const settingsCard = isAdmin? `<div class="hub-card" data-nav="#/settings">
       <div class="hub-icon">⚙</div>
       <div class="hub-title">الإعدادات</div>
@@ -2896,18 +2905,111 @@ function hubView(){
       </tr>`; }).join('')}
     </tbody></table></div>
   </div>` : '';
+  const hubCards = [...visibleCards,
+    {key:'settings', html:settingsCard}, {key:'customer-accounts', html:custAccCard},
+    {key:'worker-accounts', html:workerAccCard}, {key:'trash', html:trashCard}].filter(c=>c.html);
   return `
   ${expiryCard}
   ${lowCard}
   ${cashBoxCard}
-  <div class="hub-grid">
-    ${visibleCards}
-    ${settingsCard}
-    ${custAccCard}
-    ${workerAccCard}
-    ${trashCard}
-  </div>
+  ${hubGridHtml(hubCards)}
   ${appFooter()}`;
+}
+/* ---------- ترتيب بلوكات الصفحة الرئيسية (سحب وإفلات + أسهم للهاتف) ---------- */
+let _hubEditMode = false;
+let _hubDraftOrder = null;
+function orderHubCards(cards, order){
+  if(!Array.isArray(order) || !order.length) return cards;
+  const pos = k=>{ const i = order.indexOf(k); return i===-1 ? 1000 : i; };
+  return cards.map((c,i)=>({c,i})).sort((a,b)=> (pos(a.c.key)-pos(b.c.key)) || (a.i-b.i)).map(x=>x.c);
+}
+function hubGridHtml(cards){
+  const canEdit = isPrivilegedUser(currentUser);
+  const ordered = orderHubCards(cards, _hubEditMode ? _hubDraftOrder : DB.settings.hubOrder);
+  if(_hubEditMode) _hubDraftOrder = ordered.map(c=>c.key);
+  const toolbar = canEdit ? `<div style="display:flex; justify-content:flex-end; gap:8px; margin:0 0 10px; flex-wrap:wrap;">
+    ${_hubEditMode ? `<span style="flex:1; font-size:12.5px; color:var(--ink-soft); align-self:center;">اسحب البلوك من ⠿ أو استعمل الأسهم لتغيير مكانه، ثم اضغط «تم».</span>
+      <button class="btn btn-sm" id="hubResetBtn">↺ الترتيب الافتراضي</button>
+      <button class="btn btn-sm" id="hubCancelBtn">إلغاء</button>
+      <button class="btn btn-sm btn-primary" id="hubDoneBtn">✅ تم</button>`
+    : `<button class="btn btn-sm btn-ghost-dark" id="hubEditBtn" style="background:transparent; border:1px dashed var(--line);">✏️ ترتيب البلوكات</button>`}
+  </div>` : '';
+  const slots = ordered.map((c,i)=>{
+    if(!_hubEditMode) return c.html;
+    const html = c.html.replace(/ data-nav="/g, ' data-nav-off="');
+    return `<div class="hub-slot" data-hub-key="${escapeHtml(c.key)}" draggable="true">
+      ${html}
+      <div class="hub-slot-bar">
+        <button type="button" class="btn btn-sm" data-hub-move="-1" ${i===0?'disabled':''} title="قبل">➡ قبل</button>
+        <span class="hub-handle" title="اسحب">⠿</span>
+        <button type="button" class="btn btn-sm" data-hub-move="1" ${i===ordered.length-1?'disabled':''} title="بعد">بعد ⬅</button>
+      </div>
+    </div>`;
+  }).join('');
+  return `${toolbar}<div class="hub-grid ${_hubEditMode?'hub-editing':''}" id="hubGrid">${slots}</div>`;
+}
+async function saveHubOrder(order){
+  DB.settings.hubOrder = order;
+  const ok = await save(KEYS.settings, DB.settings);
+  toast(ok? 'تم حفظ ترتيب الصفحة الرئيسية' : 'حدث خطأ أثناء الحفظ');
+}
+function bindHubEditEvents(){
+  const editBtn = document.getElementById('hubEditBtn');
+  if(editBtn) editBtn.addEventListener('click', ()=>{ _hubEditMode = true; _hubDraftOrder = null; render(); });
+  if(!_hubEditMode) return;
+  const done = document.getElementById('hubDoneBtn');
+  if(done) done.addEventListener('click', async ()=>{ const o = _hubDraftOrder; _hubEditMode = false; _hubDraftOrder = null; await saveHubOrder(o); render(); });
+  const cancel = document.getElementById('hubCancelBtn');
+  if(cancel) cancel.addEventListener('click', ()=>{ _hubEditMode = false; _hubDraftOrder = null; render(); });
+  const reset = document.getElementById('hubResetBtn');
+  if(reset) reset.addEventListener('click', ()=>{ _hubDraftOrder = []; render(); });
+  const grid = document.getElementById('hubGrid');
+  if(!grid) return;
+  const move = (key, toIdx)=>{
+    const o = _hubDraftOrder.slice(); const from = o.indexOf(key);
+    if(from===-1 || toIdx<0 || toIdx>=o.length || from===toIdx) return false;
+    o.splice(from,1); o.splice(toIdx,0,key); _hubDraftOrder = o; return true;
+  };
+  grid.querySelectorAll('[data-hub-move]').forEach(b=>b.addEventListener('click', e=>{
+    e.stopPropagation();
+    const key = b.closest('.hub-slot').getAttribute('data-hub-key');
+    if(move(key, _hubDraftOrder.indexOf(key) + Number(b.getAttribute('data-hub-move')))) render();
+  }));
+  // سحب وإفلات بالماوس
+  let dragKey = null;
+  grid.querySelectorAll('.hub-slot').forEach(slot=>{
+    slot.addEventListener('dragstart', e=>{ dragKey = slot.getAttribute('data-hub-key'); slot.classList.add('dragging'); try{ e.dataTransfer.setData('text/plain', dragKey); }catch(_){} });
+    slot.addEventListener('dragend', ()=>{ slot.classList.remove('dragging'); });
+    slot.addEventListener('dragover', e=>{ e.preventDefault(); });
+    slot.addEventListener('drop', e=>{
+      e.preventDefault();
+      const target = slot.getAttribute('data-hub-key');
+      if(dragKey && target!==dragKey && move(dragKey, _hubDraftOrder.indexOf(target))) render();
+    });
+  });
+  // سحب باللمس (الهاتف) من مقبض ⠿
+  grid.querySelectorAll('.hub-handle').forEach(h=>{
+    h.addEventListener('pointerdown', e=>{
+      if(e.pointerType==='mouse') return;   // الماوس يستعمل السحب العادي
+      e.preventDefault();
+      const slot = h.closest('.hub-slot'); const key = slot.getAttribute('data-hub-key');
+      slot.classList.add('dragging');
+      const onMove = ev=>{
+        const el = document.elementFromPoint(ev.clientX, ev.clientY);
+        const over = el && el.closest && el.closest('.hub-slot');
+        grid.querySelectorAll('.hub-slot').forEach(x=>x.classList.toggle('drop-target', x===over && x!==slot));
+      };
+      const onUp = ev=>{
+        document.removeEventListener('pointermove', onMove); document.removeEventListener('pointerup', onUp);
+        const el = document.elementFromPoint(ev.clientX, ev.clientY);
+        const over = el && el.closest && el.closest('.hub-slot');
+        if(over && over!==slot && move(key, _hubDraftOrder.indexOf(over.getAttribute('data-hub-key')))) render();
+        else { slot.classList.remove('dragging'); grid.querySelectorAll('.drop-target').forEach(x=>x.classList.remove('drop-target')); }
+      };
+      document.addEventListener('pointermove', onMove);
+      document.addEventListener('pointerup', onUp);
+    });
+  });
 }
 function dashboardView(){
   const totalOwed = DB.customers.reduce((s,c)=>{const b=customerBalance(c.id); return s + (b>0?b:0);},0);
@@ -5030,8 +5132,53 @@ function itemDocFormView(kind, doc, partyId, isReturn){
     </div>
   </div>`;
 }
+// خيارات المنتجات لبند الفاتورة — مفلترة حسب نوع البند ونص البحث
+function itemRowProductOptions(it, query){
+  const catKey = it.cat ? autoCategoryKey(it.cat) : '';
+  let products = DB.warehouseItems.filter(p=>!catKey || autoCategoryKey(p.category)===catKey);
+  products = query ? smartSearchWarehouse(query, products) : products.slice().sort((a,b)=>String(a.name||'').localeCompare(String(b.name||''),'ar'));
+  const sel = it.productId ? DB.warehouseItems.find(p=>p.id===it.productId) : null;
+  if(sel && !products.includes(sel)) products.unshift(sel);
+  const label = p=>{
+    const spec = [p.tireSize, p.amperage, p.viscosity, p.sku].filter(Boolean).join(' • ');
+    return p.name + (spec && !p.name.includes(spec)? ' — '+spec : '') + ' (المتوفر: '+fmtQty(currentStock(p.id))+')';
+  };
+  return `<option value="">— اختر منتجًا من المستودع${it.cat? ' ('+escapeHtml(it.cat)+')':''} —</option>
+    ${products.slice(0,300).map(p=>`<option value="${p.id}" data-name="${escapeHtml(p.name)}" ${it.productId===p.id?'selected':''}>${escapeHtml(label(p))}</option>`).join('')}`;
+}
 function itemRow(it, idx){
   const computedTotal = Math.round((Number(it.qty)||0) * (Number(it.price)||0) * 100)/100;
+  if(isAutoShop()){
+    const d = _itemDocDraft || {};
+    const canCreate = d.__kind==='purchase' && !d.isReturn;
+    return `<div class="item-card" data-idx="${idx}">
+    <div class="item-card-head">
+      <span>بند ${idx+1}</span>
+      <button class="rm-btn" data-rm="${idx}">✕ حذف</button>
+    </div>
+    <div class="grid grid-2">
+      <div class="field"><label>نوع البند</label>
+        <select class="it-cat">
+          <option value="">الكل</option>
+          ${AUTO_CATEGORIES.map(c=>`<option value="${escapeHtml(c.label)}" ${it.cat===c.label?'selected':''}>${AUTO_CATEGORY_ICONS[c.key]||''} ${c.label}</option>`).join('')}
+        </select>
+      </div>
+      <div class="field"><label>بحث عن منتج</label><input type="text" class="it-psearch" placeholder="🔍 اسم، باركود، مقاس، لزوجة..." autocomplete="off"></div>
+    </div>
+    <div class="field"><label>المنتج</label>
+      <div style="display:flex; gap:6px;">
+        <select class="it-product" style="flex:1; min-width:0;">${itemRowProductOptions(it, '')}</select>
+        ${canCreate? `<button type="button" class="btn btn-sm btn-primary it-newprod" title="منتج جديد بكل بياناته">➕ منتج جديد</button>` : ''}
+      </div>
+    </div>
+    <div class="field"><label>اسم المنتج (يُملأ تلقائياً عند الاختيار)</label><input type="text" class="it-desc" value="${escapeHtml(it.desc)}" placeholder="اسم المنتج"></div>
+    <div class="grid grid-3">
+      <div class="field"><label>الكمية</label><input type="number" class="it-qty num" value="${it.qty}"></div>
+      <div class="field"><label>السعر الإفرادي $</label><input type="number" class="it-price num" value="${it.price}"></div>
+      <div class="field"><label>السعر الإجمالي $ (تلقائي)</label><input type="number" class="it-total num" value="${computedTotal}" disabled style="opacity:.75;"></div>
+    </div>
+  </div>`;
+  }
   const products = DB.warehouseItems.slice().sort((a,b)=>a.name.localeCompare(b.name,'ar'));
   return `<div class="item-card" data-idx="${idx}">
     <div class="item-card-head">
@@ -5617,6 +5764,7 @@ function printLandscape(name){
 }
 
 function bindEvents(){
+  bindHubEditEvents();
   document.querySelectorAll('[data-nav]').forEach(el=>{
     el.addEventListener('click', (e)=>{ e.stopPropagation(); go(el.getAttribute('data-nav')); });
   });
@@ -5707,7 +5855,7 @@ function bindEvents(){
 
   /* Warehouse */
   const addWhItemBtn = document.getElementById('addWhItemBtn');
-  if(addWhItemBtn) addWhItemBtn.addEventListener('click', ()=>openWarehouseItemModal(null));
+  if(addWhItemBtn) addWhItemBtn.addEventListener('click', ()=>startAddWarehouseItem(null));
   const editWhItemBtn = document.getElementById('editWhItemBtn');
   if(editWhItemBtn){
     const parts = currentRoute();
@@ -5745,7 +5893,7 @@ function bindEvents(){
     if(whScanBtn) whScanBtn.addEventListener('click', ()=>openBarcodeScannerModal(code=>{
       const hit = findItemByBarcode(code);
       if(hit){ go(`#/warehouse-item/${hit.id}`); return; }
-      if(confirm('لا يوجد منتج بهذا الباركود ('+code+') — هل تريد إضافته كمنتج جديد؟')) openWarehouseItemModal(null, code);
+      if(confirm('لا يوجد منتج بهذا الباركود ('+code+') — هل تريد إضافته كمنتج جديد؟')) startAddWarehouseItem(code);
     }));
     if(!('ontouchstart' in window)) setTimeout(()=>whSearchEl.focus(), 50);
   }
@@ -6672,9 +6820,41 @@ function findItemByBarcode(barcode, exceptId){
   if(!b) return null;
   return DB.warehouseItems.find(x=>x.id!==exceptId && String(x.barcode||'').trim()===b) || null;
 }
-function openWarehouseItemModal(item, presetBarcode){
+// نافذة اختيار نوع المنتج قبل الإضافة (محل الإطارات) — تظهر الخانات الخاصة بالنوع فقط
+const AUTO_CATEGORY_ICONS = {tires:'🛞', batteries:'🔋', oils:'🛢', parts:'🔧', accessories:'🎁'};
+function openAddItemChooser(onPick){
+  const wrap = document.createElement('div');
+  wrap.className = 'modal-bg';
+  wrap.innerHTML = `<div class="modal">
+    <h3>ماذا تريد أن تضيف؟</h3>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin:6px 0 14px;">
+      ${AUTO_CATEGORIES.map(c=>`<button type="button" class="btn" data-pick-cat="${escapeHtml(c.label)}" style="flex-direction:column; justify-content:center; padding:16px 8px; font-size:15px; font-weight:800; gap:4px;">
+        <span style="font-size:28px;">${AUTO_CATEGORY_ICONS[c.key]||'📦'}</span>إضافة ${c.label}</button>`).join('')}
+      <button type="button" class="btn" data-pick-cat="" style="flex-direction:column; justify-content:center; padding:16px 8px; font-size:15px; font-weight:800; gap:4px;">
+        <span style="font-size:28px;">📦</span>منتج آخر (كل الخانات)</button>
+    </div>
+    <div class="row"><button class="btn" id="pc_cancel">إلغاء</button></div>
+  </div>`;
+  document.body.appendChild(wrap);
+  wrap.querySelector('#pc_cancel').addEventListener('click', ()=>wrap.remove());
+  wrap.querySelectorAll('[data-pick-cat]').forEach(b=>b.addEventListener('click', ()=>{
+    wrap.remove();
+    onPick(b.getAttribute('data-pick-cat'));
+  }));
+}
+// زر «إضافة منتج»: في محل الإطارات يسأل عن النوع أولاً
+function startAddWarehouseItem(presetBarcode, opts){
+  opts = opts || {};
+  if(!isAutoShop()) return openWarehouseItemModal(null, presetBarcode, opts);
+  if(opts.category!==undefined) return openWarehouseItemModal(null, presetBarcode, opts);
+  openAddItemChooser(cat=>openWarehouseItemModal(null, presetBarcode, Object.assign({}, opts, {category:cat})));
+}
+function openWarehouseItemModal(item, presetBarcode, opts){
+  opts = opts || {};
   const isNew = !item;
   const auto = isAutoShop();
+  const presetCat = isNew ? (opts.category||'') : '';
+  const presetKey = autoCategoryKey(presetCat);
   const v = (k, d='')=> item && item[k]!=null ? item[k] : d;
   const wrap = document.createElement('div');
   wrap.className='modal-bg';
@@ -6692,7 +6872,7 @@ function openWarehouseItemModal(item, presetBarcode){
         <input type="file" id="wm_image" accept="image/*" style="flex:1;">
       </div>
     </div>`;
-  const qtyFields = isNew? `
+  const qtyFields = (isNew && !opts.onSaved)? `
     <div class="grid grid-2">
       <div class="field"><label>الكمية ${auto?'المتوفرة':'*'}</label><input type="number" id="wm_qty" class="num" value="${auto?'':'0'}" placeholder="0"></div>
       <div class="field"><label>التاريخ</label><input type="date" id="wm_date" value="${todayISO()}"></div>
@@ -6732,7 +6912,7 @@ function openWarehouseItemModal(item, presetBarcode){
     <div class="grid grid-2">
       <div class="field"><label>كود المنتج (SKU / Part Number)</label><input type="text" id="wm_sku" class="num" value="${escapeHtml(v('sku'))}"></div>
       <div class="field"><label>الفئة الرئيسية</label>
-        <input type="text" id="wm_category" list="wm_category_list" value="${escapeHtml(v('category'))}" placeholder="إطارات / بطاريات / زيوت / قطع غيار / إكسسوارات">
+        <input type="text" id="wm_category" list="wm_category_list" value="${escapeHtml(v('category', presetCat))}" placeholder="إطارات / بطاريات / زيوت / قطع غيار / إكسسوارات">
         <datalist id="wm_category_list">${cats.map(c=>`<option value="${escapeHtml(c)}">`).join('')}</datalist>
       </div>
     </div>
@@ -6760,10 +6940,10 @@ function openWarehouseItemModal(item, presetBarcode){
 
     ${sec('3. البيانات المالية والموردون')}
     <div class="grid grid-3">
-      <div class="field"><label>سعر التكلفة $</label><input type="number" step="0.01" id="wm_cost" class="num" value="${escapeHtml(v('costPrice'))}"></div>
+      <div class="field"><label>سعر التكلفة $</label><input type="number" step="0.01" id="wm_cost" class="num" value="${escapeHtml(v('costPrice', opts.costPrice!==undefined? opts.costPrice : ''))}"></div>
       <div class="field"><label>سعر البيع $</label><input type="number" step="0.01" id="wm_price" class="num" value="${item&&item.price?item.price:''}"></div>
       <div class="field"><label>المورد</label>
-        <select id="wm_supplier"><option value="">— اختر —</option>${sups.map(s=>`<option value="${s.id}" ${v('supplierId')===s.id?'selected':''}>${escapeHtml(s.name)}</option>`).join('')}</select>
+        <select id="wm_supplier"><option value="">— اختر —</option>${sups.map(s=>`<option value="${s.id}" ${v('supplierId', opts.supplierId||'')===s.id?'selected':''}>${escapeHtml(s.name)}</option>`).join('')}</select>
       </div>
     </div>
 
@@ -6809,8 +6989,10 @@ function openWarehouseItemModal(item, presetBarcode){
     <div class="field"><label>ملاحظات</label><input type="text" id="wm_note" value="${escapeHtml(v('note'))}"></div>`;
   }
 
+  const title = !isNew ? 'تعديل بيانات المنتج'
+    : (presetKey && presetKey!=='other' ? `${AUTO_CATEGORY_ICONS[presetKey]||''} إضافة ${escapeHtml(presetCat)}` : 'إضافة إلى المخزون');
   wrap.innerHTML = `<div class="modal ${auto?'modal-wide':''}">
-    <h3>${isNew? 'إضافة إلى المخزون' : 'تعديل بيانات المنتج'}</h3>
+    <h3>${title}${opts.onSaved? ' <span style="font-size:12px; color:var(--ink-soft); font-weight:600;">(الكمية والسعر من بند الفاتورة)</span>':''}</h3>
     ${body}
     <div class="row modal-sticky-actions">
       <button class="btn" id="wm_cancel">إلغاء</button>
@@ -6890,6 +7072,22 @@ function openWarehouseItemModal(item, presetBarcode){
     d.image = image;
     const dup = findItemByBarcode(d.barcode, item?item.id:null);
 
+    if(isNew && opts.onSaved){
+      // إضافة منتج من داخل فاتورة: الكمية تُحسب من البند نفسه
+      if(dup){
+        wrap.remove();
+        toast(`هذا الباركود موجود للمنتج «${dup.name}» — تم اختياره في البند`);
+        opts.onSaved(dup);
+        return;
+      }
+      const it = {id:uid(), createdAt:Date.now(), ...d, purchaseDate:todayISO()};
+      DB.warehouseItems.push(it);
+      const ok = await save(KEYS.warehouseItems, DB.warehouseItems);
+      wrap.remove();
+      toast(ok? 'تم إنشاء المنتج «'+it.name+'» وربطه بالبند' : 'حدث خطأ أثناء الحفظ');
+      opts.onSaved(it);
+      return;
+    }
     if(isNew){
       const qty = Number(val('#wm_qty'))||0;
       const date = val('#wm_date') || todayISO();
@@ -7013,11 +7211,59 @@ function bindItemDocFormEvents(){
         if(productSelect.value){
           const opt = productSelect.querySelector(`option[value="${productSelect.value}"]`);
           it.desc = opt ? opt.getAttribute('data-name') : it.desc;
+          // تعبئة السعر تلقائياً إذا كان فارغاً: تكلفة للمشتريات، سعر بيع للفواتير
+          const w = DB.warehouseItems.find(x=>x.id===productSelect.value);
+          if(w && !(Number(it.price)>0)){
+            const pr = _itemDocDraft.__kind==='purchase' ? Number(w.costPrice)||0 : Number(w.price)||0;
+            if(pr>0){ it.price = pr; it.total = autoTotalFromPrice(it); }
+          }
+          if(w && isAutoShop() && !it.cat){ const k = autoCategoryKey(w.category); const c = AUTO_CATEGORIES.find(x=>x.key===k); if(c) it.cat = c.label; }
         }
         render();
       });
     }
-    tr.querySelectorAll('input').forEach(inp=>{
+    const catSelect = tr.querySelector('.it-cat');
+    if(catSelect) catSelect.addEventListener('change', ()=>{
+      const it = _itemDocDraft.items[Number(tr.getAttribute('data-idx'))];
+      it.cat = catSelect.value;
+      const w = it.productId && DB.warehouseItems.find(x=>x.id===it.productId);
+      if(w && it.cat && autoCategoryKey(w.category)!==autoCategoryKey(it.cat)) it.productId = '';
+      render();
+    });
+    const pSearch = tr.querySelector('.it-psearch');
+    if(pSearch && productSelect){
+      let t = null;
+      pSearch.addEventListener('input', ()=>{
+        clearTimeout(t);
+        t = setTimeout(()=>{
+          const it = _itemDocDraft.items[Number(tr.getAttribute('data-idx'))];
+          productSelect.innerHTML = itemRowProductOptions(it, pSearch.value);
+          // نتيجة واحدة بالضبط (أو باركود مطابق): نختارها مباشرة
+          const opts = Array.from(productSelect.options).filter(o=>o.value);
+          const exact = findItemByBarcode(pSearch.value.trim());
+          const pick = exact ? exact.id : (opts.length===1 && pSearch.value.trim() ? opts[0].value : null);
+          if(pick && pick!==it.productId){ productSelect.value = pick; productSelect.dispatchEvent(new Event('change')); }
+        }, 200);
+      });
+    }
+    const newProdBtn = tr.querySelector('.it-newprod');
+    if(newProdBtn) newProdBtn.addEventListener('click', ()=>{
+      const idx = Number(tr.getAttribute('data-idx'));
+      const it = _itemDocDraft.items[idx];
+      const draftRef = _itemDocDraft;
+      const onSaved = (w)=>{
+        if(_itemDocDraft!==draftRef) return;
+        it.productId = w.id; it.desc = w.name;
+        if(!(Number(it.price)>0) && Number(w.costPrice)>0){ it.price = Number(w.costPrice); }
+        it.total = autoTotalFromPrice(it);
+        const k = autoCategoryKey(w.category); const c = AUTO_CATEGORIES.find(x=>x.key===k); if(c) it.cat = c.label;
+        render();
+      };
+      const opts = {onSaved, supplierId:_itemDocDraft.supplierId, costPrice:Number(it.price)||''};
+      if(it.cat) openWarehouseItemModal(null, null, Object.assign(opts, {category:it.cat}));
+      else openAddItemChooser(cat=>openWarehouseItemModal(null, null, Object.assign(opts, {category:cat})));
+    });
+    tr.querySelectorAll('input:not(.it-psearch)').forEach(inp=>{
       inp.addEventListener('input', ()=>{
         recalcItemRow(tr);
         const idx = Number(tr.getAttribute('data-idx'));
