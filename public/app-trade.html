@@ -577,7 +577,8 @@ function warehouseItemFromDb(row){
 }
 // خانات إضافية للمنتج (محل إطارات وبطاريات وزيوت) — محفوظة بعمود extra (jsonb)
 const ITEM_EXTRA_KEYS = ['sku','subCategory','madeIn','uom','location','reorderPoint','costPrice','supplierId',
-  'tireSize','dot','loadSpeed','rechargeDate','amperage','oilType','viscosity','compat','weight','dims','msds','status'];
+  'tireSize','dot','loadSpeed','rechargeDate','amperage','oilType','viscosity','compat','weight','dims','msds','status',
+  'vatRate','margin','mfgYear'];
 function pickItemExtra(src){
   const out = {};
   if(!src || typeof src!=='object') return out;
@@ -695,7 +696,8 @@ function settingsToDb(s){
     business_type: s.businessType||'supermarket', favicon: s.favicon||null,
     workers_enabled: !!s.workersEnabled,
     // ترتيب الصفحة الرئيسية محفوظ داخل product_lists._ui (بدون عمود جديد)
-    product_lists: Object.assign({}, s.productLists||{}, {_ui:{hubOrder: Array.isArray(s.hubOrder)? s.hubOrder : null}})
+    product_lists: Object.assign({}, s.productLists||{}, {_ui:{hubOrder: Array.isArray(s.hubOrder)? s.hubOrder : null,
+      vatRate: (s.vatRate===undefined || s.vatRate===null || s.vatRate==='') ? null : Number(s.vatRate)}})
   };
 }
 function applySettingsFromDb(row, base){
@@ -728,7 +730,8 @@ function applySettingsFromDb(row, base){
     favicon: row.favicon!=null? row.favicon : base.favicon,
     workersEnabled: row.workers_enabled!=null? !!row.workers_enabled : base.workersEnabled,
     productLists: row.product_lists!=null? row.product_lists : base.productLists,
-    hubOrder: (row.product_lists && row.product_lists._ui && Array.isArray(row.product_lists._ui.hubOrder)) ? row.product_lists._ui.hubOrder : base.hubOrder
+    hubOrder: (row.product_lists && row.product_lists._ui && Array.isArray(row.product_lists._ui.hubOrder)) ? row.product_lists._ui.hubOrder : base.hubOrder,
+    vatRate: (row.product_lists && row.product_lists._ui && row.product_lists._ui.vatRate!=null) ? Number(row.product_lists._ui.vatRate) : base.vatRate
   };
 }
 async function syncSettingsToSupabase(settings){
@@ -1346,6 +1349,7 @@ function itemExpiryAlertDays(item){
   return (item.expiryAlertDays!=null && item.expiryAlertDays!=='') ? Number(item.expiryAlertDays) : (Number(DB.settings.expiryAlertDays)||20);
 }
 function expiringSoonItems(){
+  if(isAutoShop()) return [];   // تنبيه الانتهاء غير مستعمل في محل الإطارات
   return DB.warehouseItems.filter(it=>{
     const d = daysUntilExpiry(it);
     if(d===null) return false;
@@ -1425,11 +1429,25 @@ function autoCategoryKey(cat){
   return 'other';
 }
 const ITEM_STATUSES = [
-  {key:'active', label:'نشط'},
-  {key:'stagnant', label:'راكد / ستوك'},
-  {key:'damaged', label:'تالف'}
+  {key:'available', label:'موجود'},
+  {key:'unavailable', label:'غير موجود'}
 ];
-function itemStatusLabel(k){ const s = ITEM_STATUSES.find(x=>x.key===k); return s? s.label : 'نشط'; }
+// الحالات القديمة (نشط / راكد / تالف) تُعرض كموجود / غير موجود
+function normItemStatus(k){ return (!k || k==='active' || k==='available') ? 'available' : 'unavailable'; }
+function itemStatusLabel(k){ return normItemStatus(k)==='available' ? 'موجود' : 'غير موجود'; }
+// TVA: النسبة العامة من الإعدادات (افتراضي 11٪) — كل منتج يحفظ النسبة التي سُعّر بها
+function settingsVatRate(){ const r = DB.settings && DB.settings.vatRate; return (r===undefined || r===null || r==='') ? 11 : Number(r); }
+function itemVatRate(it){ return (it.vatRate===undefined || it.vatRate===null || it.vatRate==='') ? settingsVatRate() : Number(it.vatRate); }
+function itemCostWithVat(it){
+  if(it.costPrice===undefined || it.costPrice===null || it.costPrice==='') return null;
+  return Math.round(Number(it.costPrice)*(1+itemVatRate(it)/100)*100)/100;
+}
+// عند تغيّر التكلفة (مثلاً من فاتورة مشتريات) وإذا كان للمنتج هامش ربح: يُعاد حساب سعر البيع
+function repriceFromMargin(it){
+  if(it.margin===undefined || it.margin===null || it.margin==='') return;
+  const cv = itemCostWithVat(it); if(cv===null) return;
+  it.price = Math.round(cv*(1+Number(it.margin)/100)*100)/100;
+}
 const DEFAULT_UOMS = ['حبة','طقم','كرتون','لتر','غالون','علبة','متر'];
 
 const PRODUCT_LIST_DEFS = {
@@ -1664,7 +1682,7 @@ function warehouseItemHaystack(it){
   const sup = it.supplierId ? DB.suppliers.find(s=>s.id===it.supplierId) : null;
   const parts = [it.name, it.brand, it.type, it.barcode, it.sku, it.category, it.subCategory, it.madeIn, it.location, it.uom,
     it.tireSize, it.dot, it.loadSpeed, it.amperage, it.oilType, it.viscosity, (it.compat||[]).join(' '), it.note, it.dims,
-    sup? sup.name : '', it.status? itemStatusLabel(it.status) : ''];
+    sup? sup.name : '', it.status? itemStatusLabel(it.status) : '', it.mfgYear];
   const text = normalizeSearchText(parts.filter(Boolean).join(' | '));
   // أرقام فقط لكل خانة تقنية: «2055516» تطابق 205/55R16، «530» تطابق 5W-30
   const digits = [it.tireSize, it.amperage, it.viscosity, it.sku, it.barcode, it.dot, it.loadSpeed]
@@ -1705,6 +1723,7 @@ function smartSearchWarehouse(query, items){
 function lowStockItems(){
   return DB.warehouseItems.filter(it=>{
     if(it.reorderPoint===undefined || it.reorderPoint===null || it.reorderPoint==='') return false;
+    if(isAutoShop()) return false;   // حد الطلب الأدنى أُلغي في محل الإطارات
     if(it.status==='damaged') return false;
     return currentStock(it.id) <= Number(it.reorderPoint);
   });
@@ -4625,17 +4644,18 @@ function warehouseHubView(){
   const items = DB.warehouseItems.slice().sort((a,b)=>String(a.name||'').localeCompare(String(b.name||''),'ar'));
   const auto = isAutoShop();
   const low = auto ? lowStockItems() : [];
-  const stockValue = auto ? DB.warehouseItems.reduce((s,it)=>{ const q=currentStock(it.id); return s + (q>0 && Number(it.costPrice)? q*Number(it.costPrice) : 0); },0) : 0;
+  const stockValue = auto ? DB.warehouseItems.reduce((s,it)=>{ const q=currentStock(it.id); const cv=itemCostWithVat(it); return s + (q>0 && cv? q*cv : 0); },0) : 0;
+  const saleValue = auto ? DB.warehouseItems.reduce((s,it)=>{ const q=currentStock(it.id); return s + (q>0 && Number(it.price)? q*Number(it.price) : 0); },0) : 0;
   return `
   ${auto? `<div class="stats">
     <div class="stat"><div class="k">عدد الأصناف</div><div class="v">${DB.warehouseItems.length}</div></div>
-    <div class="stat ${low.length?'owe':''}"><div class="k">أصناف وصلت لحد الطلب</div><div class="v">${low.length}</div></div>
-    <div class="stat"><div class="k">قيمة المخزون (بسعر التكلفة)</div><div class="v">${fmtMoney(stockValue)}</div></div>
+    <div class="stat"><div class="k">قيمة المخزون (تكلفة شامل الضريبة)</div><div class="v">${fmtMoney(stockValue)}</div></div>
+    <div class="stat"><div class="k">قيمة المخزون (بسعر البيع)</div><div class="v">${fmtMoney(saleValue)}</div></div>
   </div>` : ''}
   <div class="card">
     <h2><span class="dot"></span> المستودع</h2>
     <div class="search-row">
-      <input type="text" id="whSearch" autocomplete="off" placeholder="${auto?'🔍 بحث ذكي: اسم، باركود، SKU، مقاس (2055516)، لزوجة، أمبير، موديل سيارة، رف...':'🔍 ابحث بالاسم أو الماركة أو النوع أو الباركود...'}">
+      <input type="text" id="whSearch" autocomplete="off" placeholder="${auto?'🔍 بحث ذكي: اسم، باركود، SKU، مقاس (2055516)، لزوجة، أمبير، موديل سيارة، سنة الصنع...':'🔍 ابحث بالاسم أو الماركة أو النوع أو الباركود...'}">
       <button type="button" class="btn btn-sm" id="whSearchScan" title="مسح باركود">📷</button>
       <button class="btn btn-primary" id="addWhItemBtn">+ إضافة إلى المخزون</button>
     </div>
@@ -4653,19 +4673,21 @@ function warehouseItemTable(items, isSearch){
   if(isAutoShop()){
     const rowsHtml = items.slice(0,500).map(it=>{
       const stock = currentStock(it.id);
-      const low = it.reorderPoint!==undefined && it.reorderPoint!=='' && it.reorderPoint!==null && stock<=Number(it.reorderPoint);
-      const spec = [it.tireSize, it.amperage, it.viscosity, it.oilType && !it.viscosity ? it.oilType : ''].filter(Boolean).join(' • ');
-      return `<tr data-nav="#/warehouse-item/${it.id}" style="${it.status==='damaged'?'opacity:.6;':''}">
-        <td><b>${escapeHtml(it.name)}</b>${spec? `<div style="font-size:11.5px; color:var(--ink-soft);">${escapeHtml(spec)}</div>`:''}${it.status&&it.status!=='active'? ` <span style="font-size:11px; color:var(--debit);">(${itemStatusLabel(it.status)})</span>`:''}</td>
+      const spec = [it.sku, it.tireSize, it.amperage, it.viscosity, it.oilType && !it.viscosity ? it.oilType : ''].filter(Boolean).filter(x=>!String(it.name||'').includes(x)).join(' • ');
+      const avail = normItemStatus(it.status)==='available';
+      const cv = itemCostWithVat(it);
+      return `<tr data-nav="#/warehouse-item/${it.id}" style="${avail?'':'opacity:.65;'}">
+        <td><b>${escapeHtml(it.name)}</b>${spec? `<div style="font-size:11.5px; color:var(--ink-soft);">${escapeHtml(spec)}</div>`:''}</td>
         <td>${escapeHtml(it.brand||'—')}</td>
-        <td class="num">${escapeHtml(it.sku||'—')}</td>
-        <td class="num">${escapeHtml(it.location||'—')}</td>
-        <td class="${stock<0||low?'bal-pos':'bal-zero'}">${fmtQty(stock)} ${escapeHtml(it.uom||'')}${low?' ⚠️':''}</td>
-        <td class="num">${it.price? fmtMoney(it.price) : '—'}</td>
+        <td><span style="font-size:12px; font-weight:700; padding:2px 8px; border-radius:999px; background:${avail?'#e6f4ea':'#fbe9e7'}; color:${avail?'var(--credit)':'var(--debit)'};">${itemStatusLabel(it.status)}</span></td>
+        <td class="num">${escapeHtml(it.mfgYear||'—')}</td>
+        <td class="${stock<0?'bal-pos':'bal-zero'}">${fmtQty(stock)} ${escapeHtml(it.uom||'')}</td>
+        <td class="num">${cv!==null? fmtMoney(cv) : '—'}</td>
+        <td class="num"><b>${it.price? fmtMoney(it.price) : '—'}</b></td>
       </tr>`;
     }).join('');
     return `${items.length>500? `<div style="font-size:12px; color:var(--ink-soft); margin-bottom:6px;">تُعرض أول 500 نتيجة من ${items.length} — دقّق البحث</div>`:''}
-    <div class="table-scroll"><table><thead><tr><th>المنتج</th><th>الماركة</th><th>SKU</th><th>الموقع</th><th>الكمية</th><th>سعر البيع</th></tr></thead><tbody>${rowsHtml}</tbody></table></div>`;
+    <div class="table-scroll"><table><thead><tr><th>المنتج</th><th>الماركة</th><th>الحالة</th><th>سنة الصنع</th><th>الكمية</th><th>التكلفة شامل الضريبة</th><th>سعر البيع</th></tr></thead><tbody>${rowsHtml}</tbody></table></div>`;
   }
   const rowsHtml = items.map(it=>{
     const stock = currentStock(it.id);
@@ -4689,23 +4711,26 @@ function warehouseItemView(item){
   if(item.brand) metaParts.push('الماركة: '+escapeHtml(item.brand));
   if(item.type) metaParts.push('النوع: '+escapeHtml(item.type));
   if(item.barcode) metaParts.push('باركود: '+escapeHtml(item.barcode));
-  if(item.productionDate) metaParts.push('إنتاج: '+fmtDate(item.productionDate));
-  if(item.expiryDate) metaParts.push('انتهاء: '+fmtDate(item.expiryDate));
+  if(item.productionDate && !isAutoShop()) metaParts.push('إنتاج: '+fmtDate(item.productionDate));
+  if(item.expiryDate && !isAutoShop()) metaParts.push('انتهاء: '+fmtDate(item.expiryDate));
   if(item.note) metaParts.push(escapeHtml(item.note));
-  const expDays = daysUntilExpiry(item);
+  const expDays = isAutoShop() ? null : daysUntilExpiry(item);
   const expiring = expDays!==null && expDays<=itemExpiryAlertDays(item);
   const sup = item.supplierId ? DB.suppliers.find(s=>s.id===item.supplierId) : null;
+  const cvI = itemCostWithVat(item);
   const details = isAutoShop() ? [
-    ['كود المنتج (SKU)', item.sku], ['الفئة', [item.category, item.subCategory].filter(Boolean).join(' / ')], ['بلد المنشأ', item.madeIn],
-    ['موقع التخزين', item.location], ['وحدة القياس', item.uom], ['حد الطلب الأدنى', item.reorderPoint],
-    ['سعر التكلفة', item.costPrice!==undefined && item.costPrice!=='' ? fmtMoney(item.costPrice) : ''], ['سعر البيع', item.price? fmtMoney(item.price) : ''],
-    ['الربح للوحدة', (Number(item.price) && Number(item.costPrice)) ? fmtMoney(Number(item.price)-Number(item.costPrice)) : ''],
-    ['المورد', sup? sup.name : ''], ['المقاس', item.tireSize], ['DOT', item.dot], ['مؤشر الحمل والسرعة', item.loadSpeed],
-    ['السعة والأمبير', item.amperage], ['تاريخ الشحن الدوري', item.rechargeDate? fmtDate(item.rechargeDate) : ''],
-    ['نوع الزيت', item.oilType], ['اللزوجة', item.viscosity], ['توافق المركبات', (item.compat||[]).join('، ')],
-    ['الوزن', item.weight? item.weight+' كغ' : ''], ['الأبعاد', item.dims], ['حالة الصنف', item.status? itemStatusLabel(item.status) : '']
+    ['كود المنتج (SKU)', item.sku], ['الفئة', item.category], ['الشركة المصنعة', item.brand], ['بلد المنشأ', item.madeIn],
+    ['المقاس', item.tireSize], ['السعة والأمبير', item.amperage], ['نوع الزيت', item.oilType], ['اللزوجة', item.viscosity],
+    ['توافق المركبات', (item.compat||[]).join('، ')], ['سنة الصنع', item.mfgYear], ['وحدة القياس', item.uom],
+    ['سعر التكلفة', item.costPrice!==undefined && item.costPrice!=='' ? fmtMoney(item.costPrice) : ''],
+    ['TVA', item.costPrice!==undefined && item.costPrice!=='' ? itemVatRate(item)+'%' : ''],
+    ['التكلفة شامل الضريبة', cvI!==null? fmtMoney(cvI) : ''],
+    ['هامش الربح', item.margin!==undefined && item.margin!=='' && item.margin!==null ? item.margin+'%' : ''],
+    ['سعر البيع', item.price? fmtMoney(item.price) : ''],
+    ['الربح للوحدة', (Number(item.price) && cvI) ? fmtMoney(Number(item.price)-cvI) : ''],
+    ['الحالة', itemStatusLabel(item.status)]
   ].filter(r=>r[1]!==undefined && r[1]!==null && r[1]!=='') : [];
-  const rechargeDue = item.rechargeDate && item.rechargeDate <= todayISO();
+  const rechargeDue = false;
   return `
   <div class="card">
     <div class="cust-head">
@@ -5443,6 +5468,8 @@ function settingsView(){
       </label>
       <div style="font-size:11.5px; color:var(--ink-soft);">إذا لم يكن مفعّلاً يبقى التبويبان مخفيين (البيانات المحفوظة لا تُحذف).</div>
     </div>
+    ${s.businessType==='auto'? `<div class="field" style="max-width:220px;"><label>نسبة الضريبة TVA %</label><input type="number" step="0.01" id="s_vat_rate" class="num" value="${escapeHtml(settingsVatRate())}"></div>
+    <div style="font-size:11.5px; color:var(--ink-soft); margin:-6px 0 10px;">تُستعمل كقيمة افتراضية عند إدخال سعر التكلفة لأي منتج جديد (التكلفة + TVA = التكلفة شامل الضريبة).</div>` : ''}
     <button class="btn btn-primary" id="saveBizBtn">💾 حفظ</button>
     ${s.businessType==='auto'? `<div style="margin-top:14px; border-top:1px solid var(--line); padding-top:12px;">
       <div style="font-weight:700; margin-bottom:8px;">📋 لوائح المنتجات (إضافة / حذف)</div>
@@ -6046,6 +6073,12 @@ function bindEvents(){
   if(saveBizBtn) saveBizBtn.addEventListener('click', async ()=>{
     DB.settings.businessType = document.getElementById('s_biz_type').value || 'supermarket';
     DB.settings.workersEnabled = document.getElementById('s_workers_enabled').checked;
+    const vatEl = document.getElementById('s_vat_rate');
+    if(vatEl){
+      const vr = vatEl.value.trim();
+      if(vr!=='' && !(Number(vr)>=0 && Number(vr)<100)){ toast('نسبة الضريبة يجب أن تكون بين 0 و 99'); return; }
+      DB.settings.vatRate = vr===''? 11 : Number(vr);
+    }
     const ok = await save(KEYS.settings, DB.settings);
     toast(ok? 'تم الحفظ':'حدث خطأ أثناء الحفظ');
     render();
@@ -6903,90 +6936,69 @@ function openWarehouseItemModal(item, presetBarcode, opts){
     <div class="field"><label>ملاحظات</label><input type="text" id="wm_note" value="${escapeHtml(v('note'))}"></div>`;
   } else {
     const cats = Array.from(new Set([...AUTO_CATEGORIES.map(c=>c.label), ...posCategories()]));
-    const subcats = Array.from(new Set(DB.warehouseItems.map(x=>x.subCategory).filter(Boolean))).sort();
     const uoms = Array.from(new Set([...DEFAULT_UOMS, ...DB.warehouseItems.map(x=>x.uom).filter(Boolean)]));
-    const sups = DB.suppliers.filter(s=>!s.deleted).slice().sort((a,b)=>a.name.localeCompare(b.name,'ar'));
+    const vatDefault = item && item.vatRate!=null && item.vatRate!=='' ? item.vatRate : settingsVatRate();
+    const yearNow = new Date().getFullYear();
     body = `
     <div style="font-size:12px; color:var(--ink-soft);">كل الخانات اختيارية. الباركود لا يتكرر: إذا أدخلت باركوداً موجوداً تُضاف الكمية إلى المنتج نفسه.</div>
-    ${sec('1. البيانات العامة')}
     <div class="grid grid-2">
       <div class="field"><label>كود المنتج (SKU / Part Number)</label><input type="text" id="wm_sku" class="num" value="${escapeHtml(v('sku'))}"></div>
-      <div class="field"><label>الفئة الرئيسية</label>
+      <div class="field"><label>الفئة</label>
         <input type="text" id="wm_category" list="wm_category_list" value="${escapeHtml(v('category', presetCat))}" placeholder="إطارات / بطاريات / زيوت / قطع غيار / إكسسوارات">
         <datalist id="wm_category_list">${cats.map(c=>`<option value="${escapeHtml(c)}">`).join('')}</datalist>
       </div>
     </div>
+    <div class="field"><label>اسم المنتج</label><input type="text" id="wm_name" value="${escapeHtml(v('name'))}" placeholder="مثال: زيت محرك 5W-30 — يُنشأ تلقائياً إذا تُرك فارغاً"></div>
     ${barcodeField}
-    <div class="field"><label>اسم المنتج (وصف واضح)</label><input type="text" id="wm_name" value="${escapeHtml(v('name'))}" placeholder="مثال: زيت محرك 5W-30 — يُنشأ تلقائياً إذا تُرك فارغاً"></div>
     <div class="grid grid-2">
-      <div class="field"><label>الفئة الفرعية</label>
-        <input type="text" id="wm_subcat" list="wm_subcat_list" value="${escapeHtml(v('subCategory'))}" placeholder="مثال: فلاتر، فرامل، إضاءة">
-        <datalist id="wm_subcat_list">${subcats.map(c=>`<option value="${escapeHtml(c)}">`).join('')}</datalist>
-      </div>
-      <div class="field"><label>الشركة المصنعة / العلامة التجارية</label>${listSelectHtml('brands','wm_brand', v('brand'))}</div>
+      <div class="field"><label>الشركة المصنعة</label>${listSelectHtml('brands','wm_brand', v('brand'))}</div>
+      <div class="field"><label>بلد المنشأ</label>${listSelectHtml('countries','wm_madein', v('madeIn'))}</div>
     </div>
-    <div class="field"><label>بلد المنشأ (Made in)</label>${listSelectHtml('countries','wm_madein', v('madeIn'))}</div>
 
-    ${sec('2. المخزون والحركة')}
-    ${qtyFields}
+    <div data-cats="tires">
+      <div class="field"><label>🛞 المقاس</label>${listSelectHtml('tireSizes','wm_tiresize', v('tireSize'))}</div>
+    </div>
+    <div data-cats="batteries">
+      <div class="field"><label>🔋 السعة والأمبير</label>${listSelectHtml('amps','wm_amp', v('amperage'))}</div>
+    </div>
+    <div class="grid grid-2" data-cats="oils">
+      <div class="field"><label>🛢 نوع الزيت</label>${listSelectHtml('oilTypes','wm_oiltype', v('oilType'))}</div>
+      <div class="field"><label>🛢 اللزوجة</label>${listSelectHtml('viscosities','wm_visc', v('viscosity'))}</div>
+    </div>
+    <div data-cats="parts,accessories">
+      <div class="field"><label>🔧 توافق المركبات</label>${listMultiHtml('carModels','wm_compat', v('compat',[]))}</div>
+    </div>
+
     <div class="grid grid-3">
-      <div class="field"><label>حد الطلب الأدنى</label><input type="number" id="wm_reorder" class="num" value="${escapeHtml(v('reorderPoint'))}" placeholder="مثال: 4"></div>
-      <div class="field"><label>موقع التخزين (رف / ممر)</label><input type="text" id="wm_location" class="num" value="${escapeHtml(v('location'))}" placeholder="A-04-02"></div>
+      ${(isNew && !opts.onSaved)? `<div class="field"><label>الكمية</label><input type="number" id="wm_qty" class="num" placeholder="0"></div>` : ''}
       <div class="field"><label>وحدة القياس</label>
         <input type="text" id="wm_uom" list="wm_uom_list" value="${escapeHtml(v('uom'))}" placeholder="حبة، طقم، كرتون، لتر">
         <datalist id="wm_uom_list">${uoms.map(c=>`<option value="${escapeHtml(c)}">`).join('')}</datalist>
       </div>
-    </div>
-
-    ${sec('3. البيانات المالية والموردون')}
-    <div class="grid grid-3">
-      <div class="field"><label>سعر التكلفة $</label><input type="number" step="0.01" id="wm_cost" class="num" value="${escapeHtml(v('costPrice', opts.costPrice!==undefined? opts.costPrice : ''))}"></div>
-      <div class="field"><label>سعر البيع $</label><input type="number" step="0.01" id="wm_price" class="num" value="${item&&item.price?item.price:''}"></div>
-      <div class="field"><label>المورد</label>
-        <select id="wm_supplier"><option value="">— اختر —</option>${sups.map(s=>`<option value="${s.id}" ${v('supplierId', opts.supplierId||'')===s.id?'selected':''}>${escapeHtml(s.name)}</option>`).join('')}</select>
+      <div class="field" data-cats="tires,oils,parts,accessories"><label>سنة الصنع</label>
+        <input type="number" id="wm_year" class="num" min="1990" max="${yearNow+1}" step="1" value="${escapeHtml(v('mfgYear'))}" placeholder="${yearNow}">
       </div>
     </div>
 
-    <div data-cats="tires">
-      ${sec('🛞 خانات الإطارات')}
-      <div class="field"><label>المقاس (Size)</label>${listSelectHtml('tireSizes','wm_tiresize', v('tireSize'))}</div>
+    <div style="background:var(--paper); border:1px solid var(--line); border-radius:10px; padding:10px 12px; margin-bottom:12px;">
+      <div class="grid grid-3">
+        <div class="field"><label>سعر التكلفة $</label><input type="number" step="0.01" id="wm_cost" class="num" value="${escapeHtml(v('costPrice', opts.costPrice!==undefined? opts.costPrice : ''))}"></div>
+        <div class="field"><label>TVA %</label><input type="number" step="0.01" id="wm_vat" class="num" value="${escapeHtml(vatDefault)}"></div>
+        <div class="field"><label>التكلفة شامل الضريبة $</label><input type="text" id="wm_cost_vat" class="num" readonly style="opacity:.85; font-weight:800;"></div>
+      </div>
       <div class="grid grid-2">
-        <div class="field"><label>تاريخ الإنتاج DOT (أسبوع وسنة — مثال 2324)</label><input type="text" id="wm_dot" class="num" maxlength="8" value="${escapeHtml(v('dot'))}" placeholder="WWYY"></div>
-        <div class="field"><label>مؤشر الحمل والسرعة</label><input type="text" id="wm_loadspeed" class="num" value="${escapeHtml(v('loadSpeed'))}" placeholder="مثال: 91V"></div>
+        <div class="field"><label>هامش الربح %</label><input type="number" step="0.01" id="wm_margin" class="num" value="${escapeHtml(v('margin'))}" placeholder="مثال: 25"></div>
+        <div class="field"><label>سعر البيع $ <span style="font-weight:500; font-size:11px; color:var(--ink-soft);">(يُحسب تلقائياً أو اكتبه بنفسك)</span></label><input type="number" step="0.01" id="wm_price" class="num" value="${item&&item.price?item.price:''}"></div>
       </div>
+      <div id="wm_price_hint" style="font-size:11.5px; color:var(--ink-soft);"></div>
     </div>
 
-    <div data-cats="batteries,oils">
-      ${sec('🔋 خانات البطاريات والزيوت')}
-      <div class="grid grid-2">
-        <div class="field" data-cats="batteries"><label>السعة والأمبير</label>${listSelectHtml('amps','wm_amp', v('amperage'))}</div>
-        <div class="field" data-cats="batteries"><label>تاريخ الشحن الدوري (للبطاريات)</label><input type="date" id="wm_recharge" value="${escapeHtml(v('rechargeDate'))}"></div>
-        <div class="field" data-cats="oils"><label>نوع الزيت</label>${listSelectHtml('oilTypes','wm_oiltype', v('oilType'))}</div>
-        <div class="field" data-cats="oils"><label>اللزوجة (Viscosity)</label>${listSelectHtml('viscosities','wm_visc', v('viscosity'))}</div>
-      </div>
-    </div>
-
-    <div data-cats="parts,accessories">
-      ${sec('🔧 خانات قطع الغيار والإكسسوارات')}
-      <div class="field"><label>توافق المركبات (الموديلات المناسبة)</label>${listMultiHtml('carModels','wm_compat', v('compat',[]))}</div>
-      <div class="grid grid-2">
-        <div class="field"><label>الوزن (كغ)</label><input type="number" step="0.01" id="wm_weight" class="num" value="${escapeHtml(v('weight'))}"></div>
-        <div class="field"><label>الأبعاد (طول × عرض × ارتفاع سم)</label><input type="text" id="wm_dims" class="num" value="${escapeHtml(v('dims'))}" placeholder="40 × 20 × 15"></div>
-      </div>
-    </div>
-
-    ${sec('📅 التواريخ')}
-    ${prodExpFields}
-
-    ${sec('🛡 السلامة والتحكم')}
     <div class="grid grid-2">
-      <div class="field" data-cats="batteries,oils"><label>رابط ورقة السلامة (MSDS)</label><input type="text" inputmode="url" id="wm_msds" style="direction:ltr; text-align:left;" value="${escapeHtml(v('msds'))}" placeholder="https://..."></div>
-      <div class="field"><label>حالة الصنف</label>
-        <select id="wm_status">${ITEM_STATUSES.map(s=>`<option value="${s.key}" ${(v('status')||'active')===s.key?'selected':''}>${s.label}</option>`).join('')}</select>
+      <div class="field"><label>الحالة</label>
+        <select id="wm_status">${ITEM_STATUSES.map(s=>`<option value="${s.key}" ${normItemStatus(v('status'))===s.key?'selected':''}>${s.label}</option>`).join('')}</select>
       </div>
     </div>
-    ${imageField}
-    <div class="field"><label>ملاحظات</label><input type="text" id="wm_note" value="${escapeHtml(v('note'))}"></div>`;
+    ${imageField}`;
   }
 
   const title = !isNew ? 'تعديل بيانات المنتج'
@@ -7031,32 +7043,59 @@ function openWarehouseItemModal(item, presetBarcode, opts){
     };
     $('#wm_category').addEventListener('input', applyCats);
     applyCats();
+    // التسعير: التكلفة + TVA = التكلفة شامل الضريبة؛ + هامش الربح = سعر البيع (أو العكس إذا كُتب السعر يدوياً)
+    const num = id=>{ const x = ($(id).value||'').trim(); return x===''? null : Number(x); };
+    const r2 = n=>Math.round(n*100)/100;
+    const costVat = ()=>{ const c = num('#wm_cost'); if(c===null) return null; return r2(c*(1+(num('#wm_vat')||0)/100)); };
+    const showCostVat = ()=>{ const cv = costVat(); $('#wm_cost_vat').value = cv===null? '' : cv.toFixed(2); };
+    const priceFromMargin = ()=>{
+      const cv = costVat(), m = num('#wm_margin');
+      if(cv!==null && m!==null){ $('#wm_price').value = r2(cv*(1+m/100)).toFixed(2); }
+      updHint();
+    };
+    const marginFromPrice = ()=>{
+      const cv = costVat(), pr = num('#wm_price');
+      if(cv && pr!==null){ $('#wm_margin').value = r2((pr/cv-1)*100); }
+      updHint();
+    };
+    const updHint = ()=>{
+      const cv = costVat(), pr = num('#wm_price');
+      $('#wm_price_hint').textContent = (cv!==null && pr!==null) ? `الربح بالوحدة: $${r2(pr-cv).toFixed(2)}` : '';
+    };
+    ['#wm_cost','#wm_vat'].forEach(id=>$(id).addEventListener('input', ()=>{ showCostVat(); if(num('#wm_margin')!==null) priceFromMargin(); else updHint(); }));
+    $('#wm_margin').addEventListener('input', priceFromMargin);
+    $('#wm_price').addEventListener('input', marginFromPrice);
+    showCostVat(); updHint();
   }
 
   $('#wm_save').addEventListener('click', async ()=>{
-    const d = {
-      name: val('#wm_name'), brand: val('#wm_brand'), barcode: val('#wm_barcode'), category: val('#wm_category'),
-      productionDate: val('#wm_prod_date'), expiryDate: val('#wm_exp_date'), note: val('#wm_note')
-    };
-    const priceRaw = val('#wm_price');
-    d.price = Number(priceRaw)||0;
-    const expAlertRaw = val('#wm_exp_alert');
-    d.expiryAlertDays = expAlertRaw? Number(expAlertRaw) : null;
+    const d = { name: val('#wm_name'), brand: val('#wm_brand'), barcode: val('#wm_barcode'), category: val('#wm_category') };
+    d.price = Number(val('#wm_price'))||0;
     if(!auto){
+      Object.assign(d, { productionDate: val('#wm_prod_date'), expiryDate: val('#wm_exp_date'), note: val('#wm_note') });
+      const expAlertRaw = val('#wm_exp_alert');
+      d.expiryAlertDays = expAlertRaw? Number(expAlertRaw) : null;
       d.type = val('#wm_type');
       if(!d.name){ toast('يجب أن تكتب الاسم'); return; }
     } else {
       d.type = item ? (item.type||'') : '';
+      const key = autoCategoryKey(d.category);
+      const shown = cats=>!key || key==='other' || cats.includes(key);
+      const yr = val('#wm_year');
+      if(yr && !(/^\d{4}$/.test(yr))){ toast('سنة الصنع يجب أن تكون 4 أرقام (مثال: 2024)'); return; }
       Object.assign(d, {
-        sku: val('#wm_sku'), subCategory: val('#wm_subcat'), madeIn: val('#wm_madein'), uom: val('#wm_uom'), location: val('#wm_location'),
-        reorderPoint: val('#wm_reorder')===''? '' : Number(val('#wm_reorder')),
+        sku: val('#wm_sku'), madeIn: val('#wm_madein'), uom: val('#wm_uom'),
         costPrice: val('#wm_cost')===''? '' : Number(val('#wm_cost')),
-        supplierId: val('#wm_supplier'),
-        tireSize: val('#wm_tiresize'), dot: val('#wm_dot'), loadSpeed: val('#wm_loadspeed'),
-        rechargeDate: val('#wm_recharge'), amperage: val('#wm_amp'), oilType: val('#wm_oiltype'), viscosity: val('#wm_visc'),
-        compat: readMultiList($('#wm_compat')), weight: val('#wm_weight')===''? '' : Number(val('#wm_weight')), dims: val('#wm_dims'),
-        msds: val('#wm_msds'), status: val('#wm_status')||'active'
+        vatRate: val('#wm_vat')===''? '' : Number(val('#wm_vat')),
+        margin: val('#wm_margin')===''? '' : Number(val('#wm_margin')),
+        status: val('#wm_status')||'available'
       });
+      // خانات النوع: تُحفظ فقط إذا كانت ظاهرة (البيانات القديمة للأنواع الأخرى لا تُمسح)
+      if(shown(['tires'])) d.tireSize = val('#wm_tiresize');
+      if(shown(['batteries'])) d.amperage = val('#wm_amp');
+      if(shown(['oils'])){ d.oilType = val('#wm_oiltype'); d.viscosity = val('#wm_visc'); }
+      if(shown(['parts','accessories'])) d.compat = readMultiList($('#wm_compat'));
+      if(shown(['tires','oils','parts','accessories'])) d.mfgYear = yr;
       if(!d.name) d.name = autoItemDisplayName(d);
     }
     const imageFile = $('#wm_image').files[0];
@@ -7320,7 +7359,7 @@ function bindItemDocFormEvents(){
         _itemDocDraft.items.forEach(it=>{
           const w = it.productId && DB.warehouseItems.find(x=>x.id===it.productId);
           if(!w) return;
-          if(Number(it.price)>0) w.costPrice = Number(it.price);
+          if(Number(it.price)>0){ w.costPrice = Number(it.price); repriceFromMargin(w); }
           if(!w.supplierId) w.supplierId = _itemDocDraft.supplierId;
         });
       }
