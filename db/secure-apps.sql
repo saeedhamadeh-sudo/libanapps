@@ -84,6 +84,7 @@ returns text[] language sql immutable as $$
       when 'suppliers'  then array['suppliers','purchase_invoices','payment_vouchers']
       when 'warehouse'  then array['warehouse_items','stock_ins','stock_outs']
       when 'budget'     then array['budget_categories','budget_entries']
+      when 'workers'    then array['workers','work_entries','worker_payments']
       else array[]::text[] end
     else array[]::text[] end;
 $$;
@@ -320,10 +321,10 @@ begin
     end if;
   end if;
 
-  -- 3) حسابات العمال (الألمنيوم)
-  if r is null and p_product = 'alum' then
-    t := 'alum_worker_accounts';
-    select to_jsonb(x) into r from public.alum_worker_accounts x where x.client_id = v_cid and lower(x.username) = u limit 1;
+  -- 3) حسابات العمال (الألمنيوم، والتجاري عند تفعيل تبويب العمال)
+  t := p_product || '_worker_accounts';
+  if r is null and to_regclass('public.' || t) is not null then
+    execute format('select to_jsonb(x) from public.%I x where x.client_id = $1 and lower(x.username) = $2 limit 1', t) into r using v_cid, u;
     if r is not null and public.app_pw_ok(t, r, p_password) then
       insert into public.app_sessions as a (sid, product, uid, client_id, kind, account_id, worker_id)
       values (v_sid, p_product, auth.uid(), v_cid, 'worker', r->>'id', r->>'worker_id')
