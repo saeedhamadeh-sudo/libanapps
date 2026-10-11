@@ -319,6 +319,36 @@ html[data-theme="horizon"] .pcard .btn-p{width:100%;background:rgba(14,18,48,.05
 html[data-theme="horizon"] .pcard:hover .btn-p{background:linear-gradient(180deg,#232858,#0E1230);color:#fff;
   box-shadow:0 10px 22px -10px rgba(14,18,48,.6)}
 
+/* ---------- سعر الباقة على البطاقة ---------- */
+html[data-theme="horizon"] .pprice{border:0;border-radius:16px;padding:14px 16px;margin:0 0 16px;
+  background:linear-gradient(135deg,rgba(99,102,241,.07),rgba(34,211,238,.06));box-shadow:inset 0 0 0 1px rgba(99,102,241,.14);
+  transition:box-shadow .3s,background .3s}
+html[data-theme="horizon"] .pcard:hover .pprice{box-shadow:inset 0 0 0 1px rgba(99,102,241,.3);
+  background:linear-gradient(135deg,rgba(99,102,241,.11),rgba(34,211,238,.09))}
+html[data-theme="horizon"] .pprice .pp-from{font-weight:600;color:#6366F1;letter-spacing:.01em}
+html[data-theme="horizon"] .pprice .pp-num{font-family:var(--hz-head);font-size:34px;font-weight:700;letter-spacing:-.04em;
+  background:var(--hz-grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+html[data-theme="horizon"] .pprice .pp-cur{font-family:var(--hz-head);font-weight:700;color:#4F46E5}
+html[data-theme="horizon"] .pprice .pp-per{font-weight:500;color:var(--muted)}
+html[data-theme="horizon"] .pprice .pp-badge{background:var(--hz-warm);font-weight:600;box-shadow:0 6px 14px -6px rgba(255,94,58,.7)}
+html[data-theme="horizon"] .pprice:not(:has(.pp-skel)){animation:hzUp .5s cubic-bezier(.2,.8,.2,1) both}
+
+/* ---------- قسم «جديد» ---------- */
+html[data-theme="horizon"] .nw-pill{background:linear-gradient(115deg,rgba(255,94,58,.12),rgba(255,154,77,.14));color:#E5532F;font-weight:600;
+  box-shadow:inset 0 0 0 1px rgba(255,94,58,.22)}
+html[data-theme="horizon"] .nwgrid{gap:16px}
+html[data-theme="horizon"] .nw{position:relative;overflow:hidden;border-radius:22px;padding:22px;box-shadow:var(--hz-shadow);
+  transition:transform .3s cubic-bezier(.2,.8,.2,1),box-shadow .3s,border-color .3s}
+html[data-theme="horizon"] .nw::after{content:'';position:absolute;inset:0;pointer-events:none;opacity:0;transition:opacity .3s;
+  background:radial-gradient(320px circle at var(--hz-x,50%) var(--hz-y,0%),rgba(99,102,241,.09),transparent 50%)}
+html[data-theme="horizon"] .nw:hover{transform:translateY(-4px);box-shadow:var(--hz-shadow-lg);border-color:rgba(99,102,241,.3)}
+html[data-theme="horizon"] .nw:hover::after{opacity:1}
+html[data-theme="horizon"] .nw-ico{width:46px;height:46px;border-radius:14px;box-shadow:inset 0 1px 0 rgba(255,255,255,.3),0 10px 20px -10px rgba(14,18,48,.5);
+  transition:transform .3s cubic-bezier(.2,.8,.2,1)}
+html[data-theme="horizon"] .nw:hover .nw-ico{transform:scale(1.06) rotate(-4deg)}
+html[data-theme="horizon"] .nw-tag{background:rgba(99,102,241,.07);border-color:transparent;color:#4F46E5;font-weight:600}
+html[data-theme="horizon"] .nw b{font-family:var(--hz-head);font-weight:600;font-size:18px}
+
 /* ---------- الميزات ---------- */
 html[data-theme="horizon"] .feat{gap:16px;counter-reset:hz}
 html[data-theme="horizon"] .feat>div{position:relative;overflow:hidden;background:var(--card);border:1px solid var(--line);
@@ -693,7 +723,7 @@ html[data-theme="horizon"] .hz-aside-foot::before{content:'';width:8px;height:8p
     // إضاءة وميلان البطاقات مع الماوس
     document.addEventListener('pointermove',function(e){
       if(!on()||e.pointerType==='touch') return;
-      var c=e.target && e.target.closest && e.target.closest('.pcard,.feat>div,.plan');
+      var c=e.target && e.target.closest && e.target.closest('.pcard,.feat>div,.plan,.nw');
       if(c){
         var r=c.getBoundingClientRect(), x=e.clientX-r.left, y=e.clientY-r.top;
         c.style.setProperty('--hz-x',x+'px'); c.style.setProperty('--hz-y',y+'px');
@@ -805,7 +835,7 @@ html[data-theme="horizon"] .hz-aside-foot::before{content:'';width:8px;height:8p
 
     // ظهور تدريجي — بصفحات التسويق فقط
     if(!reduce() && ('IntersectionObserver' in window) && document.querySelector('header.hero')){
-      var els=document.querySelectorAll('section .head, .pcard, .feat>div, .grid2>*, .band');
+      var els=document.querySelectorAll('section .head, .pcard, .feat>div, .grid2>*, .band, .nw');
       var io=new IntersectionObserver(function(list){
         list.forEach(function(en){ if(en.isIntersecting){ en.target.classList.add('hz-in'); io.unobserve(en.target); } });
       },{rootMargin:'0px 0px -8% 0px',threshold:.08});
@@ -897,7 +927,7 @@ html[data-theme="horizon"] .hz-aside-foot::before{content:'';width:8px;height:8p
         <li>أنشئ حسابًا مجانيًا في دقيقة</li>
         <li>اختر رابط متجرك وابدأ تجربة ٥ أيام</li>
         <li>أضف منتجاتك وخصّص المتجر</li>
-        <li>اشترك بـ ٢٥٠$ سنويًا قبل انتهاء التجربة</li>
+        <li id="storeYearly">اشترك سنويًا قبل انتهاء التجربة</li>
       </ol>
       <a class="btn btn-p full" style="margin-top:18px" href="/signup">أنشئ حسابًا</a>
     </div>
@@ -1018,6 +1048,9 @@ if(sb) sb.auth.getSession().then(function(r){
   sb.from('plans').select('*').eq('product_code',PRODUCT).eq('is_active',true)
     .order('sort').then(function(r){
     var rows=r.data||[];
+    // السعر السنوي بخطوات «كيف تبدأ» — من الباقة نفسها، مش مكتوب باليد
+    var yr=rows.filter(function(p){return Number(p.days)>=365}).sort(function(a,b){return a.price_usd-b.price_usd})[0];
+    if(yr && $('#storeYearly')) $('#storeYearly').textContent='اشترك بـ '+(Math.round(yr.price_usd*100)/100)+' $ سنويًا قبل انتهاء التجربة';
     if(!rows.length){ $('#planList').innerHTML=
       '<p style="text-align:center;color:var(--muted);grid-column:1/-1">تواصل معنا لمعرفة الأسعار</p>'; return; }
     $('#planList').innerHTML=rows.map(function(p){
