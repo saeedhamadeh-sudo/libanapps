@@ -1365,9 +1365,12 @@ async function adminExtendLicense(request, env) {
   const subId = body.id, days = Number(body.days);
   if (!subId || !days) return json(400, { error: 'missing fields' });
 
+  // extend_subscription تتحقق من is_admin() عبر auth.uid() — بمفتاح الخدمة يكون auth.uid() فارغاً
+  // فترفض بـ"not allowed". لذلك نناديها بجلسة المشرف نفسه (نفس ما تفعله لوحة /super لباقي المنتجات).
   const r = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/extend_subscription`, {
     method: 'POST',
-    headers: { ...sbHeaders(env), 'Content-Type': 'application/json' },
+    headers: { apikey: env.SUPABASE_ANON_KEY || 'sb_publishable_ypfm_aulpcqBpeFpyD_7iw_mA4DNlR5',
+               Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ p_id: subId, p_days: days })
   });
   if (!r.ok) {
