@@ -1139,6 +1139,39 @@ function amountWords(usd){
   return s;
 }
 
+/* ============================= POS: العملة والمرتجعات ============================= */
+const POS_SALE_RE = /بيع نقطة بيع #/;
+const POS_REFUND_RE = /استرجاع نقطة بيع #/;
+function isPosRefundReceipt(r){ return POS_REFUND_RE.test(r.details||''); }
+function isPosReceipt(r){ return POS_SALE_RE.test(r.details||'') || isPosRefundReceipt(r); }
+function posInvoiceForReceipt(r){
+  const m = String(r.details||'').match(/نقطة بيع #(\S+?)(?=\s|$|—)/);
+  if(!m) return null;
+  return DB.invoices.find(i=>String(i.number)===m[1] && i.docType==='بيع نقطة بيع (POS)') || null;
+}
+// إيصالات POS بالعملة الثانية مخزّنة بمبلغ العملة الثانية — نحوّلها للدولار في الحسابات والميزانية
+function receiptIsSecondCurrency(r){ return isPosReceipt(r) && !/\$/.test(r.method||''); }
+function receiptAmountUSD(r){
+  const amt = Number(r.amount)||0;
+  if(!receiptIsSecondCurrency(r)) return amt;
+  const inv = posInvoiceForReceipt(r);
+  const rate = (inv && inv.exchangeRate) || DB.settings.defaultExchangeRate || 90000;
+  return Math.round(amt/rate*100)/100;
+}
+function posSaleReceipt(inv){
+  const re = new RegExp('بيع نقطة بيع #'+String(inv.number).replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'(?![\\w\\d])');
+  return DB.receipts.find(r=>!r.deleted && re.test(r.details||'') && !isPosRefundReceipt(r)) || null;
+}
+function posSaleCurrency(inv){ const r = posSaleReceipt(inv); return (r && !/\$/.test(r.method||'')) ? 'LBP' : 'USD'; }
+function invItemReturnedQty(it){ return Number(it.returnedQty)||0; }
+function invHasReturnable(inv){ return (inv.items||[]).some(it=>it.productId && (Number(it.qty)||0) - invItemReturnedQty(it) > 0); }
+function posRefundReceiptsInRange(from, to){ return DB.receipts.filter(r=>!r.deleted && isPosRefundReceipt(r) && r.date>=from && r.date<=to); }
+// صافي مبيعات الصندوق بعملة معيّنة = مبيعات − مرتجعات
+function netSalesOf(moves, currency){
+  return moves.filter(m=>m.currency===currency && (m.type==='sale' || m.type==='return'))
+    .reduce((s,m)=> s + (m.type==='sale' ? 1 : -1) * Math.abs(Number(m.amount)||0), 0);
+}
+
 /* ============================= LEDGER LOGIC ============================= */
 // Build combined, sorted ledger entries for a customer, with running balance.
 function buildLedger(customerId){
@@ -1147,10 +1180,17 @@ function buildLedger(customerId){
     date:i.date, type:'قيد', label:'فاتورة بالحساب', number:i.number,
     from:0, to:computeInvoiceTotal(i).totalUSD, ref:'invoice', id:i.id, sortKey:i.createdAt||0
   }));
-  const rec = DB.receipts.filter(r=>r.customerId===customerId && !r.deleted).map(r=>({
-    date:r.date, type:'قبض', label:r.details? r.details : 'دفعة بالحساب', number:r.number,
-    from:Number(r.amount)||0, to:0, ref:'receipt', id:r.id, sortKey:r.createdAt||0
-  }));
+  const rec = [];
+  DB.receipts.filter(r=>r.customerId===customerId && !r.deleted).forEach(r=>{
+    const usd = receiptAmountUSD(r);
+    if(isPosRefundReceipt(r)){
+      // مرتجع POS: البضاعة رجعت (دائن) والمبلغ رُدّ للزبون (مدين) — الأثر الصافي على الرصيد صفر
+      rec.push({date:r.date, type:'مرتجع', label:'مرتجع بضاعة — '+(r.details||''), number:r.number, from:Math.abs(usd), to:0, ref:'receipt', id:r.id, sortKey:r.createdAt||0});
+      rec.push({date:r.date, type:'رد مبلغ', label:'رد المبلغ للزبون', number:r.number, from:0, to:Math.abs(usd), ref:'receipt', id:r.id, sortKey:(r.createdAt||0)+1});
+      return;
+    }
+    rec.push({date:r.date, type:'قبض', label:r.details? r.details : 'دفعة بالحساب', number:r.number, from:usd, to:0, ref:'receipt', id:r.id, sortKey:r.createdAt||0});
+  });
   let rows=[...inv,...rec];
   rows.sort((a,b)=>{
     if(a.date!==b.date) return a.date<b.date?-1:1;
@@ -1919,7 +1959,14 @@ function budgetCategoryEntries(cat, from, to){
   if(cat.key==='receipts'){
     return DB.receipts.filter(r=>!r.deleted && r.date>=from && r.date<=to).map(r=>{
       const cust = DB.customers.find(c=>c.id===r.customerId);
-      return {date:r.date, amount:Number(r.amount)||0, label:(cust?cust.name:'زبون')+(r.details?' — '+r.details:''), ref:'receipt', id:r.id};
+      // مرتجعات POS تدخل بقيمة سالبة فتُنقص المقبوضات؛ إيصالات العملة الثانية تُحوَّل للدولار
+      return {date:r.date, amount:receiptAmountUSD(r), label:(cust?cust.name:'زبون')+(r.details?' — '+r.details:''), ref:'receipt', id:r.id};
+    });
+  }
+  if(cat.key==='workerPayments'){
+    return (DB.workerPayments||[]).filter(p=>!p.deleted && p.date>=from && p.date<=to).map(p=>{
+      const wk = (DB.workers||[]).find(w=>w.id===p.workerId);
+      return {date:p.date, amount:Number(p.amount)||0, label:(wk?wk.name:'عامل')+(p.details?' — '+p.details:''), ref:'workerpay', id:p.id};
     });
   }
   return DB.budgetEntries.filter(e=>!e.deleted && e.categoryId===cat.id && e.date>=from && e.date<=to)
@@ -1986,6 +2033,14 @@ function seedBudgetCategoriesLocal(){
 }
 function migrateBudgetCategories(){
   seedBudgetCategoriesLocal();
+  return ensureWorkerBudgetCategory();
+}
+// عند تفعيل العمال: حقل ميزانية تلقائي لمدفوعات العمال (مرة واحدة)
+function ensureWorkerBudgetCategory(){
+  if(!(DB.settings && DB.settings.workersEnabled)) return false;
+  if((DB.budgetCategories||[]).some(c=>c.key==='workerPayments')) return false;
+  DB.budgetCategories = [...(DB.budgetCategories||[]), {id:uid(), key:'workerPayments', name:'مدفوعات العمال', type:'expense', auto:true, builtin:true}];
+  return true;
 }
 /* ============================= LICENSING (3-day trial + serial activation) ============================= */
 const LICENSE_PUBLIC_JWK = {"key_ops":["verify"],"ext":true,"kty":"EC","x":"E9z9bLEvr9oDV_jpdky7p1lqO7oumiEiLMRo2Q9fmLA","y":"JQIHnNDyTcEKGSlFjfI_BlhPijabEh22t2uVn1SJ4_E","crv":"P-256"};
@@ -2556,6 +2611,7 @@ function render(){
     renderWorkerPortal();
     return;
   }
+  if(currentUser && isPrivilegedUser(currentUser) && ensureWorkerBudgetCategory()) save(KEYS.budgetCategories, DB.budgetCategories);
   const parts = currentRoute();
   const WORKER_ROUTES = ['workers','worker','workentry','workerpay','worker-statement','worker-accounts'];
   if(parts.length && WORKER_ROUTES.includes(parts[0]) && !workersEnabled()){
@@ -2799,8 +2855,9 @@ function emptyState(msg){
 function todaySalesSummary(){
   const today = todayISO();
   const todaysInvoices = DB.invoices.filter(i=>i.date===today && !i.deleted && i.docType==='بيع نقطة بيع (POS)');
-  const totalUSD = todaysInvoices.reduce((s,i)=>s + (i.items||[]).reduce((s2,it)=>s2+(Number(it.total)||0),0), 0);
-  return { count: todaysInvoices.length, totalUSD };
+  const gross = todaysInvoices.reduce((s,i)=>s + (i.items||[]).reduce((s2,it)=>s2+(Number(it.total)||0),0) - (Number(i.discount)||0), 0);
+  const returns = posRefundReceiptsInRange(today, today).reduce((s,r)=>s+Math.abs(receiptAmountUSD(r)),0);
+  return { count: todaysInvoices.length, totalUSD: gross - returns };
 }
 function hubView(){
   const custOwed = DB.customers.reduce((s,c)=>{const b=customerBalance(c.id); return s + (b>0?b:0);},0);
@@ -3622,8 +3679,8 @@ function closeMyShiftModal(){
   const shift = currentUserShift();
   if(!shift){ toast('لا يوجد صندوق مفتوح لك'); return; }
   const myMoves = (DB.cashMovements||[]).filter(m=>m.shiftId===shift.id && !m.deleted);
-  const salesUSD = myMoves.filter(m=>m.type==='sale'&&m.currency==='USD').reduce((s,m)=>s+Number(m.amount),0);
-  const salesLBP = myMoves.filter(m=>m.type==='sale'&&m.currency==='LBP').reduce((s,m)=>s+Number(m.amount),0);
+  const salesUSD = netSalesOf(myMoves, 'USD');
+  const salesLBP = netSalesOf(myMoves, 'LBP');
   const wrap = document.createElement('div');
   wrap.className='modal-bg';
   wrap.innerHTML = `<div class="modal">
@@ -3658,8 +3715,8 @@ function closeMyShiftModal(){
 }
 function printShiftReport(shift, moves){
   const s = DB.settings;
-  const salesUSD = moves.filter(m=>m.type==='sale'&&m.currency==='USD').reduce((s2,m)=>s2+Number(m.amount),0);
-  const salesLBP = moves.filter(m=>m.type==='sale'&&m.currency==='LBP').reduce((s2,m)=>s2+Number(m.amount),0);
+  const salesUSD = netSalesOf(moves, 'USD');
+  const salesLBP = netSalesOf(moves, 'LBP');
   const diffUSD = (shift.closingCountedUSD||0) - shift.cashUSD;
   const diffLBP = (shift.closingCountedLBP||0) - shift.cashLBP;
   const w = window.open('', '_blank');
@@ -4000,67 +4057,104 @@ function openPosCustomerPickerModal(ticket){
   });
 }
 function openPosReturnModal(){
-  const posInvoices = DB.invoices.filter(i=>i.docType==='بيع نقطة بيع (POS)' && !i.deleted).sort((a,b)=>b.createdAt-a.createdAt).slice(0,30);
+  // فقط فواتير POS التي بقي فيها شيء قابل للاسترجاع
+  const posInvoices = DB.invoices.filter(i=>i.docType==='بيع نقطة بيع (POS)' && !i.deleted && invHasReturnable(i)).sort((a,b)=>b.createdAt-a.createdAt).slice(0,50);
   const wrap = document.createElement('div');
   wrap.className='modal-bg';
+  const invLabel = i=>{
+    const tot = (i.items||[]).reduce((s,it)=>s+Number(it.total||0),0) - (Number(i.discount)||0);
+    const partly = (i.items||[]).some(it=>invItemReturnedQty(it)>0);
+    return `#${escapeHtml(i.number)} — ${fmtDate(i.date)} — $${tot.toFixed(2)}${partly?' (مسترجع جزئياً)':''}`;
+  };
   wrap.innerHTML = `<div class="modal">
     <h3>↩ فاتورة استرجاع</h3>
     ${posInvoices.length? `
     <div class="field"><label>اختر فاتورة POS</label>
       <select id="ret_invoice">
-        ${posInvoices.map(i=>`<option value="${i.id}">#${escapeHtml(i.number)} — ${fmtDate(i.date)} — $${(i.items||[]).reduce((s,it)=>s+Number(it.total),0).toFixed(2)}</option>`).join('')}
+        ${posInvoices.map(i=>`<option value="${i.id}">${invLabel(i)}</option>`).join('')}
       </select>
     </div>
     <div id="ret_items"></div>
+    <div id="ret_total" style="font-weight:800; margin:8px 0;"></div>
     <div class="row"><button class="btn" id="ret_cancel">إلغاء</button><button class="btn btn-primary" id="ret_confirm">تأكيد الاسترجاع</button></div>
-    ` : `<div class="empty"><div class="big">لا توجد فواتير POS للاسترجاع منها</div></div><div class="row"><button class="btn" id="ret_cancel">إغلاق</button></div>`}
+    ` : `<div class="empty"><div class="big">لا توجد فواتير POS قابلة للاسترجاع</div></div><div class="row"><button class="btn" id="ret_cancel">إغلاق</button></div>`}
   </div>`;
   document.body.appendChild(wrap);
   wrap.querySelector('#ret_cancel').addEventListener('click', ()=>wrap.remove());
   if(!posInvoices.length) return;
   const sel = wrap.querySelector('#ret_invoice');
+  const curInv = ()=>posInvoices.find(i=>i.id===sel.value);
+  // نسبة الحسم: المرتجع يُحسب بعد توزيع حسم الفاتورة على البنود
+  const discFactor = inv=>{ const sub = (inv.items||[]).reduce((s,it)=>s+Number(it.total||0),0); return sub>0 ? Math.max(sub-(Number(inv.discount)||0),0)/sub : 1; };
+  function lineAmount(inv, it, qty){ return Math.round(qty*Number(it.price||0)*discFactor(inv)*100)/100; }
+  function refreshTotal(){
+    const inv = curInv(); let t = 0;
+    inv.items.forEach((it,idx)=>{
+      const ch = wrap.querySelector(`[data-ret-check="${idx}"]`); const q = wrap.querySelector(`[data-ret-qty="${idx}"]`);
+      if(ch && ch.checked && q) t += lineAmount(inv, it, Math.max(0, Math.min(Number(q.value)||0, Number(it.qty)-invItemReturnedQty(it))));
+    });
+    const cur = posSaleCurrency(inv); const rate = inv.exchangeRate || DB.settings.defaultExchangeRate || 90000;
+    wrap.querySelector('#ret_total').textContent = 'المبلغ المردود للزبون: ' + (cur==='USD' ? '$'+t.toFixed(2) : fmtNum(t*rate)+' '+secCurLabel());
+  }
   function renderItems(){
-    const inv = posInvoices.find(i=>i.id===sel.value);
+    const inv = curInv();
     wrap.querySelector('#ret_items').innerHTML = `<div class="table-scroll"><table>
-      <thead><tr><th></th><th>الصنف</th><th>الكمية المباعة</th><th>كمية الاسترجاع</th></tr></thead>
-      <tbody>${inv.items.map((it,idx)=>`<tr>
-        <td><input type="checkbox" data-ret-check="${idx}"></td>
+      <thead><tr><th></th><th>الصنف</th><th>المباع</th><th>مسترجع سابقاً</th><th>كمية الاسترجاع</th></tr></thead>
+      <tbody>${inv.items.map((it,idx)=>{
+        const rem = (Number(it.qty)||0) - invItemReturnedQty(it);
+        const ok = it.productId && rem>0;
+        return `<tr style="${ok?'':'opacity:.5;'}">
+        <td>${ok? `<input type="checkbox" data-ret-check="${idx}">` : ''}</td>
         <td>${escapeHtml(it.desc)}</td>
-        <td class="num">${it.qty}</td>
-        <td><input type="number" class="num" style="width:70px;" data-ret-qty="${idx}" value="${it.qty}" min="0" max="${it.qty}"></td>
-      </tr>`).join('')}</tbody>
+        <td class="num">${fmtQty(it.qty)}</td>
+        <td class="num">${invItemReturnedQty(it)? fmtQty(invItemReturnedQty(it)) : '—'}</td>
+        <td>${ok? `<input type="number" class="num" style="width:70px;" data-ret-qty="${idx}" value="${rem}" min="0" max="${rem}">` : '—'}</td>
+      </tr>`; }).join('')}</tbody>
     </table></div>`;
+    wrap.querySelectorAll('[data-ret-check],[data-ret-qty]').forEach(el=>el.addEventListener('input', refreshTotal));
+    refreshTotal();
   }
   renderItems();
   sel.addEventListener('change', renderItems);
   wrap.querySelector('#ret_confirm').addEventListener('click', async ()=>{
-    const inv = posInvoices.find(i=>i.id===sel.value);
-    const now = Date.now(); const date = todayISO();
-    let totalReturnedUSD = 0;
-    let anyChecked = false;
-    inv.items.forEach((it, idx)=>{
-      const checked = wrap.querySelector(`[data-ret-check="${idx}"]`).checked;
-      if(!checked) return;
-      anyChecked = true;
-      const qty = Math.min(Number(wrap.querySelector(`[data-ret-qty="${idx}"]`).value)||0, it.qty);
-      if(qty<=0) return;
-      totalReturnedUSD += qty * Number(it.price);
-      DB.stockIns.push({id:uid(), createdAt:now, itemId:it.productId, qty, date, number:nextStockInNumber(), note:'استرجاع من فاتورة POS #'+inv.number});
-    });
-    if(!anyChecked || totalReturnedUSD<=0){ toast('اختر صنفًا واحدًا على الأقل للاسترجاع'); return; }
+    const inv = curInv();
     const myShift = currentUserShift();
     if(!myShift){ toast('يجب أن يكون لديك صندوق مفتوح'); return; }
+    // نجمع البنود أولاً — لا نعدّل أي شيء قبل التأكد من صحة الطلب
+    const picks = [];
+    inv.items.forEach((it, idx)=>{
+      const ch = wrap.querySelector(`[data-ret-check="${idx}"]`);
+      if(!ch || !ch.checked) return;
+      const rem = (Number(it.qty)||0) - invItemReturnedQty(it);
+      const qty = Math.min(Number(wrap.querySelector(`[data-ret-qty="${idx}"]`).value)||0, rem);
+      if(qty>0) picks.push({it, qty, amountUSD: lineAmount(inv, it, qty)});
+    });
+    const totalUSD = Math.round(picks.reduce((s,p)=>s+p.amountUSD,0)*100)/100;
+    if(!picks.length || totalUSD<=0){ toast('اختر صنفًا واحدًا على الأقل للاسترجاع'); return; }
+    const now = Date.now(); const date = todayISO();
+    const currency = posSaleCurrency(inv);
     const rate = inv.exchangeRate || DB.settings.defaultExchangeRate || 90000;
-    // نرجع المبلغ من نفس عملة الصندوق (نفترض دولار افتراضياً — تقدر تصحح لاحقاً من حركات الصندوق لو لزم)
-    myShift.cashUSD = (myShift.cashUSD||0) - totalReturnedUSD;
-    DB.cashMovements.push({id:uid(), createdAt:now, type:'return', currency:'USD', amount:totalReturnedUSD, note:'استرجاع من فاتورة POS #'+inv.number+' — '+currentUser.username, refSaleId:inv.id, date, shiftId:myShift.id});
-    await Promise.all([
+    const amountCur = currency==='USD' ? totalUSD : Math.round(totalUSD*rate);
+    picks.forEach(p=>{
+      p.it.returnedQty = invItemReturnedQty(p.it) + p.qty;
+      DB.stockIns.push({id:uid(), createdAt:now, itemId:p.it.productId, qty:p.qty, date, number:nextStockInNumber(), note:'استرجاع من فاتورة POS #'+inv.number, refId:inv.id});
+    });
+    // إيصال رد (سالب): يُنقص المقبوضات في الميزانية والتقارير، ويظهر في كشف حساب الزبون كمرتجع
+    DB.receipts.push({id:uid(), createdAt:now, customerId:inv.customerId, number:nextReceiptNumber(), date, shiftId:myShift.id,
+      amount: -amountCur, method: currency==='USD'?'نقد $ (POS)':'نقد '+secCurLabel()+' (POS)',
+      details:'استرجاع نقطة بيع #'+inv.number+' — الكاشير: '+currentUser.username});
+    if(currency==='USD') myShift.cashUSD = (myShift.cashUSD||0) - amountCur;
+    else myShift.cashLBP = (myShift.cashLBP||0) - amountCur;
+    DB.cashMovements.push({id:uid(), createdAt:now, type:'return', currency, amount:amountCur, note:'استرجاع من فاتورة POS #'+inv.number+' — '+currentUser.username, refSaleId:inv.id, date, shiftId:myShift.id});
+    const res = await Promise.all([
+      save(KEYS.invoices, DB.invoices),
       save(KEYS.stockIns, DB.stockIns),
+      save(KEYS.receipts, DB.receipts),
       save(KEYS.cashMovements, DB.cashMovements),
       save(KEYS.cashierShifts, DB.cashierShifts)
     ]);
     wrap.remove();
-    toast('تم الاسترجاع وتحديث المستودع ✅');
+    toast(res.every(Boolean) ? 'تم الاسترجاع وتحديث المستودع والصندوق والميزانية ✅' : 'حدث خطأ أثناء الحفظ');
     render();
   });
 }
@@ -4542,8 +4636,8 @@ function openDayCloseModal(){
   const expectedUSD = openShifts.reduce((s,x)=>s+x.cashUSD,0);
   const expectedLBP = openShifts.reduce((s,x)=>s+x.cashLBP,0);
   const todaysMoves = DB.cashMovements.filter(m=>m.date===today && !m.deleted);
-  const salesUSD = todaysMoves.filter(m=>m.type==='sale'&&m.currency==='USD').reduce((s,m)=>s+Number(m.amount),0);
-  const salesLBP = todaysMoves.filter(m=>m.type==='sale'&&m.currency==='LBP').reduce((s,m)=>s+Number(m.amount),0);
+  const salesUSD = netSalesOf(todaysMoves, 'USD');
+  const salesLBP = netSalesOf(todaysMoves, 'LBP');
   const wrap = document.createElement('div');
   wrap.className='modal-bg';
   wrap.innerHTML = `<div class="modal">
@@ -4622,8 +4716,7 @@ function journalEntriesForRange(from, to){
     let usd = total, lbp = 0;
     if(isPos){
       // فاتورة POS بتحمل المبلغ الحقيقي مباشرة (بدل ما نكرره بسطر إيصال منفصل) — منحدد عملتها من الإيصال المرتبط
-      const receipt = DB.receipts.find(r=>!r.deleted && (r.details||'').includes('#'+i.number));
-      const isLBP = receipt && !/\$/.test(receipt.method||'');
+      const isLBP = posSaleCurrency(i)==='LBP';
       if(isLBP){ lbp = total * (i.exchangeRate || DB.settings.defaultExchangeRate || 90000); usd = 0; }
     }
     rows.push({date:i.date, createdAt:i.createdAt||0, type:i.docType||'فاتورة', party:cust?cust.name:'—', usd, lbp,
@@ -4634,7 +4727,7 @@ function journalEntriesForRange(from, to){
     const total = (i.items||[]).reduce((s,it)=>s+(Number(it.total)||0),0) - (Number(i.discount)||0);
     rows.push({date:i.date, createdAt:i.createdAt||0, type:i.isReturn?'مرتجع مشتريات':'فاتورة مشتريات', party:sup?sup.name:'—', usd:i.isReturn? total : -total, lbp:0, nav:null});
   });
-  DB.receipts.filter(r=>!r.deleted && r.date>=from && r.date<=to && !/بيع نقطة بيع #/.test(r.details||'')).forEach(r=>{
+  DB.receipts.filter(r=>!r.deleted && r.date>=from && r.date<=to && !isPosReceipt(r)).forEach(r=>{
     const cust = DB.customers.find(c=>c.id===r.customerId);
     const isLBP = /ل\.ل/.test(r.method||'');
     const amt = Number(r.amount)||0;
@@ -4717,8 +4810,10 @@ function reportsView(qs){
   const a = qs.get('a')||''; const b = qs.get('b')||'';
   const {from, to} = computePeriodRange(period, a, b);
   const rows = journalEntriesForRange(from, to);
-  const salesTotal = DB.invoices.filter(i=>!i.deleted && i.date>=from && i.date<=to && i.docType==='بيع نقطة بيع (POS)')
+  const salesGross = DB.invoices.filter(i=>!i.deleted && i.date>=from && i.date<=to && i.docType==='بيع نقطة بيع (POS)')
     .reduce((s,i)=>s + ((i.items||[]).reduce((s2,it)=>s2+(Number(it.total)||0),0) - (Number(i.discount)||0)), 0);
+  const returnsTotal = posRefundReceiptsInRange(from, to).reduce((s,r)=>s+Math.abs(receiptAmountUSD(r)),0);
+  const salesTotal = salesGross - returnsTotal;
   const invoicesTotal = rows.filter(r=>r.nav && r.nav.includes('/invoice/')).reduce((s,r)=>s+r.usd,0) + salesTotal;
   const receiptsUSD = rows.filter(r=>String(r.type).includes('إيصال قبض')).reduce((s,r)=>s+r.usd,0);
   const receiptsLBP = rows.filter(r=>String(r.type).includes('إيصال قبض')).reduce((s,r)=>s+r.lbp,0);
@@ -4735,7 +4830,7 @@ function reportsView(qs){
     ${docHead('تقرير من '+fmtDate(from)+' إلى '+fmtDate(to))}
     <div class="grid grid-2" style="gap:14px; margin-bottom:16px;">
       <div class="card" style="margin:0;"><div style="font-size:12.5px; color:var(--ink-soft);">إجمالي الفواتير</div><div style="font-size:20px; font-weight:800;" class="num">$${invoicesTotal.toFixed(2)}</div></div>
-      <div class="card" style="margin:0;"><div style="font-size:12.5px; color:var(--ink-soft);">منها مبيعات POS</div><div style="font-size:20px; font-weight:800;" class="num">$${salesTotal.toFixed(2)}</div></div>
+      <div class="card" style="margin:0;"><div style="font-size:12.5px; color:var(--ink-soft);">منها صافي مبيعات POS</div><div style="font-size:20px; font-weight:800;" class="num">$${salesTotal.toFixed(2)}</div>${returnsTotal? `<div style="font-size:11.5px; color:var(--debit);">بعد خصم مرتجعات بقيمة $${returnsTotal.toFixed(2)}</div>` : ''}</div>
       <div class="card" style="margin:0;"><div style="font-size:12.5px; color:var(--ink-soft);">إيصالات القبض</div><div style="font-size:18px; font-weight:800; color:var(--credit);" class="num">$${receiptsUSD.toFixed(2)} + ${fmtNum(receiptsLBP)} ${secCurLabel()}</div></div>
       <div class="card" style="margin:0;"><div style="font-size:12.5px; color:var(--ink-soft);">سندات الصرف</div><div style="font-size:18px; font-weight:800; color:var(--debit);" class="num">$${vouchersUSD.toFixed(2)} + ${fmtNum(vouchersLBP)} ${secCurLabel()}</div></div>
     </div>
