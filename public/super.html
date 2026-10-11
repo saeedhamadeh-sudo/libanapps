@@ -882,6 +882,8 @@ function paintSubs(){
         '<td style="white-space:nowrap">'+
           '<button class="btn alt sm" data-x="'+s.id+'" data-d="30">+شهر</button> '+
           '<button class="btn alt sm" data-x="'+s.id+'" data-d="365">+سنة</button> '+
+          '<button class="btn dg sm" data-x="'+s.id+'" data-d="-30" title="تنقيص شهر">−شهر</button> '+
+          '<button class="btn dg sm" data-x="'+s.id+'" data-d="-365" title="تنقيص سنة">−سنة</button> '+
           '<button class="btn alt sm" data-rst="'+s.id+'">فك ربط الجهاز</button> '+
           '<button class="btn dg sm" data-sus="'+s.id+'" data-cur="'+s.status+'">'+
             (s.status==='active'?'إيقاف':'تفعيل')+'</button> '+
@@ -906,6 +908,16 @@ $('#subsTbl').addEventListener('click',async function(e){
   var b=e.target.closest('button'); if(!b) return;
   if(b.dataset.x){
     var sObj0=SUBS.find(function(x){return x.id===b.dataset.x});
+    var dd=Number(b.dataset.d);
+    if(dd<0 && sObj0){
+      // التنقيص يُحسب من تاريخ الانتهاء الحالي (أو من اليوم إذا كان منتهياً)
+      var base=Math.max(new Date(sObj0.expires_at).getTime(), Date.now());
+      var after=new Date(base + dd*86400000);
+      var who0=(sObj0.clients&&sObj0.clients.name)||'';
+      if(!confirm('تنقيص '+(dd===-30?'شهر':'سنة')+' من اشتراك «'+who0+'»؟\n\nتاريخ الانتهاء الحالي: '+new Date(sObj0.expires_at).toLocaleDateString('en-GB')+
+                  '\nالتاريخ الجديد: '+after.toLocaleDateString('en-GB')+
+                  (after.getTime()<Date.now()?'\n\n⚠️ سيصبح الاشتراك منتهياً ويُقفل البرنامج لدى الزبون.':''))) return;
+    }
     if(sObj0 && (sObj0.product_code==='alum' || sObj0.product_code==='trade')){
       var ses0=await sb.auth.getSession();
       var tok0=ses0.data.session && ses0.data.session.access_token;
@@ -915,9 +927,10 @@ $('#subsTbl').addEventListener('click',async function(e){
         body:JSON.stringify({id:b.dataset.x, days:Number(b.dataset.d)})
       });
       var j0=await r0.json();
-      if(!r0.ok||!j0.ok){ alert('لم ينجح التمديد: '+(j0.error||'')); return; }
+      if(!r0.ok||!j0.ok){ alert((dd<0?'لم ينجح التنقيص: ':'لم ينجح التمديد: ')+(j0.error||'')); return; }
     }else{
-      await sb.rpc('extend_subscription',{p_id:b.dataset.x,p_days:Number(b.dataset.d)});
+      var rx=await sb.rpc('extend_subscription',{p_id:b.dataset.x,p_days:dd});
+      if(rx.error){ alert((dd<0?'لم ينجح التنقيص: ':'لم ينجح التمديد: ')+rx.error.message); return; }
     }
   }else if(b.dataset.rst){
     if(!confirm('فك ربط الجهاز؟ سيتمكن الزبون من التفعيل على كمبيوتر جديد.')) return;
