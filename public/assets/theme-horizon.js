@@ -52,7 +52,7 @@
     // إضاءة وميلان البطاقات مع الماوس
     document.addEventListener('pointermove',function(e){
       if(!on()||e.pointerType==='touch') return;
-      var c=e.target && e.target.closest && e.target.closest('.pcard,.feat>div,.plan');
+      var c=e.target && e.target.closest && e.target.closest('.pcard,.feat>div,.plan,.nw');
       if(c){
         var r=c.getBoundingClientRect(), x=e.clientX-r.left, y=e.clientY-r.top;
         c.style.setProperty('--hz-x',x+'px'); c.style.setProperty('--hz-y',y+'px');
@@ -112,13 +112,13 @@
         '<div class="hz-orb a"></div><div class="hz-orb b"></div><div class="hz-orb c"></div>'+
         '<div class="hz-aside-top"><span class="hz-logo">Liban<b>Apps</b></span></div>'+
         '<div class="hz-aside-mid">'+
-          '<h3>'+(isUp?'ابدأ خلال دقيقة':'أهلاً بك من جديد')+'</h3>'+
-          '<p>منيو المطاعم، محاسبة الصناعيين والتجّار، والمتجر الإلكتروني — بحساب واحد.</p>'+
+          '<h3>'+(isUp?'ابدأ خلال دقيقة':(/reset/.test(page)?'استعد حسابك في دقيقة':'مرحبًا بعودتك'))+'</h3>'+
+          '<p>منيو المطاعم، ومحاسبة الصناعيين والتجّار، والمتجر الإلكتروني — بحساب واحد.</p>'+
           '<ul>'+
             '<li><i>'+ICON.check+'</i><span>تفعيل فوري بعد الدفع</span></li>'+
-            '<li><i>'+ICON.check+'</i><span>الدولار والليرة في كل البرامج</span></li>'+
+            '<li><i>'+ICON.check+'</i><span>الدولار والليرة في جميع البرامج</span></li>'+
             '<li><i>'+ICON.check+'</i><span>يعمل على الهاتف والكمبيوتر</span></li>'+
-            '<li><i>'+ICON.check+'</i><span>دعم محلي بالعربية</span></li>'+
+            '<li><i>'+ICON.check+'</i><span>دعم محلي باللغة العربية</span></li>'+
           '</ul>'+
         '</div>'+
         '<div class="hz-chips">'+
@@ -126,7 +126,7 @@
           '<div class="hz-chip c2"><i class="g">'+ICON.bill+'</i><div><b>فاتورة مدفوعة</b><small dir="ltr">#1024 · 250 $</small></div></div>'+
           '<div class="hz-chip c3"><i class="b">'+ICON.box+'</i><div><b>المخزون محدّث</b><small>الآن</small></div></div>'+
         '</div>'+
-        '<div class="hz-aside-foot">صُنع في لبنان · مدعوم محلياً</div>');
+        '<div class="hz-aside-foot">صُنع في لبنان · مدعوم محليًا</div>');
       sec.appendChild(aside);
 
       // ترتيب ظهور الحقول
@@ -164,7 +164,7 @@
 
     // ظهور تدريجي — بصفحات التسويق فقط
     if(!reduce() && ('IntersectionObserver' in window) && document.querySelector('header.hero')){
-      var els=document.querySelectorAll('section .head, .pcard, .feat>div, .grid2>*, .band');
+      var els=document.querySelectorAll('section .head, .pcard, .feat>div, .grid2>*, .band, .nw');
       var io=new IntersectionObserver(function(list){
         list.forEach(function(en){ if(en.isIntersecting){ en.target.classList.add('hz-in'); io.unobserve(en.target); } });
       },{rootMargin:'0px 0px -8% 0px',threshold:.08});
