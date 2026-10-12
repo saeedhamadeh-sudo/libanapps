@@ -711,7 +711,10 @@ function settingsToDb(s){
       vatRate: (s.vatRate===undefined || s.vatRate===null || s.vatRate==='') ? null : Number(s.vatRate),
       businessTypeLocked: !!s.businessTypeLocked,
       posPrintFormat: s.posPrintFormat||'thermal80',
-      lowStockThreshold: (s.lowStockThreshold===undefined || s.lowStockThreshold===null || s.lowStockThreshold==='') ? null : Number(s.lowStockThreshold)}})
+      lowStockThreshold: (s.lowStockThreshold===undefined || s.lowStockThreshold===null || s.lowStockThreshold==='') ? null : Number(s.lowStockThreshold),
+      customGroups: Array.isArray(s.customGroups)? s.customGroups : [],
+      groupOrder: Array.isArray(s.groupOrder)? s.groupOrder : null,
+      groupsLocked: !!s.groupsLocked}})
   };
 }
 function applySettingsFromDb(row, base){
@@ -748,7 +751,10 @@ function applySettingsFromDb(row, base){
     vatRate: (row.product_lists && row.product_lists._ui && row.product_lists._ui.vatRate!=null) ? Number(row.product_lists._ui.vatRate) : base.vatRate,
     businessTypeLocked: (row.product_lists && row.product_lists._ui && row.product_lists._ui.businessTypeLocked!=null) ? !!row.product_lists._ui.businessTypeLocked : base.businessTypeLocked,
     posPrintFormat: (row.product_lists && row.product_lists._ui && row.product_lists._ui.posPrintFormat) ? row.product_lists._ui.posPrintFormat : base.posPrintFormat,
-    lowStockThreshold: (row.product_lists && row.product_lists._ui && row.product_lists._ui.lowStockThreshold!=null) ? Number(row.product_lists._ui.lowStockThreshold) : base.lowStockThreshold
+    lowStockThreshold: (row.product_lists && row.product_lists._ui && row.product_lists._ui.lowStockThreshold!=null) ? Number(row.product_lists._ui.lowStockThreshold) : base.lowStockThreshold,
+    customGroups: (row.product_lists && row.product_lists._ui && Array.isArray(row.product_lists._ui.customGroups)) ? row.product_lists._ui.customGroups : base.customGroups,
+    groupOrder: (row.product_lists && row.product_lists._ui && Array.isArray(row.product_lists._ui.groupOrder)) ? row.product_lists._ui.groupOrder : base.groupOrder,
+    groupsLocked: (row.product_lists && row.product_lists._ui && row.product_lists._ui.groupsLocked!=null) ? !!row.product_lists._ui.groupsLocked : base.groupsLocked
   };
 }
 async function syncSettingsToSupabase(settings){
@@ -1286,7 +1292,7 @@ async function syncPurchaseStock(doc){
   DB.stockIns = DB.stockIns.filter(x=>x.refId!==doc.id);
   DB.stockOuts = DB.stockOuts.filter(x=>x.refId!==doc.id);
   if(!doc.deleted && doc.addToStock){
-    (doc.items||[]).filter(it=>it.productId && Number(it.qty)>0 && DB.warehouseItems.some(w=>w.id===it.productId)).forEach(it=>{
+    (doc.items||[]).filter(it=>it.productId && Number(it.qty)>0 && DB.warehouseItems.some(w=>w.id===it.productId && !isServiceItem(w))).forEach(it=>{
       const rec = {id:uid(), createdAt:Date.now(), itemId:it.productId, qty:Number(it.qty), date:doc.date, refId:doc.id};
       if(doc.isReturn){ rec.number = nextStockOutNumber(); rec.note = 'مرتجع مشتريات #'+doc.number; DB.stockOuts.push(rec); }
       else { rec.number = nextStockInNumber(); rec.note = 'فاتورة مشتريات #'+doc.number; DB.stockIns.push(rec); }
@@ -1505,6 +1511,146 @@ function autoCategoryKey(cat){
   if(/قطع|غيار|part/.test(n)) return 'parts';
   if(/اكسسوار|accessor/.test(n)) return 'accessories';
   return 'other';
+}
+/* ---------- مجموعات مخصّصة (منتجات أو خدمات) + ترتيبها ---------- */
+function customGroups(){ return (DB.settings && Array.isArray(DB.settings.customGroups)) ? DB.settings.customGroups : []; }
+function groupByName(name){ const n = normalizeSearchText(name); return n ? (customGroups().find(g=>normalizeSearchText(g.name)===n) || null) : null; }
+// الخدمة: لا كمية ولا مخزون — لا تُخصم عند البيع ولا تظهر في نقص الستوك
+function isServiceItem(it){ const g = it && groupByName(it.category); return !!(g && g.type==='services'); }
+function isServiceCategory(cat){ const g = groupByName(cat); return !!(g && g.type==='services'); }
+function canManageGroups(){ return isPrivilegedUser(currentUser) || hasPermission('edit_products'); }
+function groupsLocked(){ return !!(DB.settings && DB.settings.groupsLocked); }
+function groupIcon(label){
+  const g = groupByName(label); if(g) return g.icon || (g.type==='services'?'🛠':'📁');
+  const k = autoCategoryKey(label); return (typeof AUTO_CATEGORY_ICONS!=='undefined' && AUTO_CATEGORY_ICONS[k]) || '';
+}
+// يرتّب الأسماء حسب الترتيب المحفوظ؛ الجديد يأتي بعده بالترتيب الأصلي
+function orderGroupLabels(labels){
+  const order = (DB.settings && Array.isArray(DB.settings.groupOrder)) ? DB.settings.groupOrder.map(normalizeSearchText) : [];
+  const pos = l=>{ const i = order.indexOf(normalizeSearchText(l)); return i===-1 ? 1e6 : i; };
+  return labels.map((l,i)=>({l,i})).sort((a,b)=> (pos(a.l)-pos(b.l)) || (a.i-b.i)).map(x=>x.l);
+}
+// كل المجموعات بالترتيب: فئات المحل الأساسية + المجموعات المخصّصة
+function chooserGroupLabels(){
+  const base = isAutoShop() ? AUTO_CATEGORIES.map(c=>c.label) : [];
+  const custom = customGroups().map(g=>g.name).filter(n=>!base.some(b=>normalizeSearchText(b)===normalizeSearchText(n)));
+  return orderGroupLabels([...base, ...custom]);
+}
+async function saveGroupOrder(labels){
+  const rest = (DB.settings.groupOrder||[]).filter(k=>!labels.some(l=>normalizeSearchText(l)===normalizeSearchText(k)));
+  DB.settings.groupOrder = [...labels, ...rest];
+  return save(KEYS.settings, DB.settings);
+}
+// سحب وإفلات عام (ماوس + لمس) لعناصر داخل حاوية — يرجع الترتيب الجديد للمفاتيح
+function makeSortable(container, itemSel, keyAttr, onChange){
+  if(!container) return;
+  const keys = ()=>Array.from(container.querySelectorAll(itemSel)).map(x=>x.getAttribute(keyAttr));
+  const moveTo = (dragEl, overEl)=>{
+    if(!overEl || overEl===dragEl) return;
+    const items = Array.from(container.querySelectorAll(itemSel));
+    const a = items.indexOf(dragEl), b = items.indexOf(overEl);
+    if(a<b) overEl.after(dragEl); else overEl.before(dragEl);
+    onChange(keys());
+  };
+  let dragEl = null;
+  container.querySelectorAll(itemSel).forEach(el=>{
+    el.setAttribute('draggable','true');
+    el.addEventListener('dragstart', e=>{ dragEl = el; el.classList.add('dragging'); try{ e.dataTransfer.setData('text/plain', el.getAttribute(keyAttr)); }catch(_){} });
+    el.addEventListener('dragend', ()=>{ el.classList.remove('dragging'); container.querySelectorAll('.drop-target').forEach(x=>x.classList.remove('drop-target')); });
+    el.addEventListener('dragover', e=>{ e.preventDefault(); el.classList.add('drop-target'); });
+    el.addEventListener('dragleave', ()=>el.classList.remove('drop-target'));
+    el.addEventListener('drop', e=>{ e.preventDefault(); el.classList.remove('drop-target'); if(dragEl) moveTo(dragEl, el); dragEl = null; });
+    el.addEventListener('pointerdown', e=>{
+      if(e.pointerType==='mouse') return;
+      e.preventDefault();
+      el.classList.add('dragging');
+      const onMove = ev=>{ const o = document.elementFromPoint(ev.clientX, ev.clientY); const over = o && o.closest && o.closest(itemSel);
+        container.querySelectorAll(itemSel).forEach(x=>x.classList.toggle('drop-target', x===over && x!==el)); };
+      const onUp = ev=>{
+        document.removeEventListener('pointermove', onMove); document.removeEventListener('pointerup', onUp);
+        el.classList.remove('dragging'); container.querySelectorAll('.drop-target').forEach(x=>x.classList.remove('drop-target'));
+        const o = document.elementFromPoint(ev.clientX, ev.clientY); const over = o && o.closest && o.closest(itemSel);
+        if(over && container.contains(over)) moveTo(el, over);
+      };
+      document.addEventListener('pointermove', onMove); document.addEventListener('pointerup', onUp);
+    });
+  });
+}
+const GROUP_ICON_CHOICES = ['📁','🛠','🧰','🔩','🧽','🚿','⚙️','🔧','🧴','🧯','💡','🎧','🚗','🏍','🧪','📦','⭐','🎁'];
+function openGroupModal(group, onDone){
+  if(!canManageGroups()){ toast('ليس لديك صلاحية إدارة المجموعات'); return; }
+  const isNew = !group;
+  const wrap = document.createElement('div');
+  wrap.className = 'modal-bg';
+  const itemsIn = group ? DB.warehouseItems.filter(it=>normalizeSearchText(it.category)===normalizeSearchText(group.name)).length : 0;
+  wrap.innerHTML = `<div class="modal">
+    <h3>${isNew? '➕ مجموعة جديدة' : '✎ تعديل المجموعة'}</h3>
+    <div class="field"><label>اسم المجموعة *</label><input type="text" id="gm_name" value="${group? escapeHtml(group.name):''}" placeholder="مثال: غسيل سيارات، تركيب، ميزان"></div>
+    <div class="field"><label>نوع المجموعة</label>
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <label style="display:flex; align-items:center; gap:6px; border:1px solid var(--line); border-radius:10px; padding:8px 12px; cursor:pointer;"><input type="radio" name="gm_type" value="products" style="width:auto;" ${!group || group.type!=='services'?'checked':''}> 📦 منتجات (لها كمية ومخزون)</label>
+        <label style="display:flex; align-items:center; gap:6px; border:1px solid var(--line); border-radius:10px; padding:8px 12px; cursor:pointer;"><input type="radio" name="gm_type" value="services" style="width:auto;" ${group && group.type==='services'?'checked':''}> 🛠 خدمات (بدون كمية ولا مخزون)</label>
+      </div>
+    </div>
+    <div class="field"><label>الأيقونة</label>
+      <div id="gm_icons" style="display:flex; flex-wrap:wrap; gap:6px;">${GROUP_ICON_CHOICES.map(ic=>`<button type="button" class="btn btn-sm" data-gm-icon="${ic}" style="font-size:20px; padding:4px 8px; ${group && group.icon===ic?'border:2px solid var(--bronze-deep);':''}">${ic}</button>`).join('')}</div>
+    </div>
+    <div class="row">
+      ${!isNew? `<button class="btn btn-danger" id="gm_delete">🗑 حذف المجموعة</button>` : ''}
+      <button class="btn" id="gm_cancel">إلغاء</button>
+      <button class="btn btn-primary" id="gm_save">${isNew?'إضافة':'حفظ'}</button>
+    </div>
+  </div>`;
+  document.body.appendChild(wrap);
+  let icon = group ? (group.icon||'') : '';
+  wrap.querySelectorAll('[data-gm-icon]').forEach(b=>b.addEventListener('click', ()=>{
+    icon = b.getAttribute('data-gm-icon');
+    wrap.querySelectorAll('[data-gm-icon]').forEach(x=>x.style.border = x===b ? '2px solid var(--bronze-deep)' : '');
+  }));
+  wrap.querySelector('#gm_cancel').addEventListener('click', ()=>wrap.remove());
+  const del = wrap.querySelector('#gm_delete');
+  if(del) del.addEventListener('click', async ()=>{
+    if(!confirm(itemsIn ? `في هذه المجموعة ${itemsIn} صنف — تبقى الأصناف محفوظة لكن تُحذف المجموعة. متابعة؟` : 'حذف المجموعة؟')) return;
+    DB.settings.customGroups = customGroups().filter(g=>g.id!==group.id);
+    const ok = await save(KEYS.settings, DB.settings);
+    wrap.remove(); toast(ok? 'تم حذف المجموعة' : 'حدث خطأ أثناء الحفظ');
+    if(onDone) onDone(); render();
+  });
+  wrap.querySelector('#gm_save').addEventListener('click', async ()=>{
+    const name = wrap.querySelector('#gm_name').value.trim().replace(/\s+/g,' ');
+    const type = (wrap.querySelector('input[name="gm_type"]:checked')||{}).value || 'products';
+    if(!name){ toast('اكتب اسم المجموعة'); return; }
+    const clashBuiltin = isAutoShop() && AUTO_CATEGORIES.some(c=>normalizeSearchText(c.label)===normalizeSearchText(name));
+    const clash = customGroups().find(g=>normalizeSearchText(g.name)===normalizeSearchText(name) && (!group || g.id!==group.id));
+    if(clashBuiltin || clash){ toast('يوجد مجموعة بهذا الاسم'); return; }
+    const saves = [];
+    if(isNew){
+      DB.settings.customGroups = [...customGroups(), {id:uid(), name, type, icon: icon || (type==='services'?'🛠':'📁')}];
+    } else {
+      const old = group.name;
+      if(normalizeSearchText(old)!==normalizeSearchText(name) || old!==name){
+        // إعادة التسمية تنتقل إلى الأصناف وإلى الترتيب
+        let n = 0;
+        DB.warehouseItems.forEach(it=>{ if(normalizeSearchText(it.category)===normalizeSearchText(old)){ it.category = name; n++; } });
+        if(n){ invalidateWarehouseCaches(); saves.push(save(KEYS.warehouseItems, DB.warehouseItems)); }
+        DB.settings.groupOrder = (DB.settings.groupOrder||[]).map(k=> normalizeSearchText(k)===normalizeSearchText(old) ? name : k);
+        if(_posActiveCategory===old) _posActiveCategory = name;
+      }
+      Object.assign(group, {name, type, icon: icon || group.icon || (type==='services'?'🛠':'📁')});
+      DB.settings.customGroups = customGroups().slice();
+    }
+    saves.push(save(KEYS.settings, DB.settings));
+    const ok = (await Promise.all(saves)).every(Boolean);
+    wrap.remove(); toast(ok? (isNew? 'تمت إضافة المجموعة «'+name+'»' : 'تم حفظ المجموعة') : 'حدث خطأ أثناء الحفظ');
+    if(onDone) onDone(name); render();
+  });
+}
+async function toggleGroupsLock(){
+  if(!isPrivilegedUser(currentUser)){ toast('فقط ADMIN يمكنه قفل أو فتح الترتيب'); return false; }
+  DB.settings.groupsLocked = !groupsLocked();
+  const ok = await save(KEYS.settings, DB.settings);
+  toast(ok? (groupsLocked()? '🔒 تم قفل ترتيب المجموعات' : '🔓 تم فتح ترتيب المجموعات') : 'حدث خطأ أثناء الحفظ');
+  return ok;
 }
 const ITEM_STATUSES = [
   {key:'available', label:'موجود'},
@@ -4321,11 +4467,13 @@ function posTotalUSD(ticket){
 }
 // بحث نقطة البيع: نفس بحث المستودع الذكي، ويحدّث المربعات فقط بدون إعادة رسم الصفحة
 let _posSearchQ = '';
+let _posCatSorting = false;
 const POS_TILE_LIMIT = 120;
 function posBaseItems(){
   if(_posActiveCategory===null) return DB.warehouseItems;
   if(_posActiveCategory==='__none__') return DB.warehouseItems.filter(it=>!it.category);
-  return DB.warehouseItems.filter(it=>it.category===_posActiveCategory);
+  const ac = normalizeSearchText(_posActiveCategory);
+  return DB.warehouseItems.filter(it=>normalizeSearchText(it.category)===ac);
 }
 function posSearchResults(){ const q = _posSearchQ.trim(); return q ? smartSearchWarehouse(q, posBaseItems()) : posBaseItems(); }
 function posTilesHtml(list){
@@ -4336,14 +4484,19 @@ function posTilesHtml(list){
     ${it.image? `<img src="${it.image}" class="pos-tile-img" loading="lazy">` : `<div class="pos-tile-img pos-tile-img-placeholder">📦</div>`}
     <div class="pos-tile-name">${escapeHtml(it.name)}</div>
     <div class="pos-tile-price">$${(Number(it.price)||0).toFixed(2)}</div>
-    <div style="font-size:11px; margin-top:2px; color:${st<=0?'var(--debit)':'var(--ink-soft)'};">المتوفر: <span class="num">${fmtQty(st)}</span></div>
+    ${isServiceItem(it)? `<div style="font-size:11px; margin-top:2px; color:var(--ink-soft);">🛠 خدمة</div>` : `<div style="font-size:11px; margin-top:2px; color:${st<=0?'var(--debit)':'var(--ink-soft)'};">المتوفر: <span class="num">${fmtQty(st)}</span></div>`}
   </button>`; }).join('')
   + (list.length>POS_TILE_LIMIT? `<div style="grid-column:1/-1; text-align:center; font-size:12.5px; color:var(--ink-soft); padding:6px;">يظهر ${POS_TILE_LIMIT} من ${list.length} — اكتب في البحث لتضييق النتائج</div>` : '');
 }
 function posCategories(){
-  const set = new Set();
-  DB.warehouseItems.forEach(it=>{ if(it.category) set.add(it.category); });
-  return Array.from(set).sort();
+  const seen = new Map();
+  const add = c=>{ const n = normalizeSearchText(c); if(n && !seen.has(n)) seen.set(n, c); };
+  chooserGroupLabels().forEach(add);
+  Array.from(new Set(DB.warehouseItems.map(it=>it.category).filter(Boolean))).sort((a,b)=>String(a).localeCompare(String(b),'ar')).forEach(add);
+  // الفئات الأساسية تظهر فقط إذا فيها أصناف؛ المجموعات المخصّصة تظهر دائماً
+  const used = new Set(DB.warehouseItems.map(it=>normalizeSearchText(it.category)));
+  const list = Array.from(seen.values()).filter(c=> used.has(normalizeSearchText(c)) || groupByName(c));
+  return orderGroupLabels(list);
 }
 function posView(){
   const myShift = currentUserShift();
@@ -4398,13 +4551,20 @@ function posView(){
   <div class="pos-layout">
     <div class="pos-main">
       <div class="card" style="padding:12px 16px;">
-        <div class="pos-cat-tabs">
-          <div class="pos-cat-tab${_posActiveCategory===null?' active':''}" data-pos-category="">🗂 الكل</div>
-          ${categories.map(c=>`<div class="pos-cat-tab${_posActiveCategory===c?' active':''}" data-pos-category="${escapeHtml(c)}">
-            ${catImages[c]? `<img src="${catImages[c]}" style="height:18px; width:18px; object-fit:cover; border-radius:5px;">` : ''}${escapeHtml(c)}
-            ${isPrivilegedUser(currentUser)? `<span data-pos-cat-image="${escapeHtml(c)}" title="صورة القسم" style="opacity:.6; margin-inline-start:2px;">🖼</span>`:''}
+        ${_posCatSorting? `<div style="font-size:12.5px; color:var(--ink-soft); margin-bottom:6px;">اسحب المجموعات لترتيبها ثم اضغط «✅ تم» — الترتيب نفسه يظهر عند «إضافة منتج» في المستودع.</div>` : ''}
+        <div class="pos-cat-tabs" id="pos_cat_tabs">
+          ${_posCatSorting? '' : `<div class="pos-cat-tab${_posActiveCategory===null?' active':''}" data-pos-category="">🗂 الكل</div>`}
+          ${categories.map(c=>`<div class="pos-cat-tab${_posActiveCategory===c?' active':''}" data-pos-category="${escapeHtml(c)}" data-cat-key="${escapeHtml(c)}" ${_posCatSorting?'style="cursor:grab; border-style:dashed;"':''}>
+            ${_posCatSorting? '⠿ ' : ''}${catImages[c]? `<img src="${catImages[c]}" style="height:18px; width:18px; object-fit:cover; border-radius:5px;">` : (groupIcon(c)? groupIcon(c)+' ' : '')}${escapeHtml(c)}
+            ${(isPrivilegedUser(currentUser) && !_posCatSorting)? `<span data-pos-cat-image="${escapeHtml(c)}" title="صورة القسم" style="opacity:.6; margin-inline-start:2px;">🖼</span>`:''}
+            ${(groupByName(c) && canManageGroups() && !_posCatSorting)? `<span data-pos-grp-edit="${escapeHtml(groupByName(c).id)}" title="تعديل المجموعة" style="opacity:.6; margin-inline-start:2px;">✎</span>`:''}
           </div>`).join('')}
-          ${noCatCount? `<div class="pos-cat-tab${_posActiveCategory==='__none__'?' active':''}" data-pos-category="__none__">بدون قسم (${noCatCount})</div>` : ''}
+          ${(noCatCount && !_posCatSorting)? `<div class="pos-cat-tab${_posActiveCategory==='__none__'?' active':''}" data-pos-category="__none__">بدون قسم (${noCatCount})</div>` : ''}
+          ${canManageGroups()? (_posCatSorting
+            ? `<button type="button" class="btn btn-sm btn-primary" id="pos_cat_sort_done">✅ تم</button><button type="button" class="btn btn-sm" id="pos_cat_sort_cancel">إلغاء</button>`
+            : `<button type="button" class="btn btn-sm" id="pos_new_group" title="مجموعة جديدة" style="border-style:dashed;">➕ مجموعة</button>
+               ${!groupsLocked()? `<button type="button" class="btn btn-sm" id="pos_cat_sort" title="ترتيب المجموعات">✏️</button>` : ''}
+               ${isPrivilegedUser(currentUser)? `<button type="button" class="btn btn-sm" id="pos_cat_lock" title="${groupsLocked()?'فتح الترتيب':'قفل الترتيب'}">${groupsLocked()?'🔒':'🔓'}</button>` : ''}`) : ''}
         </div>
         <div class="pos-search-row">
           <input type="text" id="pos_scan_input" inputmode="none" autocomplete="off" value="${escapeHtml(_posSearchQ)}" style="flex:1; font-size:16px; padding:11px 14px; border-radius:10px; border:1px solid var(--line);" placeholder="🔍 بحث: اسم، ماركة، مقاس، باركود، رمز..." autofocus>
@@ -4532,9 +4692,26 @@ function bindPosEvents(){
     posAddToCart(ticket, item);
     render();
   });
-  document.querySelectorAll('[data-pos-category]').forEach(b=>b.addEventListener('click', ()=>{
+  if(_posCatSorting){
+    let newOrder = posCategories();
+    makeSortable(document.getElementById('pos_cat_tabs'), '[data-cat-key]', 'data-cat-key', o=>{ newOrder = o; });
+    const d = document.getElementById('pos_cat_sort_done');
+    if(d) d.addEventListener('click', async ()=>{ const ok = await saveGroupOrder(newOrder); _posCatSorting = false; toast(ok? 'تم حفظ ترتيب المجموعات' : 'حدث خطأ أثناء الحفظ'); render(); });
+    const c = document.getElementById('pos_cat_sort_cancel');
+    if(c) c.addEventListener('click', ()=>{ _posCatSorting = false; render(); });
+  } else document.querySelectorAll('[data-pos-category]').forEach(b=>b.addEventListener('click', ()=>{
     _posActiveCategory = b.getAttribute('data-pos-category') || null;
     render();
+  }));
+  const ngBtn = document.getElementById('pos_new_group');
+  if(ngBtn) ngBtn.addEventListener('click', ()=>openGroupModal(null, name=>{ if(name) _posActiveCategory = name; }));
+  const sortBtn = document.getElementById('pos_cat_sort');
+  if(sortBtn) sortBtn.addEventListener('click', ()=>{ _posCatSorting = true; render(); });
+  const lockBtn = document.getElementById('pos_cat_lock');
+  if(lockBtn) lockBtn.addEventListener('click', async ()=>{ await toggleGroupsLock(); render(); });
+  document.querySelectorAll('[data-pos-grp-edit]').forEach(b=>b.addEventListener('click', e=>{
+    e.stopPropagation();
+    openGroupModal(customGroups().find(g=>g.id===b.getAttribute('data-pos-grp-edit')));
   }));
   document.querySelectorAll('[data-pos-cat-image]').forEach(b=>b.addEventListener('click', (e)=>{
     e.stopPropagation();
@@ -4857,6 +5034,7 @@ async function completePosSale(currency, received, due){
   const inv = {id:uid(), customerId, number:nextInvoiceNumber(), date, docType:'بيع نقطة بيع (POS)', exchangeRate:rate, items:invItems, discount:posDiscountUSD(ticket), createdAt:now, cashierUsername:currentUser.username};
   DB.invoices.push(inv);
   ticket.cart.forEach(l=>{
+    if(isServiceItem(DB.warehouseItems.find(x=>x.id===l.itemId))) return;   // الخدمة لا تُخصم من المخزون
     DB.stockOuts.push({id:uid(), createdAt:now, itemId:l.itemId, qty:l.qty, date, number:nextStockOutNumber(), note:'بيع POS #'+inv.number});
   });
   if(onAccount){
@@ -5513,16 +5691,20 @@ function bindReportsEvents(){
 let _whCatFilter = '';
 function warehouseFilteredByCat(){
   if(!isAutoShop() || !_whCatFilter) return DB.warehouseItems;
-  if(_whCatFilter==='other') return DB.warehouseItems.filter(it=>{ const k = autoCategoryKey(it.category); return !k || k==='other'; });
+  if(_whCatFilter.startsWith('g:')){ const n = normalizeSearchText(_whCatFilter.slice(2)); return DB.warehouseItems.filter(it=>normalizeSearchText(it.category)===n); }
+  if(_whCatFilter==='other') return DB.warehouseItems.filter(it=>{ const k = autoCategoryKey(it.category); return (!k || k==='other') && !groupByName(it.category); });
   return DB.warehouseItems.filter(it=>autoCategoryKey(it.category)===_whCatFilter);
 }
 function warehouseCatChipsHtml(){
   const counts = {}; let other = 0;
-  DB.warehouseItems.forEach(it=>{ const k = autoCategoryKey(it.category); if(!k || k==='other') other++; else counts[k]=(counts[k]||0)+1; });
-  const chip = (key, label)=>`<button type="button" class="btn btn-sm wh-cat-chip ${_whCatFilter===key?'btn-primary':''}" data-wh-cat="${key}" style="border-radius:999px;">${label}</button>`;
+  const gCounts = {};
+  DB.warehouseItems.forEach(it=>{ const g = groupByName(it.category); if(g){ gCounts[g.id]=(gCounts[g.id]||0)+1; return; } const k = autoCategoryKey(it.category); if(!k || k==='other') other++; else counts[k]=(counts[k]||0)+1; });
+  const chip = (key, label)=>`<button type="button" class="btn btn-sm wh-cat-chip ${_whCatFilter===key?'btn-primary':''}" data-wh-cat="${escapeHtml(key)}" style="border-radius:999px;">${label}</button>`;
+  const chipFor = label=>{ const g = groupByName(label); if(g) return chip('g:'+g.name, escapeHtml(groupIcon(label)+' '+g.name)+' ('+(gCounts[g.id]||0)+')');
+    const c = AUTO_CATEGORIES.find(x=>x.label===label); return c? chip(c.key, (AUTO_CATEGORY_ICONS[c.key]||'')+' '+c.label+' ('+(counts[c.key]||0)+')') : ''; };
   return `<div id="whCatChips" style="display:flex; flex-wrap:wrap; gap:6px; margin-top:10px;">
     ${chip('', 'الكل ('+DB.warehouseItems.length+')')}
-    ${AUTO_CATEGORIES.map(c=>chip(c.key, (AUTO_CATEGORY_ICONS[c.key]||'')+' '+c.label+' ('+(counts[c.key]||0)+')')).join('')}
+    ${chooserGroupLabels().map(chipFor).join('')}
     ${other? chip('other', '📦 أخرى ('+other+')') : ''}
   </div>`;
 }
@@ -5565,7 +5747,7 @@ function warehouseHubView(){
 function lowStockThreshold(){ const t = DB.settings && DB.settings.lowStockThreshold; return (t===undefined || t===null || t==='') ? 2 : Number(t); }
 function lowStockNoticeItems(){
   const th = lowStockThreshold();
-  return DB.warehouseItems.filter(it=>fastStock(it.id) <= th)
+  return DB.warehouseItems.filter(it=>!isServiceItem(it) && fastStock(it.id) <= th)
     .sort((a,b)=> (fastStock(a.id)-fastStock(b.id)) || String(a.name||'').localeCompare(String(b.name||''),'ar'));
 }
 function lowStockView(){
@@ -5653,7 +5835,7 @@ function warehouseItemTable(items, isSearch){
         <td>${escapeHtml(it.brand||'—')}</td>
         <td><span style="font-size:12px; font-weight:700; padding:2px 8px; border-radius:999px; background:${avail?'#e6f4ea':'#fbe9e7'}; color:${avail?'var(--credit)':'var(--debit)'};">${itemStatusLabel(it.status)}</span></td>
         <td class="num">${escapeHtml(it.mfgYear||'—')}</td>
-        <td class="${stock<0?'bal-pos':'bal-zero'}">${fmtQty(stock)} ${escapeHtml(it.uom||'')}</td>
+        <td class="${stock<0?'bal-pos':'bal-zero'}">${isServiceItem(it)? '🛠 خدمة' : fmtQty(stock)+' '+escapeHtml(it.uom||'')}</td>
         ${showCost? `<td class="num">${cv!==null? fmtMoney(cv) : '—'}</td>` : ''}
         <td class="num"><b>${it.price? fmtMoney(it.price) : '—'}</b></td>
       </tr>`;
@@ -5670,7 +5852,7 @@ function warehouseItemTable(items, isSearch){
       <td><b>${escapeHtml(it.name)}</b></td>
       <td>${escapeHtml(it.brand||'—')}</td>
       <td>${escapeHtml(it.type||'—')}</td>
-      <td class="${stockCls}">${fmtQty(stock)}</td>
+      <td class="${stockCls}">${isServiceItem(it)? '🛠 خدمة' : fmtQty(stock)}</td>
       <td>${it.expiryDate? `<span class="${expiring?'bal-pos':''}">${fmtDate(it.expiryDate)}${expiring?' ⚠️':''}</span>` : '—'}</td>
     </tr>`;
   }).join('');
@@ -5784,7 +5966,7 @@ function warehouseTxnView(kind, id){
 function warehouseInventoryPrintView(){
   const auto = isAutoShop();
   const items = warehouseFilteredByCat().slice().sort((a,b)=>String(a.name||'').localeCompare(String(b.name||''),'ar'));
-  const catLabel = auto && _whCatFilter ? (_whCatFilter==='other' ? 'أخرى' : ((AUTO_CATEGORIES.find(c=>c.key===_whCatFilter)||{}).label||'')) : '';
+  const catLabel = auto && _whCatFilter ? (_whCatFilter==='other' ? 'أخرى' : _whCatFilter.startsWith('g:') ? _whCatFilter.slice(2) : ((AUTO_CATEGORIES.find(c=>c.key===_whCatFilter)||{}).label||'')) : '';
   let totCost = 0, totSale = 0;
   const showCost = hasPermission('cost_prices'), showValue = hasPermission('stock_value');
   const rows = items.map((it,idx)=>{
@@ -7993,22 +8175,55 @@ const AUTO_CATEGORY_ICONS = {tires:'🛞', batteries:'🔋', oils:'🛢', parts:
 function openAddItemChooser(onPick){
   const wrap = document.createElement('div');
   wrap.className = 'modal-bg';
-  wrap.innerHTML = `<div class="modal">
-    <h3>ماذا تريد أن تضيف؟</h3>
-    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin:6px 0 14px;">
-      ${AUTO_CATEGORIES.map(c=>`<button type="button" class="btn" data-pick-cat="${escapeHtml(c.label)}" style="flex-direction:column; justify-content:center; padding:16px 8px; font-size:15px; font-weight:800; gap:4px;">
-        <span style="font-size:28px;">${AUTO_CATEGORY_ICONS[c.key]||'📦'}</span>إضافة ${c.label}</button>`).join('')}
-      <button type="button" class="btn" data-pick-cat="" style="flex-direction:column; justify-content:center; padding:16px 8px; font-size:15px; font-weight:800; gap:4px;">
-        <span style="font-size:28px;">📦</span>منتج آخر (كل الخانات)</button>
-    </div>
-    <div class="row"><button class="btn" id="pc_cancel">إلغاء</button></div>
-  </div>`;
+  let sorting = false;
+  const draw = ()=>{
+    const labels = chooserGroupLabels();
+    const manage = canManageGroups();
+    const locked = groupsLocked();
+    const card = (label)=>{ const g = groupByName(label);
+      return `<div class="grp-card" data-grp-key="${escapeHtml(label)}" style="position:relative;">
+        <button type="button" class="btn" data-pick-cat="${escapeHtml(label)}" style="width:100%; height:100%; flex-direction:column; justify-content:center; padding:16px 8px; font-size:15px; font-weight:800; gap:4px; ${sorting?'cursor:grab;':''}">
+          <span style="font-size:28px;">${groupIcon(label)||'📦'}</span>${g? escapeHtml(label) : 'إضافة '+escapeHtml(label)}
+          ${g && g.type==='services'? `<span style="font-size:11px; font-weight:600; color:var(--ink-soft);">خدمات</span>` : ''}
+        </button>
+        ${(g && manage && !sorting)? `<span data-grp-edit="${escapeHtml(g.id)}" title="تعديل المجموعة" style="position:absolute; top:6px; inset-inline-end:8px; cursor:pointer; opacity:.7;">✎</span>` : ''}
+        ${sorting? `<span style="position:absolute; top:6px; inset-inline-start:8px; opacity:.6;">⠿</span>` : ''}
+      </div>`; };
+    wrap.innerHTML = `<div class="modal">
+      <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:6px;">
+        <h3 style="margin:0; flex:1;">${sorting? 'اسحب المربعات لترتيبها' : 'ماذا تريد أن تضيف؟'}</h3>
+        ${manage && !sorting && !locked? `<button type="button" class="btn btn-sm" id="pc_sort">✏️ ترتيب</button>` : ''}
+        ${sorting? `<button type="button" class="btn btn-sm btn-primary" id="pc_sort_done">✅ تم</button>` : ''}
+        ${isPrivilegedUser(currentUser) && !sorting? `<button type="button" class="btn btn-sm" id="pc_lock" title="${locked?'فتح الترتيب':'قفل الترتيب'}">${locked?'🔒 مقفل':'🔓'}</button>` : (locked && !sorting? `<span style="font-size:12px; color:var(--ink-soft);">🔒</span>` : '')}
+      </div>
+      <div id="pc_grid" style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin:6px 0 14px;">
+        ${labels.map(card).join('')}
+        ${sorting? '' : `<div><button type="button" class="btn" data-pick-cat="" style="width:100%; height:100%; flex-direction:column; justify-content:center; padding:16px 8px; font-size:15px; font-weight:800; gap:4px;">
+          <span style="font-size:28px;">📦</span>منتج آخر (كل الخانات)</button></div>
+        ${manage? `<div><button type="button" class="btn" id="pc_new_group" style="width:100%; height:100%; flex-direction:column; justify-content:center; padding:16px 8px; font-size:15px; font-weight:800; gap:4px; border-style:dashed;">
+          <span style="font-size:28px;">➕</span>مجموعة جديدة</button></div>` : ''}`}
+      </div>
+      <div class="row"><button class="btn" id="pc_cancel">${sorting?'إلغاء الترتيب':'إلغاء'}</button></div>
+    </div>`;
+    const $ = q=>wrap.querySelector(q);
+    $('#pc_cancel').addEventListener('click', ()=>{ if(sorting){ sorting=false; draw(); } else wrap.remove(); });
+    if($('#pc_sort')) $('#pc_sort').addEventListener('click', ()=>{ sorting = true; draw(); });
+    if($('#pc_lock')) $('#pc_lock').addEventListener('click', async ()=>{ await toggleGroupsLock(); draw(); });
+    if($('#pc_new_group')) $('#pc_new_group').addEventListener('click', ()=>openGroupModal(null, ()=>draw()));
+    wrap.querySelectorAll('[data-grp-edit]').forEach(b=>b.addEventListener('click', e=>{ e.stopPropagation(); const g = customGroups().find(x=>x.id===b.getAttribute('data-grp-edit')); openGroupModal(g, ()=>draw()); }));
+    if(sorting){
+      let newOrder = labels;
+      makeSortable($('#pc_grid'), '.grp-card', 'data-grp-key', o=>{ newOrder = o; });
+      $('#pc_sort_done').addEventListener('click', async ()=>{ const ok = await saveGroupOrder(newOrder); toast(ok? 'تم حفظ الترتيب' : 'حدث خطأ أثناء الحفظ'); sorting = false; draw(); });
+      return;
+    }
+    wrap.querySelectorAll('[data-pick-cat]').forEach(b=>b.addEventListener('click', ()=>{
+      wrap.remove();
+      onPick(b.getAttribute('data-pick-cat'));
+    }));
+  };
   document.body.appendChild(wrap);
-  wrap.querySelector('#pc_cancel').addEventListener('click', ()=>wrap.remove());
-  wrap.querySelectorAll('[data-pick-cat]').forEach(b=>b.addEventListener('click', ()=>{
-    wrap.remove();
-    onPick(b.getAttribute('data-pick-cat'));
-  }));
+  draw();
 }
 // زر «إضافة منتج»: في محل الإطارات يسأل عن النوع أولاً
 function startAddWarehouseItem(presetBarcode, opts){
@@ -8043,12 +8258,13 @@ function openWarehouseItemModal(item, presetBarcode, opts){
       </div>
     </div>`;
   const curStock = item ? currentStock(item.id) : 0;
-  const qtyFields = (isNew && !opts.onSaved)? `
+  const qtyFieldsInner = (isNew && !opts.onSaved)? `
     <div class="grid grid-2">
       <div class="field"><label>الكمية ${auto?'المتوفرة':'*'}</label><input type="number" id="wm_qty" class="num" value="${auto?'':'0'}" placeholder="0"></div>
       <div class="field"><label>التاريخ</label><input type="date" id="wm_date" value="${todayISO()}"></div>
     </div>` : (!isNew ? `
     <div class="field"><label>الكمية الحالية في المستودع (عدّلها لتصحيح الجرد)</label><input type="number" step="any" id="wm_qty" class="num" value="${curStock}"></div>` : '');
+  const qtyFields = qtyFieldsInner ? `<div id="wm_qty_wrap">${qtyFieldsInner}</div><div id="wm_service_note" style="display:none; font-size:12.5px; color:var(--ink-soft); margin-bottom:10px;">🛠 هذه المجموعة خدمات — بدون كمية ولا مخزون.</div>` : '';
   const prodExpFields = `<div class="grid grid-2">
       <div class="field"><label>تاريخ الإنتاج</label><input type="date" id="wm_prod_date" value="${escapeHtml(v('productionDate'))}"></div>
       <div class="field" data-cats="${auto?'batteries,oils':''}"><label>تاريخ الانتهاء / الصلاحية</label><input type="date" id="wm_exp_date" value="${escapeHtml(v('expiryDate'))}"></div>
@@ -8109,8 +8325,9 @@ function openWarehouseItemModal(item, presetBarcode, opts){
     </div>
 
     <div class="grid grid-3">
-      ${(isNew && !opts.onSaved)? `<div class="field"><label>الكمية</label><input type="number" id="wm_qty" class="num" placeholder="0"></div>`
-        : (!isNew ? `<div class="field"><label>الكمية (تعديل الجرد)</label><input type="number" step="any" id="wm_qty" class="num" value="${curStock}"></div>` : '')}
+      <div id="wm_service_note" class="field" style="display:none; font-size:12.5px; color:var(--ink-soft); align-self:end;">🛠 هذه المجموعة خدمات — بدون كمية ولا مخزون.</div>
+      ${(isNew && !opts.onSaved)? `<div class="field wm-qty-field"><label>الكمية</label><input type="number" id="wm_qty" class="num" placeholder="0"></div>`
+        : (!isNew ? `<div class="field wm-qty-field"><label>الكمية (تعديل الجرد)</label><input type="number" step="any" id="wm_qty" class="num" value="${curStock}"></div>` : '')}
       <div class="field"><label>وحدة القياس</label>
         <input type="text" id="wm_uom" list="wm_uom_list" value="${escapeHtml(v('uom'))}" placeholder="حبة، طقم، كرتون، لتر">
         <datalist id="wm_uom_list">${uoms.map(c=>`<option value="${escapeHtml(c)}">`).join('')}</datalist>
@@ -8168,6 +8385,14 @@ function openWarehouseItemModal(item, presetBarcode, opts){
   };
   $('#wm_barcode').addEventListener('input', checkBarcode);
   checkBarcode();
+  // مجموعة خدمات: لا كمية
+  const applyService = ()=>{
+    const catEl = $('#wm_category'); const svc = !!catEl && isServiceCategory(catEl.value);
+    wrap.querySelectorAll('#wm_qty_wrap, .wm-qty-field').forEach(el=>el.style.display = svc ? 'none' : '');
+    const note = $('#wm_service_note'); if(note) note.style.display = svc ? '' : 'none';
+  };
+  if($('#wm_category')) $('#wm_category').addEventListener('input', applyService);
+  applyService();
   $('#wm_scan_btn').addEventListener('click', ()=>{
     openBarcodeScannerModal((code)=>{ $('#wm_barcode').value = code; checkBarcode(); });
   });
@@ -8267,10 +8492,11 @@ function openWarehouseItemModal(item, presetBarcode, opts){
       opts.onSaved(it);
       return;
     }
+    const svcItem = isServiceCategory(d.category);
     if(isNew){
-      const qty = Number(val('#wm_qty'))||0;
+      const qty = svcItem ? 0 : (Number(val('#wm_qty'))||0);
       const date = val('#wm_date') || todayISO();
-      if(!auto && qty<=0 && !dup){ toast('يجب إدخال كمية أكبر من صفر'); return; }
+      if(!auto && !svcItem && qty<=0 && !dup){ toast('يجب إدخال كمية أكبر من صفر'); return; }
       if(qty<0){ toast('الكمية لا يمكن أن تكون سالبة'); return; }
       if(dup){
         // الباركود موجود: نضيف الكمية على المنتج نفسه بدل إنشاء منتج مكرر
@@ -8300,7 +8526,7 @@ function openWarehouseItemModal(item, presetBarcode, opts){
     } else {
       if(dup){ toast(`هذا الباركود مستخدم للمنتج «${dup.name}» — لا يمكن تكرار الباركود`); return; }
       const qtyEl = $('#wm_qty');
-      const newQty = qtyEl && qtyEl.value.trim()!=='' ? Number(qtyEl.value) : null;
+      const newQty = (!svcItem && qtyEl && qtyEl.value.trim()!=='') ? Number(qtyEl.value) : null;
       if(newQty!==null && !Number.isFinite(newQty)){ toast('الكمية غير صحيحة'); return; }
       Object.assign(item, d);
       if(auto) ITEM_EXTRA_KEYS.forEach(k=>{ if(d[k]==='' || (Array.isArray(d[k]) && !d[k].length)) delete item[k]; });
@@ -8589,7 +8815,7 @@ function bindItemDocFormEvents(){
       else if(savedDoc && savedDoc.addToStock) stockMsg = savedDoc.isReturn? ' — وخُصمت البنود من المستودع' : (' — وأُضيفت البنود إلى المستودع'+(createdItems? ' (أُنشئ '+createdItems+' منتج جديد)':''));
     }
     if(ok && isNewDoc && _itemDocDraft.__kind==='invoice'){
-      const linkedItems = _itemDocDraft.items.filter(it=>it.productId && Number(it.qty)>0);
+      const linkedItems = _itemDocDraft.items.filter(it=>it.productId && Number(it.qty)>0 && !isServiceItem(DB.warehouseItems.find(w=>w.id===it.productId)));
       if(linkedItems.length){
         linkedItems.forEach(it=>{
           DB.stockOuts.push({id:uid(), createdAt:Date.now(), itemId:it.productId, qty:Number(it.qty), date:_itemDocDraft.date, number:'INV-'+_itemDocDraft.number, note:'خصم تلقائي من فاتورة #'+_itemDocDraft.number});
