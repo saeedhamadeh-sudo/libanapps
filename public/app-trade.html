@@ -244,6 +244,8 @@
   .hub-slot.drop-target{border-color:var(--credit); background:#eaf6ee;}
   .hub-slot-bar{display:flex; justify-content:space-between; align-items:center; gap:6px; padding:6px 4px 2px;}
   .hub-handle{font-size:22px; cursor:grab; padding:2px 12px; touch-action:none; user-select:none; color:var(--bronze-deep);}
+  /* أسماء لاتينية فيها شرطات (225-55-17-RYDANZ-CHINA-23) تظهر بترتيبها الصحيح داخل صفحة عربية */
+  td b, .bidi{unicode-bidi:plaintext;}
   .hub-card{background:var(--white); border:1px solid var(--line); border-radius:14px; padding:22px 18px; text-align:center; box-shadow:var(--shadow); cursor:pointer; transition:transform .1s ease, box-shadow .15s ease;}
   .pos-tile-grid{display:grid; grid-template-columns:repeat(auto-fill, minmax(140px, 1fr)); gap:12px; margin-top:12px;}
   .pos-tile{background:var(--white); border:1.5px solid var(--line); border-radius:14px; padding:10px; text-align:center; cursor:pointer;
@@ -708,7 +710,8 @@ function settingsToDb(s){
     product_lists: Object.assign({}, s.productLists||{}, {_ui:{hubOrder: Array.isArray(s.hubOrder)? s.hubOrder : null,
       vatRate: (s.vatRate===undefined || s.vatRate===null || s.vatRate==='') ? null : Number(s.vatRate),
       businessTypeLocked: !!s.businessTypeLocked,
-      posPrintFormat: s.posPrintFormat||'thermal80'}})
+      posPrintFormat: s.posPrintFormat||'thermal80',
+      lowStockThreshold: (s.lowStockThreshold===undefined || s.lowStockThreshold===null || s.lowStockThreshold==='') ? null : Number(s.lowStockThreshold)}})
   };
 }
 function applySettingsFromDb(row, base){
@@ -744,7 +747,8 @@ function applySettingsFromDb(row, base){
     hubOrder: (row.product_lists && row.product_lists._ui && Array.isArray(row.product_lists._ui.hubOrder)) ? row.product_lists._ui.hubOrder : base.hubOrder,
     vatRate: (row.product_lists && row.product_lists._ui && row.product_lists._ui.vatRate!=null) ? Number(row.product_lists._ui.vatRate) : base.vatRate,
     businessTypeLocked: (row.product_lists && row.product_lists._ui && row.product_lists._ui.businessTypeLocked!=null) ? !!row.product_lists._ui.businessTypeLocked : base.businessTypeLocked,
-    posPrintFormat: (row.product_lists && row.product_lists._ui && row.product_lists._ui.posPrintFormat) ? row.product_lists._ui.posPrintFormat : base.posPrintFormat
+    posPrintFormat: (row.product_lists && row.product_lists._ui && row.product_lists._ui.posPrintFormat) ? row.product_lists._ui.posPrintFormat : base.posPrintFormat,
+    lowStockThreshold: (row.product_lists && row.product_lists._ui && row.product_lists._ui.lowStockThreshold!=null) ? Number(row.product_lists._ui.lowStockThreshold) : base.lowStockThreshold
   };
 }
 async function syncSettingsToSupabase(settings){
@@ -1796,6 +1800,8 @@ function parseImportName(raw){
     out.tireSize = `${m[1]}X${m[2]}R${m[3]}`; catKey = 'tires';
   } else if((m = name.match(/(?:^|[^\d])(1[4-9]5|2[0-2]5)\s*R\s*(1[2-6])\s*(C)?(?!\d)/i))){
     out.tireSize = `${m[1]}R${m[2]}${m[3]?'C':''}`; catKey = 'tires';
+  } else if((m = name.match(/(?:^|[^\d.])([5-9])\.?(00|50|25|75)\s*[-\/\s]?\s*R\s*-?\s*(1[3-9]|2[0-4])(?!\d)/i))){
+    out.tireSize = `${m[1]}.${m[2]}R${m[3]}`; catKey = 'tires';   // مقاسات الشاحنات الخفيفة مثل 750-R16 → 7.50R16
   }
   // اللزوجة
   if((m = name.match(/(?:^|[^\d])(0|5|10|15|20|25)\s*W\s*[-\/\s]?\s*(8|16|20|30|40|50|60)(?!\d)/i))){
@@ -1878,74 +1884,126 @@ async function loadPdfJs(){
   window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
   return window.pdfjsLib;
 }
-// قراءة جدول من PDF: نحدد الأعمدة من سطر العناوين (Item Name / Shop Qty / Retail TTC)
+// يفصل رمز الصنف والباركود عن الاسم: «TY-2255517 | 6971234567890 DAVANTI 225-55-17»
+function splitCodeBarcodeName(text){
+  let t = String(text||'').replace(/\s+/g,' ').trim();
+  let barcode = '', sku = '';
+  const bc = t.match(/(?:^|[\s|:/])(\d{8,14})(?=$|[\s|:/])/);
+  if(bc){ barcode = bc[1]; t = (t.slice(0, bc.index) + ' ' + t.slice(bc.index + bc[0].length)).trim(); }
+  // رمز الصنف: أول كلمة قبل «|» أو كلمة فيها أحرف وأرقام في البداية
+  const pipe = t.match(/^([^\s|]{2,30})\s*\|\s*/);
+  if(pipe){ sku = pipe[1]; t = t.slice(pipe[0].length); }
+  else {
+    const lead = t.match(/^([A-Z0-9][A-Z0-9._\-\/]{2,24})\s+(?=\S)/i);
+    if(lead && /\d/.test(lead[1]) && /[A-Z]/i.test(lead[1]) && !/^\d{3}[\/\-]\d{2}/.test(lead[1]) && !/^\d+\s*W/i.test(lead[1])){ sku = lead[1]; t = t.slice(lead[0].length); }
+  }
+  t = t.replace(/^\s*\|\s*/,'').replace(/\s*\|\s*$/,'').replace(/\s*\|\s*/g,' ').trim();
+  return {sku, barcode, name:t};
+}
+// قراءة جدول المخزون من PDF
+//  1) سطر العناوين: نقسّمه إلى «خانات» حسب الفراغات، ونصنّف كل خانة (رمز/اسم، كمية، تكلفة، سعر مفرق، أو عمود نتجاهله مثل LBP)
+//  2) كل منتج «بلوك»: يبدأ بسطر الرمز/الاسم ويمتد حتى المنتج التالي — منه نأخذ أول رقم في كل عمود
+function classifyImportHead(txt){
+  const t = String(txt||''); const rev = Array.from(t).reverse().join('');
+  const has = re=>re.test(t) || re.test(rev);
+  if(has(/item\s*code|bar\s*code|barcode|item\s*name|description|designation|اسم\s*(المنتج|الصنف)|^الصنف$|البيان/i)) return 'name';
+  if(has(/^(#|no\.?|م)$/i)) return 'idx';
+  if(has(/\bLBP\b|ل\.ل|ليرة/i)) return 'ignore';            // أعمدة الليرة نتجاهلها
+  if(has(/qty|quantity|الكمية|كمية/i)) return 'qty';
+  if(has(/cost|الكلفة|التكلفة/i)) return 'cost';
+  if(has(/retail|المفرق|سعر\s*البيع/i)) return 'retail';
+  return 'ignore';
+}
 async function extractStockRowsFromPdf(file){
   const pdfjs = await loadPdfJs();
   const data = new Uint8Array(await file.arrayBuffer());
   const doc = await pdfjs.getDocument({data}).promise;
-  const rows = [];
-  let cols = null;   // {name:[x0,x1], qty:[..], retail:[..]}
+  const out = [];
+  let cols = null;
   for(let p=1; p<=doc.numPages; p++){
     const page = await doc.getPage(p);
     const tc = await page.getTextContent();
-    const items = tc.items.filter(it=>String(it.str||'').trim()).map(it=>({s:String(it.str), x:it.transform[4], y:it.transform[5], w:it.width||0}));
-    // نجمع النصوص في أسطر حسب الارتفاع
+    const items = tc.items.filter(it=>String(it.str||'').trim()).map(it=>({s:String(it.str).trim(), x:it.transform[4], y:it.transform[5], w:it.width||0, h:Math.abs(it.transform[3])||8}));
     items.sort((a,b)=> (b.y-a.y) || (a.x-b.x));
     const lines = [];
-    items.forEach(it=>{
-      const ln = lines.find(l=>Math.abs(l.y-it.y)<=3);
-      if(ln) ln.items.push(it); else lines.push({y:it.y, items:[it]});
-    });
+    items.forEach(it=>{ const ln = lines.find(l=>Math.abs(l.y-it.y)<=2.5); if(ln) ln.items.push(it); else lines.push({y:it.y, items:[it]}); });
     lines.sort((a,b)=>b.y-a.y);
     lines.forEach(l=>l.items.sort((a,b)=>a.x-b.x));
+    // ---- سطر العناوين ----
+    let headerY = null;
     for(const ln of lines){
-      const text = ln.items.map(i=>i.s).join(' ').replace(/\s+/g,' ');
-      const low = text.toLowerCase();
-      if(/item\s*name/.test(low) && /(shop\s*qty|qty|retail)/.test(low)){
-        // سطر العناوين: نحدد مركز كل عنوان
-        const heads = [];
-        // أصغر مجموعة كلمات متتالية تطابق العنوان (حتى لا يدخل «#» ضمن «Item Name»)
-        const span = (i,j)=>ln.items.slice(i,j+1).map(t=>t.s.trim()).filter(Boolean).join(' ').toLowerCase();
-        const find = (re, key)=>{
-          for(let i=0;i<ln.items.length;i++){
-            for(let j=i;j<Math.min(i+4, ln.items.length);j++){
-              if(!re.test(span(i,j))) continue;
-              if(j>i && re.test(span(i+1,j))) break;   // يطابق بدون الكلمة الأولى — نجرّب البداية التالية
-              const x0 = ln.items[i].x, x1 = ln.items[j].x + ln.items[j].w;
-              heads.push({key, x0, x1, c:(x0+x1)/2}); return;
-            }
-          }
-        };
-        find(/^#$|^no\.?$/, 'idx'); find(/item\s*name/, 'name'); find(/shop\s*qty|^qty$|quantity/, 'qty');
-        find(/retail\s*ttc/, 'retail'); find(/ws\s*-?\s*ttc|wholesale/, 'ws');
-        if(heads.some(h=>h.key==='name')){
-          heads.sort((a,b)=>a.c-b.c);
-          cols = heads.map((h,i)=>({key:h.key, from: i===0? -1e9 : (heads[i-1].x1 + h.x0)/2, to: i===heads.length-1? 1e9 : (h.x1 + heads[i+1].x0)/2, x0:h.x0}));
-        }
-        continue;
-      }
-      if(!cols) continue;
-      const cell = {};
-      ln.items.forEach(it=>{
-        const cx = it.x + it.w/2;
-        // اسم المنتج محاذٍ لليسار: نعتمد بدايته؛ الأرقام: نعتمد مركزها
-        const col = cols.find(c=> c.key==='name' ? (it.x >= c.from && it.x < c.to) : (cx >= c.from && cx < c.to)) || cols.find(c=>cx>=c.from && cx<c.to);
-        if(!col) return;
-        cell[col.key] = (cell[col.key]? cell[col.key]+' ' : '') + it.s.trim();
+      const cells = [];
+      ln.items.forEach(t=>{
+        const last = cells[cells.length-1];
+        if(last && t.x - last.x1 < 16){ last.x1 = t.x + t.w; last.txt += ' '+t.s; }
+        else cells.push({x0:t.x, x1:t.x+t.w, txt:t.s});
       });
-      const nameTxt = (cell.name||'').trim();
-      const qty = importParseNumber(cell.qty);
-      const retail = importParseNumber(cell.retail);
-      if(!nameTxt && qty===null && retail===null) continue;
-      // سطر المجموع أو رقم الصفحة (وليس ماركة مثل TOTAL QUARTZ)
-      if(/^(grand\s*total|sub\s*-?\s*total|total|totals|المجموع|الإجمالي)\s*:?\s*$/i.test(nameTxt) || /^(page|صفحة)\s*\d+/i.test(nameTxt)) continue;
-      // سطر تكملة لاسم طويل (بدون أرقام)
-      if(nameTxt && qty===null && retail===null && !cell.idx && rows.length && rows[rows.length-1].__page===p){ rows[rows.length-1].name += ' '+nameTxt; continue; }
-      if(!nameTxt) continue;
-      rows.push({name:nameTxt, qty: qty===null? 0 : qty, retail, __page:p});
+      cells.forEach(c=>{ c.key = classifyImportHead(c.txt); c.c = (c.x0+c.x1)/2; });
+      const keys = cells.map(c=>c.key);
+      if(keys.includes('name') && (keys.includes('qty') || keys.includes('cost') || keys.includes('retail'))){
+        cols = cells.map((c,i)=>({key:c.key, from: i===0? -1e9 : (cells[i-1].x1 + c.x0)/2, to: i===cells.length-1? 1e9 : (c.x1 + cells[i+1].x0)/2}));
+        headerY = ln.y;
+        break;
+      }
     }
+    if(!cols) continue;
+    const colOf = t=>{
+      const nameCol = cols.find(c=>c.key==='name');
+      if(nameCol && t.x >= nameCol.from && t.x < nameCol.to) return 'name';
+      const cx = t.x + t.w/2;
+      const c = cols.find(c=>cx >= c.from && cx < c.to);
+      return c? c.key : null;
+    };
+    const body = lines.filter(l=> headerY===null || l.y < headerY - 2);
+    const isNum = s=>importParseNumber(s)!==null && /\d/.test(s);
+    // أسطر عمود الاسم + هل فيها رقم (تكلفة/سعر/كمية) على نفس الارتفاع تقريباً
+    const nameLines = [];
+    body.forEach(ln=>{
+      const nameToks = ln.items.filter(t=>colOf(t)==='name');
+      if(!nameToks.length) return;
+      const txt = nameToks.map(t=>t.s).join(' ').replace(/\s+/g,' ').trim();
+      if(!txt || /^\d{1,3}$/.test(txt)) return;   // أرقام صغيرة لوحدها (ترقيم) ليست اسماً
+      nameLines.push({y:ln.y, txt});
+    });
+    // بداية منتج = سطر اسم بجانبه سعر (تكلفة أو مفرق). الكمية وحدها لا تكفي: رقم «1» الأخضر تحت الماركة ليس بداية منتج
+    const priceCols = cols.some(c=>c.key==='cost'||c.key==='retail') ? ['cost','retail'] : ['qty'];
+    const valueNear = y=> body.some(ln=> Math.abs(ln.y - y) <= 9 && ln.items.some(t=>{ const k = colOf(t); return priceCols.includes(k) && isNum(t.s); }));
+    let anchors = nameLines.filter(n=>valueNear(n.y));
+    if(!anchors.length) anchors = nameLines;   // احتياط: كل سطر اسم منتج
+    anchors.forEach((a, ai)=>{
+      const top = a.y + 9, bottom = ai+1<anchors.length ? anchors[ai+1].y + 9 : -1e9;
+      const blockLines = body.filter(ln=> ln.y <= top && ln.y > bottom);
+      const toks = []; blockLines.forEach(ln=>ln.items.forEach(t=>toks.push(t)));
+      // «أول خانة» في كل عمود = الأعلى في البلوك
+      const first = key=>{
+        const c = toks.filter(t=>colOf(t)===key && isNum(t.s)).sort((x,y)=> (y.y-x.y) || (x.x-y.x));
+        return c.length? importParseNumber(c[0].s) : null;
+      };
+      // أسطر إضافية تحت الاسم في نفس البلوك (مثل: «RYDANZ | Tires245»)
+      const extra = nameLines.filter(n=> n!==a && n.y <= top && n.y > bottom).map(n=>n.txt);
+      out.push({raw:a.txt, extra, qty:first('qty'), cost:first('cost'), retail:first('retail')});
+    });
   }
-  if(!cols) throw new Error('لم نجد سطر العناوين في الملف (Item Name / Shop Qty / Retail TTC)');
+  if(!cols) throw new Error('لم نجد سطر العناوين في الملف (Item Code | Bar Code / Shop Qty / Cost / سعر المفرق)');
+  const rows = [];
+  out.forEach(r=>{
+    if(/^(grand\s*total|sub\s*-?\s*total|total|totals|المجموع|الإجمالي)\s*:?\s*$/i.test(r.raw) || /^(page|صفحة)\s*\d+/i.test(r.raw)) return;
+    const sp = splitCodeBarcodeName(r.raw);
+    let name = sp.name, sku = sp.sku, barcode = sp.barcode, brandHint = '', groupHint = '';
+    r.extra.forEach(x=>{
+      if(/^(grand\s*total|sub\s*-?\s*total|total|totals|المجموع|الإجمالي)\s*:?\s*$/i.test(x)) return;
+      if(/\|/.test(x)){
+        const parts = x.split('|').map(s=>s.trim()).filter(Boolean);
+        if(parts[0] && !/\d{6,}/.test(parts[0])) brandHint = brandHint || parts[0];
+        if(parts[1]){ if(/^\d{8,14}$/.test(parts[1])) barcode = barcode || parts[1]; else groupHint = groupHint || parts[1]; }
+      } else if(/^\d{8,14}$/.test(x)) barcode = barcode || x;
+      else name = (name+' '+x).trim();
+    });
+    if(!name) name = sku || r.raw;
+    // الرمز هو نفسه اسم المنتج (مثل 225-55-17-RYDANZ-CHINA-23)
+    if(!sku && /^[A-Z0-9][A-Z0-9.\-\/]{5,}$/i.test(name) && /-/.test(name)) sku = name;
+    rows.push({name, sku, barcode, brandHint, groupHint, qty: r.qty===null? 0 : r.qty, cost:r.cost, retail:r.retail});
+  });
   return rows;
 }
 function openImportStockModal(){
@@ -1953,7 +2011,7 @@ function openImportStockModal(){
   wrap.className = 'modal-bg';
   wrap.innerHTML = `<div class="modal modal-wide" style="max-width:1000px;">
     <h3>📥 استيراد مخزون قديم (Import Old Stock)</h3>
-    <p style="font-size:12.5px; color:var(--ink-soft); line-height:1.7;">ارفع ملف PDF فيه الأعمدة: <b>Item Name</b> (اسم المنتج)، <b>Shop Qty</b> (الكمية)، <b>Retail TTC $</b> (سعر البيع شامل الضريبة). عمودا # و WS-TTC يُتجاهلان. يحلّل البرنامج اسم كل منتج ليعبّئ الفئة والماركة والمقاس واللزوجة والأمبير وبلد وسنة الصنع — راجعها قبل الاستيراد.</p>
+    <p style="font-size:12.5px; color:var(--ink-soft); line-height:1.7;">ارفع ملف PDF بجرد المخزون. يتعرّف البرنامج على الأعمدة من عناوينها: <b>Item Code | Bar Code</b> (رمز الصنف والباركود واسم المنتج)، <b>Shop Qty</b> (الكمية — أول خانة)، <b>Cost</b> (التكلفة شامل الضريبة — خانة TTC)، <b>سعر المفرق دولار</b> (سعر البيع). باقي الأعمدة تُتجاهل. ثم يحلّل اسم كل منتج ليعبّئ الفئة والماركة والمقاس واللزوجة والأمبير وبلد وسنة الصنع — راجعها قبل الاستيراد.</p>
     <input type="file" id="imp_file" accept="application/pdf,.pdf">
     <div id="imp_status" style="font-size:13px; margin:8px 0; min-height:18px;"></div>
     <div id="imp_preview"></div>
@@ -1974,16 +2032,18 @@ function openImportStockModal(){
     $('#imp_preview').innerHTML = `
       <div style="font-size:12.5px; margin-bottom:6px;">${parsed.length} منتج — ${Object.entries(counts).map(([k,n])=>`${escapeHtml(k)}: <b>${n}</b>`).join(' • ')}${existing? ` • <span style="color:var(--bronze-deep);">${existing} موجود مسبقاً (تُضاف الكمية ويُحدَّث السعر)</span>`:''}</div>
       <div class="table-scroll" style="max-height:52vh; overflow:auto;"><table style="font-size:12px;">
-        <thead><tr><th><input type="checkbox" id="imp_all" checked></th><th>اسم المنتج</th><th>الفئة</th><th>الماركة</th><th>المقاس / اللزوجة / الأمبير</th><th>البلد</th><th>السنة</th><th>الكمية</th><th>سعر البيع</th></tr></thead>
+        <thead><tr><th><input type="checkbox" id="imp_all" checked></th><th>اسم المنتج</th><th>الرمز / الباركود</th><th>الفئة</th><th>الماركة</th><th>المقاس / اللزوجة / الأمبير</th><th>البلد</th><th>السنة</th><th>الكمية</th><th>التكلفة شامل الضريبة</th><th>سعر البيع</th></tr></thead>
         <tbody>${parsed.map((r,i)=>`<tr style="${r.existingId?'background:#fff7e6;':''}">
           <td><input type="checkbox" data-imp-on="${i}" ${r.on?'checked':''}></td>
-          <td>${escapeHtml(r.name)}${r.existingId?' <span style="font-size:10.5px; color:var(--bronze-deep);">(موجود)</span>':''}</td>
+          <td><span class="bidi">${escapeHtml(r.name)}</span>${r.existingId?' <span style="font-size:10.5px; color:var(--bronze-deep);">(موجود)</span>':''}</td>
+          <td class="num" style="font-size:11px;">${escapeHtml(r.sku||'—')}${r.barcode? '<br>'+escapeHtml(r.barcode) : ''}</td>
           <td><select data-imp-cat="${i}" style="font-size:12px; padding:3px;">${catOpts(r.category)}</select></td>
           <td>${escapeHtml(r.brand||'—')}</td>
           <td class="num">${escapeHtml([r.tireSize, r.viscosity, r.oilType, r.amperage, r.uom].filter(Boolean).join(' • ')||'—')}</td>
           <td>${escapeHtml(r.madeIn||'—')}</td>
           <td class="num">${escapeHtml(r.mfgYear||'—')}</td>
-          <td class="num">${fmtQty(r.qty)}</td>
+          <td class="num" style="${r.qty<0?'color:var(--debit); font-weight:800;':''}">${fmtQty(r.qty)}</td>
+          <td class="num">${r.cost!==null && r.cost!==undefined? fmtMoney(r.cost) : '—'}</td>
           <td class="num">${r.retail!==null && r.retail!==undefined? fmtMoney(r.retail) : '—'}</td>
         </tr>`).join('')}</tbody>
       </table></div>`;
@@ -2004,8 +2064,18 @@ function openImportStockModal(){
       if(!rows.length){ status('لم نجد أي منتج في الملف', 'var(--debit)'); return; }
       parsed = rows.map(r=>{
         const info = parseImportName(r.name);
-        const ex = DB.warehouseItems.find(w=>normalizeSearchText(w.name)===normalizeSearchText(r.name));
-        return {...info, name:r.name, qty:r.qty, retail:r.retail, on:true, existingId: ex? ex.id : null};
+        // سطر «الماركة | المجموعة» تحت الرمز: يكمّل ما لم يُستخرج من الاسم
+        if(r.brandHint && !info.brand){ const saved = getProductList('brands').find(x=>normalizeSearchText(x)===normalizeSearchText(r.brandHint)); info.brand = saved || r.brandHint.charAt(0).toUpperCase()+r.brandHint.slice(1).toLowerCase(); }
+        if(r.groupHint && !info.category){
+          const g = r.groupHint.toLowerCase();
+          const k = /tire|tyre/.test(g)? 'tires' : /batt/.test(g)? 'batteries' : /oil|lub/.test(g)? 'oils' : /access/.test(g)? 'accessories' : /part|filter/.test(g)? 'parts' : '';
+          const c = AUTO_CATEGORIES.find(x=>x.key===k); if(c) info.category = c.label;
+        }
+        // منتج موجود: بالباركود، ثم برمز الصنف، ثم بالاسم
+        const ex = (r.barcode && findItemByBarcode(r.barcode))
+          || (r.sku && DB.warehouseItems.find(w=>w.sku && String(w.sku).toLowerCase()===String(r.sku).toLowerCase()))
+          || DB.warehouseItems.find(w=>normalizeSearchText(w.name)===normalizeSearchText(r.name));
+        return {...info, name:r.name, sku:r.sku||'', barcode:r.barcode||'', qty:r.qty||0, retail:r.retail, cost:r.cost, on:true, existingId: ex? ex.id : null};
       });
       status('✅ تمت قراءة '+parsed.length+' منتج — راجع الجدول ثم اضغط IMPORT', 'var(--credit)');
       drawPreview();
@@ -2027,21 +2097,30 @@ function openImportStockModal(){
     chosen.forEach(r=>{
       addList('brands', r.brand); addList('tireSizes', r.tireSize); addList('viscosities', r.viscosity); addList('amps', r.amperage);
       let it = r.existingId ? DB.warehouseItems.find(w=>w.id===r.existingId) : null;
+      // التكلفة في الملف شاملة الضريبة: نخزّن التكلفة قبل الضريبة + نسبة TVA فتظهر «التكلفة شامل الضريبة» كما في الملف
+      const vat = settingsVatRate();
+      const setCost = w=>{ if(r.cost!==null && r.cost!==undefined && r.cost>0){ w.vatRate = vat; w.costPrice = Math.round(r.cost/(1+vat/100)*10000)/10000; } };
       if(it){
         if(r.retail!==null && r.retail!==undefined) it.price = r.retail;
+        setCost(it);
+        if(r.sku && !it.sku) it.sku = r.sku;
+        if(r.barcode && !it.barcode && !findItemByBarcode(r.barcode, it.id)) it.barcode = r.barcode;
         merged++;
       } else {
         it = {id:uid(), createdAt:now, name:r.name, brand:r.brand||'', type:'', barcode:'', price: r.retail||0, category:r.category||'', image:null,
               productionDate:'', expiryDate:'', expiryAlertDays:null, note:'', purchaseDate:date, status: r.qty>0? 'available' : 'unavailable'};
-        ['madeIn','tireSize','viscosity','oilType','amperage','mfgYear','uom'].forEach(k=>{ if(r[k]) it[k] = r[k]; });
+        ['madeIn','tireSize','viscosity','oilType','amperage','mfgYear','uom','sku'].forEach(k=>{ if(r[k]) it[k] = r[k]; });
+        if(r.barcode && !findItemByBarcode(r.barcode)) it.barcode = r.barcode;
+        setCost(it);
         DB.warehouseItems.push(it); created++;
       }
       if(r.qty>0) DB.stockIns.push({id:uid(), createdAt:now, itemId:it.id, qty:r.qty, date, number:nextStockInNumber(), note:'استيراد مخزون قديم'});
+      else if(r.qty<0) DB.stockOuts.push({id:uid(), createdAt:now, itemId:it.id, qty:-r.qty, date, number:nextStockOutNumber(), note:'استيراد مخزون قديم (كمية سالبة في الملف)'});
     });
     const pl = Object.assign({}, DB.settings.productLists||{});
     Object.keys(lists).forEach(k=>{ pl[k] = [...lists[k]]; });
     DB.settings.productLists = pl;
-    const res = await Promise.all([save(KEYS.warehouseItems, DB.warehouseItems), save(KEYS.stockIns, DB.stockIns), save(KEYS.settings, DB.settings)]);
+    const res = await Promise.all([save(KEYS.warehouseItems, DB.warehouseItems), save(KEYS.stockIns, DB.stockIns), save(KEYS.stockOuts, DB.stockOuts), save(KEYS.settings, DB.settings)]);
     wrap.remove();
     toast(res.every(Boolean) ? `تم الاستيراد: ${created} منتج جديد${merged? ' و'+merged+' منتج موجود أُضيفت كميته':''} ✅` : 'حدث خطأ أثناء الحفظ');
     go('#/warehouse');
@@ -2903,7 +2982,7 @@ function routeRequiredPermission(routeKey){
     pos:'pos', journal:'pos', reports:'pos',
     customers:'customers', customer:'customers', invoice:'customers', receipt:'customers', statement:'customers',
     suppliers:'suppliers', supplier:'suppliers', purchase:'suppliers', voucher:'suppliers', 'supplier-statement':'suppliers',
-    warehouse:'warehouse', 'warehouse-print':'warehouse', 'warehouse-item':'warehouse', stockout:'warehouse', stockin:'warehouse',
+    warehouse:'warehouse', 'warehouse-print':'warehouse', 'low-stock':'warehouse', 'warehouse-item':'warehouse', stockout:'warehouse', stockin:'warehouse',
     budget:'budget', 'budget-category':'budget', 'budget-overview':'budget',
     workers:'workers', worker:'workers', workentry:'workers', workerpay:'workers', 'worker-statement':'workers',
     settings:'__admin__', trash:'__admin__', 'customer-accounts':'__admin__', 'worker-accounts':'__admin__'
@@ -3054,6 +3133,8 @@ function render(){
     html += crumbs([['الرئيسية','#/'],['التقارير',null]]) + reportsView(qs);
   } else if(parts[0]==='warehouse'){
     html += crumbs([['الرئيسية','#/'],['المستودع',null]]) + warehouseHubView();
+  } else if(parts[0]==='low-stock'){
+    html += crumbs([['الرئيسية','#/'],['المستودع','#/warehouse'],['اشعار نقص ستوك',null]]) + lowStockView();
   } else if(parts[0]==='warehouse-print'){
     html += crumbs([['الرئيسية','#/'],['المستودع','#/warehouse'],['جرد المستودع',null]]) + warehouseInventoryPrintView();
   } else if(parts[0]==='warehouse-item' && parts[1]){
@@ -5219,13 +5300,97 @@ function warehouseHubView(){
     </div>
     <div class="action-row" style="margin-top:10px;">
       <button class="btn" data-nav="#/warehouse-print">🖨 طباعة جرد المستودع</button>
+      ${(()=>{ const n = lowStockNoticeItems().length; return `<button class="btn ${n?'btn-debit':''}" data-nav="#/low-stock">⚠️ اشعار نقص ستوك${n? ' ('+n+')' : ''}</button>`; })()}
     </div>
     ${auto? warehouseCatChipsHtml() : ''}
     <div id="whTableWrap" style="margin-top:14px;">
     ${warehouseItemTable(items)}
     </div>
   </div>
+  ${isPrivilegedUser(currentUser) && DB.warehouseItems.length? `<div class="card" style="border:2px solid var(--debit);">
+    <h2><span class="dot" style="background:var(--debit);"></span> ⚠ منطقة خطرة</h2>
+    <p style="font-size:12.5px; color:var(--ink-soft);">محي كل المستودع: يحذف كل المنتجات (${DB.warehouseItems.length}) وكل حركات الإضافة والسحب نهائياً. الفواتير والزبائن والموردون لا يتأثرون.</p>
+    <button class="btn btn-danger" id="wipeWarehouseBtn">🗑 محي كل المستودع</button>
+  </div>` : ''}
   ${appFooter()}`;
+}
+/* ---------- اشعار نقص ستوك: كل منتج كميته عند الحد أو أقل ---------- */
+function lowStockThreshold(){ const t = DB.settings && DB.settings.lowStockThreshold; return (t===undefined || t===null || t==='') ? 2 : Number(t); }
+function lowStockNoticeItems(){
+  const th = lowStockThreshold();
+  return DB.warehouseItems.filter(it=>fastStock(it.id) <= th)
+    .sort((a,b)=> (fastStock(a.id)-fastStock(b.id)) || String(a.name||'').localeCompare(String(b.name||''),'ar'));
+}
+function lowStockView(){
+  const auto = isAutoShop();
+  const items = lowStockNoticeItems();
+  const th = lowStockThreshold();
+  const rows = items.map((it,idx)=>{
+    const q = fastStock(it.id);
+    return `<tr data-nav="#/warehouse-item/${it.id}" style="cursor:pointer;">
+      <td class="num inv-idx">${idx+1}</td>
+      <td><b>${escapeHtml(it.name)}</b></td>
+      <td>${escapeHtml(it.brand||'—')}</td>
+      ${auto? `<td>${escapeHtml(it.category||'—')}</td>` : ''}
+      <td class="num" style="font-weight:800; color:${q<=0?'var(--debit)':'var(--bronze-deep)'};">${fmtQty(q)} <span style="font-family:'Cairo',sans-serif; font-size:.9em;">${escapeHtml(it.uom||'')}</span>${q<=0?' ⛔':''}</td>
+      <td class="num">${it.price? fmtMoney(it.price) : '—'}</td>
+    </tr>`;
+  }).join('');
+  return `
+  <div class="doc-actions no-print" style="align-items:center;">
+    <label style="display:flex; align-items:center; gap:6px; font-size:13px;">الحد: كمية
+      <input type="number" id="lowStockTh" class="num" min="0" step="1" value="${th}" style="width:70px;"> أو أقل
+    </label>
+    <button class="btn btn-sm" id="lowStockThSave">حفظ الحد</button>
+    <button class="btn btn-primary" onclick="printWithFilename('Low-Stock-${todayISO()}')">🖨 طباعة</button>
+  </div>
+  <div class="doc">
+    ${docHead('اشعار نقص ستوك')}
+    <div class="doc-info">
+      <div class="r"><span>التاريخ:</span><b class="num">${fmtDate(todayISO())}</b></div>
+      <div class="r"><span>عدد الأصناف:</span><b class="num">${items.length}</b></div>
+      <div class="r"><span>الحد:</span><b class="num">${th} أو أقل</b></div>
+    </div>
+    ${items.length? `<div class="table-scroll"><table class="inv-table"><thead><tr><th class="inv-idx">#</th><th>اسم المنتج</th><th>الماركة</th>${auto?'<th>الفئة</th>':''}<th>الكمية الحالية</th><th>سعر البيع</th></tr></thead><tbody>${rows}</tbody></table></div>`
+      : `<div class="empty"><div class="big">✅ لا يوجد أي منتج كميته ${th} أو أقل</div></div>`}
+  </div>`;
+}
+function openWipeWarehouseModal(){
+  const WORD = 'حذف المستودع';
+  const wrap = document.createElement('div');
+  wrap.className = 'modal-bg';
+  wrap.innerHTML = `<div class="modal">
+    <h3 style="color:var(--debit)">⚠ محي كل المستودع</h3>
+    <p style="font-size:13.5px; line-height:1.8;">سيتم حذف <b>${DB.warehouseItems.length}</b> منتج وكل حركات الإضافة والسحب نهائياً. <b>لا يمكن التراجع</b>. يُنصح بتنزيل نسخة احتياطية من الإعدادات قبل المتابعة.</p>
+    <div class="field"><label>اكتب «${WORD}» للتأكيد</label><input type="text" id="wipe_word" autocomplete="off"></div>
+    <div class="row">
+      <button class="btn" id="wipe_cancel">إلغاء</button>
+      <button class="btn btn-danger" id="wipe_go" disabled>انتظر 10 ثوانٍ</button>
+    </div>
+  </div>`;
+  document.body.appendChild(wrap);
+  const btn = wrap.querySelector('#wipe_go'), inp = wrap.querySelector('#wipe_word');
+  let left = 10;
+  const refresh = ()=>{
+    const okWord = inp.value.trim()===WORD;
+    btn.disabled = left>0 || !okWord;
+    btn.textContent = left>0 ? `انتظر ${left} ثانية` : (okWord ? '🗑 محي كل المستودع نهائياً' : 'اكتب كلمة التأكيد');
+  };
+  const timer = setInterval(()=>{ left--; refresh(); if(left<=0) clearInterval(timer); }, 1000);
+  inp.addEventListener('input', refresh);
+  refresh();
+  wrap.querySelector('#wipe_cancel').addEventListener('click', ()=>{ clearInterval(timer); wrap.remove(); });
+  btn.addEventListener('click', async ()=>{
+    if(left>0 || inp.value.trim()!==WORD) return;
+    clearInterval(timer);
+    btn.disabled = true; btn.textContent = 'جارٍ الحذف...';
+    const n = DB.warehouseItems.length;
+    DB.warehouseItems = []; DB.stockIns = []; DB.stockOuts = [];
+    const res = await Promise.all([save(KEYS.warehouseItems, DB.warehouseItems), save(KEYS.stockIns, DB.stockIns), save(KEYS.stockOuts, DB.stockOuts)]);
+    wrap.remove();
+    toast(res.every(Boolean) ? `تم محي المستودع (${n} منتج)` : 'حدث خطأ أثناء الحذف');
+    go('#/warehouse'); render();
+  });
 }
 function warehouseItemTable(items, isSearch){
   if(!items.length) return `<div class="empty"><div class="big">${isSearch? 'لا توجد نتائج مطابقة' : 'لا توجد منتجات في المستودع بعد'}</div></div>`;
@@ -5294,7 +5459,7 @@ function warehouseItemView(item){
   <div class="card">
     <div class="cust-head">
       <div>
-        <div class="cust-name">${escapeHtml(item.name)}</div>
+        <div class="cust-name"><span class="bidi">${escapeHtml(item.name)}</span></div>
         <div class="cust-meta">${metaParts.join(' &nbsp;•&nbsp; ')}</div>
         ${expiring? `<div class="cust-meta" style="color:var(--debit); font-weight:700; margin-top:4px;">⚠️ بقي ${expDays<0?'منتهي':expDays+' يوم'} على انتهاء الصلاحية</div>` : ''}
       </div>
@@ -5377,7 +5542,7 @@ function warehouseInventoryPrintView(){
     if(!auto){
       return `<tr>
         <td class="num inv-idx">${idx+1}</td>
-        <td>${escapeHtml(it.name)}</td>
+        <td><span class="bidi">${escapeHtml(it.name)}</span></td>
         <td>${escapeHtml(it.brand||'—')}</td>
         <td>${escapeHtml(it.category||'—')}</td>
         <td class="num">${fmtQty(stock)}</td>
@@ -5388,7 +5553,7 @@ function warehouseInventoryPrintView(){
     if(stock>0){ if(cv) totCost += stock*cv; if(Number(it.price)) totSale += stock*Number(it.price); }
     return `<tr>
       <td class="num inv-idx">${idx+1}</td>
-      <td>${escapeHtml(it.name)}</td>
+      <td><span class="bidi">${escapeHtml(it.name)}</span></td>
       <td>${escapeHtml(it.brand||'—')}</td>
       <td>${escapeHtml(it.category||'—')}</td>
       <td class="num">${escapeHtml(it.mfgYear||'—')}</td>
@@ -6760,6 +6925,16 @@ function bindEvents(){
     }
   });
 
+  const wipeWarehouseBtn = document.getElementById('wipeWarehouseBtn');
+  if(wipeWarehouseBtn) wipeWarehouseBtn.addEventListener('click', openWipeWarehouseModal);
+  const lowStockThSave = document.getElementById('lowStockThSave');
+  if(lowStockThSave) lowStockThSave.addEventListener('click', async ()=>{
+    const v = Number(document.getElementById('lowStockTh').value);
+    if(!Number.isFinite(v) || v<0){ toast('الحد غير صحيح'); return; }
+    DB.settings.lowStockThreshold = v;
+    const ok = await save(KEYS.settings, DB.settings);
+    toast(ok? 'تم حفظ الحد' : 'حدث خطأ أثناء الحفظ'); render();
+  });
   const importOldStockBtn = document.getElementById('importOldStockBtn');
   if(importOldStockBtn) importOldStockBtn.addEventListener('click', openImportStockModal);
   const saveBizBtn = document.getElementById('saveBizBtn');
