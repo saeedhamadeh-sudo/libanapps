@@ -276,6 +276,11 @@
   .pos-receipt-item-del{flex-shrink:0; opacity:.6; padding:2px 4px;}
   .pos-receipt-foot{padding:12px 16px 16px; border-top:1px solid var(--line);}
   .pos-cat-tabs{display:flex; gap:16px; overflow-x:auto; border-bottom:1px solid var(--line); margin-bottom:12px; padding-bottom:0;}
+  .pos-cat-tabs.sorting{flex-wrap:wrap; overflow:visible; gap:8px; padding-bottom:10px;}
+  .pos-cat-tabs.sorting .pos-cat-tab{padding:8px 12px; border:2px dashed var(--line); border-radius:10px; background:var(--white); touch-action:none; user-select:none;}
+  .pos-cat-tabs.sorting .pos-cat-tab.dragging{opacity:.45;}
+  .pos-cat-tabs.sorting .pos-cat-tab.drop-target{border-color:var(--credit); background:#eaf6ee;}
+  .pos-cat-tabs.sorting .pos-sort-actions{display:flex; gap:8px; width:100%;}
   .pos-cat-tab{padding:10px 2px; font-size:14px; font-weight:700; color:var(--ink-soft); white-space:nowrap; border-bottom:2.5px solid transparent; flex-shrink:0; display:flex; align-items:center; gap:6px;}
   .pos-cat-tab.active{color:var(--sky, var(--ink)); border-bottom-color:var(--orange, #E08A2B);}
   .pos-search-row{display:flex; gap:8px; margin-bottom:4px;}
@@ -4556,16 +4561,16 @@ function posView(){
     <div class="pos-main">
       <div class="card" style="padding:12px 16px;">
         ${_posCatSorting? `<div style="font-size:12.5px; color:var(--ink-soft); margin-bottom:6px;">اسحب المجموعات لترتيبها ثم اضغط «✅ تم» — الترتيب نفسه يظهر عند «إضافة منتج» في المستودع.</div>` : ''}
-        <div class="pos-cat-tabs" id="pos_cat_tabs">
+        <div class="pos-cat-tabs${_posCatSorting?' sorting':''}" id="pos_cat_tabs">
           ${_posCatSorting? '' : `<div class="pos-cat-tab${_posActiveCategory===null?' active':''}" data-pos-category="">🗂 الكل</div>`}
-          ${categories.map(c=>`<div class="pos-cat-tab${_posActiveCategory===c?' active':''}" data-pos-category="${escapeHtml(c)}" data-cat-key="${escapeHtml(c)}" ${_posCatSorting?'style="cursor:grab; border-style:dashed;"':''}>
+          ${categories.map(c=>`<div class="pos-cat-tab${_posActiveCategory===c?' active':''}" data-pos-category="${escapeHtml(c)}" data-cat-key="${escapeHtml(c)}" ${_posCatSorting?'style="cursor:grab;"':''}>
             ${_posCatSorting? '⠿ ' : ''}${catImages[c]? `<img src="${catImages[c]}" style="height:18px; width:18px; object-fit:cover; border-radius:5px;">` : (groupIcon(c)? groupIcon(c)+' ' : '')}${escapeHtml(c)}
             ${(isPrivilegedUser(currentUser) && !_posCatSorting)? `<span data-pos-cat-image="${escapeHtml(c)}" title="صورة القسم" style="opacity:.6; margin-inline-start:2px;">🖼</span>`:''}
             ${(groupByName(c) && canManageGroups() && !_posCatSorting)? `<span data-pos-grp-edit="${escapeHtml(groupByName(c).id)}" title="تعديل المجموعة" style="opacity:.6; margin-inline-start:2px;">✎</span>`:''}
           </div>`).join('')}
           ${(noCatCount && !_posCatSorting)? `<div class="pos-cat-tab${_posActiveCategory==='__none__'?' active':''}" data-pos-category="__none__">بدون قسم (${noCatCount})</div>` : ''}
           ${canManageGroups()? (_posCatSorting
-            ? `<button type="button" class="btn btn-sm btn-primary" id="pos_cat_sort_done">✅ تم</button><button type="button" class="btn btn-sm" id="pos_cat_sort_cancel">إلغاء</button>`
+            ? `<div class="pos-sort-actions"><button type="button" class="btn btn-sm btn-primary" id="pos_cat_sort_done">✅ تم</button><button type="button" class="btn btn-sm" id="pos_cat_sort_cancel">إلغاء</button></div>`
             : `<button type="button" class="btn btn-sm" id="pos_new_group" title="مجموعة جديدة" style="border-style:dashed;">➕ مجموعة</button>
                ${!groupsLocked()? `<button type="button" class="btn btn-sm" id="pos_cat_sort" title="ترتيب المجموعات">✏️</button>` : ''}
                ${isPrivilegedUser(currentUser)? `<button type="button" class="btn btn-sm" id="pos_cat_lock" title="${groupsLocked()?'فتح الترتيب':'قفل الترتيب'}">${groupsLocked()?'🔒':'🔓'}</button>` : ''}`) : ''}
