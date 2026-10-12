@@ -1914,77 +1914,133 @@ function classifyImportHead(txt){
   if(has(/retail|المفرق|سعر\s*البيع/i)) return 'retail';
   return 'ignore';
 }
+// نصوص الصفحة + قيم خانات النماذج (بعض برامج المحاسبة تكتب الأرقام داخل «خانات» وليس كنص عادي)
+async function pdfPageItems(page){
+  const tc = await page.getTextContent();
+  const items = tc.items.filter(it=>String(it.str||'').trim()).map(it=>({s:String(it.str).trim(), x:it.transform[4], y:it.transform[5], w:it.width||0}));
+  try{
+    const anns = await page.getAnnotations();
+    anns.forEach(a=>{
+      const v = a.fieldValue!==undefined && a.fieldValue!==null ? a.fieldValue : (a.contentsObj && a.contentsObj.str) || '';
+      const s = Array.isArray(v) ? v.join(' ') : String(v||'');
+      if(!s.trim() || !a.rect) return;
+      const [x0,y0,x1,y1] = a.rect;
+      items.push({s:s.trim(), x:x0+2, y:y0 + (y1-y0)*0.3, w:Math.max(4, x1-x0-4), ann:true});
+    });
+  }catch(e){}
+  return items;
+}
+function groupLines(items, tol){
+  const sorted = items.slice().sort((a,b)=> (b.y-a.y) || (a.x-b.x));
+  const lines = [];
+  sorted.forEach(it=>{ const ln = lines.find(l=>Math.abs(l.y-it.y)<=tol); if(ln) ln.items.push(it); else lines.push({y:it.y, items:[it]}); });
+  lines.sort((a,b)=>b.y-a.y);
+  lines.forEach(l=>l.items.sort((a,b)=>a.x-b.x));
+  return lines;
+}
+const isMoneyTok = s=>/\d/.test(s) && importParseNumber(s)!==null;
+const isUsdTok = s=>/\$/.test(s) || (/\d+[.,]\d{2}$/.test(String(s).replace(/\s/g,'')) && Math.abs(importParseNumber(s)) < 100000);
+// الطريقة 1: من سطر العناوين (يسمح باختلاف بسيط في ارتفاع خانات العناوين)
+function findHeaderCols(items){
+  const nameHead = items.find(t=>classifyImportHead(t.s)==='name');
+  if(!nameHead) return null;
+  const row = items.filter(t=>Math.abs(t.y - nameHead.y) <= 12).sort((a,b)=>a.x-b.x);
+  const cells = [];
+  row.forEach(t=>{
+    const last = cells[cells.length-1];
+    if(last && t.x - last.x1 < 16){ last.x1 = Math.max(last.x1, t.x + t.w); last.txt += ' '+t.s; }
+    else cells.push({x0:t.x, x1:t.x+t.w, txt:t.s});
+  });
+  cells.forEach(c=>{ c.key = classifyImportHead(c.txt); });
+  const keys = cells.map(c=>c.key);
+  if(!(keys.includes('qty') || keys.includes('cost') || keys.includes('retail'))) return null;
+  return {y: Math.max(...row.map(t=>t.y)) , cols: cells.map((c,i)=>({key:c.key, from: i===0? -1e9 : (cells[i-1].x1 + c.x0)/2, to: i===cells.length-1? 1e9 : (c.x1 + cells[i+1].x0)/2}))};
+}
+function blocksFromHeader(items, hdr){
+  const cols = hdr.cols;
+  const colOf = t=>{
+    const nameCol = cols.find(c=>c.key==='name');
+    if(nameCol && t.x >= nameCol.from && t.x < nameCol.to) return 'name';
+    const cx = t.x + t.w/2;
+    const c = cols.find(c=>cx >= c.from && cx < c.to);
+    return c? c.key : null;
+  };
+  const body = groupLines(items.filter(t=>t.y < hdr.y - 4), 2.5);
+  const nameLines = [];
+  body.forEach(ln=>{
+    const toks = ln.items.filter(t=>colOf(t)==='name');
+    const txt = toks.map(t=>t.s).join(' ').replace(/\s+/g,' ').trim();
+    if(!txt || /^\d{1,3}$/.test(txt)) return;
+    nameLines.push({y:ln.y, txt});
+  });
+  const priceCols = cols.some(c=>c.key==='cost'||c.key==='retail') ? ['cost','retail'] : ['qty'];
+  const valueNear = y=> items.some(t=> Math.abs(t.y - y) <= 9 && priceCols.includes(colOf(t)) && isMoneyTok(t.s));
+  let anchors = nameLines.filter(n=>valueNear(n.y));
+  if(!anchors.length) anchors = nameLines;
+  return anchors.map((a, ai)=>{
+    const top = a.y + 9, bottom = ai+1<anchors.length ? anchors[ai+1].y + 9 : -1e9;
+    const toks = items.filter(t=> t.y <= top && t.y > bottom && t.y < hdr.y - 4);
+    const first = key=>{ const c = toks.filter(t=>colOf(t)===key && isMoneyTok(t.s)).sort((x,y)=> (y.y-x.y) || (x.x-y.x)); return c.length? importParseNumber(c[0].s) : null; };
+    const extra = nameLines.filter(n=> n!==a && n.y <= top && n.y > bottom).map(n=>n.txt);
+    return {raw:a.txt, extra, qty:first('qty'), cost:first('cost'), retail:first('retail')};
+  });
+}
+// الطريقة 2 (بدون عناوين — مثلاً إذا كانت العناوين صوراً): نعتمد على علامات كل منتج «TTC» و«PCS»
+function blocksFromMarkers(items){
+  const ttcs = items.filter(t=>/^ttc$/i.test(t.s)).sort((a,b)=>b.y-a.y);
+  if(!ttcs.length) return [];
+  const pcs = items.filter(t=>/^pcs$/i.test(t.s));
+  const costX = Math.min(...ttcs.map(t=>t.x));
+  const qtyX = pcs.length ? pcs.reduce((s,t)=>s+t.x+t.w/2,0)/pcs.length : null;
+  const leftLimit = qtyX!==null ? qtyX - 60 : costX - 120;
+  const textToks = items.filter(t=> t.x + t.w/2 < leftLimit && /[A-Za-z؀-ۿ|]/.test(t.s));
+  const nameLines = groupLines(textToks, 2.5).map(l=>({y:l.y, txt:l.items.map(t=>t.s).join(' ').replace(/\s+/g,' ').trim()})).filter(l=>l.txt && !/^\d{1,3}$/.test(l.txt));
+  return ttcs.map((ttc, i)=>{
+    const top = ttc.y + 14, bottom = i+1<ttcs.length ? ttcs[i+1].y + 14 : -1e9;
+    // سطر TTC: أول مبلغ بالدولار = الكلفة شامل الضريبة، ثاني مبلغ بالدولار (بعد أعمدة الليرة) = سعر المفرق
+    const sameLine = items.filter(t=> Math.abs(t.y - ttc.y) <= 6 && t.x > ttc.x && isMoneyTok(t.s)).sort((a,b)=>a.x-b.x);
+    const usd = sameLine.filter(t=>isUsdTok(t.s));
+    const cost = usd.length ? importParseNumber(usd[0].s) : null;
+    const retail = usd.length>1 ? importParseNumber(usd[1].s) : null;
+    // الكمية: أول رقم تحت أول «PCS» في هذا البلوك
+    let qty = null;
+    if(qtyX!==null){
+      const blockPcs = pcs.filter(p=> p.y <= top && p.y > bottom).sort((a,b)=>b.y-a.y)[0];
+      const below = items.filter(t=> isMoneyTok(t.s) && Math.abs((t.x+t.w/2) - qtyX) < 70 && t.y <= (blockPcs? blockPcs.y + 2 : top) && t.y > bottom && t.x + t.w/2 < costX - 5)
+        .sort((a,b)=> (b.y-a.y));
+      if(below.length) qty = importParseNumber(below[0].s);
+    }
+    const inBlock = nameLines.filter(n=> n.y <= top && n.y > bottom);
+    // الاسم = السطر الأقرب لسطر TTC
+    inBlock.sort((a,b)=>Math.abs(a.y-ttc.y)-Math.abs(b.y-ttc.y));
+    const main = inBlock[0];
+    return main ? {raw:main.txt, extra:inBlock.slice(1).map(n=>n.txt), qty, cost, retail} : null;
+  }).filter(Boolean);
+}
+let _lastPdfSample = '';
 async function extractStockRowsFromPdf(file){
   const pdfjs = await loadPdfJs();
+  _lastPdfSample = '';
   const data = new Uint8Array(await file.arrayBuffer());
   const doc = await pdfjs.getDocument({data}).promise;
   const out = [];
-  let cols = null;
+  let lastHdr = null, totalText = 0, sawHeader = false, usedMarkers = false;
   for(let p=1; p<=doc.numPages; p++){
     const page = await doc.getPage(p);
-    const tc = await page.getTextContent();
-    const items = tc.items.filter(it=>String(it.str||'').trim()).map(it=>({s:String(it.str).trim(), x:it.transform[4], y:it.transform[5], w:it.width||0, h:Math.abs(it.transform[3])||8}));
-    items.sort((a,b)=> (b.y-a.y) || (a.x-b.x));
-    const lines = [];
-    items.forEach(it=>{ const ln = lines.find(l=>Math.abs(l.y-it.y)<=2.5); if(ln) ln.items.push(it); else lines.push({y:it.y, items:[it]}); });
-    lines.sort((a,b)=>b.y-a.y);
-    lines.forEach(l=>l.items.sort((a,b)=>a.x-b.x));
-    // ---- سطر العناوين ----
-    let headerY = null;
-    for(const ln of lines){
-      const cells = [];
-      ln.items.forEach(t=>{
-        const last = cells[cells.length-1];
-        if(last && t.x - last.x1 < 16){ last.x1 = t.x + t.w; last.txt += ' '+t.s; }
-        else cells.push({x0:t.x, x1:t.x+t.w, txt:t.s});
-      });
-      cells.forEach(c=>{ c.key = classifyImportHead(c.txt); c.c = (c.x0+c.x1)/2; });
-      const keys = cells.map(c=>c.key);
-      if(keys.includes('name') && (keys.includes('qty') || keys.includes('cost') || keys.includes('retail'))){
-        cols = cells.map((c,i)=>({key:c.key, from: i===0? -1e9 : (cells[i-1].x1 + c.x0)/2, to: i===cells.length-1? 1e9 : (c.x1 + cells[i+1].x0)/2}));
-        headerY = ln.y;
-        break;
-      }
-    }
-    if(!cols) continue;
-    const colOf = t=>{
-      const nameCol = cols.find(c=>c.key==='name');
-      if(nameCol && t.x >= nameCol.from && t.x < nameCol.to) return 'name';
-      const cx = t.x + t.w/2;
-      const c = cols.find(c=>cx >= c.from && cx < c.to);
-      return c? c.key : null;
-    };
-    const body = lines.filter(l=> headerY===null || l.y < headerY - 2);
-    const isNum = s=>importParseNumber(s)!==null && /\d/.test(s);
-    // أسطر عمود الاسم + هل فيها رقم (تكلفة/سعر/كمية) على نفس الارتفاع تقريباً
-    const nameLines = [];
-    body.forEach(ln=>{
-      const nameToks = ln.items.filter(t=>colOf(t)==='name');
-      if(!nameToks.length) return;
-      const txt = nameToks.map(t=>t.s).join(' ').replace(/\s+/g,' ').trim();
-      if(!txt || /^\d{1,3}$/.test(txt)) return;   // أرقام صغيرة لوحدها (ترقيم) ليست اسماً
-      nameLines.push({y:ln.y, txt});
-    });
-    // بداية منتج = سطر اسم بجانبه سعر (تكلفة أو مفرق). الكمية وحدها لا تكفي: رقم «1» الأخضر تحت الماركة ليس بداية منتج
-    const priceCols = cols.some(c=>c.key==='cost'||c.key==='retail') ? ['cost','retail'] : ['qty'];
-    const valueNear = y=> body.some(ln=> Math.abs(ln.y - y) <= 9 && ln.items.some(t=>{ const k = colOf(t); return priceCols.includes(k) && isNum(t.s); }));
-    let anchors = nameLines.filter(n=>valueNear(n.y));
-    if(!anchors.length) anchors = nameLines;   // احتياط: كل سطر اسم منتج
-    anchors.forEach((a, ai)=>{
-      const top = a.y + 9, bottom = ai+1<anchors.length ? anchors[ai+1].y + 9 : -1e9;
-      const blockLines = body.filter(ln=> ln.y <= top && ln.y > bottom);
-      const toks = []; blockLines.forEach(ln=>ln.items.forEach(t=>toks.push(t)));
-      // «أول خانة» في كل عمود = الأعلى في البلوك
-      const first = key=>{
-        const c = toks.filter(t=>colOf(t)===key && isNum(t.s)).sort((x,y)=> (y.y-x.y) || (x.x-y.x));
-        return c.length? importParseNumber(c[0].s) : null;
-      };
-      // أسطر إضافية تحت الاسم في نفس البلوك (مثل: «RYDANZ | Tires245»)
-      const extra = nameLines.filter(n=> n!==a && n.y <= top && n.y > bottom).map(n=>n.txt);
-      out.push({raw:a.txt, extra, qty:first('qty'), cost:first('cost'), retail:first('retail')});
-    });
+    const items = await pdfPageItems(page);
+    totalText += items.length;
+    if(p===1) _lastPdfSample = items.slice().sort((a,b)=>(b.y-a.y)||(a.x-b.x)).slice(0,80).map(t=>`${Math.round(t.x)},${Math.round(t.y)}${t.ann?'(F)':''}: ${t.s}`).join('\n');
+    const hdr = findHeaderCols(items);
+    let blocks = [];
+    if(hdr){ sawHeader = true; lastHdr = hdr; blocks = blocksFromHeader(items, hdr); }
+    else if(lastHdr){ blocks = blocksFromHeader(items, {y:1e9, cols:lastHdr.cols}); }
+    // إذا لم تنجح العناوين (أو لم تُعطِ أسعاراً) نجرّب علامات TTC/PCS
+    const useful = blocks.filter(b=>b.cost!==null || b.retail!==null).length;
+    if(!useful){ const mb = blocksFromMarkers(items); if(mb.length){ blocks = mb; usedMarkers = true; } }
+    blocks.forEach(b=>out.push(b));
   }
-  if(!cols) throw new Error('لم نجد سطر العناوين في الملف (Item Code | Bar Code / Shop Qty / Cost / سعر المفرق)');
+  if(!totalText) throw new Error('الملف لا يحتوي نصاً قابلاً للقراءة (قد يكون صورة ممسوحة بالسكانر)');
+  if(!out.length) throw new Error('لم نتمكّن من التعرّف على جدول المنتجات في الملف'+(sawHeader?'':' (لم نجد سطر العناوين ولا علامات TTC/PCS)'));
   const rows = [];
   out.forEach(r=>{
     if(/^(grand\s*total|sub\s*-?\s*total|total|totals|المجموع|الإجمالي)\s*:?\s*$/i.test(r.raw) || /^(page|صفحة)\s*\d+/i.test(r.raw)) return;
@@ -1997,10 +2053,9 @@ async function extractStockRowsFromPdf(file){
         if(parts[0] && !/\d{6,}/.test(parts[0])) brandHint = brandHint || parts[0];
         if(parts[1]){ if(/^\d{8,14}$/.test(parts[1])) barcode = barcode || parts[1]; else groupHint = groupHint || parts[1]; }
       } else if(/^\d{8,14}$/.test(x)) barcode = barcode || x;
-      else name = (name+' '+x).trim();
+      else if(!/^(ttc|ht|avg\.?|pcs)$/i.test(x)) name = (name+' '+x).trim();
     });
     if(!name) name = sku || r.raw;
-    // الرمز هو نفسه اسم المنتج (مثل 225-55-17-RYDANZ-CHINA-23)
     if(!sku && /^[A-Z0-9][A-Z0-9.\-\/]{5,}$/i.test(name) && /-/.test(name)) sku = name;
     rows.push({name, sku, barcode, brandHint, groupHint, qty: r.qty===null? 0 : r.qty, cost:r.cost, retail:r.retail});
   });
@@ -2081,7 +2136,8 @@ function openImportStockModal(){
       drawPreview();
     }catch(e){
       console.error('import pdf failed', e);
-      status('⚠️ '+escapeHtml(e && e.message || 'تعذّرت قراءة الملف'), 'var(--debit)');
+      status('⚠️ '+escapeHtml(e && e.message || 'تعذّرت قراءة الملف')
+        + (_lastPdfSample? `<details style="margin-top:6px;"><summary style="cursor:pointer; color:var(--ink-soft);">تفاصيل للدعم الفني (صوّرها وأرسلها)</summary><pre style="direction:ltr; text-align:left; font-size:11px; max-height:240px; overflow:auto; background:var(--paper); padding:8px; border-radius:6px;">${escapeHtml(_lastPdfSample)}</pre></details>` : ''), 'var(--debit)');
     }
   });
   $('#imp_go').addEventListener('click', async ()=>{
