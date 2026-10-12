@@ -1723,6 +1723,331 @@ function openListManagerModal(key, onChange){
   document.body.appendChild(wrap);
 }
 
+/* ============================= استيراد مخزون قديم من PDF (Import Old Stock) ============================= */
+// قاموس إضافي للتعرّف على الماركات من اسم المنتج (فوق لائحة الماركات المحفوظة)
+const IMPORT_BRANDS = {
+  tires: ['Michelin','Bridgestone','Continental','Pirelli','Goodyear','Dunlop','Hankook','Yokohama','Toyo','Kumho','Falken','Nexen','Firestone','BFGoodrich',
+    'Maxxis','Cooper','General Tire','Kenda','GT Radial','Giti','Linglong','Triangle','Sailun','Westlake','Petlas','Lassa','Kelly','Davanti','Roadstone','Nankang',
+    'Federal','Achilles','Accelera','Austone','Aoteli','Aplus','Antares','Arivo','Atlas','Barum','Boto','Chengshan','Comforser','Double Coin','Doublestar','Durable',
+    'Fortune','Fullrun','Goodride','Haida','Hifly','Habilead','Imperial','Infinity','Jinyu','Joyroad','Kapsen','Landsail','Lanvigator','Leao','Marshal','Matador',
+    'Mazzini','Minerva','Mirage','Nitto','Nokian','Ovation','Rapid','Roadx','Rotalla','Royal Black','Sava','Sumitomo','Sunfull','Sunny','Three-A','Tigar','Toyo',
+    'Tracmax','Uniroyal','Vredestein','Wanli','Windforce','Zeetex','Zmax','Kinforest','Grenlander','Delinte','Prinx','Blackhawk','Hilo','Firemax','Roadmarch','Compasal'],
+  oils: ['Mobil','Shell','Castrol','Total','TotalEnergies','Motul','Liqui Moly','Valvoline','Petronas','Pennzoil','Havoline','Eni','Agip','Fuchs','Ravenol','Repsol',
+    'Gulf','ENOC','ADNOC','Elf','Kixx','Zic','Aisin','Toyota','Nissan','Honda','Hyundai','Kia','Mopar','Motorcraft','Lukoil','Q8','Chevron',
+    'Mannol','Wolf','Comma','Texaco','Sinopec','Petromin','Amsoil','Royal Purple','Prista','Hi-Tec','Opet','Statoil'],
+  batteries: ['Varta','Bosch','Exide','ACDelco','Optima','Yuasa','Amaron','Banner','Rocket','Solite','Delkor','Atlas BX','Panasonic','Motolite','Moll','Topla',
+    'Hankook','GS','Tudor','Centra','Fiamm','Hoppecke','Energizer','Duracell','Sebang','Global','Medalist','Champion','Furukawa','Dyno']
+};
+const IMPORT_COUNTRIES = {
+  'china':'الصين','prc':'الصين','japan':'اليابان','korea':'كوريا الجنوبية','s.korea':'كوريا الجنوبية','germany':'ألمانيا','german':'ألمانيا','france':'فرنسا',
+  'italy':'إيطاليا','spain':'إسبانيا','uk':'بريطانيا','england':'بريطانيا','usa':'الولايات المتحدة','us':'الولايات المتحدة','america':'الولايات المتحدة',
+  'turkey':'تركيا','turkiye':'تركيا','thailand':'تايلاند','thai':'تايلاند','indonesia':'إندونيسيا','malaysia':'ماليزيا','taiwan':'تايوان','india':'الهند',
+  'vietnam':'فيتنام','czech':'التشيك','poland':'بولندا','hungary':'المجر','romania':'رومانيا','slovakia':'سلوفاكيا','portugal':'البرتغال','netherlands':'هولندا',
+  'holland':'هولندا','belgium':'بلجيكا','austria':'النمسا','sweden':'السويد','mexico':'المكسيك','brazil':'البرازيل','canada':'كندا','uae':'الإمارات','dubai':'الإمارات',
+  'saudi':'السعودية','ksa':'السعودية','egypt':'مصر','morocco':'المغرب','russia':'روسيا','philippines':'الفلبين','serbia':'صربيا','slovenia':'سلوفينيا','lebanon':'لبنان'
+};
+const IMPORT_WORDS = {
+  oils: /\b(oil|motor oil|engine oil|atf|gear oil|dexron|cvt|lubricant|grease)\b|زيت|زيوت/i,
+  batteries: /\b(battery|batt|batterie|accumulator)\b|بطاري/i,
+  parts: /\b(filter|brake|pad|pads|disc|rotor|plug|spark|belt|bearing|pump|shock|absorber|clutch|gasket|sensor|bulb|lamp|radiator|hose|thermostat|coil|mount|bushing|link|rod|joint|arm|caliper|piston|ring|valve)\b|فلتر|فلاتر|فحمات|بوجي|قشاط|كولاس|ممتص|طرمبة|ديسك|لمبة|سنسور/i,
+  accessories: /\b(wiper|cover|mat|mats|charger|compressor|perfume|freshener|cable|jack|tool|light|led|horn|seat|steering cover|pump air|inflator|polish|wax|shampoo|cleaner|spray)\b|مسحات|منفخ|مكنت|شاحن|عطر|فرش|غطاء|كاشف|ملمع|منظف|بخاخ|كبل|كابل/i,
+  tires: /\b(tire|tyre|tires|tyres)\b|دولاب|دواليب|إطار|اطار/i
+};
+function importFindBrand(name, catKey){
+  const lists = [];
+  const saved = getProductList('brands');
+  if(catKey && IMPORT_BRANDS[catKey]) lists.push(IMPORT_BRANDS[catKey]);
+  lists.push(saved);
+  Object.keys(IMPORT_BRANDS).forEach(k=>{ if(k!==catKey) lists.push(IMPORT_BRANDS[k]); });
+  const low = ' '+String(name).toLowerCase().replace(/[^a-z0-9؀-ۿ]+/g,' ')+' ';
+  let best = null;
+  for(const list of lists){
+    for(const b of list){
+      const key = ' '+String(b).toLowerCase().replace(/[^a-z0-9؀-ۿ]+/g,' ').trim()+' ';
+      if(key.trim().length<2) continue;
+      const pos = low.indexOf(key);
+      // الماركة الأقرب لبداية الاسم، ثم الأطول (TOTAL QUARTZ → Total وليس Quartz)
+      if(pos!==-1 && (!best || pos < best.pos || (pos===best.pos && key.length > best.key.length))) best = {brand:b, key, pos};
+    }
+    if(best) break;
+  }
+  if(!best) return '';
+  // نستعمل كتابة الماركة كما هي في لائحة المستخدم إذا موجودة
+  const inSaved = saved.find(x=>normalizeSearchText(x)===normalizeSearchText(best.brand));
+  return inSaved || best.brand;
+}
+function importBrandCategory(name){
+  for(const k of ['tires','batteries','oils']){
+    const low = ' '+String(name).toLowerCase().replace(/[^a-z0-9]+/g,' ')+' ';
+    if(IMPORT_BRANDS[k].some(b=>{ const key=' '+b.toLowerCase().replace(/[^a-z0-9]+/g,' ').trim()+' '; return key.trim().length>2 && low.includes(key); })) return k;
+  }
+  return '';
+}
+// تحليل اسم المنتج واستخراج الفئة والماركة والمقاس واللزوجة والأمبير وبلد الصنع وسنة الصنع
+function parseImportName(raw){
+  const name = String(raw||'').replace(/\s+/g,' ').trim();
+  const out = {name, category:'', brand:'', tireSize:'', viscosity:'', oilType:'', amperage:'', madeIn:'', mfgYear:'', uom:''};
+  let catKey = '';
+  // مقاس الإطار: 225-55-17 / 225/55R17 / 225/55 R17 / 205 55 16 / 31X10.50R15 / 195R15C
+  let m = name.match(/(?:^|[^\d])(\d{3})\s*[\/\-\s.]\s*(\d{2})\s*[\/\-\s.]?\s*Z?R?F?\s*(\d{2}(?:\.5)?)(\s*C(?![a-z\u0600-\u06FF]))?(?!\d)/i);
+  if(m && Number(m[1])>=125 && Number(m[1])<=355 && Number(m[2])>=25 && Number(m[2])<=85 && Number(m[3])>=12 && Number(m[3])<=24){
+    out.tireSize = `${m[1]}/${m[2]}R${m[3]}${m[4]?'C':''}`; catKey = 'tires';
+  } else if((m = name.match(/(?:^|[^\d])(\d{2})\s*[xX×]\s*(\d{1,2}(?:\.\d{1,2})?)\s*R?\s*(\d{2})/))){
+    out.tireSize = `${m[1]}X${m[2]}R${m[3]}`; catKey = 'tires';
+  } else if((m = name.match(/(?:^|[^\d])(1[4-9]5|2[0-2]5)\s*R\s*(1[2-6])\s*(C)?(?!\d)/i))){
+    out.tireSize = `${m[1]}R${m[2]}${m[3]?'C':''}`; catKey = 'tires';
+  }
+  // اللزوجة
+  if((m = name.match(/(?:^|[^\d])(0|5|10|15|20|25)\s*W\s*[-\/\s]?\s*(8|16|20|30|40|50|60)(?!\d)/i))){
+    out.viscosity = `${m[1]}W-${m[2]}`; if(!catKey) catKey = 'oils';
+  } else if((m = name.match(/\b(75|80|85)\s*W\s*[-\/\s]?\s*(80|90|140)\b/i))){
+    out.viscosity = `${m[1]}W-${m[2]}`; if(!catKey) catKey = 'oils';
+  } else if((m = name.match(/\bSAE\s*(30|40|50|90|140)\b/i))){
+    out.viscosity = `SAE ${m[1]}`; if(!catKey) catKey = 'oils';
+  } else if(/\bATF\b/i.test(name)){ if(!catKey) catKey = 'oils'; }
+  // الأمبير
+  if((m = name.match(/(?:^|[^\d])(\d{2,3})\s*(?:AH|A\.H|AMP|AMPS)\b/i)) || (/\b(battery|batt)\b|بطاري/i.test(name) && (m = name.match(/(?:^|[^\d])(\d{2,3})\s*A\b/i)))){
+    const ah = Number(m[1]);
+    if(ah>=20 && ah<=250){ const v = (name.match(/(?:^|[^\d])(6|12|24)\s*V\b/i)||[])[1] || '12'; out.amperage = `${ah}Ah ${v}V`; if(!catKey) catKey = 'batteries'; }
+  }
+  // كلمات تدل على الفئة
+  if(!catKey){
+    // قطع الغيار قبل الزيوت: «Oil Filter» قطعة غيار وليست زيتاً
+    for(const k of ['tires','batteries','parts','accessories','oils']){ if(IMPORT_WORDS[k].test(name)){ catKey = k; break; } }
+  }
+  if(!catKey) catKey = importBrandCategory(name);
+  // نوع الزيت
+  if(catKey==='oils'){
+    const types = getProductList('oilTypes');
+    const pick = re=>types.find(t=>re.test(t)) || '';
+    if(/fully?\s*synth|full\s*syn|100%\s*synth/i.test(name)) out.oilType = pick(/Full Synthetic|تخليقي بالكامل/i);
+    else if(/semi|part\s*synth|synthetic\s*blend|syn\s*blend/i.test(name)) out.oilType = pick(/Semi|نصف/i);
+    else if(/mineral/i.test(name)) out.oilType = pick(/Mineral|معدني/i);
+    else if(/\bATF\b|dexron/i.test(name)) out.oilType = pick(/ATF/i);
+    else if(/gear/i.test(name)) out.oilType = pick(/قير عادي/i);
+    else if(/diesel/i.test(name)) out.oilType = pick(/ديزل/i);
+    else if(/synth/i.test(name)) out.oilType = pick(/Full Synthetic|تخليقي بالكامل/i);
+  }
+  // الحجم باللتر
+  if((m = name.match(/(?:^|[^\d.])(\d+(?:[.,]\d+)?)\s*(?:L|LT|LTR|LTRS|LITER|LITERS|LITRE|LITRES|لتر|ليتر)(?![a-z])/i))){
+    out.uom = m[1].replace(',','.')+' لتر';
+  } else if(/\bgallon|غالون/i.test(name)) out.uom = 'غالون';
+  // بلد الصنع
+  const tokens = name.toLowerCase().split(/[^a-z.؀-ۿ]+/).filter(Boolean);
+  for(const t of tokens){ if(IMPORT_COUNTRIES[t]){ out.madeIn = IMPORT_COUNTRIES[t]; break; } }
+  if(!out.madeIn){
+    const ar = getProductList('countries').find(c=>c.length>2 && name.includes(c));
+    if(ar) out.madeIn = ar;
+  }
+  // سنة الصنع: 2024 أو DOT (أسبوع+سنة مثل 2324) أو رقمين في آخر الاسم للإطارات (مثل -25)
+  const now2 = new Date().getFullYear()%100;
+  let nameNoSize = name;
+  if(out.tireSize){ nameNoSize = name.replace(/(\d{3})\s*[\/\-\s.]\s*(\d{2})\s*[\/\-\s.]?\s*Z?R?F?\s*(\d{2}(?:\.5)?)/i, ' '); }
+  nameNoSize = nameNoSize.replace(/\d+\s*W\s*[-\/\s]?\s*\d+/ig,' ').replace(/\d+(?:[.,]\d+)?\s*(?:L|LT|LTR|LITER|LITRE)S?\b/ig,' ').replace(/\d{2,3}\s*(?:AH|A)\b/ig,' ');
+  if((m = nameNoSize.match(/\b(20[1-3]\d)\b/))){ out.mfgYear = m[1]; }
+  else if((m = nameNoSize.match(/\bDOT\s*(\d{2})(\d{2})\b/i))){ out.mfgYear = '20'+m[2]; }
+  else if(catKey==='tires'){
+    const yy = nameNoSize.match(/(?:^|[\s\-\/(])(1[5-9]|2\d|3[0-2])(?=\s*\)?\s*$|[\s\-\/)][^\d]*$)/);
+    if(yy && Number(yy[1])<=now2+1) out.mfgYear = '20'+yy[1];
+    else if((m = nameNoSize.match(/(?:^|[\s\-\/(])([0-5]\d)(1[5-9]|2\d)(?=[\s\-\/)]|$)/))){ if(Number(m[2])<=now2+1) out.mfgYear = '20'+m[2]; }
+  }
+  if(catKey==='batteries') out.mfgYear = '';
+  out.brand = importFindBrand(name, catKey);
+  const cat = AUTO_CATEGORIES.find(c=>c.key===catKey);
+  out.category = cat ? cat.label : '';
+  return out;
+}
+function importParseNumber(s){
+  s = String(s||'').replace(/[$\s]/g,'').replace(/[٠-٩]/g, d=>String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)));
+  if(!s) return null;
+  // 1,234.50 أو 1.234,50
+  if(/,\d{1,2}$/.test(s) && s.indexOf('.')!==-1 && s.lastIndexOf(',')>s.lastIndexOf('.')) s = s.replace(/\./g,'').replace(',','.');
+  else s = s.replace(/,/g,'');
+  const n = Number(s);
+  return Number.isFinite(n) ? n : null;
+}
+async function loadPdfJs(){
+  if(window.pdfjsLib) return window.pdfjsLib;
+  await new Promise((resolve, reject)=>{
+    const sc = document.createElement('script');
+    sc.src = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js';
+    sc.onload = resolve; sc.onerror = ()=>reject(new Error('تعذّر تحميل قارئ ملفات PDF — تأكد من الاتصال بالإنترنت'));
+    document.head.appendChild(sc);
+  });
+  if(!window.pdfjsLib) throw new Error('تعذّر تحميل قارئ ملفات PDF');
+  window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+  return window.pdfjsLib;
+}
+// قراءة جدول من PDF: نحدد الأعمدة من سطر العناوين (Item Name / Shop Qty / Retail TTC)
+async function extractStockRowsFromPdf(file){
+  const pdfjs = await loadPdfJs();
+  const data = new Uint8Array(await file.arrayBuffer());
+  const doc = await pdfjs.getDocument({data}).promise;
+  const rows = [];
+  let cols = null;   // {name:[x0,x1], qty:[..], retail:[..]}
+  for(let p=1; p<=doc.numPages; p++){
+    const page = await doc.getPage(p);
+    const tc = await page.getTextContent();
+    const items = tc.items.filter(it=>String(it.str||'').trim()).map(it=>({s:String(it.str), x:it.transform[4], y:it.transform[5], w:it.width||0}));
+    // نجمع النصوص في أسطر حسب الارتفاع
+    items.sort((a,b)=> (b.y-a.y) || (a.x-b.x));
+    const lines = [];
+    items.forEach(it=>{
+      const ln = lines.find(l=>Math.abs(l.y-it.y)<=3);
+      if(ln) ln.items.push(it); else lines.push({y:it.y, items:[it]});
+    });
+    lines.sort((a,b)=>b.y-a.y);
+    lines.forEach(l=>l.items.sort((a,b)=>a.x-b.x));
+    for(const ln of lines){
+      const text = ln.items.map(i=>i.s).join(' ').replace(/\s+/g,' ');
+      const low = text.toLowerCase();
+      if(/item\s*name/.test(low) && /(shop\s*qty|qty|retail)/.test(low)){
+        // سطر العناوين: نحدد مركز كل عنوان
+        const heads = [];
+        // أصغر مجموعة كلمات متتالية تطابق العنوان (حتى لا يدخل «#» ضمن «Item Name»)
+        const span = (i,j)=>ln.items.slice(i,j+1).map(t=>t.s.trim()).filter(Boolean).join(' ').toLowerCase();
+        const find = (re, key)=>{
+          for(let i=0;i<ln.items.length;i++){
+            for(let j=i;j<Math.min(i+4, ln.items.length);j++){
+              if(!re.test(span(i,j))) continue;
+              if(j>i && re.test(span(i+1,j))) break;   // يطابق بدون الكلمة الأولى — نجرّب البداية التالية
+              const x0 = ln.items[i].x, x1 = ln.items[j].x + ln.items[j].w;
+              heads.push({key, x0, x1, c:(x0+x1)/2}); return;
+            }
+          }
+        };
+        find(/^#$|^no\.?$/, 'idx'); find(/item\s*name/, 'name'); find(/shop\s*qty|^qty$|quantity/, 'qty');
+        find(/retail\s*ttc/, 'retail'); find(/ws\s*-?\s*ttc|wholesale/, 'ws');
+        if(heads.some(h=>h.key==='name')){
+          heads.sort((a,b)=>a.c-b.c);
+          cols = heads.map((h,i)=>({key:h.key, from: i===0? -1e9 : (heads[i-1].x1 + h.x0)/2, to: i===heads.length-1? 1e9 : (h.x1 + heads[i+1].x0)/2, x0:h.x0}));
+        }
+        continue;
+      }
+      if(!cols) continue;
+      const cell = {};
+      ln.items.forEach(it=>{
+        const cx = it.x + it.w/2;
+        // اسم المنتج محاذٍ لليسار: نعتمد بدايته؛ الأرقام: نعتمد مركزها
+        const col = cols.find(c=> c.key==='name' ? (it.x >= c.from && it.x < c.to) : (cx >= c.from && cx < c.to)) || cols.find(c=>cx>=c.from && cx<c.to);
+        if(!col) return;
+        cell[col.key] = (cell[col.key]? cell[col.key]+' ' : '') + it.s.trim();
+      });
+      const nameTxt = (cell.name||'').trim();
+      const qty = importParseNumber(cell.qty);
+      const retail = importParseNumber(cell.retail);
+      if(!nameTxt && qty===null && retail===null) continue;
+      // سطر المجموع أو رقم الصفحة (وليس ماركة مثل TOTAL QUARTZ)
+      if(/^(grand\s*total|sub\s*-?\s*total|total|totals|المجموع|الإجمالي)\s*:?\s*$/i.test(nameTxt) || /^(page|صفحة)\s*\d+/i.test(nameTxt)) continue;
+      // سطر تكملة لاسم طويل (بدون أرقام)
+      if(nameTxt && qty===null && retail===null && !cell.idx && rows.length && rows[rows.length-1].__page===p){ rows[rows.length-1].name += ' '+nameTxt; continue; }
+      if(!nameTxt) continue;
+      rows.push({name:nameTxt, qty: qty===null? 0 : qty, retail, __page:p});
+    }
+  }
+  if(!cols) throw new Error('لم نجد سطر العناوين في الملف (Item Name / Shop Qty / Retail TTC)');
+  return rows;
+}
+function openImportStockModal(){
+  const wrap = document.createElement('div');
+  wrap.className = 'modal-bg';
+  wrap.innerHTML = `<div class="modal modal-wide" style="max-width:1000px;">
+    <h3>📥 استيراد مخزون قديم (Import Old Stock)</h3>
+    <p style="font-size:12.5px; color:var(--ink-soft); line-height:1.7;">ارفع ملف PDF فيه الأعمدة: <b>Item Name</b> (اسم المنتج)، <b>Shop Qty</b> (الكمية)، <b>Retail TTC $</b> (سعر البيع شامل الضريبة). عمودا # و WS-TTC يُتجاهلان. يحلّل البرنامج اسم كل منتج ليعبّئ الفئة والماركة والمقاس واللزوجة والأمبير وبلد وسنة الصنع — راجعها قبل الاستيراد.</p>
+    <input type="file" id="imp_file" accept="application/pdf,.pdf">
+    <div id="imp_status" style="font-size:13px; margin:8px 0; min-height:18px;"></div>
+    <div id="imp_preview"></div>
+    <div class="row modal-sticky-actions">
+      <button class="btn" id="imp_cancel">إلغاء</button>
+      <button class="btn btn-primary" id="imp_go" disabled>📥 IMPORT</button>
+    </div>
+  </div>`;
+  document.body.appendChild(wrap);
+  const $ = s=>wrap.querySelector(s);
+  $('#imp_cancel').addEventListener('click', ()=>wrap.remove());
+  let parsed = [];
+  const status = (msg, color)=>{ $('#imp_status').innerHTML = msg; $('#imp_status').style.color = color||'var(--ink)'; };
+  const catOpts = v=>`<option value="">— بدون —</option>${AUTO_CATEGORIES.map(c=>`<option value="${escapeHtml(c.label)}" ${v===c.label?'selected':''}>${c.label}</option>`).join('')}`;
+  function drawPreview(){
+    const counts = {}; parsed.forEach(r=>{ const k = r.category||'بدون فئة'; counts[k]=(counts[k]||0)+1; });
+    const existing = parsed.filter(r=>r.existingId).length;
+    $('#imp_preview').innerHTML = `
+      <div style="font-size:12.5px; margin-bottom:6px;">${parsed.length} منتج — ${Object.entries(counts).map(([k,n])=>`${escapeHtml(k)}: <b>${n}</b>`).join(' • ')}${existing? ` • <span style="color:var(--bronze-deep);">${existing} موجود مسبقاً (تُضاف الكمية ويُحدَّث السعر)</span>`:''}</div>
+      <div class="table-scroll" style="max-height:52vh; overflow:auto;"><table style="font-size:12px;">
+        <thead><tr><th><input type="checkbox" id="imp_all" checked></th><th>اسم المنتج</th><th>الفئة</th><th>الماركة</th><th>المقاس / اللزوجة / الأمبير</th><th>البلد</th><th>السنة</th><th>الكمية</th><th>سعر البيع</th></tr></thead>
+        <tbody>${parsed.map((r,i)=>`<tr style="${r.existingId?'background:#fff7e6;':''}">
+          <td><input type="checkbox" data-imp-on="${i}" ${r.on?'checked':''}></td>
+          <td>${escapeHtml(r.name)}${r.existingId?' <span style="font-size:10.5px; color:var(--bronze-deep);">(موجود)</span>':''}</td>
+          <td><select data-imp-cat="${i}" style="font-size:12px; padding:3px;">${catOpts(r.category)}</select></td>
+          <td>${escapeHtml(r.brand||'—')}</td>
+          <td class="num">${escapeHtml([r.tireSize, r.viscosity, r.oilType, r.amperage, r.uom].filter(Boolean).join(' • ')||'—')}</td>
+          <td>${escapeHtml(r.madeIn||'—')}</td>
+          <td class="num">${escapeHtml(r.mfgYear||'—')}</td>
+          <td class="num">${fmtQty(r.qty)}</td>
+          <td class="num">${r.retail!==null && r.retail!==undefined? fmtMoney(r.retail) : '—'}</td>
+        </tr>`).join('')}</tbody>
+      </table></div>`;
+    $('#imp_go').disabled = !parsed.some(r=>r.on);
+    $('#imp_all').addEventListener('change', e=>{ parsed.forEach(r=>r.on = e.target.checked); drawPreview(); });
+    wrap.querySelectorAll('[data-imp-on]').forEach(cb=>cb.addEventListener('change', ()=>{ parsed[Number(cb.getAttribute('data-imp-on'))].on = cb.checked; $('#imp_go').disabled = !parsed.some(r=>r.on); }));
+    wrap.querySelectorAll('[data-imp-cat]').forEach(sel=>sel.addEventListener('change', ()=>{
+      const r = parsed[Number(sel.getAttribute('data-imp-cat'))]; r.category = sel.value;
+    }));
+  }
+  $('#imp_file').addEventListener('change', async ()=>{
+    const f = $('#imp_file').files[0];
+    if(!f) return;
+    parsed = []; $('#imp_preview').innerHTML = ''; $('#imp_go').disabled = true;
+    status('⏳ جارٍ قراءة الملف وتحليل المنتجات...');
+    try{
+      const rows = await extractStockRowsFromPdf(f);
+      if(!rows.length){ status('لم نجد أي منتج في الملف', 'var(--debit)'); return; }
+      parsed = rows.map(r=>{
+        const info = parseImportName(r.name);
+        const ex = DB.warehouseItems.find(w=>normalizeSearchText(w.name)===normalizeSearchText(r.name));
+        return {...info, name:r.name, qty:r.qty, retail:r.retail, on:true, existingId: ex? ex.id : null};
+      });
+      status('✅ تمت قراءة '+parsed.length+' منتج — راجع الجدول ثم اضغط IMPORT', 'var(--credit)');
+      drawPreview();
+    }catch(e){
+      console.error('import pdf failed', e);
+      status('⚠️ '+escapeHtml(e && e.message || 'تعذّرت قراءة الملف'), 'var(--debit)');
+    }
+  });
+  $('#imp_go').addEventListener('click', async ()=>{
+    const chosen = parsed.filter(r=>r.on);
+    if(!chosen.length) return;
+    if(!confirm('سيتم إضافة '+chosen.length+' منتج إلى المستودع. متابعة؟')) return;
+    $('#imp_go').disabled = true; status('⏳ جارٍ الحفظ...');
+    const now = Date.now(); const date = todayISO();
+    // القيم الجديدة (ماركة / مقاس / لزوجة / أمبير) تُضاف إلى اللوائح
+    const lists = {brands:new Set(getProductList('brands')), tireSizes:new Set(getProductList('tireSizes')), viscosities:new Set(getProductList('viscosities')), amps:new Set(getProductList('amps'))};
+    const addList = (k,v)=>{ if(v && ![...lists[k]].some(x=>normalizeSearchText(x)===normalizeSearchText(v))) lists[k].add(v); };
+    let created = 0, merged = 0;
+    chosen.forEach(r=>{
+      addList('brands', r.brand); addList('tireSizes', r.tireSize); addList('viscosities', r.viscosity); addList('amps', r.amperage);
+      let it = r.existingId ? DB.warehouseItems.find(w=>w.id===r.existingId) : null;
+      if(it){
+        if(r.retail!==null && r.retail!==undefined) it.price = r.retail;
+        merged++;
+      } else {
+        it = {id:uid(), createdAt:now, name:r.name, brand:r.brand||'', type:'', barcode:'', price: r.retail||0, category:r.category||'', image:null,
+              productionDate:'', expiryDate:'', expiryAlertDays:null, note:'', purchaseDate:date, status: r.qty>0? 'available' : 'unavailable'};
+        ['madeIn','tireSize','viscosity','oilType','amperage','mfgYear','uom'].forEach(k=>{ if(r[k]) it[k] = r[k]; });
+        DB.warehouseItems.push(it); created++;
+      }
+      if(r.qty>0) DB.stockIns.push({id:uid(), createdAt:now, itemId:it.id, qty:r.qty, date, number:nextStockInNumber(), note:'استيراد مخزون قديم'});
+    });
+    const pl = Object.assign({}, DB.settings.productLists||{});
+    Object.keys(lists).forEach(k=>{ pl[k] = [...lists[k]]; });
+    DB.settings.productLists = pl;
+    const res = await Promise.all([save(KEYS.warehouseItems, DB.warehouseItems), save(KEYS.stockIns, DB.stockIns), save(KEYS.settings, DB.settings)]);
+    wrap.remove();
+    toast(res.every(Boolean) ? `تم الاستيراد: ${created} منتج جديد${merged? ' و'+merged+' منتج موجود أُضيفت كميته':''} ✅` : 'حدث خطأ أثناء الحفظ');
+    go('#/warehouse');
+  });
+}
+
 /* ============================= البحث الذكي في المستودع ============================= */
 function normalizeSearchText(s){
   return String(s??'').toLowerCase()
@@ -5940,6 +6265,12 @@ function settingsView(){
   </div>
 
   <div class="card">
+    <h2><span class="dot"></span> 📥 استيراد مخزون قديم (Import Old Stock)</h2>
+    <p style="font-size:12.5px; color:var(--ink-soft); line-height:1.7;">ارفع ملف PDF بجرد المخزون القديم (Item Name / Shop Qty / Retail TTC $) فتُضاف المنتجات إلى المستودع تلقائياً مع تحليل أسمائها.</p>
+    <button class="btn btn-primary" id="importOldStockBtn">📥 Import Old Stock</button>
+  </div>
+
+  <div class="card">
     <h2><span class="dot"></span> نسخة احتياطية</h2>
     <div style="font-size:13px; color:var(--ink-soft); margin-bottom:12px; line-height:1.7;">
       يُحدَّد اسم ملف النسخة الاحتياطية تلقائيًا بتاريخ ووقت اللحظة (مثلاً hmadeh-backup-2026-08-26_14-32.json) لتسهيل الاسترجاع.
@@ -6429,6 +6760,8 @@ function bindEvents(){
     }
   });
 
+  const importOldStockBtn = document.getElementById('importOldStockBtn');
+  if(importOldStockBtn) importOldStockBtn.addEventListener('click', openImportStockModal);
   const saveBizBtn = document.getElementById('saveBizBtn');
   if(saveBizBtn) saveBizBtn.addEventListener('click', async ()=>{
     const bizSel = document.getElementById('s_biz_type');
