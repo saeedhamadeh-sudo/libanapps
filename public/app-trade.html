@@ -1169,6 +1169,22 @@ function posSaleReceipt(inv){
 function posSaleCurrency(inv){ const r = posSaleReceipt(inv); return (r && !/\$/.test(r.method||'')) ? 'LBP' : 'USD'; }
 function invItemReturnedQty(it){ return Number(it.returnedQty)||0; }
 function invHasReturnable(inv){ return (inv.items||[]).some(it=>it.productId && (Number(it.qty)||0) - invItemReturnedQty(it) > 0); }
+// فاتورة POS لزبون محدد بدون إيصال قبض = دين على الحساب
+function posIsOnAccount(inv){ return !!inv && inv.docType==='بيع نقطة بيع (POS)' && !posSaleReceipt(inv); }
+function posDiscFactor(inv){ const sub = (inv.items||[]).reduce((s,it)=>s+Number(it.total||0),0); return sub>0 ? Math.max(sub-(Number(inv.discount)||0),0)/sub : 1; }
+// مرتجعات فاتورة على الحساب: تُسجَّل داخل البند (returnLog) وتُخصم من دين الزبون — بدون أي حركة صندوق
+function posCreditReturnEntries(inv){
+  if(!(inv.items||[]).some(it=>Array.isArray(it.returnLog) && it.returnLog.length)) return [];
+  if(!posIsOnAccount(inv)) return [];
+  const f = posDiscFactor(inv); const out = [];
+  inv.items.forEach(it=> (it.returnLog||[]).forEach(r=> out.push({date:r.date, createdAt:r.createdAt||0, qty:Number(r.qty)||0, desc:it.desc, amountUSD: Math.round((Number(r.qty)||0)*Number(it.price||0)*f*100)/100})));
+  return out;
+}
+function posCreditReturnsInRange(from, to){
+  let t = 0;
+  DB.invoices.forEach(i=>{ if(i.deleted || i.docType!=='بيع نقطة بيع (POS)') return; posCreditReturnEntries(i).forEach(r=>{ if(r.date>=from && r.date<=to) t += r.amountUSD; }); });
+  return Math.round(t*100)/100;
+}
 function posRefundReceiptsInRange(from, to){ return DB.receipts.filter(r=>!r.deleted && isPosRefundReceipt(r) && r.date>=from && r.date<=to); }
 // صافي مبيعات الصندوق بعملة معيّنة = مبيعات − مرتجعات
 function netSalesOf(moves, currency){
@@ -1185,6 +1201,9 @@ function buildLedger(customerId){
     from:0, to:computeInvoiceTotal(i).totalUSD, ref:'invoice', id:i.id, sortKey:i.createdAt||0
   }));
   const rec = [];
+  DB.invoices.filter(i=>i.customerId===customerId && !i.deleted && i.docType==='بيع نقطة بيع (POS)').forEach(i=>{
+    posCreditReturnEntries(i).forEach(r=> rec.push({date:r.date, type:'مرتجع', label:'مرتجع بضاعة على الحساب — فاتورة #'+i.number+' — '+r.desc, number:i.number, from:r.amountUSD, to:0, ref:'receipt', id:i.id, sortKey:r.createdAt}));
+  });
   DB.receipts.filter(r=>r.customerId===customerId && !r.deleted).forEach(r=>{
     const usd = receiptAmountUSD(r);
     if(isPosRefundReceipt(r)){
@@ -2483,8 +2502,33 @@ const PERMISSION_MODULES = [
   {key:'suppliers', label:'الموردون'},
   {key:'warehouse', label:'المستودع'},
   {key:'budget', label:'الميزانية'},
-  {key:'workers', label:'العمال (إذا كان التبويب مفعّلاً)'}
+  {key:'workers', label:'العمال (إذا كان التبويب مفعّلاً)'},
+  {key:'reports', label:'التقارير واليومية'}
 ];
+// صلاحيات تفصيلية داخل الأقسام — ADMIN يختار لكل موظف
+const PERMISSION_EXTRAS = [
+  {key:'stock_value',   group:'المستودع',  label:'رؤية قيمة المخزون (بالتكلفة شامل الضريبة وبسعر البيع)'},
+  {key:'cost_prices',   group:'المستودع',  label:'رؤية سعر التكلفة وهامش الربح'},
+  {key:'edit_products', group:'المستودع',  label:'إضافة منتجات وتعديلها (الأسعار والكميات)'},
+  {key:'pos_discount',  group:'نقطة البيع', label:'إعطاء حسم'},
+  {key:'pos_credit',    group:'نقطة البيع', label:'البيع على الحساب (دين)'},
+  {key:'pos_returns',   group:'نقطة البيع', label:'فاتورة استرجاع'},
+  {key:'cash_moves',    group:'نقطة البيع', label:'إضافة وسحب يدوي من الصندوق'},
+  {key:'edit_docs',     group:'عام',        label:'تعديل الفواتير والإيصالات والسندات وبيانات الزبائن والموردين بعد حفظها'},
+  {key:'delete',        group:'عام',        label:'الحذف (فواتير، إيصالات، سندات، زبائن، موردون، منتجات...)'}
+];
+const PERMS_V2 = 'v2';
+// الموظفون القدامى (قبل الصلاحيات التفصيلية) يحتفظون بما كان مسموحاً لهم — ما عدا قيمة المخزون والتكلفة
+function effectivePermissions(u){
+  const p = (u && u.permissions) || [];
+  if(p.includes(PERMS_V2)) return p;
+  const out = new Set(p);
+  if(p.includes('pos')){ ['reports','pos_discount','pos_credit','pos_returns','cash_moves'].forEach(k=>out.add(k)); }
+  if(p.includes('warehouse')) out.add('edit_products');
+  out.add('edit_docs'); out.add('delete');
+  return Array.from(out);
+}
+function permissionLabel(k){ const m = PERMISSION_MODULES.find(x=>x.key===k) || PERMISSION_EXTRAS.find(x=>x.key===k); return m? m.label : k; }
 let currentUser = null;
 let _expiryAlertShownThisSession = false;
 let currentCustomerSession = null;
@@ -2494,7 +2538,25 @@ function isPrivilegedUser(u){ return u && (u.role==='admin' || u.role==='superus
 function hasPermission(moduleKey){
   if(!currentUser) return false;
   if(isPrivilegedUser(currentUser)) return true;
-  return (currentUser.permissions||[]).includes(moduleKey);
+  return effectivePermissions(currentUser).includes(moduleKey);
+}
+function denyIfNo(perm, what){ if(hasPermission(perm)) return false; toast('ليس لديك صلاحية '+(what||'لهذا الإجراء')+' — تواصل مع ADMIN'); return true; }
+// إخفاء الأزرار التي لا يملك الموظف صلاحيتها (بعد رسم الصفحة وقبل ربط الأحداث)
+const PERM_UI_RULES = [
+  ['delete', '#deleteCustBtn,#deleteSupBtn,#deleteWkBtn,#deleteWhItemBtn,[data-del-doc],[data-del-budget-cat]'],
+  ['edit_docs', '.doc-actions [data-nav*="/edit/"],#editCustBtn,#editSupBtn,#editWkBtn'],
+  ['edit_products', '#addWhItemBtn,#editWhItemBtn'],
+  ['cash_moves', '[data-cashmove]'],
+  ['pos_returns', '#pos_return_btn'],
+  ['pos_credit', '#pos_credit_btn'],
+  ['pos_discount', '#pos_discount_row'],
+  ['reports', '[data-nav^="#/reports"],[data-nav^="#/journal"]'],
+  ['stock_value', '[data-perm="stock_value"]'],
+  ['cost_prices', '[data-perm="cost_prices"]']
+];
+function applyPermissionUI(scope){
+  if(!currentUser || isPrivilegedUser(currentUser) || !scope) return;
+  PERM_UI_RULES.forEach(([k, sel])=>{ if(!hasPermission(k)) scope.querySelectorAll(sel).forEach(el=>el.remove()); });
 }
 const SUPERADMIN_DEFAULT_PASSWORD = '';
 function migrateUsers(){
@@ -3061,7 +3123,7 @@ function bindLoginEvents(){
 
 function routeRequiredPermission(routeKey){
   const map = {
-    pos:'pos', journal:'pos', reports:'pos',
+    pos:'pos', journal:'reports', reports:'reports',
     customers:'customers', customer:'customers', invoice:'customers', receipt:'customers', statement:'customers',
     suppliers:'suppliers', supplier:'suppliers', purchase:'suppliers', voucher:'suppliers', 'supplier-statement':'suppliers',
     warehouse:'warehouse', 'warehouse-print':'warehouse', 'low-stock':'warehouse', 'warehouse-item':'warehouse', stockout:'warehouse', stockin:'warehouse',
@@ -3113,6 +3175,11 @@ function render(){
       bindEvents();
       return;
     }
+  }
+  if(parts[1]==='edit' && !hasPermission('edit_docs')){
+    root().innerHTML = topbar() + crumbs([['الرئيسية','#/'],['ممنوع الدخول',null]]) + emptyState('ليس لديك صلاحية تعديل الفواتير والسندات بعد حفظها — تواصل مع ADMIN');
+    bindEvents();
+    return;
   }
   let html = topbar();
   if(parts.length===0){
@@ -3298,6 +3365,7 @@ function render(){
     html += emptyState('الصفحة غير موجودة');
   }
   root().innerHTML = html;
+  applyPermissionUI(root());
   bindEvents();
   if(parts.length===0 && !_expiryAlertShownThisSession && hasPermission('warehouse')){
     _expiryAlertShownThisSession = true;
@@ -3344,7 +3412,7 @@ function todaySalesSummary(){
   const today = todayISO();
   const todaysInvoices = DB.invoices.filter(i=>i.date===today && !i.deleted && i.docType==='بيع نقطة بيع (POS)');
   const gross = todaysInvoices.reduce((s,i)=>s + (i.items||[]).reduce((s2,it)=>s2+(Number(it.total)||0),0) - (Number(i.discount)||0), 0);
-  const returns = posRefundReceiptsInRange(today, today).reduce((s,r)=>s+Math.abs(receiptAmountUSD(r)),0);
+  const returns = posRefundReceiptsInRange(today, today).reduce((s,r)=>s+Math.abs(receiptAmountUSD(r)),0) + posCreditReturnsInRange(today, today);
   return { count: todaysInvoices.length, totalUSD: gross - returns };
 }
 function hubView(){
@@ -3372,13 +3440,13 @@ function hubView(){
       <div class="hub-sub">بيع سريع بالباركود</div>
       <div class="hub-amt" style="color:var(--steel)">افتح شاشة البيع</div>
     </div>`},
-    {key:'journal', perm:'pos', html:`<div class="hub-card" data-nav="#/journal">
+    {key:'journal', perm:'reports', html:`<div class="hub-card" data-nav="#/journal">
       <div class="hub-icon">📒</div>
       <div class="hub-title">اليوميات</div>
       <div class="hub-sub">كل حركات اليوم في مكان واحد</div>
       <div class="hub-amt" style="color:var(--steel)">فواتير، إيصالات، سندات</div>
     </div>`},
-    {key:'reports', perm:'pos', html:`<div class="hub-card" data-nav="#/reports">
+    {key:'reports', perm:'reports', html:`<div class="hub-card" data-nav="#/reports">
       <div class="hub-icon">📊</div>
       <div class="hub-title">التقارير</div>
       <div class="hub-sub">يومي، شهري، سنوي، أو فترة محددة</div>
@@ -4251,6 +4319,27 @@ function posTotalUSD(ticket){
   const sub = posSubtotalUSD(ticket);
   return Math.max(0, sub - posDiscountUSD(ticket, sub));
 }
+// بحث نقطة البيع: نفس بحث المستودع الذكي، ويحدّث المربعات فقط بدون إعادة رسم الصفحة
+let _posSearchQ = '';
+const POS_TILE_LIMIT = 120;
+function posBaseItems(){
+  if(_posActiveCategory===null) return DB.warehouseItems;
+  if(_posActiveCategory==='__none__') return DB.warehouseItems.filter(it=>!it.category);
+  return DB.warehouseItems.filter(it=>it.category===_posActiveCategory);
+}
+function posSearchResults(){ const q = _posSearchQ.trim(); return q ? smartSearchWarehouse(q, posBaseItems()) : posBaseItems(); }
+function posTilesHtml(list){
+  if(!list.length) return `<div class="empty" style="grid-column:1/-1;"><div class="big">${_posSearchQ.trim()? 'لا نتائج لـ «'+escapeHtml(_posSearchQ.trim())+'»' : 'لا توجد منتجات — أضف منتجًا من المستودع أولاً'}</div></div>`;
+  const shown = list.slice(0, POS_TILE_LIMIT);
+  return shown.map(it=>{ const st = fastStock(it.id);
+    return `<button class="pos-tile" data-pos-tile="${it.id}">
+    ${it.image? `<img src="${it.image}" class="pos-tile-img" loading="lazy">` : `<div class="pos-tile-img pos-tile-img-placeholder">📦</div>`}
+    <div class="pos-tile-name">${escapeHtml(it.name)}</div>
+    <div class="pos-tile-price">$${(Number(it.price)||0).toFixed(2)}</div>
+    <div style="font-size:11px; margin-top:2px; color:${st<=0?'var(--debit)':'var(--ink-soft)'};">المتوفر: <span class="num">${fmtQty(st)}</span></div>
+  </button>`; }).join('')
+  + (list.length>POS_TILE_LIMIT? `<div style="grid-column:1/-1; text-align:center; font-size:12.5px; color:var(--ink-soft); padding:6px;">يظهر ${POS_TILE_LIMIT} من ${list.length} — اكتب في البحث لتضييق النتائج</div>` : '');
+}
 function posCategories(){
   const set = new Set();
   DB.warehouseItems.forEach(it=>{ if(it.category) set.add(it.category); });
@@ -4299,10 +4388,9 @@ function posView(){
   const categories = posCategories();
   const catImages = DB.settings.categoryImages || {};
   const noCatCount = DB.warehouseItems.filter(it=>!it.category).length;
-  let tileItems;
-  if(_posActiveCategory===null) tileItems = DB.warehouseItems;
-  else if(_posActiveCategory==='__none__') tileItems = DB.warehouseItems.filter(it=>!it.category);
-  else tileItems = DB.warehouseItems.filter(it=>it.category===_posActiveCategory);
+  const tileItems = posSearchResults();
+  const named = !!ticket.customerId && DB.customers.some(c=>c.id===ticket.customerId);
+  const custBal = named ? customerBalance(ticket.customerId) : 0;
   const totalLine = payCurrency==='SECOND'
     ? `<div style="font-size:22px; font-weight:800;" class="num">${fmtNum(totalUSD*rate)} ${secCurLabel()}</div><div style="font-size:12px; color:var(--ink-soft);">($${totalUSD.toFixed(2)})</div>`
     : `<div style="font-size:22px; font-weight:800;" class="num">$${totalUSD.toFixed(2)}</div><div style="font-size:12px; color:var(--ink-soft);">(${fmtNum(totalUSD*rate)} ${secCurLabel()})</div>`;
@@ -4319,18 +4407,13 @@ function posView(){
           ${noCatCount? `<div class="pos-cat-tab${_posActiveCategory==='__none__'?' active':''}" data-pos-category="__none__">بدون قسم (${noCatCount})</div>` : ''}
         </div>
         <div class="pos-search-row">
-          <input type="text" id="pos_scan_input" class="num" inputmode="none" style="flex:1; font-size:16px; padding:11px 14px; border-radius:10px; border:1px solid var(--line);" placeholder="🔍 بحث بالاسم أو امسح باركود..." autofocus>
+          <input type="text" id="pos_scan_input" inputmode="none" autocomplete="off" value="${escapeHtml(_posSearchQ)}" style="flex:1; font-size:16px; padding:11px 14px; border-radius:10px; border:1px solid var(--line);" placeholder="🔍 بحث: اسم، ماركة، مقاس، باركود، رمز..." autofocus>
+          ${_posSearchQ? `<button type="button" class="btn" id="pos_search_clear" title="مسح البحث">✕</button>` : ''}
           <button type="button" class="btn" id="pos_keyboard_btn" title="اكتب يدوياً">⌨️</button>
           <button type="button" class="btn" id="pos_camera_scan_btn">📷</button>
         </div>
         <div id="pos_scan_msg" style="min-height:16px; font-size:12.5px; color:var(--credit);"></div>
-        <div class="pos-tile-grid">
-          ${tileItems.length? tileItems.map(it=>`<button class="pos-tile" data-pos-tile="${it.id}">
-            ${it.image? `<img src="${it.image}" class="pos-tile-img">` : `<div class="pos-tile-img pos-tile-img-placeholder">📦</div>`}
-            <div class="pos-tile-name">${escapeHtml(it.name)}</div>
-            <div class="pos-tile-price">$${(Number(it.price)||0).toFixed(2)}</div>
-          </button>`).join('') : `<div class="empty" style="grid-column:1/-1;"><div class="big">لا توجد منتجات — أضف منتجًا من المستودع أولاً</div></div>`}
-        </div>
+        <div class="pos-tile-grid" id="pos_tile_grid">${posTilesHtml(tileItems)}</div>
       </div>
     </div>
     <aside class="pos-receipt">
@@ -4340,7 +4423,7 @@ function posView(){
           <button class="btn btn-sm" id="pos_new_ticket_btn">+</button>
         </div>
         <div class="pos-receipt-customer">
-          <span>👤 <b>${escapeHtml(ticket.customerLabel)}</b></span>
+          <span>👤 <b>${escapeHtml(ticket.customerLabel)}</b>${named? ` <span style="font-size:11.5px; color:${custBal>0?'var(--debit)':'var(--ink-soft)'};">— الرصيد: <span class="num">${fmtMoney(custBal)}</span></span>` : ''}</span>
           <button class="btn btn-sm" id="pos_pick_customer_btn">تغيير</button>
         </div>
         <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px; font-size:11.5px; color:var(--ink-soft); border-top:1px dashed var(--line); padding-top:8px;">
@@ -4352,7 +4435,7 @@ function posView(){
         ${ticket.cart.length? itemRows : `<div class="empty" style="padding:24px 0;"><div class="big" style="font-size:13px;">السلة فارغة</div></div>`}
       </div>
       <div class="pos-receipt-foot">
-        <div style="display:flex; gap:6px; margin-bottom:10px;">
+        <div id="pos_discount_row" style="display:flex; gap:6px; margin-bottom:10px;">
           <input type="number" step="0.01" id="pos_discount_input" class="num" value="${ticket.discount||0}" placeholder="حسم" style="flex:1; padding:7px; border-radius:8px; border:1px solid var(--line);">
           <select id="pos_discount_type" style="width:64px; border-radius:8px; border:1px solid var(--line);">
             <option value="amount" ${ticket.discountType!=='percent'?'selected':''}>$</option>
@@ -4365,8 +4448,11 @@ function posView(){
         </div>
         <div style="display:flex; gap:8px;">
           <button class="btn" id="pos_clear_btn" style="flex:1;" ${ticket.cart.length?'':'disabled'}>إلغاء</button>
-          <button class="btn btn-primary" id="pos_pay_btn" style="flex:2;" ${ticket.cart.length?'':'disabled'}>${payCurrency==='SECOND'?'💴':'💵'} قبض</button>
+          ${named? `<button class="btn" id="pos_pay_btn" style="flex:1;" ${ticket.cart.length?'':'disabled'}>${payCurrency==='SECOND'?'💴':'💵'} كاش</button>
+          <button class="btn btn-primary" id="pos_credit_btn" style="flex:2;" ${ticket.cart.length?'':'disabled'}>📒 على الحساب</button>`
+          : `<button class="btn btn-primary" id="pos_pay_btn" style="flex:2;" ${ticket.cart.length?'':'disabled'}>${payCurrency==='SECOND'?'💴':'💵'} قبض</button>`}
         </div>
+        ${named? `<div style="font-size:11px; color:var(--ink-soft); margin-top:6px; text-align:center;">«على الحساب» تُسجَّل ديناً على الزبون بدون إيصال — «كاش» تُصدر إيصال قبض</div>` : ''}
         <button class="btn btn-sm" id="pos_return_btn" style="width:100%; margin-top:8px;">↩ فاتورة استرجاع</button>
       </div>
     </aside>
@@ -4390,17 +4476,48 @@ function bindPosEvents(){
     render();
     setTimeout(()=>{ const i2 = document.getElementById('pos_scan_input'); if(i2){ i2.setAttribute('inputmode','none'); i2.focus(); } }, 30);
   }
+  const grid = document.getElementById('pos_tile_grid');
+  let searchTimer = null;
+  function refreshTiles(){ if(grid) grid.innerHTML = posTilesHtml(posSearchResults()); }
+  function addItem(item){
+    playBeep();
+    posAddToCart(ticket, item);
+    _posSearchQ = '';
+    if(msg){ msg.textContent = '✅ تمت الإضافة: '+item.name; msg.style.color = 'var(--credit)'; }
+    render();
+    setTimeout(()=>{ const i2 = document.getElementById('pos_scan_input'); if(i2){ i2.setAttribute('inputmode','none'); i2.focus(); } }, 30);
+  }
   if(input){
     input.focus();
+    try{ const n = input.value.length; input.setSelectionRange(n, n); }catch(e){}
+    input.addEventListener('input', ()=>{
+      _posSearchQ = input.value;
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(refreshTiles, 90);
+    });
     input.addEventListener('keydown', (e)=>{
-      if(e.key==='Enter'){
-        e.preventDefault();
-        const code = input.value.trim();
-        if(code) handleCode(code);
-        input.value = '';
+      if(e.key==='Escape'){ input.value=''; _posSearchQ=''; refreshTiles(); return; }
+      if(e.key!=='Enter') return;
+      e.preventDefault();
+      clearTimeout(searchTimer);
+      const code = input.value.trim();
+      if(!code) return;
+      _posSearchQ = input.value;
+      // باركود أو رمز صنف مطابق تماماً → يُضاف مباشرة
+      const cc = compactSearchText(code);
+      const exact = posFindItemByBarcode(code) || DB.warehouseItems.find(it=> cc && (compactSearchText(it.barcode)===cc || compactSearchText(it.sku)===cc));
+      if(exact){ addItem(exact); return; }
+      const res = posSearchResults();
+      if(res.length===1){ addItem(res[0]); return; }
+      refreshTiles();
+      if(msg){
+        if(!res.length){ msg.textContent = '⚠️ لم نجد منتجًا مطابقًا: '+code; msg.style.color = 'var(--debit)'; }
+        else { msg.textContent = res.length+' نتيجة — اختر المنتج من المربعات'; msg.style.color = 'var(--ink-soft)'; }
       }
     });
   }
+  const clrBtn = document.getElementById('pos_search_clear');
+  if(clrBtn) clrBtn.addEventListener('click', ()=>{ _posSearchQ=''; render(); });
   const camBtn = document.getElementById('pos_camera_scan_btn');
   if(camBtn) camBtn.addEventListener('click', ()=>{ openBarcodeScannerModal((code)=>handleCode(code), true); });
   const kbBtn = document.getElementById('pos_keyboard_btn');
@@ -4408,11 +4525,13 @@ function bindPosEvents(){
     if(input){ input.removeAttribute('inputmode'); input.focus(); }
   });
 
-  document.querySelectorAll('[data-pos-tile]').forEach(b=>b.addEventListener('click', ()=>{
+  if(grid) grid.addEventListener('click', (e)=>{
+    const b = e.target.closest('[data-pos-tile]'); if(!b) return;
     const item = DB.warehouseItems.find(x=>x.id===b.getAttribute('data-pos-tile'));
+    if(!item) return;
     posAddToCart(ticket, item);
     render();
-  }));
+  });
   document.querySelectorAll('[data-pos-category]').forEach(b=>b.addEventListener('click', ()=>{
     _posActiveCategory = b.getAttribute('data-pos-category') || null;
     render();
@@ -4441,6 +4560,12 @@ function bindPosEvents(){
   if(clearBtn) clearBtn.addEventListener('click', ()=>{ if(confirm('تفريغ السلة؟')){ ticket.cart=[]; render(); } });
   const payBtn = document.getElementById('pos_pay_btn');
   if(payBtn) payBtn.addEventListener('click', ()=>openPosPaymentModal(DB.settings.posPaymentCurrency==='SECOND'?'LBP':'USD'));
+  const creditBtn = document.getElementById('pos_credit_btn');
+  if(creditBtn) creditBtn.addEventListener('click', ()=>{
+    if(!ticket.cart.length) return;
+    if(!confirm('تسجيل الفاتورة ($'+posTotalUSD(ticket).toFixed(2)+') ديناً على حساب '+ticket.customerLabel+'؟')) return;
+    completePosSale('CREDIT', null, null);
+  });
 
   document.querySelectorAll('[data-pos-tab]').forEach(b=>b.addEventListener('click', (e)=>{
     if(e.target.closest('[data-pos-close-tab]')) return;
@@ -4545,6 +4670,7 @@ function openPosCustomerPickerModal(ticket){
   });
 }
 function openPosReturnModal(){
+  if(denyIfNo('pos_returns', 'فاتورة الاسترجاع')) return;
   // فقط فواتير POS التي بقي فيها شيء قابل للاسترجاع
   const posInvoices = DB.invoices.filter(i=>i.docType==='بيع نقطة بيع (POS)' && !i.deleted && invHasReturnable(i)).sort((a,b)=>b.createdAt-a.createdAt).slice(0,50);
   const wrap = document.createElement('div');
@@ -4552,7 +4678,9 @@ function openPosReturnModal(){
   const invLabel = i=>{
     const tot = (i.items||[]).reduce((s,it)=>s+Number(it.total||0),0) - (Number(i.discount)||0);
     const partly = (i.items||[]).some(it=>invItemReturnedQty(it)>0);
-    return `#${escapeHtml(i.number)} — ${fmtDate(i.date)} — $${tot.toFixed(2)}${partly?' (مسترجع جزئياً)':''}`;
+    const cu = DB.customers.find(c=>c.id===i.customerId);
+    const acc = posIsOnAccount(i);
+    return `#${escapeHtml(i.number)} — ${fmtDate(i.date)} — $${tot.toFixed(2)}${acc? ' — على حساب '+escapeHtml(cu?cu.name:''):''}${partly?' (مسترجع جزئياً)':''}`;
   };
   wrap.innerHTML = `<div class="modal">
     <h3>↩ فاتورة استرجاع</h3>
@@ -4573,7 +4701,7 @@ function openPosReturnModal(){
   const sel = wrap.querySelector('#ret_invoice');
   const curInv = ()=>posInvoices.find(i=>i.id===sel.value);
   // نسبة الحسم: المرتجع يُحسب بعد توزيع حسم الفاتورة على البنود
-  const discFactor = inv=>{ const sub = (inv.items||[]).reduce((s,it)=>s+Number(it.total||0),0); return sub>0 ? Math.max(sub-(Number(inv.discount)||0),0)/sub : 1; };
+  const discFactor = posDiscFactor;
   function lineAmount(inv, it, qty){ return Math.round(qty*Number(it.price||0)*discFactor(inv)*100)/100; }
   function refreshTotal(){
     const inv = curInv(); let t = 0;
@@ -4581,6 +4709,7 @@ function openPosReturnModal(){
       const ch = wrap.querySelector(`[data-ret-check="${idx}"]`); const q = wrap.querySelector(`[data-ret-qty="${idx}"]`);
       if(ch && ch.checked && q) t += lineAmount(inv, it, Math.max(0, Math.min(Number(q.value)||0, Number(it.qty)-invItemReturnedQty(it))));
     });
+    if(posIsOnAccount(inv)){ wrap.querySelector('#ret_total').textContent = 'يُخصم من دين الزبون على الحساب: $'+t.toFixed(2); return; }
     const cur = posSaleCurrency(inv); const rate = inv.exchangeRate || DB.settings.defaultExchangeRate || 90000;
     wrap.querySelector('#ret_total').textContent = 'المبلغ المردود للزبون: ' + (cur==='USD' ? '$'+t.toFixed(2) : fmtNum(t*rate)+' '+secCurLabel());
   }
@@ -4606,8 +4735,9 @@ function openPosReturnModal(){
   sel.addEventListener('change', renderItems);
   wrap.querySelector('#ret_confirm').addEventListener('click', async ()=>{
     const inv = curInv();
+    const onAcc = posIsOnAccount(inv);
     const myShift = currentUserShift();
-    if(!myShift){ toast('يجب أن يكون لديك صندوق مفتوح'); return; }
+    if(!myShift && !onAcc){ toast('يجب أن يكون لديك صندوق مفتوح'); return; }
     // نجمع البنود أولاً — لا نعدّل أي شيء قبل التأكد من صحة الطلب
     const picks = [];
     inv.items.forEach((it, idx)=>{
@@ -4620,6 +4750,18 @@ function openPosReturnModal(){
     const totalUSD = Math.round(picks.reduce((s,p)=>s+p.amountUSD,0)*100)/100;
     if(!picks.length || totalUSD<=0){ toast('اختر صنفًا واحدًا على الأقل للاسترجاع'); return; }
     const now = Date.now(); const date = todayISO();
+    if(onAcc){
+      picks.forEach(p=>{
+        p.it.returnedQty = invItemReturnedQty(p.it) + p.qty;
+        p.it.returnLog = [...(p.it.returnLog||[]), {date, qty:p.qty, createdAt:now, by:currentUser.username}];
+        DB.stockIns.push({id:uid(), createdAt:now, itemId:p.it.productId, qty:p.qty, date, number:nextStockInNumber(), note:'استرجاع من فاتورة POS #'+inv.number+' (على الحساب)', refId:inv.id});
+      });
+      const r2 = await Promise.all([ save(KEYS.invoices, DB.invoices), save(KEYS.stockIns, DB.stockIns) ]);
+      wrap.remove();
+      toast(r2.every(Boolean) ? 'تم الاسترجاع وخصم $'+totalUSD.toFixed(2)+' من حساب الزبون ✅' : 'حدث خطأ أثناء الحفظ');
+      render();
+      return;
+    }
     const currency = posSaleCurrency(inv);
     const rate = inv.exchangeRate || DB.settings.defaultExchangeRate || 90000;
     const amountCur = currency==='USD' ? totalUSD : Math.round(totalUSD*rate);
@@ -4692,7 +4834,11 @@ async function completePosSale(currency, received, due){
   const rate = DB.settings.defaultExchangeRate || 90000;
   const totalUSD = posTotalUSD(ticket);
   if(received==null){ due = currency==='USD'? totalUSD : totalUSD*rate; received = due; }
-  const changeDue = received - due;
+  const onAccount = currency==='CREDIT';
+  if(onAccount && denyIfNo('pos_credit', 'البيع على الحساب')) return;
+  if(!hasPermission('pos_discount')){ ticket.discount = 0; }
+  if(onAccount && !ticket.customerId){ toast('البيع على الحساب يحتاج زبوناً محدداً'); return; }
+  const changeDue = onAccount ? null : received - due;
   const now = Date.now();
   const date = todayISO();
   let customerId = ticket.customerId;
@@ -4713,6 +4859,15 @@ async function completePosSale(currency, received, due){
   ticket.cart.forEach(l=>{
     DB.stockOuts.push({id:uid(), createdAt:now, itemId:l.itemId, qty:l.qty, date, number:nextStockOutNumber(), note:'بيع POS #'+inv.number});
   });
+  if(onAccount){
+    // دين على الحساب: لا إيصال قبض ولا حركة صندوق — يظهر في كشف حساب الزبون
+    await Promise.all([ save(KEYS.invoices, DB.invoices), save(KEYS.stockOuts, DB.stockOuts) ]);
+    await printPosReceipt(inv, 'CREDIT', totalUSD, rate, ticket.customerLabel, customerBalance(customerId), null);
+    _posTickets = _posTickets.filter(t=>t.id!==ticket.id);
+    toast('تم تسجيل الفاتورة على حساب '+ticket.customerLabel+' ✅');
+    go('#/pos'); render();
+    return;
+  }
   const receipt = {id:uid(), createdAt:now, customerId, number:nextReceiptNumber(), date, shiftId:myShift.id,
     amount: currency==='USD'? totalUSD : totalUSD*rate, method: currency==='USD'?'نقد $ (POS)':'نقد '+secCurLabel()+' (POS)', details:'بيع نقطة بيع #'+inv.number+' — الكاشير: '+currentUser.username};
   DB.receipts.push(receipt);
@@ -4812,8 +4967,11 @@ async function renderReceiptToCanvas(inv, currency, totalUSD, rate, customerLabe
   rowLR(fmtLBP(totals.totalLBP), 'المجموع '+secCurLabel(), 20, true);
   para(amountWords(totals.totalUSD), 16, false, 'center');
   dashed();
-  rowLR(currency==='USD'?'نقد دولار':'نقد '+secCurLabel(), 'طريقة الدفع', 17, false);
-  if(received!=null && changeDue!=null){
+  if(currency==='CREDIT'){
+    rowLR('على الحساب (دين)', 'طريقة الدفع', 18, true);
+    if(received!=null) rowLR(fmtMoney(received), 'رصيد الحساب', 18, false);
+  } else rowLR(currency==='USD'?'نقد دولار':'نقد '+secCurLabel(), 'طريقة الدفع', 17, false);
+  if(currency!=='CREDIT' && received!=null && changeDue!=null){
     rowLR(fmtPay(received), 'المقبوض', 18, false);
     rowLR(fmtPay(changeDue), 'الباقي', 18, true);
   }
@@ -4901,6 +5059,8 @@ function posPrintFormat(){ return (DB.settings && DB.settings.posPrintFormat==='
 function posPaymentLinesHtml(currency, received, changeDue, small){
   const fs = small ? '11.5px' : '13px';
   const fmt = v=> currency==='USD' ? '$'+Number(v).toFixed(2) : fmtNum(v)+' '+secCurLabel();
+  if(currency==='CREDIT') return `<div style="display:flex; justify-content:space-between; font-size:${fs}; font-weight:800;"><span>طريقة الدفع</span><span>على الحساب (دين)</span></div>`
+    + (received!=null? `<div style="display:flex; justify-content:space-between; font-size:${fs};"><span>رصيد الحساب بعد الفاتورة</span><span class="num">${fmtMoney(received)}</span></div>` : '');
   return `<div style="display:flex; justify-content:space-between; font-size:${fs};"><span>طريقة الدفع</span><span>${currency==='USD'?'نقد دولار':'نقد '+secCurLabel()}</span></div>
     ${(received!=null && changeDue!=null)? `
     <div style="display:flex; justify-content:space-between; font-size:${fs};"><span>المقبوض</span><span class="num">${fmt(received)}</span></div>
@@ -5087,6 +5247,7 @@ async function openCashDrawerViaBluetooth(){
   }catch(e){ console.error('Bluetooth cash drawer kick failed', e && e.message); }
 }
 function openCashMovementModal(type, currency, shift){
+  if(!shift && denyIfNo('cash_moves','الإضافة والسحب من الصندوق')) return;
   shift = shift || currentUserShift();
   if(!shift){ toast('لا يوجد صندوق مفتوح لتعدّل عليه'); return; }
   const wrap = document.createElement('div');
@@ -5201,13 +5362,17 @@ function journalEntriesForRange(from, to){
     const cust = DB.customers.find(c=>c.id===i.customerId);
     const total = (i.items||[]).reduce((s,it)=>s+(Number(it.total)||0),0) - (Number(i.discount)||0);
     const isPos = i.docType==='بيع نقطة بيع (POS)';
+    const onAcc = isPos && posIsOnAccount(i);
     let usd = total, lbp = 0;
     if(isPos){
+      posCreditReturnEntries(i).forEach(r=>{ if(r.date>=from && r.date<=to) rows.push({date:r.date, createdAt:r.createdAt, type:'مرتجع على الحساب', party:(cust?cust.name:'—')+' — فاتورة #'+i.number, usd:-r.amountUSD, lbp:0, nav:null}); });
+    }
+    if(isPos && !onAcc){
       // فاتورة POS بتحمل المبلغ الحقيقي مباشرة (بدل ما نكرره بسطر إيصال منفصل) — منحدد عملتها من الإيصال المرتبط
       const isLBP = posSaleCurrency(i)==='LBP';
       if(isLBP){ lbp = total * (i.exchangeRate || DB.settings.defaultExchangeRate || 90000); usd = 0; }
     }
-    rows.push({date:i.date, createdAt:i.createdAt||0, type:i.docType||'فاتورة', party:cust?cust.name:'—', usd, lbp,
+    rows.push({date:i.date, createdAt:i.createdAt||0, type:onAcc? 'بيع POS على الحساب (دين)' : (i.docType||'فاتورة'), party:cust?cust.name:'—', usd, lbp,
       nav: isPos? null : `#/invoice/${i.id}`, reprintPosId: isPos? i.id : null, cashierUsername: i.cashierUsername||''});
   });
   DB.purchaseInvoices.filter(i=>!i.deleted && i.date>=from && i.date<=to).forEach(i=>{
@@ -5289,7 +5454,7 @@ function reprintPosInvoice(invId){
   const totalUSD = (inv.items||[]).reduce((s,it)=>s+(Number(it.total)||0),0) - (Number(inv.discount)||0);
   // نحدد عملة الدفع من إيصال القبض المرتبط (إذا لقيناه)، وإلا منفترض دولار
   const receipt = DB.receipts.find(r=>(r.details||'').includes('#'+inv.number));
-  const currency = receipt && /ل\.ل|SECOND|[A-Z]{3}/.test(receipt.method||'') && !/\$/.test(receipt.method||'') ? 'LBP' : 'USD';
+  const currency = posIsOnAccount(inv) ? 'CREDIT' : (receipt && /ل\.ل|SECOND|[A-Z]{3}/.test(receipt.method||'') && !/\$/.test(receipt.method||'') ? 'LBP' : 'USD');
   printPosReceipt(inv, currency, totalUSD, rate, customerLabel, null, null);
 }
 /* ============================= التقارير ============================= */
@@ -5300,7 +5465,7 @@ function reportsView(qs){
   const rows = journalEntriesForRange(from, to);
   const salesGross = DB.invoices.filter(i=>!i.deleted && i.date>=from && i.date<=to && i.docType==='بيع نقطة بيع (POS)')
     .reduce((s,i)=>s + ((i.items||[]).reduce((s2,it)=>s2+(Number(it.total)||0),0) - (Number(i.discount)||0)), 0);
-  const returnsTotal = posRefundReceiptsInRange(from, to).reduce((s,r)=>s+Math.abs(receiptAmountUSD(r)),0);
+  const returnsTotal = posRefundReceiptsInRange(from, to).reduce((s,r)=>s+Math.abs(receiptAmountUSD(r)),0) + posCreditReturnsInRange(from, to);
   const salesTotal = salesGross - returnsTotal;
   const invoicesTotal = rows.filter(r=>r.nav && r.nav.includes('/invoice/')).reduce((s,r)=>s+r.usd,0) + salesTotal;
   const receiptsUSD = rows.filter(r=>String(r.type).includes('إيصال قبض')).reduce((s,r)=>s+r.usd,0);
@@ -5370,8 +5535,8 @@ function warehouseHubView(){
   return `
   ${auto? `<div class="stats">
     <div class="stat"><div class="k">عدد الأصناف</div><div class="v">${DB.warehouseItems.length}</div></div>
-    <div class="stat"><div class="k">قيمة المخزون (تكلفة شامل الضريبة)</div><div class="v">${fmtMoney(stockValue)}</div></div>
-    <div class="stat"><div class="k">قيمة المخزون (بسعر البيع)</div><div class="v">${fmtMoney(saleValue)}</div></div>
+    <div class="stat" data-perm="stock_value"><div class="k">قيمة المخزون (تكلفة شامل الضريبة)</div><div class="v">${fmtMoney(stockValue)}</div></div>
+    <div class="stat" data-perm="stock_value"><div class="k">قيمة المخزون (بسعر البيع)</div><div class="v">${fmtMoney(saleValue)}</div></div>
   </div>` : ''}
   <div class="card">
     <h2><span class="dot"></span> المستودع</h2>
@@ -5477,6 +5642,7 @@ function openWipeWarehouseModal(){
 function warehouseItemTable(items, isSearch){
   if(!items.length) return `<div class="empty"><div class="big">${isSearch? 'لا توجد نتائج مطابقة' : 'لا توجد منتجات في المستودع بعد'}</div></div>`;
   if(isAutoShop()){
+    const showCost = hasPermission('cost_prices');
     const rowsHtml = items.slice(0,500).map(it=>{
       const stock = fastStock(it.id);
       const spec = [it.sku, it.tireSize, it.amperage, it.viscosity, it.oilType && !it.viscosity ? it.oilType : ''].filter(Boolean).filter(x=>!String(it.name||'').includes(x)).join(' • ');
@@ -5488,12 +5654,12 @@ function warehouseItemTable(items, isSearch){
         <td><span style="font-size:12px; font-weight:700; padding:2px 8px; border-radius:999px; background:${avail?'#e6f4ea':'#fbe9e7'}; color:${avail?'var(--credit)':'var(--debit)'};">${itemStatusLabel(it.status)}</span></td>
         <td class="num">${escapeHtml(it.mfgYear||'—')}</td>
         <td class="${stock<0?'bal-pos':'bal-zero'}">${fmtQty(stock)} ${escapeHtml(it.uom||'')}</td>
-        <td class="num">${cv!==null? fmtMoney(cv) : '—'}</td>
+        ${showCost? `<td class="num">${cv!==null? fmtMoney(cv) : '—'}</td>` : ''}
         <td class="num"><b>${it.price? fmtMoney(it.price) : '—'}</b></td>
       </tr>`;
     }).join('');
     return `${items.length>500? `<div style="font-size:12px; color:var(--ink-soft); margin-bottom:6px;">تُعرض أول 500 نتيجة من ${items.length} — دقّق البحث</div>`:''}
-    <div class="table-scroll"><table><thead><tr><th>المنتج</th><th>الماركة</th><th>الحالة</th><th>سنة الصنع</th><th>الكمية</th><th>التكلفة شامل الضريبة</th><th>سعر البيع</th></tr></thead><tbody>${rowsHtml}</tbody></table></div>`;
+    <div class="table-scroll"><table><thead><tr><th>المنتج</th><th>الماركة</th><th>الحالة</th><th>سنة الصنع</th><th>الكمية</th>${showCost?'<th>التكلفة شامل الضريبة</th>':''}<th>سعر البيع</th></tr></thead><tbody>${rowsHtml}</tbody></table></div>`;
   }
   const rowsHtml = items.map(it=>{
     const stock = fastStock(it.id);
@@ -5524,6 +5690,7 @@ function warehouseItemView(item){
   const expiring = expDays!==null && expDays<=itemExpiryAlertDays(item);
   const sup = item.supplierId ? DB.suppliers.find(s=>s.id===item.supplierId) : null;
   const cvI = itemCostWithVat(item);
+  const COST_ROWS = ['سعر التكلفة','TVA','التكلفة شامل الضريبة','هامش الربح','الربح للوحدة'];
   const details = isAutoShop() ? [
     ['كود المنتج (SKU)', item.sku], ['الفئة', item.category], ['الشركة المصنعة', item.brand], ['بلد المنشأ', item.madeIn],
     ['المقاس', item.tireSize], ['السعة والأمبير', item.amperage], ['نوع الزيت', item.oilType], ['اللزوجة', item.viscosity],
@@ -5535,7 +5702,7 @@ function warehouseItemView(item){
     ['سعر البيع', item.price? fmtMoney(item.price) : ''],
     ['الربح للوحدة', (Number(item.price) && cvI) ? fmtMoney(Number(item.price)-cvI) : ''],
     ['الحالة', itemStatusLabel(item.status)]
-  ].filter(r=>r[1]!==undefined && r[1]!==null && r[1]!=='') : [];
+  ].filter(r=>r[1]!==undefined && r[1]!==null && r[1]!=='').filter(r=> hasPermission('cost_prices') || !COST_ROWS.includes(r[0])) : [];
   const rechargeDue = false;
   return `
   <div class="card">
@@ -5619,6 +5786,7 @@ function warehouseInventoryPrintView(){
   const items = warehouseFilteredByCat().slice().sort((a,b)=>String(a.name||'').localeCompare(String(b.name||''),'ar'));
   const catLabel = auto && _whCatFilter ? (_whCatFilter==='other' ? 'أخرى' : ((AUTO_CATEGORIES.find(c=>c.key===_whCatFilter)||{}).label||'')) : '';
   let totCost = 0, totSale = 0;
+  const showCost = hasPermission('cost_prices'), showValue = hasPermission('stock_value');
   const rows = items.map((it,idx)=>{
     const stock = fastStock(it.id);
     if(!auto){
@@ -5640,12 +5808,12 @@ function warehouseInventoryPrintView(){
       <td>${escapeHtml(it.category||'—')}</td>
       <td class="num">${escapeHtml(it.mfgYear||'—')}</td>
       <td class="num">${fmtQty(stock)} <span style="font-family:'Cairo',sans-serif; font-size:.9em;">${escapeHtml(it.uom||'')}</span></td>
-      <td class="num">${cv!==null? fmtMoney(cv) : '—'}</td>
+      ${showCost? `<td class="num">${cv!==null? fmtMoney(cv) : '—'}</td>` : ''}
       <td class="num">${it.price? fmtMoney(it.price) : '—'}</td>
     </tr>`;
   }).join('');
   const head = auto
-    ? `<th class="inv-idx">#</th><th>اسم المنتج</th><th>الماركة</th><th>الفئة</th><th>سنة الصنع</th><th>الكمية الحالية</th><th>التكلفة شامل الضريبة</th><th>سعر البيع</th>`
+    ? `<th class="inv-idx">#</th><th>اسم المنتج</th><th>الماركة</th><th>الفئة</th><th>سنة الصنع</th><th>الكمية الحالية</th>${showCost?'<th>التكلفة شامل الضريبة</th>':''}<th>سعر البيع</th>`
     : `<th class="inv-idx">#</th><th>اسم المنتج</th><th>الماركة</th><th>القسم</th><th>الكمية الحالية</th><th>سعر البيع</th>`;
   return `
   <div class="doc-actions no-print">
@@ -5660,7 +5828,7 @@ function warehouseInventoryPrintView(){
     </div>
     <div class="table-scroll">
     <table class="inv-table"><thead><tr>${head}</tr></thead><tbody>${rows}</tbody>
-    ${auto? `<tfoot><tr style="font-weight:800;"><td class="inv-idx"></td><td colspan="5">قيمة المخزون</td><td class="num">${fmtMoney(totCost)}</td><td class="num">${fmtMoney(totSale)}</td></tr></tfoot>` : ''}
+    ${(auto && showValue)? `<tfoot><tr style="font-weight:800;"><td class="inv-idx"></td><td colspan="5">قيمة المخزون</td>${showCost? `<td class="num">${fmtMoney(totCost)}</td>` : ''}<td class="num">${fmtMoney(totSale)}</td></tr></tfoot>` : ''}
     </table>
     </div>
     <div class="sig">التوقيع</div>
@@ -6578,9 +6746,12 @@ function usersTableHtml(){
     isSuperuserSession || String(u.username||'').toUpperCase() !== 'SUPERADMIN');
   const rows = users.map(u=>{
     const priv = isPrivilegedUser(u);
-    const permsText = priv ? 'كل الصلاحيات' : ((u.permissions||[]).map(p=>{
-      const m = PERMISSION_MODULES.find(x=>x.key===p); return m? m.label : p;
-    }).join('، ') || '— بلا صلاحيات —');
+    const permsText = priv ? 'كل الصلاحيات' : (()=>{
+      const eff = effectivePermissions(u);
+      const mods = PERMISSION_MODULES.filter(m=>eff.includes(m.key)).map(m=>m.label).join('، ');
+      const nx = PERMISSION_EXTRAS.filter(m=>eff.includes(m.key)).length;
+      return (mods || '— بلا صلاحيات —') + (nx? ` <span style="color:var(--ink-soft); font-size:12px;">+ ${nx} صلاحية تفصيلية</span>` : '');
+    })();
     const totpCell = u.totpEnabled
       ? `✅ مفعّل ${isSuperuserSession? `<button class="btn btn-sm btn-danger" data-del-2fa="${u.id}" style="margin-right:6px;">🗑 حذف 2FA</button>` : ''}`
       : `❌ غير مفعّل <button class="btn btn-sm" data-setup-2fa="${u.id}" style="margin-right:6px;">🔐 إعداد 2FA</button>`;
@@ -7190,6 +7361,7 @@ const DOC_KIND_MAP = {
     btn.addEventListener('click', async ()=>{
       const kind = btn.getAttribute('data-doc-kind');
       const cfg = DOC_KIND_MAP[kind];
+      if(denyIfNo('delete','الحذف')) return;
       if(!confirm(`هل أنت متأكد أنك تريد حذف ${cfg.label}؟ ستنتقل إلى سلة المحذوفات ويمكنك استرجاعها من هناك.`)) return;
       const id = btn.getAttribute('data-del-doc');
       const item = DB[cfg.arr].find(x=>x.id===id);
@@ -7298,12 +7470,14 @@ function openUserModal(user){
   const passwordLocked = isSuperuser && !isSelfEditing;
   const wrap = document.createElement('div');
   wrap.className='modal-bg';
-  const permsHtml = PERMISSION_MODULES.map(m=>{
-    const checked = user && (user.permissions||[]).includes(m.key) ? 'checked' : '';
-    return `<label style="display:flex; align-items:center; gap:8px; margin-bottom:8px; cursor:pointer; font-weight:600; font-size:13.5px;">
-      <input type="checkbox" class="user-perm-chk" value="${m.key}" ${checked} style="width:auto;"> ${m.label}
+  const effPerms = user ? effectivePermissions(user) : [];
+  const permRow = (m, small)=>`<label style="display:flex; align-items:center; gap:8px; margin-bottom:${small?6:8}px; cursor:pointer; font-weight:${small?500:600}; font-size:${small?12.5:13.5}px;">
+      <input type="checkbox" class="user-perm-chk" value="${m.key}" ${effPerms.includes(m.key)?'checked':''} style="width:auto;"> ${m.label}
     </label>`;
-  }).join('');
+  const groups = [...new Set(PERMISSION_EXTRAS.map(x=>x.group))];
+  const permsHtml = PERMISSION_MODULES.map(m=>permRow(m)).join('')
+    + `<div style="border-top:1px dashed var(--line); margin:10px 0 8px; padding-top:8px; font-weight:800; font-size:13px;">صلاحيات تفصيلية</div>`
+    + groups.map(g=>`<div style="margin-bottom:8px;"><div style="font-size:12px; color:var(--ink-soft); font-weight:700; margin-bottom:4px;">${g}</div>${PERMISSION_EXTRAS.filter(x=>x.group===g).map(m=>permRow(m,true)).join('')}</div>`).join('');
   wrap.innerHTML = `<div class="modal">
     <h3>${isNew? 'مستخدم جديد' : 'تعديل مستخدم'}</h3>
     <div class="field"><label>اسم المستخدم *</label><input type="text" id="um_username" value="${user?escapeHtml(user.username):''}"></div>
@@ -7337,7 +7511,7 @@ function openUserModal(user){
     const dup = (DB.settings.users||[]).find(u=> u.username===username && (!user || u.id!==user.id));
     if(dup){ toast('اسم المستخدم هذا مستخدم لشخص آخر'); return; }
     if(isNew){
-      const perms = Array.from(wrap.querySelectorAll('.user-perm-chk:checked')).map(c=>c.value);
+      const perms = [...Array.from(wrap.querySelectorAll('.user-perm-chk:checked')).map(c=>c.value), PERMS_V2];
       const nu = {id:uid(), username, password, role:'custom', permissions:perms};
       DB.settings.users = [...(DB.settings.users||[]), nu];
     } else {
@@ -7345,7 +7519,7 @@ function openUserModal(user){
       const passwordChanged = user.password !== password;
       user.username = username; user.password = password;
       if(!isPriv){
-        user.permissions = Array.from(wrap.querySelectorAll('.user-perm-chk:checked')).map(c=>c.value);
+        user.permissions = [...Array.from(wrap.querySelectorAll('.user-perm-chk:checked')).map(c=>c.value), PERMS_V2];
       }
       const isSelf = currentUser && currentUser.id===user.id;
       if(isSelf) currentUser = user;
@@ -7663,6 +7837,7 @@ function openLogoutModal(){
   });
 }
 function openDeleteCustomerModal(cust){
+  if(denyIfNo('delete','الحذف')) return;
   if(!cust) return;
   const invCount = DB.invoices.filter(i=>i.customerId===cust.id).length;
   const recCount = DB.receipts.filter(r=>r.customerId===cust.id).length;
@@ -7766,6 +7941,7 @@ function openPartyModal(kind, party){
   });
 }
 function openDeletePartyModal(kind, party){
+  if(denyIfNo('delete','الحذف')) return;
   if(!party) return;
   const cfg = PARTY_CFG[kind];
   const counts = cfg.docs.map(d=>({label:d.label, n:DB[d.arr].filter(x=>x[d.field]===party.id).length}));
@@ -7837,11 +8013,13 @@ function openAddItemChooser(onPick){
 // زر «إضافة منتج»: في محل الإطارات يسأل عن النوع أولاً
 function startAddWarehouseItem(presetBarcode, opts){
   opts = opts || {};
+  if(!opts.onSaved && denyIfNo('edit_products','إضافة وتعديل المنتجات')) return;
   if(!isAutoShop()) return openWarehouseItemModal(null, presetBarcode, opts);
   if(opts.category!==undefined) return openWarehouseItemModal(null, presetBarcode, opts);
   openAddItemChooser(cat=>openWarehouseItemModal(null, presetBarcode, Object.assign({}, opts, {category:cat})));
 }
 function openWarehouseItemModal(item, presetBarcode, opts){
+  if(!(opts && opts.onSaved) && denyIfNo('edit_products','إضافة وتعديل المنتجات')) return;
   opts = opts || {};
   const isNew = !item;
   const auto = isAutoShop();
@@ -7943,16 +8121,16 @@ function openWarehouseItemModal(item, presetBarcode, opts){
     </div>
 
     <div style="background:var(--paper); border:1px solid var(--line); border-radius:10px; padding:10px 12px; margin-bottom:12px;">
-      <div class="grid grid-3">
+      <div class="grid grid-3" ${hasPermission('cost_prices')?'':'style="display:none;"'}>
         <div class="field"><label>سعر التكلفة $</label><input type="number" step="0.01" id="wm_cost" class="num" value="${escapeHtml(v('costPrice', opts.costPrice!==undefined? opts.costPrice : ''))}"></div>
         <div class="field"><label>TVA %</label><input type="number" step="0.01" id="wm_vat" class="num" value="${escapeHtml(vatDefault)}"></div>
         <div class="field"><label>التكلفة شامل الضريبة $</label><input type="text" id="wm_cost_vat" class="num" readonly style="opacity:.85; font-weight:800;"></div>
       </div>
       <div class="grid grid-2">
-        <div class="field"><label>هامش الربح %</label><input type="number" step="0.01" id="wm_margin" class="num" value="${escapeHtml(v('margin'))}" placeholder="مثال: 25"></div>
+        <div class="field" ${hasPermission('cost_prices')?'':'style="display:none;"'}><label>هامش الربح %</label><input type="number" step="0.01" id="wm_margin" class="num" value="${escapeHtml(v('margin'))}" placeholder="مثال: 25"></div>
         <div class="field"><label>سعر البيع $ <span style="font-weight:500; font-size:11px; color:var(--ink-soft);">(يُحسب تلقائياً أو اكتبه بنفسك)</span></label><input type="number" step="0.01" id="wm_price" class="num" value="${item&&item.price?item.price:''}"></div>
       </div>
-      <div id="wm_price_hint" style="font-size:11.5px; color:var(--ink-soft);"></div>
+      <div id="wm_price_hint" style="font-size:11.5px; color:var(--ink-soft);${hasPermission('cost_prices')?'':' display:none;'}"></div>
     </div>
 
     <div class="grid grid-2">
@@ -8144,6 +8322,7 @@ function openWarehouseItemModal(item, presetBarcode, opts){
   });
 }
 function openDeleteWarehouseItemModal(item){
+  if(denyIfNo('delete','الحذف')) return;
   if(!item) return;
   const wrap = document.createElement('div');
   wrap.className='modal-bg';
