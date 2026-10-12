@@ -1874,6 +1874,13 @@ function importParseNumber(s){
 }
 async function loadPdfJs(){
   if(window.pdfjsLib) return window.pdfjsLib;
+  // نسخة حديثة: تقرأ أيضاً الأرقام المكتوبة داخل «خانات» الملف
+  const V6 = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@6.2.108/legacy/build/';
+  try{
+    const m = await import(V6+'pdf.min.mjs');
+    m.GlobalWorkerOptions.workerSrc = V6+'pdf.worker.min.mjs';
+    window.pdfjsLib = m; return m;
+  }catch(e){ console.warn('pdf.js v6 failed, falling back', e); }
   await new Promise((resolve, reject)=>{
     const sc = document.createElement('script');
     sc.src = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js';
@@ -1921,7 +1928,9 @@ async function pdfPageItems(page){
   try{
     const anns = await page.getAnnotations();
     anns.forEach(a=>{
-      const v = a.fieldValue!==undefined && a.fieldValue!==null ? a.fieldValue : (a.contentsObj && a.contentsObj.str) || '';
+      let v = a.fieldValue!==undefined && a.fieldValue!==null && String(a.fieldValue).trim()!=='' ? a.fieldValue : '';
+      if(v==='' && Array.isArray(a.textContent) && a.textContent.length) v = a.textContent.join(' ');   // نص الخانة المرسوم فقط
+      if(v==='') v = (a.contentsObj && a.contentsObj.str) || '';
       const s = Array.isArray(v) ? v.join(' ') : String(v||'');
       if(!s.trim() || !a.rect) return;
       const [x0,y0,x1,y1] = a.rect;
@@ -1940,6 +1949,19 @@ function groupLines(items, tol){
 }
 const isMoneyTok = s=>/\d/.test(s) && importParseNumber(s)!==null;
 const isUsdTok = s=>/\$/.test(s) || (/\d+[.,]\d{2}$/.test(String(s).replace(/\s/g,'')) && Math.abs(importParseNumber(s)) < 100000);
+// الكمية = الخانة اليسرى تحت أول كلمة «PCS» في البلوك (الخانة اليمنى هي WH Qty)
+function qtyUnderPcs(items, top, bottom){
+  const pcs = items.filter(t=>/^pcs$/i.test(t.s) && t.y <= top && t.y > bottom).sort((a,b)=>b.y-a.y);
+  if(!pcs.length) return undefined;
+  const p = pcs[0], next = pcs[1];
+  const floor = next ? next.y : p.y - 40;
+  const under = (q, lo)=>{ const qc = q.x + q.w/2;
+    return items.filter(t=> !/^pcs$/i.test(t.s) && isMoneyTok(t.s) && t.y < q.y + 1 && t.y > lo && (t.x + t.w/2) <= qc + 3 && (t.x + t.w/2) > qc - 160)
+      .sort((a,b)=> (b.y-a.y) || (a.x-b.x))[0]; };
+  // إن لم نقرأ الخانة الأولى نأخذ الخانة تحت «PCS» الثانية (نفس الكمية بصيغة 2.00)
+  const v = under(p, floor) || (next ? under(next, (pcs[2] ? pcs[2].y : next.y - 40)) : null);
+  return v ? importParseNumber(v.s) : undefined;
+}
 // الطريقة 1: من سطر العناوين (يسمح باختلاف بسيط في ارتفاع خانات العناوين)
 function findHeaderCols(items){
   const nameHead = items.find(t=>classifyImportHead(t.s)==='name');
@@ -1982,7 +2004,8 @@ function blocksFromHeader(items, hdr){
     const toks = items.filter(t=> t.y <= top && t.y > bottom && t.y < hdr.y - 4);
     const first = key=>{ const c = toks.filter(t=>colOf(t)===key && isMoneyTok(t.s)).sort((x,y)=> (y.y-x.y) || (x.x-y.x)); return c.length? importParseNumber(c[0].s) : null; };
     const extra = nameLines.filter(n=> n!==a && n.y <= top && n.y > bottom).map(n=>n.txt);
-    return {raw:a.txt, extra, qty:first('qty'), cost:first('cost'), retail:first('retail')};
+    const qp = qtyUnderPcs(items.filter(t=>t.y < hdr.y - 4), top + 6, bottom);
+    return {raw:a.txt, extra, qty: qp!==undefined ? qp : first('qty'), cost:first('cost'), retail:first('retail')};
   });
 }
 // الطريقة 2 (بدون عناوين — مثلاً إذا كانت العناوين صوراً): نعتمد على علامات كل منتج «TTC» و«PCS»
@@ -2004,7 +2027,9 @@ function blocksFromMarkers(items){
     const retail = usd.length>1 ? importParseNumber(usd[1].s) : null;
     // الكمية: أول رقم تحت أول «PCS» في هذا البلوك
     let qty = null;
-    if(qtyX!==null){
+    const qp = qtyUnderPcs(items, top, bottom);
+    if(qp!==undefined) qty = qp;
+    else if(qtyX!==null){
       const blockPcs = pcs.filter(p=> p.y <= top && p.y > bottom).sort((a,b)=>b.y-a.y)[0];
       const below = items.filter(t=> isMoneyTok(t.s) && Math.abs((t.x+t.w/2) - qtyX) < 70 && t.y <= (blockPcs? blockPcs.y + 2 : top) && t.y > bottom && t.x + t.w/2 < costX - 5)
         .sort((a,b)=> (b.y-a.y));
@@ -2132,7 +2157,8 @@ function openImportStockModal(){
           || DB.warehouseItems.find(w=>normalizeSearchText(w.name)===normalizeSearchText(r.name));
         return {...info, name:r.name, sku:r.sku||'', barcode:r.barcode||'', qty:r.qty||0, retail:r.retail, cost:r.cost, on:true, existingId: ex? ex.id : null};
       });
-      status('✅ تمت قراءة '+parsed.length+' منتج — راجع الجدول ثم اضغط IMPORT', 'var(--credit)');
+      status('✅ تمت قراءة '+parsed.length+' منتج — راجع الجدول ثم اضغط IMPORT'
+        + (_lastPdfSample? `<details style="margin-top:6px;"><summary style="cursor:pointer; color:var(--ink-soft); font-size:12px;">إذا كانت قيمة خاطئة: تفاصيل للدعم الفني (صوّرها وأرسلها)</summary><pre style="direction:ltr; text-align:left; font-size:11px; max-height:240px; overflow:auto; background:var(--paper); color:var(--ink); padding:8px; border-radius:6px;">${escapeHtml(_lastPdfSample)}</pre></details>` : ''), 'var(--credit)');
       drawPreview();
     }catch(e){
       console.error('import pdf failed', e);
