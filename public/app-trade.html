@@ -2229,6 +2229,7 @@ async function extractStockRowsFromPdf(file){
     if(!useful){ const mb = blocksFromMarkers(items); if(mb.length){ blocks = mb; usedMarkers = true; } }
     blocks.forEach(b=>out.push(b));
   }
+  try{ await doc.destroy(); }catch(e){}   // تحرير الذاكرة — الملف لا يُحفظ في أي مكان
   if(!totalText) throw new Error('الملف لا يحتوي نصاً قابلاً للقراءة (قد يكون صورة ممسوحة بالسكانر)');
   if(!out.length) throw new Error('لم نتمكّن من التعرّف على جدول المنتجات في الملف'+(sawHeader?'':' (لم نجد سطر العناوين ولا علامات TTC/PCS)'));
   const rows = [];
@@ -2258,6 +2259,7 @@ function openImportStockModal(){
     <h3>📥 استيراد مخزون قديم (Import Old Stock)</h3>
     <p style="font-size:12.5px; color:var(--ink-soft); line-height:1.7;">ارفع ملف PDF بجرد المخزون. يتعرّف البرنامج على الأعمدة من عناوينها: <b>Item Code | Bar Code</b> (رمز الصنف والباركود واسم المنتج)، <b>Shop Qty</b> (الكمية — أول خانة)، <b>Cost</b> (التكلفة شامل الضريبة — خانة TTC)، <b>سعر المفرق دولار</b> (سعر البيع). باقي الأعمدة تُتجاهل. ثم يحلّل اسم كل منتج ليعبّئ الفئة والماركة والمقاس واللزوجة والأمبير وبلد وسنة الصنع — راجعها قبل الاستيراد.</p>
     <input type="file" id="imp_file" accept="application/pdf,.pdf">
+    <div style="font-size:11.5px; color:var(--ink-soft); margin-top:4px;">📌 الملف يُقرأ على جهازك فقط ولا يُرفع أو يُخزَّن — يُمسح تلقائياً بعد الاستيراد أو الإلغاء، ولا يأخذ أي مساحة.</div>
     <div id="imp_status" style="font-size:13px; margin:8px 0; min-height:18px;"></div>
     <div id="imp_preview"></div>
     <div class="row modal-sticky-actions">
@@ -2267,8 +2269,10 @@ function openImportStockModal(){
   </div>`;
   document.body.appendChild(wrap);
   const $ = s=>wrap.querySelector(s);
-  $('#imp_cancel').addEventListener('click', ()=>wrap.remove());
   let parsed = [];
+  // إغلاق النافذة: نمسح الملف والبيانات المؤقتة من الذاكرة (لا شيء منه يُحفظ في البرنامج أو السحابة)
+  const discardImport = ()=>{ try{ $('#imp_file').value = ''; }catch(e){} parsed = []; _lastPdfSample = ''; wrap.remove(); };
+  $('#imp_cancel').addEventListener('click', discardImport);
   const status = (msg, color)=>{ $('#imp_status').innerHTML = msg; $('#imp_status').style.color = color||'var(--ink)'; };
   const catOpts = v=>`<option value="">— بدون —</option>${AUTO_CATEGORIES.map(c=>`<option value="${escapeHtml(c.label)}" ${v===c.label?'selected':''}>${c.label}</option>`).join('')}`;
   function drawPreview(){
@@ -2368,7 +2372,7 @@ function openImportStockModal(){
     Object.keys(lists).forEach(k=>{ pl[k] = [...lists[k]]; });
     DB.settings.productLists = pl;
     const res = await Promise.all([save(KEYS.warehouseItems, DB.warehouseItems), save(KEYS.stockIns, DB.stockIns), save(KEYS.stockOuts, DB.stockOuts), save(KEYS.settings, DB.settings)]);
-    wrap.remove();
+    discardImport();
     toast(res.every(Boolean) ? `تم الاستيراد: ${created} منتج جديد${merged? ' و'+merged+' منتج موجود أُضيفت كميته':''} ✅` : 'حدث خطأ أثناء الحفظ');
     go('#/warehouse');
   });
