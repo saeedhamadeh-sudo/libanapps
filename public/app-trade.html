@@ -580,11 +580,17 @@ function supplierFromDb(row){
 function supplierToDb(s){
   return { id:s.id, name:s.name, account_number:s.accountNumber||null, phone:s.phone||null, created_at:s.createdAt||Date.now(), deleted:!!s.deleted, deleted_at:s.deletedAt||null };
 }
+// ضريبة الفاتورة (TVA) تُحفظ كسطر «meta» داخل items بدون عمود جديد — ويُنزع عند القراءة
+function splitDocMeta(items){ const arr = Array.isArray(items)? items : []; const m = arr.find(x=>x && x.__meta); return {items: arr.filter(x=>!(x && x.__meta)), meta: m? m.__meta : null}; }
 function purchaseInvoiceFromDb(row){
-  return { id:row.id, supplierId:row.supplier_id, number:row.number, date:row.date, docType:row.doc_type, exchangeRate:row.exchange_rate, items:row.items||[], discount:row.discount||0, createdAt:row.created_at||0, deleted:!!row.deleted, deletedAt:row.deleted_at||null, adminPurged:!!row.admin_purged, addToStock:!!row.add_to_stock, isReturn:!!row.is_return };
+  const sm = splitDocMeta(row.items);
+  return { vatEnabled: !!(sm.meta && sm.meta.vatEnabled), vatRate: sm.meta && sm.meta.vatRate!=null ? Number(sm.meta.vatRate) : undefined,
+    id:row.id, supplierId:row.supplier_id, number:row.number, date:row.date, docType:row.doc_type, exchangeRate:row.exchange_rate, items:sm.items, discount:row.discount||0, createdAt:row.created_at||0, deleted:!!row.deleted, deletedAt:row.deleted_at||null, adminPurged:!!row.admin_purged, addToStock:!!row.add_to_stock, isReturn:!!row.is_return };
 }
 function purchaseInvoiceToDb(inv){
-  return { id:inv.id, supplier_id:inv.supplierId||null, number:inv.number||null, date:inv.date||null, doc_type:inv.docType||null, exchange_rate:inv.exchangeRate||null, items:inv.items||[], discount:inv.discount||0, created_at:inv.createdAt||Date.now(), deleted:!!inv.deleted, deleted_at:inv.deletedAt||null, admin_purged:!!inv.adminPurged, add_to_stock:!!inv.addToStock, is_return:!!inv.isReturn };
+  const items = (inv.items||[]).filter(x=>!(x && x.__meta));
+  if(inv.vatEnabled) items.push({__meta:{vatEnabled:true, vatRate:Number(inv.vatRate)||0}});
+  return { id:inv.id, supplier_id:inv.supplierId||null, number:inv.number||null, date:inv.date||null, doc_type:inv.docType||null, exchange_rate:inv.exchangeRate||null, items, discount:inv.discount||0, created_at:inv.createdAt||Date.now(), deleted:!!inv.deleted, deleted_at:inv.deletedAt||null, admin_purged:!!inv.adminPurged, add_to_stock:!!inv.addToStock, is_return:!!inv.isReturn };
 }
 function paymentVoucherFromDb(row){
   return { id:row.id, supplierId:row.supplier_id, number:row.number, date:row.date, amount:row.amount||0, method:row.method||'', details:row.details||'', createdAt:row.created_at||0, deleted:!!row.deleted, deletedAt:row.deleted_at||null, adminPurged:!!row.admin_purged };
@@ -1250,10 +1256,15 @@ function customerBalance(customerId){
 function computeInvoiceTotal(inv){
   const subtotal = (inv.items||[]).reduce((s,it)=>s+(Number(it.total)||0),0);
   const discount = Number(inv.discount)||0;
-  const totalUSD = Math.max(subtotal - discount, 0);
+  const net = Math.max(subtotal - discount, 0);
+  // TVA على مستوى الفاتورة (فاتورة المشتريات): الأسعار المدخلة بدون ضريبة، والضريبة تُضاف على الصافي
+  const vatRate = inv.vatEnabled ? (Number(inv.vatRate)||0) : 0;
+  const vatAmount = vatRate ? Math.round(net*vatRate)/100 : 0;
+  const totalUSD = Math.round((net + vatAmount)*100)/100;
   const totalLBP = totalUSD * (Number(inv.exchangeRate)||DB.settings.defaultExchangeRate||90000);
-  return {subtotal, discount, totalUSD, totalLBP};
+  return {subtotal, discount, net, vatRate, vatAmount, totalUSD, totalLBP};
 }
+function purchaseDocVat(d){ return d && d.vatEnabled ? (Number(d.vatRate)||0) : 0; }
 function nextInvoiceNumber(){
   const start = Number.isFinite(DB.settings.invoiceStart) ? DB.settings.invoiceStart : 0;
   const nums = DB.invoices.map(i=>parseInt(i.number)||0);
@@ -3284,7 +3295,7 @@ function bindLoginEvents(){
 
 function routeRequiredPermission(routeKey){
   const map = {
-    pos:'pos', journal:'reports', reports:'reports',
+    pos:'pos', journal:'reports', reports:'reports', 'product-sales':'reports',
     customers:'customers', customer:'customers', invoice:'customers', receipt:'customers', statement:'customers',
     suppliers:'suppliers', supplier:'suppliers', purchase:'suppliers', voucher:'suppliers', 'supplier-statement':'suppliers',
     warehouse:'warehouse', 'warehouse-print':'warehouse', 'low-stock':'warehouse', 'warehouse-item':'warehouse', stockout:'warehouse', stockin:'warehouse',
@@ -3438,6 +3449,9 @@ function render(){
   } else if(parts[0]==='journal'){
     const qs = new URLSearchParams(location.hash.split('?')[1]||'');
     html += crumbs([['الرئيسية','#/'],['اليوميات',null]]) + journalView(qs);
+  } else if(parts[0]==='product-sales'){
+    const qs = new URLSearchParams(location.hash.split('?')[1]||'');
+    html += crumbs([['الرئيسية','#/'],['تقرير مبيعات المنتجات',null]]) + productSalesView(qs);
   } else if(parts[0]==='reports'){
     const qs = new URLSearchParams(location.hash.split('?')[1]||'');
     html += crumbs([['الرئيسية','#/'],['التقارير',null]]) + reportsView(qs);
@@ -3606,6 +3620,12 @@ function hubView(){
       <div class="hub-title">اليوميات</div>
       <div class="hub-sub">كل حركات اليوم في مكان واحد</div>
       <div class="hub-amt" style="color:var(--steel)">فواتير، إيصالات، سندات</div>
+    </div>`},
+    {key:'productSales', perm:'reports', html:`<div class="hub-card" data-nav="#/product-sales">
+      <div class="hub-icon">📈</div>
+      <div class="hub-title">تقرير مبيعات المنتجات</div>
+      <div class="hub-sub">كم بعت من كل منتج خلال فترة</div>
+      <div class="hub-amt" style="color:var(--steel)">لتعرف شو تجدّد وشو تخفّف</div>
     </div>`},
     {key:'reports', perm:'reports', html:`<div class="hub-card" data-nav="#/reports">
       <div class="hub-icon">📊</div>
@@ -5691,7 +5711,7 @@ function journalEntriesForRange(from, to){
   });
   DB.purchaseInvoices.filter(i=>!i.deleted && i.date>=from && i.date<=to).forEach(i=>{
     const sup = DB.suppliers.find(s=>s.id===i.supplierId);
-    const total = (i.items||[]).reduce((s,it)=>s+(Number(it.total)||0),0) - (Number(i.discount)||0);
+    const total = computeInvoiceTotal(i).totalUSD;
     rows.push({date:i.date, createdAt:i.createdAt||0, type:i.isReturn?'مرتجع مشتريات':'فاتورة مشتريات', party:sup?sup.name:'—', usd:i.isReturn? total : -total, lbp:0, nav:null});
   });
   DB.receipts.filter(r=>!r.deleted && r.date>=from && r.date<=to && !isPosReceipt(r)).forEach(r=>{
@@ -5770,6 +5790,133 @@ function reprintPosInvoice(invId){
   const receipt = DB.receipts.find(r=>(r.details||'').includes('#'+inv.number));
   const currency = posIsOnAccount(inv) ? 'CREDIT' : (receipt && /ل\.ل|SECOND|[A-Z]{3}/.test(receipt.method||'') && !/\$/.test(receipt.method||'') ? 'LBP' : 'USD');
   printPosReceipt(inv, currency, totalUSD, rate, customerLabel, null, null);
+}
+/* ============================= تقرير مبيعات المنتجات ============================= */
+// نفس مرجع todayISO() الذي تُسجَّل به الفواتير
+function isoDaysAgo(n){ const d = new Date(todayISO()+'T00:00:00Z'); d.setUTCDate(d.getUTCDate()-n); return d.toISOString().slice(0,10); }
+function monthStartISO(){ return todayISO().slice(0,8)+'01'; }
+// كميات المبيعات الصافية لكل منتج خلال فترة (فواتير المبيعات + POS، بعد طرح المرتجعات)
+function productSalesStats(from, to){
+  const m = new Map();
+  DB.invoices.forEach(inv=>{
+    if(inv.deleted || !inv.date || inv.date<from || inv.date>to) return;
+    const f = posDiscFactor(inv);
+    (inv.items||[]).forEach(it=>{
+      if(!it.productId) return;
+      const q = Number(it.qty)||0, r = Math.min(invItemReturnedQty(it), q), net = q - r;
+      const e = m.get(it.productId) || {sold:0, returned:0, net:0, value:0, invoices:new Set(), last:''};
+      e.sold += q; e.returned += r; e.net += net;
+      e.value += net * (Number(it.price)||0) * f;
+      e.invoices.add(inv.id);
+      if(inv.date > e.last) e.last = inv.date;
+      m.set(it.productId, e);
+    });
+  });
+  return m;
+}
+function productSalesView(qs){
+  const from = qs.get('from') || monthStartISO();
+  const to = qs.get('to') || todayISO();
+  const ids = (qs.get('ids')||'').split(',').filter(Boolean).filter(id=>DB.warehouseItems.some(w=>w.id===id));
+  const showUnsold = qs.get('unsold')==='1';
+  const stats = productSalesStats(from, to);
+  const days = Math.max(1, Math.round((new Date(to) - new Date(from))/864e5) + 1);
+  let items = ids.length ? ids.map(id=>DB.warehouseItems.find(w=>w.id===id))
+    : DB.warehouseItems.filter(w=> stats.has(w.id) || showUnsold);
+  const net = w=> (stats.get(w.id)||{net:0}).net;
+  items = items.slice().sort((a,b)=> (net(b)-net(a)) || String(a.name||'').localeCompare(String(b.name||''),'ar'));
+  const totQty = items.reduce((s,w)=>s+net(w),0);
+  const totVal = items.reduce((s,w)=>s+((stats.get(w.id)||{value:0}).value),0);
+  const quick = [['اليوم', todayISO(), todayISO()], ['آخر 7 أيام', isoDaysAgo(6), todayISO()], ['هذا الشهر', monthStartISO(), todayISO()],
+    ['آخر 30 يوم', isoDaysAgo(29), todayISO()], ['آخر 3 أشهر', isoDaysAgo(89), todayISO()], ['هذه السنة', todayISO().slice(0,4)+'-01-01', todayISO()]];
+  const rows = items.map((w,i)=>{
+    const e = stats.get(w.id) || {sold:0, returned:0, net:0, value:0, invoices:new Set(), last:''};
+    const svc = isServiceItem(w);
+    const stock = svc ? null : fastStock(w.id);
+    const perDay = e.net/days;
+    const cover = (stock===null || perDay<=0) ? null : Math.floor(stock/perDay);
+    const coverTxt = stock===null ? '—' : (perDay<=0 ? (stock>0? 'لا مبيع' : '—') : (cover<=0? '<b style="color:var(--debit);">نفد</b>' : (cover>365? 'أكثر من <span class="num">365</span> يوم' : '<span class="num">'+cover+'</span> يوم')));
+    return `<tr>
+      <td class="num inv-idx">${i+1}</td>
+      <td><span class="bidi"><b>${escapeHtml(w.name)}</b></span>${w.category? `<div style="font-size:11.5px; color:var(--ink-soft);">${escapeHtml(w.category)}</div>`:''}</td>
+      <td class="num" style="font-size:16px; font-weight:800; color:${e.net>0?'var(--credit)':'var(--ink-soft)'};">${fmtQty(e.net)}</td>
+      <td class="num">${e.returned? fmtQty(e.returned) : '—'}</td>
+      <td class="num">${e.invoices.size||'—'}</td>
+      <td class="num">${e.value? fmtMoney(e.value) : '—'}</td>
+      <td class="num">${svc? '🛠 خدمة' : `<span style="color:${stock<=0?'var(--debit)':'inherit'};">${fmtQty(stock)}</span>`}</td>
+      <td style="white-space:nowrap;">${coverTxt}</td>
+      <td class="num">${e.last? fmtDate(e.last) : '—'}</td>
+    </tr>`;
+  }).join('');
+  return `
+  <div class="card no-print">
+    <h2><span class="dot"></span> 📈 تقرير مبيعات المنتجات</h2>
+    <div class="grid grid-2">
+      <div class="field"><label>من تاريخ</label><input type="date" id="ps_from" value="${from}"></div>
+      <div class="field"><label>إلى تاريخ</label><input type="date" id="ps_to" value="${to}"></div>
+    </div>
+    <div style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:12px;">
+      ${quick.map(q=>`<button type="button" class="btn btn-sm ${q[1]===from && q[2]===to?'btn-primary':''}" data-ps-range="${q[1]}|${q[2]}">${q[0]}</button>`).join('')}
+    </div>
+    <div class="field"><label>المنتجات (اتركها فارغة لترى كل المنتجات المباعة مرتّبة من الأكثر مبيعاً)</label>
+      <div style="position:relative;">
+        <input type="text" id="ps_search" autocomplete="off" placeholder="🔍 أضف منتجاً: اسم، ماركة، مقاس (2055516)، لزوجة، باركود...">
+        <div id="ps_results" class="it-presults" style="display:none;"></div>
+      </div>
+      <div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:8px;">
+        ${ids.map(id=>{ const w = DB.warehouseItems.find(x=>x.id===id); return `<span style="display:inline-flex; align-items:center; gap:6px; background:#fdf1e3; border:1px solid var(--line); border-radius:999px; padding:4px 10px; font-size:13px;"><span class="bidi">${escapeHtml(w.name)}</span><button type="button" class="btn btn-sm" data-ps-remove="${id}" style="padding:0 6px;">✕</button></span>`; }).join('')}
+        ${ids.length>1? `<button type="button" class="btn btn-sm" id="ps_clear">مسح الكل</button>` : ''}
+      </div>
+    </div>
+    ${!ids.length? `<label style="display:flex; align-items:center; gap:8px; font-size:13px; cursor:pointer;"><input type="checkbox" id="ps_unsold" ${showUnsold?'checked':''} style="width:auto;"> أظهر أيضاً المنتجات التي لم تُبع (لتعرف الراكد وتخفّف منه)</label>` : ''}
+  </div>
+  <div class="doc-actions no-print"><button class="btn btn-primary" onclick="printWithFilename('Product-Sales-${from}-${to}')">🖨 طباعة</button></div>
+  <div class="doc" style="box-shadow:none;">
+    ${docHead('تقرير مبيعات المنتجات من '+fmtDate(from)+' إلى '+fmtDate(to))}
+    <div class="doc-info">
+      <div class="r"><span>عدد الأيام:</span><b class="num">${days}</b></div>
+      <div class="r"><span>عدد المنتجات:</span><b class="num">${items.length}</b></div>
+      <div class="r"><span>مجموع الكميات المباعة:</span><b class="num">${fmtQty(totQty)}</b></div>
+      <div class="r"><span>قيمة المبيعات:</span><b class="num">${fmtMoney(totVal)}</b></div>
+    </div>
+    ${items.length? `<div class="table-scroll"><table class="inv-table">
+      <thead><tr><th class="inv-idx">#</th><th>المنتج</th><th>الكمية المباعة (صافي)</th><th>مرتجع</th><th>عدد الفواتير</th><th>قيمة المبيعات</th><th>الموجود حالياً</th><th>يكفي لمدة</th><th>آخر بيع</th></tr></thead>
+      <tbody>${rows}</tbody></table></div>
+      <div style="font-size:11.5px; color:var(--ink-soft); margin-top:8px;">«يكفي لمدة» = الموجود حالياً ÷ معدل البيع اليومي في هذه الفترة — كلما قلّ، جدّد المنتج أبكر.</div>`
+    : `<div class="empty"><div class="big">لا توجد مبيعات في هذه الفترة</div></div>`}
+  </div>`;
+}
+function bindProductSalesEvents(){
+  const fromEl = document.getElementById('ps_from'); if(!fromEl) return;
+  const qs = new URLSearchParams(location.hash.split('?')[1]||'');
+  const nav = (changes)=>{ const q = new URLSearchParams(qs.toString()); Object.entries(changes).forEach(([k,v])=>{ if(v===null || v==='') q.delete(k); else q.set(k,v); }); go('#/product-sales?'+q.toString()); };
+  const ids = (qs.get('ids')||'').split(',').filter(Boolean);
+  fromEl.addEventListener('change', ()=>nav({from:fromEl.value}));
+  document.getElementById('ps_to').addEventListener('change', e=>nav({to:e.target.value}));
+  document.querySelectorAll('[data-ps-range]').forEach(b=>b.addEventListener('click', ()=>{ const [a,z] = b.getAttribute('data-ps-range').split('|'); nav({from:a, to:z}); }));
+  document.querySelectorAll('[data-ps-remove]').forEach(b=>b.addEventListener('click', ()=>nav({ids: ids.filter(x=>x!==b.getAttribute('data-ps-remove')).join(',')})));
+  const clr = document.getElementById('ps_clear'); if(clr) clr.addEventListener('click', ()=>nav({ids:''}));
+  const uns = document.getElementById('ps_unsold'); if(uns) uns.addEventListener('change', ()=>nav({unsold: uns.checked? '1' : ''}));
+  const inp = document.getElementById('ps_search'), box = document.getElementById('ps_results');
+  let list = [], active = -1, t = null;
+  const draw = ()=>{
+    const q = inp.value.trim();
+    list = q ? smartSearchWarehouse(q).filter(w=>!ids.includes(w.id)) : [];
+    active = list.length ? 0 : -1;
+    box.innerHTML = list.slice(0,30).map((w,i)=>`<div class="it-pres${i===active?' active':''}" data-pid="${w.id}"><div style="flex:1;"><b class="bidi">${escapeHtml(w.name)}</b>${w.category? `<div style="font-size:11.5px; color:var(--ink-soft);">${escapeHtml(w.category)}</div>`:''}</div></div>`).join('') || (q? '<div style="padding:10px; font-size:13px; color:var(--ink-soft);">لا نتائج</div>' : '');
+    box.style.display = q ? '' : 'none';
+  };
+  const add = id=>{ if(id && !ids.includes(id)) nav({ids:[...ids, id].join(',')}); };
+  inp.addEventListener('input', ()=>{ clearTimeout(t); t = setTimeout(draw, 80); });
+  inp.addEventListener('blur', ()=>setTimeout(()=>box.style.display='none', 180));
+  inp.addEventListener('keydown', e=>{
+    if(e.key==='ArrowDown' || e.key==='ArrowUp'){ e.preventDefault(); const n = Math.min(list.length,30); if(!n) return; active = (active + (e.key==='ArrowDown'?1:-1) + n) % n;
+      box.querySelectorAll('.it-pres').forEach((x,i)=>x.classList.toggle('active', i===active)); }
+    else if(e.key==='Enter'){ e.preventDefault(); clearTimeout(t); draw(); if(list[active]) add(list[active].id); }
+    else if(e.key==='Escape'){ box.style.display='none'; }
+  });
+  box.addEventListener('mousedown', e=>{ const r = e.target.closest('[data-pid]'); if(r){ e.preventDefault(); add(r.getAttribute('data-pid')); } });
+  if(qs.get('focus')!=='0' && ids.length) setTimeout(()=>inp.focus(), 30);
 }
 /* ============================= التقارير ============================= */
 function reportsView(qs){
@@ -6459,11 +6606,21 @@ function itemDocFormView(kind, doc, partyId, isReturn){
     ${isAutoShop() && kind==='purchase' && !d.isReturn && d.addToStock ? purchaseLineDatalists() : ''}
     <div class="add-item-row"><button class="btn btn-sm btn-primary" id="addItemBtn">+ إضافة سطر</button></div>
 
-    <div class="field" style="max-width:220px"><label>حسم (اختياري) $</label><input type="number" id="f_discount" class="num" value="${d.discount||0}"></div>
+    <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
+      <div class="field" style="max-width:220px"><label>حسم (اختياري) $</label><input type="number" id="f_discount" class="num" value="${d.discount||0}"></div>
+      ${kind==='purchase'? `<div class="field" style="background:var(--paper); border:1px solid var(--line); border-radius:8px; padding:8px 12px;">
+        <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-weight:700; margin:0;">
+          <input type="checkbox" id="f_vat_on" ${d.vatEnabled?'checked':''} style="width:auto;"> الفاتورة تشمل TVA
+          <input type="number" step="0.01" id="f_vat_rate" class="num" value="${d.vatRate!=null && d.vatRate!==''? d.vatRate : settingsVatRate()}" style="width:80px; ${d.vatEnabled?'':'opacity:.5;'}" ${d.vatEnabled?'':'disabled'}> %
+        </label>
+        <div style="font-size:11.5px; color:var(--ink-soft); margin-top:4px;">الأسعار في البنود بدون ضريبة — تُضاف الـTVA على مجموع الفاتورة.</div>
+      </div>` : ''}
+    </div>
 
     <div class="totals-box">
       <div class="row"><span>مجموع البنود</span><span class="v" id="totSubtotal">${fmtMoney(totals.subtotal)}</span></div>
       <div class="row"><span>الحسم</span><span class="v" id="totDiscount">${fmtMoney(totals.discount)}</span></div>
+      ${kind==='purchase'? `<div class="row" id="totVatRow" style="${d.vatEnabled?'':'display:none;'}"><span id="totVatLabel">TVA ${purchaseDocVat(d)}%</span><span class="v" id="totVat">${fmtMoney(totals.vatAmount)}</span></div>` : ''}
       <div class="row"><span>الإجمالي بالدولار</span><span class="v" id="totUSD">${fmtMoney(totals.totalUSD)}</span></div>
       <div class="row big"><span>الإجمالي بالليرة اللبنانية</span><span class="v" id="totLBP">${fmtLBP(totals.totalLBP)}</span></div>
     </div>
@@ -6557,7 +6714,7 @@ function lineFromProduct(it, w){
 }
 function lineCostVat(it){
   if(it.price===''||it.price===undefined||it.price===null) return null;
-  const vat = (it.vatRate===''||it.vatRate===undefined||it.vatRate===null) ? settingsVatRate() : Number(it.vatRate);
+  const vat = (_itemDocDraft && _itemDocDraft.__kind==='purchase') ? purchaseDocVat(_itemDocDraft) : ((it.vatRate===''||it.vatRate===undefined||it.vatRate===null) ? settingsVatRate() : Number(it.vatRate));
   return Math.round(Number(it.price)*(1+vat/100)*100)/100;
 }
 function purchaseLineFieldsHtml(it){
@@ -6589,9 +6746,8 @@ function purchaseLinePricingHtml(it){
   const cv = lineCostVat(it);
   const f = (field, label, opts={})=>`<div class="field"><label>${label}</label><input type="number" step="0.01" class="it-f num" data-f="${field}" value="${escapeHtml(it[field]??'')}"></div>`;
   return `<div class="pline-pricing" style="background:var(--paper); border:1px dashed var(--line); border-radius:10px; padding:10px; margin-bottom:10px;">
-    <div class="grid grid-3">
-      ${f('vatRate','TVA %')}
-      <div class="field"><label>التكلفة شامل الضريبة $</label><input type="text" class="it-costvat num" readonly style="opacity:.85; font-weight:800;" value="${cv===null?'':cv.toFixed(2)}"></div>
+    <div class="grid grid-2">
+      <div class="field"><label>التكلفة شامل الضريبة $ ${_itemDocDraft && _itemDocDraft.vatEnabled? '(TVA '+purchaseDocVat(_itemDocDraft)+'%)' : '(بدون TVA)'}</label><input type="text" class="it-costvat num" readonly style="opacity:.85; font-weight:800;" value="${cv===null?'':cv.toFixed(2)}"></div>
       ${f('margin','هامش الربح %')}
     </div>
     <div class="grid grid-2">
@@ -6611,7 +6767,7 @@ function itemRow(it, idx){
     const d = _itemDocDraft || {};
     const canCreate = d.__kind==='purchase' && !d.isReturn;
     const isPurch = d.__kind==='purchase' && !d.isReturn;
-    if(isPurch && it.vatRate===undefined) it.vatRate = settingsVatRate();
+    if(isPurch) it.vatRate = purchaseDocVat(d);   // ضريبة البند = ضريبة الفاتورة (من كعب الفاتورة)
     return `<div class="item-card" data-idx="${idx}">
     <div class="item-card-head">
       <span>بند ${idx+1}</span>
@@ -6761,7 +6917,9 @@ function itemDocPrintView(kind, doc){
     <div class="doc-foot">
       <div class="words-box">${amountWords(totals.totalUSD)}</div>
       <div class="amount-box">
-        ${totals.discount>0? `<div class="line" style="font-size:13px; font-weight:600; color:var(--ink-soft);">مجموع البنود: ${fmtMoney(totals.subtotal)}</div><div class="line" style="font-size:13px; font-weight:600; color:var(--debit);">الحسم: -${fmtMoney(totals.discount)}</div>` : ''}
+        ${(totals.discount>0 || totals.vatAmount>0)? `<div class="line" style="font-size:13px; font-weight:600; color:var(--ink-soft);">مجموع البنود: ${fmtMoney(totals.subtotal)}</div>` : ''}
+        ${totals.discount>0? `<div class="line" style="font-size:13px; font-weight:600; color:var(--debit);">الحسم: -${fmtMoney(totals.discount)}</div>` : ''}
+        ${totals.vatAmount>0? `<div class="line" style="font-size:13px; font-weight:600; color:var(--ink-soft);">الصافي قبل الضريبة: ${fmtMoney(totals.net)}</div><div class="line" style="font-size:13px; font-weight:600; color:var(--ink-soft);">TVA ${totals.vatRate}%: ${fmtMoney(totals.vatAmount)}</div>` : ''}
         <div class="line">المجموع $: ${fmtMoney(totals.totalUSD)}</div>
         <div class="line lbp">المجموع ${secCurLabel()}: ${fmtLBP(totals.totalLBP)}</div>
       </div>
@@ -7240,6 +7398,7 @@ function printLandscape(name){
 
 function bindEvents(){
   bindHubEditEvents();
+  bindProductSalesEvents();
   document.querySelectorAll('[data-nav]').forEach(el=>{
     el.addEventListener('click', (e)=>{ e.stopPropagation(); go(el.getAttribute('data-nav')); });
   });
@@ -8768,6 +8927,9 @@ function refreshInvoiceTotals(){
   const totals = computeInvoiceTotal(_itemDocDraft);
   const s = document.getElementById('totSubtotal'); if(s) s.textContent = fmtMoney(totals.subtotal);
   const dd = document.getElementById('totDiscount'); if(dd) dd.textContent = fmtMoney(totals.discount);
+  const vr = document.getElementById('totVatRow'); if(vr) vr.style.display = totals.vatRate ? '' : 'none';
+  const vl = document.getElementById('totVatLabel'); if(vl) vl.textContent = 'TVA '+totals.vatRate+'%';
+  const va = document.getElementById('totVat'); if(va) va.textContent = fmtMoney(totals.vatAmount);
   const a = document.getElementById('totUSD'); if(a) a.textContent = fmtMoney(totals.totalUSD);
   const b = document.getElementById('totLBP'); if(b) b.textContent = fmtLBP(totals.totalLBP);
 }
@@ -8781,6 +8943,14 @@ function bindItemDocFormEvents(){
   document.getElementById('f_doctype').addEventListener('input', e=>_itemDocDraft.docType=e.target.value);
   document.getElementById('f_rate').addEventListener('input', e=>{ _itemDocDraft.exchangeRate=Number(e.target.value)||0; refreshInvoiceTotals(); });
   document.getElementById('f_discount').addEventListener('input', e=>{ _itemDocDraft.discount=Number(e.target.value)||0; refreshInvoiceTotals(); });
+  const vatOn = document.getElementById('f_vat_on'), vatRateEl = document.getElementById('f_vat_rate');
+  if(vatOn) vatOn.addEventListener('change', ()=>{
+    _itemDocDraft.vatEnabled = vatOn.checked;
+    if(_itemDocDraft.vatRate===undefined || _itemDocDraft.vatRate==='') _itemDocDraft.vatRate = Number(vatRateEl.value)||settingsVatRate();
+    render();
+  });
+  if(vatRateEl) vatRateEl.addEventListener('input', ()=>{ _itemDocDraft.vatRate = vatRateEl.value===''? 0 : Number(vatRateEl.value); refreshInvoiceTotals(); });
+  if(vatRateEl) vatRateEl.addEventListener('change', ()=>render());
   const addToStockEl = document.getElementById('f_add_to_stock');
   if(addToStockEl) addToStockEl.addEventListener('change', e=>{ _itemDocDraft.addToStock = e.target.checked; render(); });
 
@@ -8991,7 +9161,7 @@ function bindItemDocFormEvents(){
       savedId = clean.id;
     } else {
       const clean = {id:uid(), createdAt:Date.now(), [cfg.partyField]:_itemDocDraft[cfg.partyField], number:_itemDocDraft.number, date:_itemDocDraft.date, docType:_itemDocDraft.docType, exchangeRate:_itemDocDraft.exchangeRate, discount:_itemDocDraft.discount||0, items:_itemDocDraft.items};
-      if(isPurchase){ clean.addToStock = !!_itemDocDraft.addToStock; clean.isReturn = !!_itemDocDraft.isReturn; }
+      if(isPurchase){ clean.addToStock = !!_itemDocDraft.addToStock; clean.isReturn = !!_itemDocDraft.isReturn; clean.vatEnabled = !!_itemDocDraft.vatEnabled; if(_itemDocDraft.vatEnabled) clean.vatRate = Number(_itemDocDraft.vatRate)||0; }
       DB[cfg.docArr].push(clean);
       savedId = clean.id;
     }
