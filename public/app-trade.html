@@ -155,6 +155,10 @@
   .cust-meta{color:var(--ink-soft); font-size:13px; margin-top:3px;}
   .action-row{display:flex; gap:8px; flex-wrap:wrap;}
 
+  .it-presults{position:absolute; inset-inline:0; top:calc(100% - 2px); z-index:40; max-height:320px; overflow:auto; background:var(--white); border:1px solid var(--line); border-radius:10px; box-shadow:0 10px 24px rgba(0,0,0,.12);}
+  .it-pres{display:flex; gap:10px; align-items:center; padding:8px 10px; border-bottom:1px solid var(--line); cursor:pointer;}
+  .it-pres:hover, .it-pres.active{background:#fdf1e3;}
+  .it-picked{display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-top:6px; padding:6px 10px; border-radius:8px; background:#e6f4ea; font-size:13px;}
   .item-card{border:1px solid var(--line); border-radius:9px; padding:12px; margin-bottom:10px; background:var(--paper);}
   .item-card-head{display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; font-family:var(--font-display); font-weight:700; font-size:13px; color:var(--bronze-deep);}
   .add-item-row{margin-top:8px;}
@@ -2669,6 +2673,7 @@ const PERMISSION_EXTRAS = [
   {key:'pos_credit',    group:'نقطة البيع', label:'البيع على الحساب (دين)'},
   {key:'pos_returns',   group:'نقطة البيع', label:'فاتورة استرجاع'},
   {key:'cash_moves',    group:'نقطة البيع', label:'إضافة وسحب يدوي من الصندوق'},
+  {key:'pos_free_item', group:'نقطة البيع', label:'بند حر / خدمة صيانة بسعر يكتبه الموظف'},
   {key:'edit_docs',     group:'عام',        label:'تعديل الفواتير والإيصالات والسندات وبيانات الزبائن والموردين بعد حفظها'},
   {key:'delete',        group:'عام',        label:'الحذف (فواتير، إيصالات، سندات، زبائن، موردون، منتجات...)'}
 ];
@@ -2678,7 +2683,7 @@ function effectivePermissions(u){
   const p = (u && u.permissions) || [];
   if(p.includes(PERMS_V2)) return p;
   const out = new Set(p);
-  if(p.includes('pos')){ ['reports','pos_discount','pos_credit','pos_returns','cash_moves'].forEach(k=>out.add(k)); }
+  if(p.includes('pos')){ ['reports','pos_discount','pos_credit','pos_returns','cash_moves','pos_free_item'].forEach(k=>out.add(k)); }
   if(p.includes('warehouse')) out.add('edit_products');
   out.add('edit_docs'); out.add('delete');
   return Array.from(out);
@@ -2704,7 +2709,8 @@ const PERM_UI_RULES = [
   ['cash_moves', '[data-cashmove]'],
   ['pos_returns', '#pos_return_btn'],
   ['pos_credit', '#pos_credit_btn'],
-  ['pos_discount', '#pos_discount_row'],
+  ['pos_discount', '#pos_discount_row,[data-pos-edit]'],
+  ['pos_free_item', '#pos_free_item_btn'],
   ['reports', '[data-nav^="#/reports"],[data-nav^="#/journal"]'],
   ['stock_value', '[data-perm="stock_value"]'],
   ['cost_prices', '[data-perm="cost_prices"]']
@@ -4528,8 +4534,9 @@ function posView(){
     return `<div class="pos-receipt-item">
       ${it&&it.image? `<img src="${it.image}" class="pos-receipt-item-img">` : `<div class="pos-receipt-item-img" style="display:flex;align-items:center;justify-content:center;">📦</div>`}
       <div class="pos-receipt-item-body">
-        <div class="pos-receipt-item-name">${escapeHtml(l.name)}</div>
-        <div class="pos-receipt-item-price">$${l.price.toFixed(2)}</div>
+        <div class="pos-receipt-item-name">${escapeHtml(l.name)}${!l.itemId? ' <span style="font-size:11px; color:var(--ink-soft);">(بند حر)</span>' : ''}</div>
+        <div class="pos-receipt-item-price">${(l.origPrice!=null && Math.abs(l.origPrice-l.price)>0.0001)? `<s style="opacity:.6;">$${Number(l.origPrice).toFixed(2)}</s> <b style="color:var(--credit);">$${l.price.toFixed(2)}</b>` : '$'+l.price.toFixed(2)}
+          <button type="button" class="btn btn-sm" data-pos-edit="${idx}" title="حسم / تعديل السعر" style="padding:0 6px; font-size:11px; margin-inline-start:4px;">✎ حسم</button></div>
       </div>
       <div class="pos-qty-stepper">
         <button data-pos-dec="${idx}">−</button>
@@ -4578,6 +4585,7 @@ function posView(){
         <div class="pos-search-row">
           <input type="text" id="pos_scan_input" inputmode="none" autocomplete="off" value="${escapeHtml(_posSearchQ)}" style="flex:1; font-size:16px; padding:11px 14px; border-radius:10px; border:1px solid var(--line);" placeholder="🔍 بحث: اسم، ماركة، مقاس، باركود، رمز..." autofocus>
           ${_posSearchQ? `<button type="button" class="btn" id="pos_search_clear" title="مسح البحث">✕</button>` : ''}
+          <button type="button" class="btn" id="pos_free_item_btn" title="بند حر أو خدمة صيانة">🛠 خدمة / بند حر</button>
           <button type="button" class="btn" id="pos_keyboard_btn" title="اكتب يدوياً">⌨️</button>
           <button type="button" class="btn" id="pos_camera_scan_btn">📷</button>
         </div>
@@ -4604,7 +4612,8 @@ function posView(){
         ${ticket.cart.length? itemRows : `<div class="empty" style="padding:24px 0;"><div class="big" style="font-size:13px;">السلة فارغة</div></div>`}
       </div>
       <div class="pos-receipt-foot">
-        <div id="pos_discount_row" style="display:flex; gap:6px; margin-bottom:10px;">
+        <div id="pos_discount_row" style="display:flex; gap:6px; margin-bottom:10px; align-items:center;">
+          <span style="font-size:12px; color:var(--ink-soft); white-space:nowrap;">حسم على الفاتورة</span>
           <input type="number" step="0.01" id="pos_discount_input" class="num" value="${ticket.discount||0}" placeholder="حسم" style="flex:1; padding:7px; border-radius:8px; border:1px solid var(--line);">
           <select id="pos_discount_type" style="width:64px; border-radius:8px; border:1px solid var(--line);">
             <option value="amount" ${ticket.discountType!=='percent'?'selected':''}>$</option>
@@ -4737,6 +4746,9 @@ function bindPosEvents(){
   document.querySelectorAll('[data-pos-remove]').forEach(b=>b.addEventListener('click', ()=>{
     ticket.cart.splice(Number(b.getAttribute('data-pos-remove')),1); render();
   }));
+  document.querySelectorAll('[data-pos-edit]').forEach(b=>b.addEventListener('click', ()=>openPosLineEditModal(ticket, Number(b.getAttribute('data-pos-edit')))));
+  const freeBtn = document.getElementById('pos_free_item_btn');
+  if(freeBtn) freeBtn.addEventListener('click', ()=>openPosFreeItemModal(ticket));
   const discInput = document.getElementById('pos_discount_input');
   if(discInput) discInput.addEventListener('input', ()=>{ ticket.discount = Number(discInput.value)||0; render(); });
   const discType = document.getElementById('pos_discount_type');
@@ -4772,6 +4784,121 @@ function bindPosEvents(){
   if(pickCustBtn) pickCustBtn.addEventListener('click', ()=>openPosCustomerPickerModal(ticket));
   const returnBtn = document.getElementById('pos_return_btn');
   if(returnBtn) returnBtn.addEventListener('click', ()=>openPosReturnModal());
+}
+// حسم على بند: يُخفَّض سعر الوحدة (ويبقى السعر الأصلي ظاهراً مشطوباً) — فيبقى الاسترجاع والتقارير صحيحة
+function openPosLineEditModal(ticket, idx){
+  if(denyIfNo('pos_discount', 'إعطاء حسم')) return;
+  const l = ticket.cart[idx]; if(!l) return;
+  const orig = l.origPrice!=null ? Number(l.origPrice) : Number(l.price);
+  const wrap = document.createElement('div');
+  wrap.className = 'modal-bg';
+  wrap.innerHTML = `<div class="modal">
+    <h3>✎ حسم على البند</h3>
+    <div style="font-weight:700; margin-bottom:8px;">${escapeHtml(l.name)}</div>
+    <div class="grid grid-2">
+      <div class="field"><label>السعر الأصلي $</label><input type="text" class="num" value="${orig.toFixed(2)}" disabled></div>
+      <div class="field"><label>الكمية</label><input type="text" class="num" value="${fmtQty(l.qty)}" disabled></div>
+    </div>
+    <div class="field"><label>الحسم على الوحدة</label>
+      <div style="display:flex; gap:6px;">
+        <input type="number" step="0.01" id="pl_disc" class="num" style="flex:1;" value="${(orig-l.price)>0.0001? (orig-l.price).toFixed(2) : ''}" placeholder="0">
+        <select id="pl_disc_type" style="width:70px;"><option value="amount">$</option><option value="percent">%</option></select>
+      </div>
+    </div>
+    <div class="field"><label>السعر بعد الحسم $ (أو اكتبه مباشرة)</label><input type="number" step="0.01" id="pl_price" class="num" value="${Number(l.price).toFixed(2)}" style="font-size:18px; font-weight:800;"></div>
+    <div id="pl_total" style="font-size:13px; color:var(--ink-soft); margin-bottom:8px;"></div>
+    <div class="row">
+      <button class="btn" id="pl_reset">↺ بدون حسم</button>
+      <button class="btn" id="pl_cancel">إلغاء</button>
+      <button class="btn btn-primary" id="pl_ok">تطبيق</button>
+    </div>
+  </div>`;
+  document.body.appendChild(wrap);
+  const $ = q=>wrap.querySelector(q);
+  const r2 = n=>Math.round(n*100)/100;
+  const showTotal = ()=>{ const p = Number($('#pl_price').value)||0; $('#pl_total').textContent = 'المجموع: $'+r2(p*l.qty).toFixed(2)+(orig>p? ' — وفّر الزبون $'+r2((orig-p)*l.qty).toFixed(2) : ''); };
+  const fromDisc = ()=>{ const d = Number($('#pl_disc').value)||0; const p = $('#pl_disc_type').value==='percent' ? orig*(1-d/100) : orig-d; $('#pl_price').value = Math.max(0, r2(p)).toFixed(2); showTotal(); };
+  $('#pl_disc').addEventListener('input', fromDisc);
+  $('#pl_disc_type').addEventListener('change', fromDisc);
+  $('#pl_price').addEventListener('input', ()=>{ $('#pl_disc').value = ''; showTotal(); });
+  showTotal();
+  $('#pl_cancel').addEventListener('click', ()=>wrap.remove());
+  $('#pl_reset').addEventListener('click', ()=>{ l.price = orig; delete l.origPrice; wrap.remove(); render(); });
+  $('#pl_ok').addEventListener('click', ()=>{
+    const p = Number($('#pl_price').value);
+    if(!Number.isFinite(p) || p<0){ toast('السعر غير صحيح'); return; }
+    if(l.origPrice==null) l.origPrice = Number(l.price);
+    l.price = r2(p);
+    if(Math.abs(l.origPrice - l.price)<0.0001) delete l.origPrice;
+    wrap.remove(); render();
+  });
+}
+// بند حر / خدمة صيانة: يُضاف للفاتورة مباشرة، ويُحفظ (اختياري) كخدمة في المستودع لاستعماله لاحقاً
+const DEFAULT_SERVICE_GROUP = 'خدمات صيانة';
+function openPosFreeItemModal(ticket){
+  if(denyIfNo('pos_free_item', 'إضافة بند حر')) return;
+  const canSave = canManageGroups();
+  const svcGroups = customGroups().filter(g=>g.type==='services').map(g=>g.name);
+  const groups = svcGroups.length ? svcGroups : [DEFAULT_SERVICE_GROUP];
+  const wrap = document.createElement('div');
+  wrap.className = 'modal-bg';
+  wrap.innerHTML = `<div class="modal">
+    <h3>🛠 خدمة / بند حر</h3>
+    <div class="field"><label>الوصف *</label><input type="text" id="fi_name" placeholder="مثال: تبديل زيت وفلتر، ميزان وترصيص، تصليح بنشر..." list="fi_names">
+      <datalist id="fi_names">${DB.warehouseItems.filter(isServiceItem).map(w=>`<option value="${escapeHtml(w.name)}">`).join('')}</datalist></div>
+    <div class="grid grid-2">
+      <div class="field"><label>السعر $ *</label><input type="number" step="0.01" id="fi_price" class="num" placeholder="0.00" style="font-size:18px; font-weight:800;"></div>
+      <div class="field"><label>الكمية</label><input type="number" step="any" id="fi_qty" class="num" value="1"></div>
+    </div>
+    ${canSave? `<label style="display:flex; align-items:center; gap:8px; margin:6px 0; font-weight:600; font-size:13.5px; cursor:pointer;">
+      <input type="checkbox" id="fi_save" checked style="width:auto;"> احفظها كخدمة لأستعملها لاحقاً (بدون مخزون)</label>
+    <div class="field" id="fi_group_wrap"><label>في مجموعة</label>
+      <select id="fi_group">${groups.map(g=>`<option value="${escapeHtml(g)}">${escapeHtml(g)}</option>`).join('')}</select></div>` : ''}
+    <div class="row">
+      <button class="btn" id="fi_cancel">إلغاء</button>
+      <button class="btn btn-primary" id="fi_add">➕ أضف للفاتورة</button>
+    </div>
+  </div>`;
+  document.body.appendChild(wrap);
+  const $ = q=>wrap.querySelector(q);
+  setTimeout(()=>$('#fi_name').focus(), 30);
+  // اختيار خدمة محفوظة سابقاً يملأ السعر
+  $('#fi_name').addEventListener('input', ()=>{
+    const w = DB.warehouseItems.find(x=>isServiceItem(x) && normalizeSearchText(x.name)===normalizeSearchText($('#fi_name').value));
+    if(w && !$('#fi_price').value) $('#fi_price').value = Number(w.price)||'';
+  });
+  if($('#fi_save')) $('#fi_save').addEventListener('change', ()=>{ $('#fi_group_wrap').style.display = $('#fi_save').checked ? '' : 'none'; });
+  $('#fi_cancel').addEventListener('click', ()=>wrap.remove());
+  $('#fi_add').addEventListener('click', async ()=>{
+    const name = $('#fi_name').value.trim();
+    const price = Number($('#fi_price').value);
+    const qty = Number($('#fi_qty').value)||1;
+    if(!name){ toast('اكتب وصف الخدمة'); return; }
+    if(!Number.isFinite(price) || price<0 || $('#fi_price').value===''){ toast('اكتب السعر'); return; }
+    let item = DB.warehouseItems.find(x=>isServiceItem(x) && normalizeSearchText(x.name)===normalizeSearchText(name));
+    if(!item && $('#fi_save') && $('#fi_save').checked){
+      const gname = $('#fi_group').value || DEFAULT_SERVICE_GROUP;
+      const saves = [];
+      if(!groupByName(gname)){
+        DB.settings.customGroups = [...customGroups(), {id:uid(), name:gname, type:'services', icon:'🛠'}];
+        saves.push(save(KEYS.settings, DB.settings));
+      }
+      item = {id:uid(), createdAt:Date.now(), name, category:gname, price, status:'available', purchaseDate:todayISO()};
+      DB.warehouseItems.push(item);
+      invalidateWarehouseCaches();
+      saves.push(save(KEYS.warehouseItems, DB.warehouseItems));
+      const ok = (await Promise.all(saves)).every(Boolean);
+      toast(ok? 'تم حفظ الخدمة «'+name+'» في مجموعة '+gname : 'حدث خطأ أثناء الحفظ');
+    }
+    if(item){
+      const line = ticket.cart.find(l=>l.itemId===item.id);
+      if(line) line.qty += qty;
+      else ticket.cart.push({itemId:item.id, name:item.name, price, qty, ...(Math.abs(price-(Number(item.price)||0))>0.0001 && Number(item.price)? {origPrice:Number(item.price)} : {})});
+    } else {
+      ticket.cart.push({itemId:null, name, price, qty});
+    }
+    wrap.remove(); render();
+  });
 }
 function openCategoryImageModal(category){
   const current = (DB.settings.categoryImages||{})[category];
@@ -5043,7 +5170,7 @@ async function completePosSale(currency, received, due){
   const inv = {id:uid(), customerId, number:nextInvoiceNumber(), date, docType:'بيع نقطة بيع (POS)', exchangeRate:rate, items:invItems, discount:posDiscountUSD(ticket), createdAt:now, cashierUsername:currentUser.username};
   DB.invoices.push(inv);
   ticket.cart.forEach(l=>{
-    if(isServiceItem(DB.warehouseItems.find(x=>x.id===l.itemId))) return;   // الخدمة لا تُخصم من المخزون
+    if(!l.itemId || isServiceItem(DB.warehouseItems.find(x=>x.id===l.itemId))) return;   // الخدمة والبند الحر لا يُخصمان من المخزون
     DB.stockOuts.push({id:uid(), createdAt:now, itemId:l.itemId, qty:l.qty, date, number:nextStockOutNumber(), note:'بيع POS #'+inv.number});
   });
   if(onAccount){
@@ -6348,9 +6475,49 @@ function itemDocFormView(kind, doc, partyId, isReturn){
   </div>`;
 }
 // خيارات المنتجات لبند الفاتورة — مفلترة حسب نوع البند ونص البحث
+function itemLineCatFilter(it){
+  if(!it.cat) return DB.warehouseItems;
+  if(groupByName(it.cat)){ const n = normalizeSearchText(it.cat); return DB.warehouseItems.filter(p=>normalizeSearchText(p.category)===n); }
+  const catKey = autoCategoryKey(it.cat);
+  return DB.warehouseItems.filter(p=>autoCategoryKey(p.category)===catKey);
+}
+// بحث ذكي داخل بند الفاتورة: نفس بحث المستودع
+function itemLineCandidates(it, query){
+  const base = itemLineCatFilter(it);
+  if(!String(query||'').trim()) return base.slice().sort((a,b)=>String(a.name||'').localeCompare(String(b.name||''),'ar'));
+  const r = smartSearchWarehouse(query, base);
+  // لا نتائج ضمن نوع البند المختار؟ نبحث في كل المستودع
+  return (r.length || base===DB.warehouseItems) ? r : smartSearchWarehouse(query, DB.warehouseItems);
+}
+function itemLineResultsHtml(list, activeIdx){
+  const isPurch = !_itemDocDraft || _itemDocDraft.__kind==='purchase';
+  if(!list.length) return `<div style="padding:10px; font-size:13px; color:var(--ink-soft);">لا نتائج — جرّب كلمة أخرى${isPurch? ' أو «➕ منتج جديد»' : ''}</div>`;
+  return list.slice(0,30).map((p,i)=>{
+    const spec = [p.tireSize, p.amperage, p.viscosity, p.sku, p.brand].filter(Boolean).filter(x=>!String(p.name||'').includes(x)).join(' • ');
+    const svc = isServiceItem(p);
+    const pr = isPurch ? Number(p.costPrice)||0 : Number(p.price)||0;
+    return `<div class="it-pres${i===activeIdx?' active':''}" data-pid="${p.id}">
+      <div style="flex:1; min-width:0;"><b class="bidi">${escapeHtml(p.name)}</b>${spec? `<div style="font-size:11.5px; color:var(--ink-soft);">${escapeHtml(spec)}</div>` : ''}</div>
+      <div style="text-align:end; font-size:12px; white-space:nowrap;">${pr? `<div class="num" style="font-weight:800;">${fmtMoney(pr)}</div>` : ''}${svc? '<div style="color:var(--ink-soft);">🛠 خدمة</div>' : (isPurch? `<div style="color:${fastStock(p.id)<=0?'var(--debit)':'var(--ink-soft)'};">المتوفر: ${fmtQty(fastStock(p.id))}</div>` : '')}</div>
+    </div>`;
+  }).join('') + (list.length>30? `<div style="padding:6px 10px; font-size:11.5px; color:var(--ink-soft);">${list.length-30} نتيجة إضافية — دقّق البحث</div>` : '');
+}
+function itemLinePickerHtml(it, canCreate){
+  const sel = it.productId ? DB.warehouseItems.find(p=>p.id===it.productId) : null;
+  const isPurch = !_itemDocDraft || _itemDocDraft.__kind==='purchase';
+  return `<div class="it-combo" style="position:relative;">
+      <div style="display:flex; gap:6px;">
+        <input type="text" class="it-psearch" placeholder="🔍 ابحث في المستودع: اسم، ماركة، مقاس (2055516)، لزوجة، باركود، رمز..." autocomplete="off" style="flex:1; min-width:0;">
+        ${canCreate? `<button type="button" class="btn btn-sm btn-primary it-newprod" title="منتج جديد بكل بياناته">➕ منتج جديد</button>` : ''}
+      </div>
+      <div class="it-presults" style="display:none;"></div>
+      ${sel? `<div class="it-picked">✓ <b class="bidi">${escapeHtml(sel.name)}</b>${(isPurch && !isServiceItem(sel))? ` <span style="color:var(--ink-soft); font-size:12px;">(المتوفر: ${fmtQty(fastStock(sel.id))})</span>` : ''}
+        <button type="button" class="btn btn-sm it-unpick" title="إلغاء الاختيار" style="margin-inline-start:auto; padding:2px 8px;">✕</button></div>` : ''}
+      <select class="it-product" style="display:none;"><option value="">—</option>${sel? `<option value="${sel.id}" data-name="${escapeHtml(sel.name)}" selected>${escapeHtml(sel.name)}</option>` : ''}</select>
+    </div>`;
+}
 function itemRowProductOptions(it, query){
-  const catKey = it.cat ? autoCategoryKey(it.cat) : '';
-  let products = DB.warehouseItems.filter(p=>!catKey || autoCategoryKey(p.category)===catKey);
+  let products = itemLineCatFilter(it);
   products = query ? smartSearchWarehouse(query, products) : products.slice().sort((a,b)=>String(a.name||'').localeCompare(String(b.name||''),'ar'));
   const sel = it.productId ? DB.warehouseItems.find(p=>p.id===it.productId) : null;
   if(sel && !products.includes(sel)) products.unshift(sel);
@@ -6454,17 +6621,11 @@ function itemRow(it, idx){
       <div class="field"><label>نوع البند</label>
         <select class="it-cat">
           <option value="">الكل</option>
-          ${AUTO_CATEGORIES.map(c=>`<option value="${escapeHtml(c.label)}" ${it.cat===c.label?'selected':''}>${AUTO_CATEGORY_ICONS[c.key]||''} ${c.label}</option>`).join('')}
+          ${chooserGroupLabels().map(l=>`<option value="${escapeHtml(l)}" ${it.cat===l?'selected':''}>${groupIcon(l)} ${escapeHtml(l)}</option>`).join('')}
         </select>
       </div>
-      <div class="field"><label>بحث عن منتج</label><input type="text" class="it-psearch" placeholder="🔍 اسم، باركود، مقاس، لزوجة..." autocomplete="off"></div>
     </div>
-    <div class="field"><label>المنتج</label>
-      <div style="display:flex; gap:6px;">
-        <select class="it-product" style="flex:1; min-width:0;">${itemRowProductOptions(it, '')}</select>
-        ${canCreate? `<button type="button" class="btn btn-sm btn-primary it-newprod" title="منتج جديد بكل بياناته">➕ منتج جديد</button>` : ''}
-      </div>
-    </div>
+    <div class="field"><label>المنتج</label>${itemLinePickerHtml(it, canCreate)}</div>
     <div class="field"><label>اسم المنتج ${d.__kind==='invoice'? '(يُملأ تلقائياً مع سنة الصنع — قابل للتعديل)' : '(يُملأ تلقائياً عند الاختيار)'}</label><input type="text" class="it-desc" value="${escapeHtml(it.desc)}" placeholder="اسم المنتج"></div>
     ${isPurch && d.addToStock ? purchaseLineFieldsHtml(it) : ''}
     <div class="grid grid-3">
@@ -6475,18 +6636,12 @@ function itemRow(it, idx){
     ${isPurch && d.addToStock ? purchaseLinePricingHtml(it) : ''}
   </div>`;
   }
-  const products = DB.warehouseItems.slice().sort((a,b)=>a.name.localeCompare(b.name,'ar'));
   return `<div class="item-card" data-idx="${idx}">
     <div class="item-card-head">
       <span>بند ${idx+1}</span>
       <button class="rm-btn" data-rm="${idx}">✕ حذف</button>
     </div>
-    <div class="field"><label>المنتج</label>
-      <select class="it-product">
-        <option value="">— اختر منتجًا من المستودع —</option>
-        ${products.map(p=>`<option value="${p.id}" data-name="${escapeHtml(p.name)}" ${it.productId===p.id?'selected':''}>${escapeHtml(p.name)}</option>`).join('')}
-      </select>
-    </div>
+    <div class="field"><label>المنتج</label>${itemLinePickerHtml(it, false)}</div>
     <div class="field"><label>اسم المنتج (يدوي إذا لم يكن موجودًا في المستودع)</label><input type="text" class="it-desc" value="${escapeHtml(it.desc)}" placeholder="اسم المنتج"></div>
     <div class="grid grid-3">
       <div class="field"><label>الكمية</label><input type="number" class="it-qty num" value="${it.qty}"></div>
@@ -8651,7 +8806,7 @@ function bindItemDocFormEvents(){
             const pr = _itemDocDraft.__kind==='purchase' ? Number(w.costPrice)||0 : Number(w.price)||0;
             if(pr>0){ it.price = pr; it.total = autoTotalFromPrice(it); }
           }
-          if(w && isAutoShop() && !it.cat){ const k = autoCategoryKey(w.category); const c = AUTO_CATEGORIES.find(x=>x.key===k); if(c) it.cat = c.label; }
+          if(w && isAutoShop() && !it.cat){ const g = groupByName(w.category); if(g) it.cat = g.name; else { const k = autoCategoryKey(w.category); const c = AUTO_CATEGORIES.find(x=>x.key===k); if(c) it.cat = c.label; } }
         }
         render();
       });
@@ -8695,21 +8850,47 @@ function bindItemDocFormEvents(){
     const priceEl = tr.querySelector('.it-price');
     if(priceEl && tr.querySelector('.pline-pricing')) priceEl.addEventListener('input', ()=>refreshPricing('price'));
     const pSearch = tr.querySelector('.it-psearch');
-    if(pSearch && productSelect){
-      let t = null;
-      pSearch.addEventListener('input', ()=>{
-        clearTimeout(t);
-        t = setTimeout(()=>{
-          const it = _itemDocDraft.items[Number(tr.getAttribute('data-idx'))];
-          productSelect.innerHTML = itemRowProductOptions(it, pSearch.value);
-          // نتيجة واحدة بالضبط (أو باركود مطابق): نختارها مباشرة
-          const opts = Array.from(productSelect.options).filter(o=>o.value);
-          const exact = findItemByBarcode(pSearch.value.trim());
-          const pick = exact ? exact.id : (opts.length===1 && pSearch.value.trim() ? opts[0].value : null);
-          if(pick && pick!==it.productId){ productSelect.value = pick; productSelect.dispatchEvent(new Event('change')); }
-        }, 200);
+    const pRes = tr.querySelector('.it-presults');
+    if(pSearch && pRes && productSelect){
+      let t = null, list = [], active = -1;
+      const lineIt2 = ()=>_itemDocDraft.items[Number(tr.getAttribute('data-idx'))];
+      const show = ()=>{ list = itemLineCandidates(lineIt2(), pSearch.value); active = pSearch.value.trim() && list.length ? 0 : -1; pRes.innerHTML = itemLineResultsHtml(list, active); pRes.style.display = ''; };
+      const hide = ()=>{ pRes.style.display = 'none'; };
+      const pick = (id)=>{
+        const w = DB.warehouseItems.find(x=>x.id===id); if(!w) return;
+        hide();
+        // تبديل منتج بآخر: سعر ونوع المنتج الجديد بدل القديم
+        const it0 = lineIt2();
+        if(it0.productId && it0.productId!==w.id){ it0.price = 0; it0.cat = ''; }
+        productSelect.innerHTML = `<option value="${w.id}" data-name="${escapeHtml(w.name)}" selected>${escapeHtml(w.name)}</option>`;
+        productSelect.value = w.id;
+        productSelect.dispatchEvent(new Event('change'));
+      };
+      pSearch.addEventListener('focus', show);
+      pSearch.addEventListener('input', ()=>{ clearTimeout(t); t = setTimeout(show, 80); });
+      pSearch.addEventListener('blur', ()=>setTimeout(hide, 180));
+      pSearch.addEventListener('keydown', e=>{
+        if(e.key==='ArrowDown' || e.key==='ArrowUp'){
+          e.preventDefault(); if(pRes.style.display==='none') show();
+          const n = Math.min(list.length, 30); if(!n) return;
+          active = (active + (e.key==='ArrowDown'?1:-1) + n) % n;
+          pRes.innerHTML = itemLineResultsHtml(list, active);
+          const a = pRes.querySelector('.it-pres.active'); if(a) a.scrollIntoView({block:'nearest'});
+        } else if(e.key==='Enter'){
+          e.preventDefault();
+          const q = pSearch.value.trim(); if(!q) return;
+          const cc = compactSearchText(q);
+          const exact = findItemByBarcode(q) || DB.warehouseItems.find(x=> cc && (compactSearchText(x.barcode)===cc || compactSearchText(x.sku)===cc));
+          if(exact) return pick(exact.id);
+          clearTimeout(t); list = itemLineCandidates(lineIt2(), pSearch.value);
+          if(list.length && active<0) active = 0;
+          if(list[active]) pick(list[active].id);
+        } else if(e.key==='Escape'){ hide(); }
       });
+      pRes.addEventListener('mousedown', e=>{ const r = e.target.closest('[data-pid]'); if(r){ e.preventDefault(); pick(r.getAttribute('data-pid')); } });
     }
+    const unpick = tr.querySelector('.it-unpick');
+    if(unpick) unpick.addEventListener('click', ()=>{ const it = _itemDocDraft.items[Number(tr.getAttribute('data-idx'))]; it.productId = ''; it.price = 0; it.cat = ''; it.total = autoTotalFromPrice(it); render(); });
     const newProdBtn = tr.querySelector('.it-newprod');
     if(newProdBtn) newProdBtn.addEventListener('click', ()=>{
       const idx = Number(tr.getAttribute('data-idx'));
