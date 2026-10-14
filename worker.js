@@ -650,6 +650,26 @@ async function sendWhatsApp(env, phoneDigits, code) {
       if (!r.ok) return { ok: false, error: 'Meta ' + r.status + ': ' + (await r.text()).slice(0, 200) };
       return { ok: true };
     }
+    if (provider === 'verifyway') {
+      // VerifyWay — POST https://api.verifyway.com/api/v1/  (هم بيرسلو قالب الكود عبر واتساب)
+      // المفتاح Secret بلوحة Cloudflare باسم VERIFYWAY_API_KEY
+      const key = String(env.VERIFYWAY_API_KEY || '').trim();
+      if (!key) return { ok: false, error: 'VERIFYWAY_API_KEY missing — add it as a Secret in Cloudflare' };
+      const r = await fetch('https://api.verifyway.com/api/v1/', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + key, 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ recipient: phoneDigits, type: 'otp', code, channel: String(env.WA_CHANNEL || 'whatsapp') })
+      });
+      const t = await r.text();
+      let j = null; try { j = JSON.parse(t); } catch {}
+      const errMsg = j && (j.error || j.message || (j.errors && JSON.stringify(j.errors)));
+      if (!r.ok) return { ok: false, error: 'VerifyWay ' + r.status + ': ' + String(errMsg || t).slice(0, 200) };
+      // بعض الأخطاء بترجع 200 مع status/success = false
+      if (j && (j.success === false || j.status === false || /^(error|failed|fail)$/i.test(String(j.status || '')) || (j.error && j.error !== false))) {
+        return { ok: false, error: 'VerifyWay: ' + String(errMsg || t).slice(0, 200) };
+      }
+      return { ok: true, id: j && (j.id || j.message_id || (j.data && j.data.id)) || null };
+    }
     if (provider === 'zavu') {
       // Zavu — https://docs.zavu.dev/api-reference/send-a-message
       // الأفضل قالب AUTHENTICATION (WA_TEMPLATE = tmpl_...) لأنو الرسالة العادية بتفشل
@@ -2584,7 +2604,10 @@ export default {
         }
         if (url.pathname === '/api/otp/config') {
           // الصفحة بتسأل: تبويب الواتس اب ظاهر أو لأ؟ (WA_ENABLED=1 بلوحة Cloudflare أو wrangler.toml)
-          return json(200, { enabled: String(env.WA_ENABLED || '') === '1' && !!String(env.WA_PROVIDER || '').trim() });
+          const prov = String(env.WA_PROVIDER || '').trim().toLowerCase();
+          // ما منظهّر تبويب الواتس اب قبل ما ينحط مفتاح VerifyWay
+          const keyOk = prov !== 'verifyway' || !!String(env.VERIFYWAY_API_KEY || '').trim();
+          return json(200, { enabled: String(env.WA_ENABLED || '') === '1' && !!prov && keyOk });
         }
         if (url.pathname === '/api/otp/send') {
           if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
