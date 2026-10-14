@@ -908,6 +908,42 @@ window.dbMsg=function(m){ var M={
         <div class="msg" id="pfMsg"></div>
       </div>
 
+      <div class="card hidden" style="margin-bottom:18px" id="waCard">
+        <h3 style="font-size:19px">📱 رقم واتساب لتسجيل الدخول</h3>
+        <p style="color:var(--muted);font-size:14px;margin:4px 0 14px" id="waSub">أضف رقم واتساب لحسابك لتتمكن من تسجيل الدخول برمز يصلك على واتساب، بدون كلمة مرور.</p>
+        <div id="waLinked" class="hidden">
+          <p style="font-size:14.5px;margin:0 0 10px"><b style="color:var(--ok)">مربوط ✓</b> <span dir="ltr" id="waLinkedNum" style="font-weight:700"></span></p>
+          <button class="btn btn-g sm" id="waChange">تغيير الرقم</button>
+        </div>
+        <div id="waForm" class="hidden">
+          <label>رقم الواتساب</label>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <input type="tel" id="waPhone" placeholder="03 000 000" dir="ltr" style="flex:1;min-width:160px">
+            <button class="btn btn-o" id="waSend">أرسل الرمز</button>
+          </div>
+          <div id="waCodeRow" class="hidden" style="margin-top:12px">
+            <label>الرمز الذي وصلك على واتساب</label>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <input type="text" id="waCode" inputmode="numeric" maxlength="6" placeholder="••••••" dir="ltr" style="flex:1;min-width:140px;letter-spacing:6px;text-align:center;font-size:18px">
+              <button class="btn btn-p" id="waVerify">تأكيد وربط</button>
+            </div>
+          </div>
+        </div>
+        <div class="msg" id="waMsg"></div>
+      </div>
+
+      <div class="card" style="margin-bottom:18px" id="pwCard">
+        <h3 style="font-size:19px">🔑 تغيير كلمة المرور</h3>
+        <div id="pwCurWrap"><label>كلمة المرور الحالية</label><input type="password" id="pwCur" autocomplete="current-password"></div>
+        <p id="pwWaNote" class="hidden" style="color:var(--muted);font-size:13.5px;margin:4px 0 0">حسابك أُنشئ عبر واتساب — يمكنك وضع كلمة مرور مباشرة.</p>
+        <div class="grid2" style="gap:12px">
+          <div><label>كلمة المرور الجديدة</label><input type="password" id="pwNew" autocomplete="new-password" placeholder="٨ أحرف على الأقل"></div>
+          <div><label>تأكيد كلمة المرور الجديدة</label><input type="password" id="pwNew2" autocomplete="new-password"></div>
+        </div>
+        <button class="btn btn-o" id="pwSave" style="margin-top:14px">تغيير كلمة المرور</button>
+        <div class="msg" id="pwMsg"></div>
+      </div>
+
       <div class="card" style="margin-bottom:18px" id="mfaCard">
         <h3 style="font-size:19px">الأمان — التحقق بخطوتين (2FA)</h3>
         <p style="color:var(--muted);font-size:14px;margin:4px 0 14px">طبقة حماية إضافية: بعد كلمة المرور، يُطلب منك رمز من تطبيق مصادقة على هاتفك.</p>
@@ -1086,12 +1122,15 @@ if(sb) sb.auth.getSession().then(function(r){
     }
     if(!ses.data.session){ $('#guest').classList.remove('hidden'); return; }
     $('#app').classList.remove('hidden');
-    $('#mail').textContent=ses.data.session.user.email;
+    var em=ses.data.session.user.email||'';
+    var waM=em.match(/^p(\d+)@wa\.libanapps\.com$/i);
+    if(waM) $('#mail').innerHTML='واتساب: <span dir="ltr">+'+waM[1]+'</span>'; else $('#mail').textContent=em;
 
     // ربط تلقائي للزبائن المفعّلين يدوياً
     await sb.rpc('autolink_my_client');
     var c=await sb.from('clients').select('name,phone,business')
             .eq('user_id',ses.data.session.user.id).maybeSingle();
+    if(c.data&&c.data.phone && $('#waPhone')) $('#waPhone').value=c.data.phone;
     if(c.data&&c.data.name){ $('#hi').textContent='أهلاً '+c.data.name; }
     else { $('#profileBox').classList.remove('hidden'); }
 
@@ -1108,6 +1147,7 @@ if(sb) sb.auth.getSession().then(function(r){
     await loadPlans();
     await loadTrials();
     await mfaBoot();
+    await waBoot();
     if(qs.get('plan')) openPlan(qs.get('plan'));
     if(qs.get('renew')){
       var lic=(await sb.rpc('my_licenses')).data||[];
@@ -1151,6 +1191,78 @@ if(sb) sb.auth.getSession().then(function(r){
       return false;
     }catch(e){ if(!silent) alert(String(e.message||e)); return false; }
   }
+
+  /* ============================================================
+     رقم واتساب للدخول + تغيير كلمة المرور (عبر الـWorker)
+     ============================================================ */
+  async function authApi(path, body){
+    var s=await sb.auth.getSession(); var tok=s.data.session&&s.data.session.access_token;
+    var r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok},body:JSON.stringify(body||{})});
+    var j={}; try{ j=await r.json(); }catch(e){}
+    if(!r.ok && !j.error) j.error='خطأ ('+r.status+')';
+    return j;
+  }
+  function setMsg(id,t,ok){ var m=$(id); m.className='msg'+(ok===true?' s':ok===false?' e':''); m.textContent=t||''; }
+  var waState={phone:null, sentTo:null, timer:null};
+  function waShow(linked){
+    $('#waLinked').classList.toggle('hidden', !linked);
+    $('#waForm').classList.toggle('hidden', !!linked);
+    $('#waCard').style.borderColor = linked ? '' : 'var(--orange)';
+    $('#waCard').style.borderWidth = linked ? '' : '2px';
+  }
+  async function waBoot(){
+    if(!sb) return;
+    var st=await authApi('/api/phone/status');
+    if(st.wa_account){ $('#pwCurWrap').classList.add('hidden'); $('#pwWaNote').classList.remove('hidden'); }
+    if(!st.wa_enabled && !st.phone) return;          // الخدمة مش مفعّلة بعد
+    $('#waCard').classList.remove('hidden');
+    waState.phone=st.phone;
+    if(st.phone){ $('#waLinkedNum').textContent=st.phone; waShow(true); return; }
+    waShow(false);
+    $('#waSub').innerHTML='<b style="color:var(--bad)">مطلوب:</b> أضف رقم واتساب لحسابك ليعمل تسجيل الدخول عبر واتساب — يصلك رمز للتأكيد.';
+    // اقتراح رقم الهاتف المحفوظ بالبيانات
+    if($('#pfPhone') && $('#pfPhone').value) $('#waPhone').value=$('#pfPhone').value;
+    try{ if(!sessionStorage.getItem('waAsked')){ sessionStorage.setItem('waAsked','1');
+      setTimeout(function(){ $('#waCard').scrollIntoView({behavior:'smooth',block:'center'}); $('#waPhone').focus(); }, 400); } }catch(e){}
+  }
+  $('#waChange').addEventListener('click',function(){ waShow(false); $('#waPhone').value=''; $('#waPhone').focus(); });
+  $('#waSend').addEventListener('click',async function(){
+    var ph=$('#waPhone').value.trim();
+    if(ph.replace(/\D/g,'').length<7){ setMsg('#waMsg','رقم الهاتف غير صحيح',false); return; }
+    var b=this; b.disabled=true; setMsg('#waMsg','جارٍ إرسال الرمز…');
+    var j=await authApi('/api/phone/send',{phone:ph});
+    if(j.error){ b.disabled=false; setMsg('#waMsg',j.error,false); return; }
+    waState.sentTo=ph;
+    $('#waCodeRow').classList.remove('hidden'); $('#waCode').value=''; $('#waCode').focus();
+    setMsg('#waMsg','أرسلنا رمزًا إلى واتساب '+(j.phone||ph),true);
+    var left=j.resend_in||60; clearInterval(waState.timer);
+    waState.timer=setInterval(function(){ left--; b.textContent= left>0 ? ('إعادة الإرسال ('+left+')') : 'أرسل الرمز مجددًا'; if(left<=0){ clearInterval(waState.timer); b.disabled=false; } },1000);
+  });
+  $('#waVerify').addEventListener('click',async function(){
+    var code=$('#waCode').value.replace(/\D/g,'');
+    if(code.length!==6){ setMsg('#waMsg','أدخل الرمز المكوّن من ٦ أرقام',false); return; }
+    var b=this; b.disabled=true; setMsg('#waMsg','جارٍ التأكيد…');
+    var j=await authApi('/api/phone/link',{phone:waState.sentTo||$('#waPhone').value,code:code});
+    b.disabled=false;
+    if(!j.ok){ setMsg('#waMsg',j.error||'تعذّر الربط',false); return; }
+    clearInterval(waState.timer); $('#waSend').disabled=false; $('#waSend').textContent='أرسل الرمز'; $('#waCodeRow').classList.add('hidden');
+    $('#waSub').textContent='يمكنك الآن تسجيل الدخول برمز يصلك على هذا الرقم عبر واتساب.';
+    $('#waLinkedNum').textContent=j.phone; waShow(true);
+    setMsg('#waMsg','تم ربط الرقم ✓',true);
+  });
+  $('#pwSave').addEventListener('click',async function(){
+    var cur=$('#pwCur').value, n1=$('#pwNew').value, n2=$('#pwNew2').value;
+    var waAcc=$('#pwCurWrap').classList.contains('hidden');
+    if(!waAcc && !cur){ setMsg('#pwMsg','أدخل كلمة المرور الحالية',false); return; }
+    if(n1.length<8){ setMsg('#pwMsg','كلمة المرور الجديدة يجب أن تكون ٨ أحرف على الأقل',false); return; }
+    if(n1!==n2){ setMsg('#pwMsg','كلمتا المرور غير متطابقتين',false); return; }
+    var b=this; b.disabled=true; setMsg('#pwMsg','جارٍ الحفظ…');
+    var j=await authApi('/api/account/password',{current:cur,password:n1});
+    b.disabled=false;
+    if(!j.ok){ setMsg('#pwMsg',j.error||'تعذّر تغيير كلمة المرور',false); return; }
+    $('#pwCur').value=''; $('#pwNew').value=''; $('#pwNew2').value='';
+    setMsg('#pwMsg','تم تغيير كلمة المرور ✓',true);
+  });
 
   /* ============================================================
      الأمان — التحقق بخطوتين (2FA)

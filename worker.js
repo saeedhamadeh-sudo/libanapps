@@ -778,7 +778,10 @@ async function otpSend(request, env) {
   let body; try { body = await request.json(); } catch { return json(400, { error: 'bad json' }); }
   const phone = normPhone(body.phone);
   if (!validPhone(phone)) return json(400, { error: 'رقم الهاتف غير صحيح' });
-  const ip = request.headers.get('CF-Connecting-IP') || '';
+  return otpIssue(env, phone, request.headers.get('CF-Connecting-IP') || '');
+}
+// إرسال رمز لرقم (مع حدود الإرسال) — مشترك بين الدخول وربط الرقم بالحساب
+async function otpIssue(env, phone, ip) {
   const hourAgo = new Date(Date.now() - 3600e3).toISOString();
 
   const recent = await sbGet(env, `phone_otps?phone=eq.${phone}&created_at=gte.${hourAgo}&select=created_at&order=created_at.desc`);
@@ -824,6 +827,92 @@ async function waSessionFor(env, userId) {
   return tok ? { token: tok } : { error: 'لم يصدر رمز دخول من Supabase' };
 }
 
+// التحقق من رمز — بيرجّع { otp } أو { resp } (رد خطأ جاهز)
+async function otpCheck(env, phone, code) {
+  const now = new Date().toISOString();
+  const rows = await sbGet(env, `phone_otps?phone=eq.${phone}&used_at=is.null&expires_at=gt.${now}&select=id,code_hash,attempts&order=created_at.desc&limit=1`);
+  if (!rows.length) return { resp: json(200, { ok: false, error: 'انتهت صلاحية الرمز — اطلب رمزًا جديدًا' }) };
+  const otp = rows[0];
+  if (otp.attempts >= WA_MAX_ATTEMPTS) return { resp: json(200, { ok: false, error: 'محاولات كثيرة — اطلب رمزًا جديدًا' }) };
+  if (await waHash(env, phone, code) !== otp.code_hash) {
+    await sbPatch(env, `phone_otps?id=eq.${otp.id}`, { attempts: otp.attempts + 1 });
+    const left = WA_MAX_ATTEMPTS - otp.attempts - 1;
+    return { resp: json(200, { ok: false, error: left > 0 ? 'الرمز غير صحيح' : 'محاولات كثيرة — اطلب رمزًا جديدًا', left }) };
+  }
+  return { otp };
+}
+function waEnabled(env) {
+  const prov = String(env.WA_PROVIDER || '').trim().toLowerCase();
+  const keyOk = prov !== 'verifyway' || !!String(env.VERIFYWAY_API_KEY || '').trim();
+  return String(env.WA_ENABLED || '') === '1' && !!prov && keyOk;
+}
+const isWaAccount = u => new RegExp('@' + WA_EMAIL_DOMAIN.replace(/\./g, '\\.') + '$', 'i').test(String(u && u.email || ''));
+
+// ---------- صفحة الحساب: رقم واتس اب للدخول ----------
+// POST /api/phone/status
+async function phoneStatus(request, env) {
+  const u = await currentUser(request, env);
+  if (!u || !u.id) return json(401, { error: 'سجّل الدخول أولاً' });
+  const m = await sbGet(env, `phone_logins?user_id=eq.${u.id}&select=phone&limit=1`).catch(() => []);
+  return json(200, { phone: m.length ? '+' + m[0].phone : null, wa_enabled: waEnabled(env), wa_account: isWaAccount(u) });
+}
+// POST /api/phone/send  { phone }
+async function phoneSend(request, env) {
+  if (!waEnabled(env)) return json(503, { error: 'الإرسال عبر واتساب متوقف حاليًا' });
+  const u = await currentUser(request, env);
+  if (!u || !u.id) return json(401, { error: 'سجّل الدخول أولاً' });
+  let body; try { body = await request.json(); } catch { return json(400, { error: 'bad json' }); }
+  const phone = normPhone(body.phone);
+  if (!validPhone(phone)) return json(400, { error: 'رقم الهاتف غير صحيح' });
+  const taken = await sbGet(env, `phone_logins?phone=eq.${phone}&select=user_id&limit=1`);
+  if (taken.length && taken[0].user_id !== u.id) return json(409, { error: 'هذا الرقم مربوط بحساب آخر' });
+  return otpIssue(env, phone, request.headers.get('CF-Connecting-IP') || '');
+}
+// POST /api/phone/link  { phone, code }
+async function phoneLink(request, env) {
+  const u = await currentUser(request, env);
+  if (!u || !u.id) return json(401, { error: 'سجّل الدخول أولاً' });
+  let body; try { body = await request.json(); } catch { return json(400, { error: 'bad json' }); }
+  const phone = normPhone(body.phone);
+  const code = String(body.code || '').replace(/\D/g, '');
+  if (!validPhone(phone)) return json(400, { error: 'رقم الهاتف غير صحيح' });
+  if (code.length !== 6) return json(400, { error: 'أدخل الرمز المكوّن من ٦ أرقام' });
+  const taken = await sbGet(env, `phone_logins?phone=eq.${phone}&select=user_id&limit=1`);
+  if (taken.length && taken[0].user_id !== u.id) return json(409, { error: 'هذا الرقم مربوط بحساب آخر' });
+  const c = await otpCheck(env, phone, code);
+  if (c.resp) return c.resp;
+  // رقم واحد لكل حساب: نشيل الرقم القديم ونربط الجديد
+  await fetch(`${env.SUPABASE_URL}/rest/v1/phone_logins?user_id=eq.${u.id}`, { method: 'DELETE', headers: sbHeaders(env) });
+  const ins = await sbPost(env, 'phone_logins', { phone, user_id: u.id }, 'resolution=merge-duplicates,return=minimal');
+  if (!ins.ok) return json(500, { error: 'تعذّر ربط الرقم — ' + await sbErrText(ins) });
+  await sbPatch(env, `phone_otps?id=eq.${c.otp.id}`, { used_at: new Date().toISOString() });
+  return json(200, { ok: true, phone: '+' + phone });
+}
+// POST /api/account/password  { current?, password }
+//  حساب بالإيميل: لازم كلمة المرور الحالية. حساب انعمل بالواتس اب: ما عندو كلمة مرور يعرفها، فبيكفي إنو مسجّل دخول.
+async function accountPassword(request, env) {
+  const u = await currentUser(request, env);
+  if (!u || !u.id) return json(401, { error: 'سجّل الدخول أولاً' });
+  let body; try { body = await request.json(); } catch { return json(400, { error: 'bad json' }); }
+  const pw = String(body.password || '');
+  if (pw.length < 8) return json(400, { error: 'كلمة المرور يجب أن تكون ٨ أحرف على الأقل' });
+  if (!isWaAccount(u)) {
+    const cur = String(body.current || '');
+    if (!cur) return json(400, { error: 'أدخل كلمة المرور الحالية' });
+    const t = await fetch(`${env.SUPABASE_URL}/auth/v1/token?grant_type=password`, {
+      method: 'POST', headers: { apikey: env.SUPABASE_SERVICE_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: u.email, password: cur })
+    });
+    if (!t.ok) return json(200, { ok: false, error: t.status === 429 ? 'محاولات كثيرة — حاول بعد قليل' : 'كلمة المرور الحالية غير صحيحة' });
+    if (cur === pw) return json(200, { ok: false, error: 'كلمة المرور الجديدة مثل الحالية' });
+  }
+  const r = await fetch(`${env.SUPABASE_URL}/auth/v1/admin/users/${u.id}`, {
+    method: 'PUT', headers: { ...sbHeaders(env), 'Content-Type': 'application/json' }, body: JSON.stringify({ password: pw })
+  });
+  if (!r.ok) return json(500, { error: 'تعذّر تغيير كلمة المرور — ' + (await r.text()).slice(0, 150) });
+  return json(200, { ok: true });
+}
+
 // POST /api/otp/verify  { phone, code, name?, business? }
 async function otpVerify(request, env) {
   let body; try { body = await request.json(); } catch { return json(400, { error: 'bad json' }); }
@@ -832,16 +921,9 @@ async function otpVerify(request, env) {
   if (!validPhone(phone)) return json(400, { error: 'رقم الهاتف غير صحيح' });
   if (code.length !== 6) return json(400, { error: 'أدخل الرمز المكوّن من ٦ أرقام' });
 
-  const now = new Date().toISOString();
-  const rows = await sbGet(env, `phone_otps?phone=eq.${phone}&used_at=is.null&expires_at=gt.${now}&select=id,code_hash,attempts&order=created_at.desc&limit=1`);
-  if (!rows.length) return json(200, { ok: false, error: 'انتهت صلاحية الرمز — اطلب رمزًا جديدًا' });
-  const otp = rows[0];
-  if (otp.attempts >= WA_MAX_ATTEMPTS) return json(200, { ok: false, error: 'محاولات كثيرة — اطلب رمزًا جديدًا' });
-  if (await waHash(env, phone, code) !== otp.code_hash) {
-    await sbPatch(env, `phone_otps?id=eq.${otp.id}`, { attempts: otp.attempts + 1 });
-    const left = WA_MAX_ATTEMPTS - otp.attempts - 1;
-    return json(200, { ok: false, error: left > 0 ? 'الرمز غير صحيح' : 'محاولات كثيرة — اطلب رمزًا جديدًا', left });
-  }
+  const chk = await otpCheck(env, phone, code);
+  if (chk.resp) return chk.resp;
+  const otp = chk.otp;
 
   // مين صاحب الرقم؟
   let userId = null;
@@ -2603,11 +2685,15 @@ export default {
           return await mfaBackupVerify(request, env);
         }
         if (url.pathname === '/api/otp/config') {
-          // الصفحة بتسأل: تبويب الواتس اب ظاهر أو لأ؟ (WA_ENABLED=1 بلوحة Cloudflare أو wrangler.toml)
-          const prov = String(env.WA_PROVIDER || '').trim().toLowerCase();
-          // ما منظهّر تبويب الواتس اب قبل ما ينحط مفتاح VerifyWay
-          const keyOk = prov !== 'verifyway' || !!String(env.VERIFYWAY_API_KEY || '').trim();
-          return json(200, { enabled: String(env.WA_ENABLED || '') === '1' && !!prov && keyOk });
+          // الصفحة بتسأل: تبويب الواتس اب ظاهر أو لأ؟ (ما بيظهر قبل ما ينحط مفتاح VerifyWay)
+          return json(200, { enabled: waEnabled(env) });
+        }
+        if (url.pathname === '/api/phone/status' || url.pathname === '/api/phone/send' || url.pathname === '/api/phone/link' || url.pathname === '/api/account/password') {
+          if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
+          if (url.pathname === '/api/phone/status') return await phoneStatus(request, env);
+          if (url.pathname === '/api/phone/send') return await phoneSend(request, env);
+          if (url.pathname === '/api/phone/link') return await phoneLink(request, env);
+          return await accountPassword(request, env);
         }
         if (url.pathname === '/api/otp/send') {
           if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
