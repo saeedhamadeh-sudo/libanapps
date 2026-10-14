@@ -630,11 +630,13 @@ function budgetEntryFromDb(row){
 function budgetEntryToDb(e){
   return { id:e.id, category_id:e.categoryId||null, amount:Number(e.amount)||0, date:e.date||null, note:e.note||null, number:e.number||null, created_at:e.createdAt||Date.now(), deleted:!!e.deleted, deleted_at:e.deletedAt||null };
 }
+// عمود phone موجود بقاعدة البيانات؟ (بعد upgrade-app-wa-login.sql) — قبلها ما منبعتو حتى ما يفشل الحفظ
+let _usersPhoneCol = false;
 function userFromDb(row){
-  return { id:row.id, username:row.username, password:row.password, role:row.role, permissions: row.permissions||[], totpSecret: row.totp_secret||undefined, totpEnabled: !!row.totp_enabled };
+  return { id:row.id, username:row.username, password:row.password, role:row.role, permissions: row.permissions||[], totpSecret: row.totp_secret||undefined, totpEnabled: !!row.totp_enabled, phone: (row && Object.prototype.hasOwnProperty.call(row,'phone') ? ((_usersPhoneCol = true), (row.phone||'')) : '') };
 }
 function userToDb(u){
-  return { id:u.id, username:u.username, password:u.password, role:u.role, permissions: u.permissions||[], totp_secret: u.totpSecret||null, totp_enabled: !!u.totpEnabled };
+  return { id:u.id, username:u.username, password:u.password, role:u.role, permissions: u.permissions||[], totp_secret: u.totpSecret||null, totp_enabled: !!u.totpEnabled, ...(_usersPhoneCol ? { phone: u.phone ? normPhoneLB(u.phone) : null } : {}) };
 }
 function settingsToDb(s){
   return {
@@ -1727,6 +1729,223 @@ function renderWorkerPortal(){
   const btn = document.getElementById('workerLogoutBtn');
   if(btn) btn.addEventListener('click', signOutEverywhere);
 }
+/* ============================================================
+   الدخول عبر واتساب لمستخدمي البرنامج (ADMIN والموظفين، كل واحد برقمه)
+   — يُفعَّل لكل زبون من لوحة SUPER (clients.wa_login)
+   — الرمز يُرسل ويُتحقق منه في الـWorker؛ الدخول نفسه يتم بـ app_login_wa (الوضع الآمن)
+     أو محلياً بالحساب المطابق (الوضع العادي)
+   ============================================================ */
+const WA_PRODUCT = 'alum';
+let _waCfg = null;            // {enabled}
+let _waCfgLoading = null;
+let _waSkipThisSession = false;
+function normPhoneLB(p){
+  let d = String(p||'').replace(/\D/g,'');
+  if(!d) return '';
+  if(d.startsWith('00')) d = d.slice(2);
+  if(d.startsWith('961')) return d;
+  if(d.startsWith('0')) d = d.slice(1);
+  if(d.length>=7 && d.length<=8) return '961'+d;
+  return d;
+}
+function fmtPhoneLB(d){ d = normPhoneLB(d); return d ? '+'+d : ''; }
+async function waApi(path, body){
+  let tok = '';
+  try{ const s = supabaseClient && await supabaseClient.auth.getSession(); tok = (s && s.data.session && s.data.session.access_token) || ''; }catch(e){}
+  try{
+    const r = await fetch(path, {method:'POST', headers:{'Content-Type':'application/json', 'Authorization':'Bearer '+tok}, body: JSON.stringify(Object.assign({product:WA_PRODUCT}, body||{}))});
+    let j = {}; try{ j = await r.json(); }catch(e){}
+    if(!r.ok && !j.error) j.error = 'خطأ ('+r.status+')';
+    j.__status = r.status;
+    return j;
+  }catch(e){ return {error:'لا يوجد اتصال بالإنترنت', __status:0}; }
+}
+async function waLoadConfig(force){
+  if(PLATFORM_ADMIN || !supabaseClient) return (_waCfg = {enabled:false});
+  if(_waCfg && !force) return _waCfg;
+  if(!_waCfgLoading) _waCfgLoading = waApi('/api/app-wa/config').then(j=>{ _waCfg = {enabled: !!j.enabled}; _waCfgLoading = null; return _waCfg; });
+  return _waCfgLoading;
+}
+function waEnabledNow(){ return !!(_waCfg && _waCfg.enabled); }
+
+// ---------- شاشة الدخول ----------
+function waLoginBind(){
+  const slot = document.getElementById('wa_login_slot');
+  if(!slot) return;
+  waLoadConfig().then(cfg=>{
+    if(!cfg.enabled || !document.getElementById('wa_login_slot')) return;
+    slot.innerHTML = `<div style="text-align:center; margin:12px 0 4px; font-size:12px; color:var(--ink-soft);">أو</div>
+      <button class="btn" id="wa_login_open" style="width:100%; justify-content:center; border-color:#25D366; color:#128C7E; font-weight:800;">📱 الدخول عبر واتساب</button>`;
+    document.getElementById('wa_login_open').addEventListener('click', waLoginFlow);
+  });
+}
+function waLoginFlow(){
+  const card = document.getElementById('wa_login_slot').closest('.card');
+  card.innerHTML = `<h2 style="justify-content:center; text-align:center;"><span class="dot"></span> 📱 الدخول عبر واتساب</h2>
+    <div class="field"><label>رقم الواتساب المسجّل لحسابك</label><input type="tel" id="wa_ph" dir="ltr" placeholder="03 000 000" autocomplete="tel"></div>
+    <button class="btn btn-primary" id="wa_send" style="width:100%; justify-content:center;">أرسل الرمز</button>
+    <div id="wa_code_box" style="display:none; margin-top:12px;">
+      <div class="field"><label>الرمز الذي وصلك على واتساب</label><input type="text" id="wa_code" inputmode="numeric" maxlength="6" dir="ltr" autocomplete="one-time-code" style="text-align:center; letter-spacing:6px; font-size:18px;"></div>
+      <button class="btn btn-primary" id="wa_verify" style="width:100%; justify-content:center;">دخول</button>
+    </div>
+    <div id="wa_err" style="font-size:12.5px; min-height:16px; margin:8px 0; text-align:center;"></div>
+    <button class="btn" id="wa_back" style="width:100%; justify-content:center;">↩ الدخول باسم المستخدم وكلمة السر</button>`;
+  const $ = s=>card.querySelector(s);
+  const msg = (t, bad)=>{ const e = $('#wa_err'); e.textContent = t||''; e.style.color = bad? 'var(--debit)' : 'var(--credit)'; };
+  let sentTo = '', timer = null;
+  $('#wa_back').addEventListener('click', ()=>{ clearInterval(timer); render(); });
+  const send = async ()=>{
+    const ph = $('#wa_ph').value.trim();
+    if(normPhoneLB(ph).length < 10){ msg('رقم الهاتف غير صحيح', true); return; }
+    const b = $('#wa_send'); b.disabled = true; msg('جارٍ الإرسال…');
+    const j = await waApi('/api/app-wa/send', {phone:ph, purpose:'login'});
+    if(j.error){ b.disabled = false; msg(j.error, true); return; }
+    sentTo = ph; $('#wa_code_box').style.display = ''; $('#wa_code').value = ''; $('#wa_code').focus();
+    msg('أرسلنا رمزًا إلى واتساب '+(j.phone||ph));
+    let left = j.resend_in||60; clearInterval(timer);
+    timer = setInterval(()=>{ left--; b.textContent = left>0 ? 'إعادة الإرسال ('+left+')' : 'أرسل الرمز مجددًا'; if(left<=0){ clearInterval(timer); b.disabled = false; } }, 1000);
+  };
+  const verify = async ()=>{
+    const code = $('#wa_code').value.replace(/\D/g,'');
+    if(code.length!==6){ msg('أدخل الرمز المكوّن من ٦ أرقام', true); return; }
+    const b = $('#wa_verify'); b.disabled = true; msg('جارٍ التحقق…');
+    const j = await waApi('/api/app-wa/verify', {phone:sentTo, code});
+    if(!j.ok){ b.disabled = false; msg(j.error||'تعذّر الدخول', true); return; }
+    clearInterval(timer);
+    if(SECURE_MODE){
+      const { data, error } = await supabaseClient.rpc('app_login_wa', { p_product: WA_PRODUCT, p_ticket: j.ticket });
+      if(error || !data || !data.ok){ b.disabled = false; msg('تعذّر الدخول: '+((error && error.message) || (data && data.reason) || ''), true); return; }
+      return finishRpcLogin(data);
+    }
+    const match = (DB.settings.users||[]).find(u=>u.id===j.account_id);
+    if(!match){ b.disabled = false; msg('لم نجد المستخدم المرتبط بهذا الرقم — حدّث الصفحة وحاول مرة أخرى', true); return; }
+    try{ if(typeof seedBudgetCategoriesLocal==='function' && seedBudgetCategoriesLocal()) save(KEYS.budgetCategories, DB.budgetCategories); }catch(e){}
+    authenticated = true;
+    currentUser = match;
+    currentCustomerSession = null;
+    if(typeof currentWorkerSession!=='undefined') currentWorkerSession = null;
+    go('#/'); render();
+  };
+  $('#wa_send').addEventListener('click', send);
+  $('#wa_ph').addEventListener('keydown', e=>{ if(e.key==='Enter') send(); });
+  $('#wa_verify').addEventListener('click', verify);
+  $('#wa_code').addEventListener('keydown', e=>{ if(e.key==='Enter') verify(); });
+  setTimeout(()=>$('#wa_ph').focus(), 30);
+}
+
+// ---------- إجبار المستخدم القديم على إضافة رقمه بعد الدخول ----------
+function waAfterRender(){
+  if(!authenticated || !currentUser || PLATFORM_ADMIN || _waSkipThisSession) return;
+  if(currentUser.phone || document.getElementById('wa_force_modal')) return;
+  waLoadConfig().then(cfg=>{
+    if(!cfg.enabled || !authenticated || !currentUser || currentUser.phone || document.getElementById('wa_force_modal')) return;
+    openWaOwnPhoneModal(true);
+  });
+}
+function openWaOwnPhoneModal(forced){
+  const wrap = document.createElement('div');
+  wrap.className = 'modal-bg'; wrap.id = 'wa_force_modal';
+  wrap.innerHTML = `<div class="modal" style="max-width:420px;">
+    <h3>📱 ${forced? 'أضف رقم واتساب لحسابك' : 'رقم الواتساب لحسابي'}</h3>
+    <p style="font-size:13px; color:var(--ink-soft); line-height:1.7;">${forced? 'مطلوب لتفعيل الدخول عبر واتساب. ' : ''}يصلك رمز على واتساب للتأكد من الرقم — بعدها يمكنك الدخول به بدل كلمة السر. الحساب: <b>${escapeHtml(currentUser.username)}</b></p>
+    <div class="field"><label>رقم الواتساب</label>
+      <div style="display:flex; gap:6px;"><input type="tel" id="wo_ph" dir="ltr" placeholder="03 000 000" style="flex:1;" value="${escapeHtml(currentUser.phone? fmtPhoneLB(currentUser.phone) : '')}"><button class="btn btn-primary" id="wo_send">أرسل الرمز</button></div></div>
+    <div id="wo_code_box" style="display:none;">
+      <div class="field"><label>الرمز</label>
+        <div style="display:flex; gap:6px;"><input type="text" id="wo_code" inputmode="numeric" maxlength="6" dir="ltr" style="flex:1; text-align:center; letter-spacing:6px; font-size:18px;"><button class="btn btn-primary" id="wo_verify">تأكيد</button></div></div>
+    </div>
+    <div id="wo_msg" style="font-size:12.5px; min-height:16px; margin:6px 0; text-align:center;"></div>
+    <div class="row">
+      ${forced? `<button class="btn" id="wo_logout">🔒 خروج</button><button class="btn" id="wo_skip" style="display:none;">متابعة الآن بدون رقم</button>` : `<button class="btn" id="wo_cancel">إغلاق</button>`}
+    </div>
+  </div>`;
+  document.body.appendChild(wrap);
+  const $ = s=>wrap.querySelector(s);
+  const msg = (t, bad)=>{ const e = $('#wo_msg'); e.textContent = t||''; e.style.color = bad? 'var(--debit)' : 'var(--credit)'; };
+  let sentTo = '', timer = null;
+  if($('#wo_cancel')) $('#wo_cancel').addEventListener('click', ()=>{ clearInterval(timer); wrap.remove(); });
+  if($('#wo_logout')) $('#wo_logout').addEventListener('click', ()=>{ clearInterval(timer); wrap.remove(); const lb = document.getElementById('logoutBtn'); if(lb) lb.click(); });
+  if($('#wo_skip')) $('#wo_skip').addEventListener('click', ()=>{ _waSkipThisSession = true; clearInterval(timer); wrap.remove(); });
+  $('#wo_send').addEventListener('click', async ()=>{
+    const ph = $('#wo_ph').value.trim();
+    if(normPhoneLB(ph).length < 10){ msg('رقم الهاتف غير صحيح', true); return; }
+    const dup = (DB.settings.users||[]).find(u=>u.id!==currentUser.id && u.phone && normPhoneLB(u.phone)===normPhoneLB(ph));
+    if(dup){ msg('هذا الرقم مسجّل لمستخدم آخر', true); return; }
+    const b = $('#wo_send'); b.disabled = true; msg('جارٍ الإرسال…');
+    const j = await waApi('/api/app-wa/send', {phone:ph, purpose:'own', account_id: currentUser.id});
+    if(j.error){
+      b.disabled = false; msg(j.error, true);
+      // خدمة الواتساب متوقفة؟ لا نقفل البرنامج على المستخدم
+      if((j.__status===0 || j.__status>=500) && $('#wo_skip')) $('#wo_skip').style.display = '';
+      return;
+    }
+    sentTo = ph; $('#wo_code_box').style.display = ''; $('#wo_code').focus();
+    msg('أرسلنا رمزًا إلى واتساب '+(j.phone||ph));
+    let left = j.resend_in||60; clearInterval(timer);
+    timer = setInterval(()=>{ left--; b.textContent = left>0 ? '('+left+')' : 'إعادة الإرسال'; if(left<=0){ clearInterval(timer); b.disabled = false; } }, 1000);
+  });
+  $('#wo_verify').addEventListener('click', async ()=>{
+    const code = $('#wo_code').value.replace(/\D/g,'');
+    if(code.length!==6){ msg('أدخل الرمز المكوّن من ٦ أرقام', true); return; }
+    const b = $('#wo_verify'); b.disabled = true; msg('جارٍ التأكيد…');
+    const j = await waApi('/api/app-wa/own-verify', {phone:sentTo, code, account_id: currentUser.id});
+    b.disabled = false;
+    if(!j.ok){ msg(j.error||'تعذّر التأكيد', true); return; }
+    const ph = normPhoneLB(j.phone || sentTo);
+    currentUser.phone = ph;
+    const u = (DB.settings.users||[]).find(x=>x.id===currentUser.id); if(u) u.phone = ph;
+    try{ localStorage.setItem(skey(KEYS.settings), JSON.stringify(DB.settings)); }catch(e){}
+    clearInterval(timer);
+    wrap.remove();
+    toast('تم ربط رقم الواتساب ✓ — يمكنك الدخول به من الآن');
+  });
+}
+
+// ---------- تغيير كلمة السر للمستخدم نفسه ----------
+function openSelfPasswordModal(){
+  if(!currentUser) return;
+  const wrap = document.createElement('div');
+  wrap.className = 'modal-bg';
+  wrap.innerHTML = `<div class="modal" style="max-width:400px;">
+    <h3>🔑 تغيير كلمة السر — ${escapeHtml(currentUser.username)}</h3>
+    <div class="field"><label>كلمة السر الحالية</label><input type="password" id="sp_cur" autocomplete="current-password"></div>
+    <div class="field"><label>كلمة السر الجديدة</label><input type="password" id="sp_new" autocomplete="new-password" placeholder="٤ أحرف على الأقل"></div>
+    <div class="field"><label>تأكيد كلمة السر الجديدة</label><input type="password" id="sp_new2" autocomplete="new-password"></div>
+    <div id="sp_msg" style="font-size:12.5px; min-height:16px; color:var(--debit); text-align:center;"></div>
+    ${waEnabledNow()? `<div style="font-size:12px; color:var(--ink-soft); margin-bottom:8px;">📱 رقم الواتساب: <b dir="ltr">${currentUser.phone? escapeHtml(fmtPhoneLB(currentUser.phone)) : '—'}</b> <button type="button" class="btn btn-sm" id="sp_phone">${currentUser.phone? 'تغيير' : 'إضافة'}</button></div>` : ''}
+    <div class="row"><button class="btn" id="sp_cancel">إلغاء</button><button class="btn btn-primary" id="sp_save">حفظ</button></div>
+  </div>`;
+  document.body.appendChild(wrap);
+  const $ = s=>wrap.querySelector(s);
+  $('#sp_cancel').addEventListener('click', ()=>wrap.remove());
+  if($('#sp_phone')) $('#sp_phone').addEventListener('click', ()=>{ wrap.remove(); openWaOwnPhoneModal(false); });
+  $('#sp_save').addEventListener('click', async ()=>{
+    const cur = $('#sp_cur').value, n1 = $('#sp_new').value, n2 = $('#sp_new2').value;
+    const m = $('#sp_msg');
+    if(!cur){ m.textContent = 'أدخل كلمة السر الحالية'; return; }
+    if(n1.length < 4){ m.textContent = 'كلمة السر الجديدة قصيرة (٤ أحرف على الأقل)'; return; }
+    if(n1!==n2){ m.textContent = 'كلمتا السر غير متطابقتين'; return; }
+    if(n1===cur){ m.textContent = 'كلمة السر الجديدة مثل الحالية'; return; }
+    $('#sp_save').disabled = true;
+    if(SECURE_MODE){
+      const { data, error } = await supabaseClient.rpc('app_change_password', { p_product: WA_PRODUCT, p_old: cur, p_new: n1 });
+      $('#sp_save').disabled = false;
+      if(error){ m.textContent = 'تعذّر الحفظ: '+error.message; return; }
+      if(!data || !data.ok){ m.textContent = (data && data.reason==='invalid') ? 'كلمة السر الحالية غير صحيحة' : 'تعذّر تغيير كلمة السر'; return; }
+    } else {
+      const u = (DB.settings.users||[]).find(x=>x.id===currentUser.id);
+      if(!u || u.password!==cur){ $('#sp_save').disabled = false; m.textContent = 'كلمة السر الحالية غير صحيحة'; return; }
+      u.password = n1; currentUser = u;
+      const ok = await save(KEYS.settings, DB.settings);
+      $('#sp_save').disabled = false;
+      if(!ok){ m.textContent = 'حدث خطأ أثناء الحفظ'; return; }
+    }
+    wrap.remove();
+    toast('تم تغيير كلمة السر ✓');
+  });
+}
+document.addEventListener('click', e=>{ if(e.target.closest && e.target.closest('#selfPwBtn')) openSelfPasswordModal(); });
+
 function loginView(){
   const logo = DB.settings.logo;
   return `
@@ -1738,6 +1957,7 @@ function loginView(){
       <div class="field"><label>كلمة السر</label><input type="password" id="login_pass" autocomplete="current-password"></div>
       <div id="login_err" style="color:var(--debit); font-size:12.5px; min-height:16px; margin-bottom:6px;"></div>
       <button class="btn btn-primary" id="loginBtn" style="width:100%; justify-content:center;">دخول</button>
+      <div id="wa_login_slot"></div>
     </div>
     ${appFooter()}
   </div>`;
@@ -1980,6 +2200,7 @@ async function finishRpcLogin(res){
   render();
 }
 function bindLoginEvents(){
+  waLoginBind();
   const btn = document.getElementById('loginBtn');
   let _loginBusy = false;
   const tryLogin = async ()=>{
@@ -2397,6 +2618,7 @@ function render(){
     html += emptyState('الصفحة غير موجودة');
   }
   root().innerHTML = html;
+  setTimeout(waAfterRender, 0);
   bindEvents();
 }
 
@@ -2412,6 +2634,7 @@ function topbar(){
     </div>
     <div class="topbar-actions">
       <button class="btn btn-ghost btn-sm" data-nav="#/">🏠 الرئيسية</button>
+      ${currentUser? `<button class="btn btn-ghost btn-sm" id="selfPwBtn" title="تغيير كلمة السر ورقم الواتساب">🔑</button>` : ''}
       <button class="btn btn-ghost btn-sm" id="logoutBtn">🔒 خروج</button>
     </div>
   </div>`;
@@ -5633,6 +5856,8 @@ function openUserModal(user){
   wrap.innerHTML = `<div class="modal">
     <h3>${isNew? 'مستخدم جديد' : 'تعديل مستخدم'}</h3>
     <div class="field"><label>اسم المستخدم *</label><input type="text" id="um_username" value="${user?escapeHtml(user.username):''}"></div>
+    <div class="field"><label>📱 رقم واتساب (للدخول عبر واتساب)${(waEnabledNow() && isNew)? ' *' : ''}</label><input type="tel" id="um_phone" dir="ltr" placeholder="03 000 000" value="${user&&user.phone? escapeHtml(fmtPhoneLB(user.phone)) : ''}">
+      ${user&&user.phone? `<div style="font-size:11.5px; color:var(--ink-soft); margin-top:3px;">امسح الرقم لحذفه من هذا المستخدم</div>` : ''}</div>
     ${passwordLocked? `
     <div class="field"><label>كلمة السر</label><input type="text" value="${'•'.repeat(8)}" disabled style="opacity:.6;"></div>
     <p style="font-size:12px; color:var(--debit); font-weight:600;">🔒 فقط حساب SUPERADMIN نفسه يمكنه تغيير كلمة سرّه، لا ADMIN ولا غيره.</p>
@@ -5655,14 +5880,20 @@ function openUserModal(user){
     if(!password && (isNew || !SECURE_MODE)){ toast('يجب كتابة كلمة السر'); return; }
     const dup = (DB.settings.users||[]).find(u=> u.username===username && (!user || u.id!==user.id));
     if(dup){ toast('اسم المستخدم هذا مستخدم لشخص آخر'); return; }
+    const phoneRaw = (wrap.querySelector('#um_phone')||{value:''}).value.trim();
+    const phone = phoneRaw ? normPhoneLB(phoneRaw) : '';
+    if(phoneRaw && phone.length < 10){ toast('رقم الواتساب غير صحيح'); return; }
+    if(!phone && isNew && waEnabledNow()){ toast('يجب كتابة رقم واتساب للمستخدم الجديد'); return; }
+    const dupPhone = phone && (DB.settings.users||[]).find(u=> u.phone && normPhoneLB(u.phone)===phone && (!user || u.id!==user.id));
+    if(dupPhone){ toast('رقم الواتساب هذا مسجّل للمستخدم «'+dupPhone.username+'»'); return; }
     if(isNew){
       const perms = Array.from(wrap.querySelectorAll('.user-perm-chk:checked')).map(c=>c.value);
-      const nu = {id:uid(), username, password, role:'custom', permissions:perms};
+      const nu = {id:uid(), username, password, role:'custom', permissions:perms, phone};
       DB.settings.users = [...(DB.settings.users||[]), nu];
     } else {
       const oldPassword = user.password;
       const passwordChanged = user.password !== password;
-      user.username = username; user.password = password;
+      user.username = username; user.password = password; user.phone = phone;
       if(!isPriv){
         user.permissions = Array.from(wrap.querySelectorAll('.user-perm-chk:checked')).map(c=>c.value);
       }

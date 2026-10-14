@@ -834,6 +834,9 @@ function paintClients(){
           (c.secure_apps===true
             ? '<button class="btn sm" data-secure="'+c.id+'" data-on="0" title="برامج المحاسبة: الدخول والصلاحيات تُفحص في قاعدة البيانات">🔒 آمن</button> '
             : (c.secure_apps===false ? '<button class="btn alt sm" data-secure="'+c.id+'" data-on="1" title="فعّل الوضع الآمن لبرامج المحاسبة لهذا الزبون">🔓 تفعيل الوضع الآمن</button> ' : ''))+
+          (c.wa_login===true
+            ? '<button class="btn sm" data-walogin="'+c.id+'" data-on="0" title="الدخول عبر واتساب مفعّل لبرامج المحاسبة — اضغط للإيقاف">📱 واتساب ✓</button> '
+            : '<button class="btn alt sm" data-walogin="'+c.id+'" data-on="1" title="فعّل الدخول عبر واتساب لمستخدمي برامج التجاري والصناعي">📱 تفعيل واتساب</button> ')+
           '<button class="btn alt sm" data-stopall="'+c.id+'">إيقاف الكل</button> '+
           '<button class="btn alt sm" data-onall="'+c.id+'">تفعيل الكل</button> '+
           '<button class="btn dg sm" data-delc="'+c.id+'">حذف الزبون</button>'+
@@ -953,6 +956,18 @@ $('#subsTbl').addEventListener('click',async function(e){
 $('#clientsTbl').addEventListener('click',async function(e){
   var b=e.target.closest('button'); if(!b) return;
 
+  if(b.dataset.walogin){
+    var won=b.dataset.on==='1', wc=CLIENTS.find(function(x){return x.id===b.dataset.walogin})||{};
+    if(!confirm((won?'تفعيل':'إيقاف')+' الدخول عبر واتساب لـ«'+(wc.name||'')+'»؟\n\n'+(won
+      ? '· كل مستخدم بالبرنامج (ADMIN والموظفين) يقدر يفوت برمز يوصلو عالواتساب.\n· المستخدم يلي ما عندو رقم بينطلب منو يضيفو أول ما يفوت.\n· المستخدم الجديد لازم ينحطلو رقم.'
+      : '· يرجع الدخول باسم المستخدم وكلمة السر فقط.'))) return;
+    b.disabled=true;
+    var wr=await sb.from('clients').update({wa_login:won}).eq('id',b.dataset.walogin);
+    b.disabled=false;
+    if(wr.error){ alert('تعذّر الحفظ: '+wr.error.message+(/wa_login/.test(wr.error.message)?'\n\nشغّل db/upgrade-app-wa-login.sql على Supabase أولاً.':'')); return; }
+    await loadClients();
+    return;
+  }
   if(b.dataset.secure){
     var on=b.dataset.on==='1', cc=CLIENTS.find(function(x){return x.id===b.dataset.secure})||{};
     var msgOn='تفعيل الوضع الآمن لـ«'+(cc.name||'')+'»؟\n\n'+

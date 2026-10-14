@@ -913,6 +913,100 @@ async function accountPassword(request, env) {
   return json(200, { ok: true });
 }
 
+// ---------- الدخول عبر واتساب داخل برامج التجاري والصناعي ----------
+const APP_WA_PRODUCTS = ['trade', 'alum'];
+// زبون مين؟ (من جلسة رابط البرنامج نفسها)
+async function appClientOf(request, env) {
+  const token = (request.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
+  if (!token) return null;
+  const r = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/my_client_id`, {
+    method: 'POST', headers: { apikey: env.SUPABASE_ANON_KEY || 'sb_publishable_ypfm_aulpcqBpeFpyD_7iw_mA4DNlR5', Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: '{}'
+  });
+  if (!r.ok) return null;
+  const cid = await r.json();
+  return typeof cid === 'string' && cid ? cid : null;
+}
+async function appWaCtx(request, env) {
+  let body; try { body = await request.json(); } catch { return { err: json(400, { error: 'bad json' }) }; }
+  const product = String(body.product || '');
+  if (!APP_WA_PRODUCTS.includes(product)) return { err: json(400, { error: 'bad product' }) };
+  const cid = await appClientOf(request, env);
+  if (!cid) return { err: json(401, { error: 'افتح البرنامج من رابطه أولاً' }) };
+  const cl = await sbGet(env, `clients?id=eq.${cid}&select=wa_login&limit=1`).catch(() => []);
+  const enabled = waEnabled(env) && !!(cl[0] && cl[0].wa_login);
+  return { body, product, cid, enabled, table: product + '_app_users' };
+}
+// POST /api/app-wa/config { product }
+async function appWaConfig(request, env) {
+  const c = await appWaCtx(request, env);
+  if (c.err) return json(200, { enabled: false });
+  return json(200, { enabled: c.enabled });
+}
+// POST /api/app-wa/send { product, phone, purpose: 'login' | 'own', account_id? }
+async function appWaSend(request, env) {
+  const c = await appWaCtx(request, env);
+  if (c.err) return c.err;
+  if (!c.enabled) return json(403, { error: 'الدخول عبر واتساب غير مفعّل لهذا البرنامج' });
+  const phone = normPhone(c.body.phone);
+  if (!validPhone(phone)) return json(400, { error: 'رقم الهاتف غير صحيح' });
+  const users = await sbGet(env, `${c.table}?client_id=eq.${c.cid}&phone=eq.${phone}&select=id&limit=2`);
+  if (c.body.purpose === 'own') {
+    if (users.some(u => String(u.id) !== String(c.body.account_id))) return json(409, { error: 'هذا الرقم مسجّل لمستخدم آخر' });
+  } else if (!users.length) {
+    return json(404, { error: 'هذا الرقم غير مسجّل لأي مستخدم — ادخل باسم المستخدم وكلمة السر ثم أضف رقمك' });
+  }
+  return otpIssue(env, phone, request.headers.get('CF-Connecting-IP') || '');
+}
+// POST /api/app-wa/verify { product, phone, code } → تذكرة دخول
+async function appWaVerify(request, env) {
+  const c = await appWaCtx(request, env);
+  if (c.err) return c.err;
+  if (!c.enabled) return json(403, { error: 'الدخول عبر واتساب غير مفعّل لهذا البرنامج' });
+  const phone = normPhone(c.body.phone);
+  const code = String(c.body.code || '').replace(/\D/g, '');
+  if (!validPhone(phone)) return json(400, { error: 'رقم الهاتف غير صحيح' });
+  if (code.length !== 6) return json(400, { error: 'أدخل الرمز المكوّن من ٦ أرقام' });
+  const users = await sbGet(env, `${c.table}?client_id=eq.${c.cid}&phone=eq.${phone}&select=id,username&limit=2`);
+  if (!users.length) return json(200, { ok: false, error: 'هذا الرقم غير مسجّل لأي مستخدم' });
+  if (users.length > 1) return json(200, { ok: false, error: 'هذا الرقم مسجّل لأكثر من مستخدم — ادخل باسم المستخدم وكلمة السر' });
+  const chk = await otpCheck(env, phone, code);
+  if (chk.resp) return chk.resp;
+  const ticket = Array.from(crypto.getRandomValues(new Uint8Array(24)), b => b.toString(16).padStart(2, '0')).join('');
+  const ins = await sbPost(env, 'app_wa_tickets', {
+    ticket_hash: await sha256Hex(ticket), client_id: c.cid, product: c.product, account_id: String(users[0].id),
+    expires_at: new Date(Date.now() + 2 * 60e3).toISOString()
+  });
+  if (!ins.ok) return json(500, { error: 'تعذّر إنشاء جلسة الدخول — ' + await sbErrText(ins) });
+  await sbPatch(env, `phone_otps?id=eq.${chk.otp.id}`, { used_at: new Date().toISOString() });
+  return json(200, { ok: true, ticket, account_id: String(users[0].id), username: users[0].username });
+}
+// POST /api/app-wa/own-verify { product, phone, code, account_id } → يحفظ الرقم على المستخدم
+async function appWaOwnVerify(request, env) {
+  const c = await appWaCtx(request, env);
+  if (c.err) return c.err;
+  if (!c.enabled) return json(403, { error: 'الدخول عبر واتساب غير مفعّل لهذا البرنامج' });
+  const phone = normPhone(c.body.phone);
+  const code = String(c.body.code || '').replace(/\D/g, '');
+  const acc = String(c.body.account_id || '');
+  if (!validPhone(phone)) return json(400, { error: 'رقم الهاتف غير صحيح' });
+  if (code.length !== 6) return json(400, { error: 'أدخل الرمز المكوّن من ٦ أرقام' });
+  if (!acc) return json(400, { error: 'account missing' });
+  // بالوضع الآمن: لازم يكون هو نفسه المسجّل دخول بهالحساب
+  const u = await currentUser(request, env);
+  const sess = u ? await sbGet(env, `app_sessions?uid=eq.${u.id}&product=eq.${c.product}&client_id=eq.${c.cid}&kind=eq.staff&select=account_id`).catch(() => []) : [];
+  if (sess.length && !sess.some(x => String(x.account_id) === acc)) return json(403, { error: 'سجّل الدخول بهذا الحساب أولاً' });
+  const exists = await sbGet(env, `${c.table}?client_id=eq.${c.cid}&id=eq.${encodeURIComponent(acc)}&select=id&limit=1`);
+  if (!exists.length) return json(404, { error: 'المستخدم غير موجود — احفظ المستخدم أولاً' });
+  const others = await sbGet(env, `${c.table}?client_id=eq.${c.cid}&phone=eq.${phone}&select=id`);
+  if (others.some(x => String(x.id) !== acc)) return json(409, { error: 'هذا الرقم مسجّل لمستخدم آخر' });
+  const chk = await otpCheck(env, phone, code);
+  if (chk.resp) return chk.resp;
+  const up = await sbPatch(env, `${c.table}?client_id=eq.${c.cid}&id=eq.${encodeURIComponent(acc)}`, { phone });
+  if (!up.ok) return json(500, { error: 'تعذّر حفظ الرقم — ' + await sbErrText(up) });
+  await sbPatch(env, `phone_otps?id=eq.${chk.otp.id}`, { used_at: new Date().toISOString() });
+  return json(200, { ok: true, phone });
+}
+
 // POST /api/otp/verify  { phone, code, name?, business? }
 async function otpVerify(request, env) {
   let body; try { body = await request.json(); } catch { return json(400, { error: 'bad json' }); }
@@ -2687,6 +2781,14 @@ export default {
         if (url.pathname === '/api/otp/config') {
           // الصفحة بتسأل: تبويب الواتس اب ظاهر أو لأ؟ (ما بيظهر قبل ما ينحط مفتاح VerifyWay)
           return json(200, { enabled: waEnabled(env) });
+        }
+        if (url.pathname.startsWith('/api/app-wa/')) {
+          if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
+          if (url.pathname === '/api/app-wa/config') return await appWaConfig(request, env);
+          if (url.pathname === '/api/app-wa/send') return await appWaSend(request, env);
+          if (url.pathname === '/api/app-wa/verify') return await appWaVerify(request, env);
+          if (url.pathname === '/api/app-wa/own-verify') return await appWaOwnVerify(request, env);
+          return json(404, { error: 'not found' });
         }
         if (url.pathname === '/api/phone/status' || url.pathname === '/api/phone/send' || url.pathname === '/api/phone/link' || url.pathname === '/api/account/password') {
           if (request.method !== 'POST') return json(405, { error: 'method not allowed' });

@@ -1192,6 +1192,69 @@ if(sb) sb.auth.getSession().then(function(r){
     }catch(e){ if(!silent) alert(String(e.message||e)); return false; }
   }
 
+/* ===== إجبار ربط رقم واتساب لحساب المنصة (يُفعَّل لكل زبون من SUPER) ===== */
+function laWaForce(sb, opts){
+  opts = opts || {};
+  async function api(path, body){
+    var s = await sb.auth.getSession(); var tok = s.data.session && s.data.session.access_token;
+    if(!tok) return {error:'no session', __status:401};
+    try{
+      var r = await fetch(path, {method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok}, body:JSON.stringify(body||{})});
+      var j = {}; try{ j = await r.json(); }catch(e){}
+      if(!r.ok && !j.error) j.error = 'خطأ ('+r.status+')';
+      j.__status = r.status; return j;
+    }catch(e){ return {error:'لا يوجد اتصال بالإنترنت', __status:0}; }
+  }
+  return api('/api/phone/status').then(function(st){
+    if(!st || st.error || st.phone || !st.wa_enabled || st.is_admin) return st;
+    if(opts.onlyClientWa && !st.client_wa) return st;
+    if(document.getElementById('laWaForce')) return st;
+    var d = document.createElement('div');
+    d.id = 'laWaForce';
+    d.setAttribute('style','position:fixed;inset:0;z-index:9999;background:rgba(14,36,56,.6);display:flex;align-items:center;justify-content:center;padding:16px;direction:rtl;font-family:inherit');
+    d.innerHTML = '<div style="background:#fff;color:#14202e;max-width:420px;width:100%;border-radius:16px;padding:20px;box-shadow:0 20px 50px rgba(0,0,0,.3)">'+
+      '<h3 style="margin:0 0 6px;font-size:19px">📱 أضف رقم واتساب لحسابك</h3>'+
+      '<p style="margin:0 0 12px;font-size:13.5px;color:#5b6675;line-height:1.7">مطلوب لتفعيل الدخول عبر واتساب. يصلك رمز على واتساب للتأكد من الرقم — بعدها تدخل به بدل كلمة المرور.</p>'+
+      '<div style="display:flex;gap:8px"><input id="lwf_ph" type="tel" dir="ltr" placeholder="03 000 000" style="flex:1;min-width:0;padding:10px;border:1px solid #d8dee6;border-radius:10px;font-size:16px">'+
+      '<button id="lwf_send" style="padding:10px 14px;border:0;border-radius:10px;background:#25D366;color:#fff;font-weight:800;cursor:pointer">أرسل الرمز</button></div>'+
+      '<div id="lwf_codebox" style="display:none;margin-top:10px"><div style="display:flex;gap:8px"><input id="lwf_code" inputmode="numeric" maxlength="6" dir="ltr" placeholder="••••••" style="flex:1;min-width:0;padding:10px;border:1px solid #d8dee6;border-radius:10px;font-size:18px;letter-spacing:6px;text-align:center">'+
+      '<button id="lwf_verify" style="padding:10px 14px;border:0;border-radius:10px;background:#0E2438;color:#fff;font-weight:800;cursor:pointer">تأكيد</button></div></div>'+
+      '<div id="lwf_msg" style="min-height:18px;margin:10px 0 4px;font-size:13px;text-align:center"></div>'+
+      '<div style="display:flex;gap:8px;justify-content:space-between">'+
+      '<button id="lwf_out" style="padding:8px 12px;border:1px solid #d8dee6;border-radius:10px;background:#fff;cursor:pointer">خروج</button>'+
+      '<button id="lwf_skip" style="display:none;padding:8px 12px;border:1px solid #d8dee6;border-radius:10px;background:#fff;cursor:pointer">متابعة الآن بدون رقم</button></div></div>';
+    document.body.appendChild(d);
+    var $q = function(id){ return d.querySelector(id); };
+    var msg = function(t, bad){ var m = $q('#lwf_msg'); m.textContent = t||''; m.style.color = bad ? '#c0392b' : '#1e8449'; };
+    if(opts.prefill) $q('#lwf_ph').value = opts.prefill;
+    var sentTo = '', timer = null;
+    $q('#lwf_out').onclick = async function(){ try{ await sb.auth.signOut(); }catch(e){} location.href = '/login'; };
+    $q('#lwf_skip').onclick = function(){ clearInterval(timer); d.remove(); };
+    $q('#lwf_send').onclick = async function(){
+      var ph = $q('#lwf_ph').value.trim(), b = this;
+      if(ph.replace(/\D/g,'').length < 7){ msg('رقم الهاتف غير صحيح', true); return; }
+      b.disabled = true; msg('جارٍ الإرسال…');
+      var j = await api('/api/phone/send', {phone:ph});
+      if(j.error){ b.disabled = false; msg(j.error, true); if(j.__status===0 || j.__status>=500) $q('#lwf_skip').style.display=''; return; }
+      sentTo = ph; $q('#lwf_codebox').style.display = ''; $q('#lwf_code').focus();
+      msg('أرسلنا رمزًا إلى واتساب '+(j.phone||ph));
+      var left = j.resend_in || 60; clearInterval(timer);
+      timer = setInterval(function(){ left--; b.textContent = left>0 ? '('+left+')' : 'إعادة الإرسال'; if(left<=0){ clearInterval(timer); b.disabled = false; } }, 1000);
+    };
+    $q('#lwf_verify').onclick = async function(){
+      var code = $q('#lwf_code').value.replace(/\D/g,''), b = this;
+      if(code.length !== 6){ msg('أدخل الرمز المكوّن من ٦ أرقام', true); return; }
+      b.disabled = true; msg('جارٍ التأكيد…');
+      var j = await api('/api/phone/link', {phone:sentTo, code:code});
+      b.disabled = false;
+      if(!j.ok){ msg(j.error || 'تعذّر الربط', true); return; }
+      clearInterval(timer); d.remove();
+      if(opts.onLinked) opts.onLinked(j.phone);
+    };
+    return st;
+  });
+}
+
   /* ============================================================
      رقم واتساب للدخول + تغيير كلمة المرور (عبر الـWorker)
      ============================================================ */
@@ -1222,8 +1285,11 @@ if(sb) sb.auth.getSession().then(function(r){
     $('#waSub').innerHTML='<b style="color:var(--bad)">مطلوب:</b> أضف رقم واتساب لحسابك ليعمل تسجيل الدخول عبر واتساب — يصلك رمز للتأكيد.';
     // اقتراح رقم الهاتف المحفوظ بالبيانات
     if($('#pfPhone') && $('#pfPhone').value) $('#waPhone').value=$('#pfPhone').value;
-    try{ if(!sessionStorage.getItem('waAsked')){ sessionStorage.setItem('waAsked','1');
-      setTimeout(function(){ $('#waCard').scrollIntoView({behavior:'smooth',block:'center'}); $('#waPhone').focus(); }, 400); } }catch(e){}
+    // إجباري: نافذة لا تُغلق إلا بربط الرقم (أو خروج) — إلا إذا خدمة الواتساب متوقفة
+    if(!st.is_admin) laWaForce(sb, {prefill: $('#waPhone').value, onLinked:function(ph){
+      $('#waLinkedNum').textContent=ph; waShow(true);
+      $('#waSub').textContent='يمكنك الآن تسجيل الدخول برمز يصلك على هذا الرقم عبر واتساب.';
+    }});
   }
   $('#waChange').addEventListener('click',function(){ waShow(false); $('#waPhone').value=''; $('#waPhone').focus(); });
   $('#waSend').addEventListener('click',async function(){
