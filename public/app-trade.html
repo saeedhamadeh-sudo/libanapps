@@ -731,7 +731,8 @@ function settingsToDb(s){
       lowStockThreshold: (s.lowStockThreshold===undefined || s.lowStockThreshold===null || s.lowStockThreshold==='') ? null : Number(s.lowStockThreshold),
       customGroups: Array.isArray(s.customGroups)? s.customGroups : [],
       groupOrder: Array.isArray(s.groupOrder)? s.groupOrder : null,
-      groupsLocked: !!s.groupsLocked}})
+      groupsLocked: !!s.groupsLocked,
+      journalCurrency: s.journalCurrency||'both'}})
   };
 }
 function applySettingsFromDb(row, base){
@@ -771,7 +772,8 @@ function applySettingsFromDb(row, base){
     lowStockThreshold: (row.product_lists && row.product_lists._ui && row.product_lists._ui.lowStockThreshold!=null) ? Number(row.product_lists._ui.lowStockThreshold) : base.lowStockThreshold,
     customGroups: (row.product_lists && row.product_lists._ui && Array.isArray(row.product_lists._ui.customGroups)) ? row.product_lists._ui.customGroups : base.customGroups,
     groupOrder: (row.product_lists && row.product_lists._ui && Array.isArray(row.product_lists._ui.groupOrder)) ? row.product_lists._ui.groupOrder : base.groupOrder,
-    groupsLocked: (row.product_lists && row.product_lists._ui && row.product_lists._ui.groupsLocked!=null) ? !!row.product_lists._ui.groupsLocked : base.groupsLocked
+    groupsLocked: (row.product_lists && row.product_lists._ui && row.product_lists._ui.groupsLocked!=null) ? !!row.product_lists._ui.groupsLocked : base.groupsLocked,
+    journalCurrency: (row.product_lists && row.product_lists._ui && row.product_lists._ui.journalCurrency) ? row.product_lists._ui.journalCurrency : base.journalCurrency
   };
 }
 async function syncSettingsToSupabase(settings){
@@ -3935,6 +3937,12 @@ function hubView(){
       <div style="display:flex; justify-content:space-between; align-items:center; background:var(--bg-2); border:1px solid var(--line); border-radius:8px; padding:8px 12px; margin-bottom:8px; flex-wrap:wrap; gap:8px;">
         <div><b>صندوقي (${escapeHtml(currentUser.username)})</b><div style="font-size:11px; color:var(--ink-soft);">${myShift? 'مفتوح منذ '+new Date(myShift.openedAt).toLocaleTimeString('ar') : 'مقفل'}</div></div>
         <div class="num" style="font-weight:800;">$${(myShift? myShift.cashUSD : 0).toFixed(2)} + ${fmtNum(myShift? myShift.cashLBP : 0)} ${secCurLabel()}</div>
+        ${myShift? `<div style="display:flex; gap:5px; flex-wrap:wrap;">
+          <button class="btn btn-sm" data-admin-cashmove="deposit" data-shift="${myShift.id}" data-currency="USD" style="padding:3px 8px;">➕$</button>
+          <button class="btn btn-sm" data-admin-cashmove="withdraw" data-shift="${myShift.id}" data-currency="USD" style="padding:3px 8px;">➖$</button>
+          <button class="btn btn-sm" data-admin-cashmove="deposit" data-shift="${myShift.id}" data-currency="LBP" style="padding:3px 8px;">➕${secCurLabel()}</button>
+          <button class="btn btn-sm" data-admin-cashmove="withdraw" data-shift="${myShift.id}" data-currency="LBP" style="padding:3px 8px;">➖${secCurLabel()}</button>
+        </div>` : `<button class="btn btn-sm btn-primary" data-nav="#/pos" style="padding:3px 10px;">افتح صندوقك</button>`}
       </div>
       ${openShifts.filter(sh=>!myShift || sh.id!==myShift.id).length? openShifts.filter(sh=>!myShift || sh.id!==myShift.id).map(sh=>`
       <div style="display:flex; justify-content:space-between; align-items:center; background:var(--bg-2); border:1px solid var(--line); border-radius:8px; padding:8px 12px; margin-bottom:8px; flex-wrap:wrap; gap:8px;">
@@ -3943,6 +3951,8 @@ function hubView(){
         <div style="display:flex; gap:5px;">
           <button class="btn btn-sm" data-admin-cashmove="deposit" data-shift="${sh.id}" data-currency="USD" style="padding:3px 8px;">➕$</button>
           <button class="btn btn-sm" data-admin-cashmove="withdraw" data-shift="${sh.id}" data-currency="USD" style="padding:3px 8px;">➖$</button>
+          <button class="btn btn-sm" data-admin-cashmove="deposit" data-shift="${sh.id}" data-currency="LBP" style="padding:3px 8px;">➕${secCurLabel()}</button>
+          <button class="btn btn-sm" data-admin-cashmove="withdraw" data-shift="${sh.id}" data-currency="LBP" style="padding:3px 8px;">➖${secCurLabel()}</button>
         </div>
       </div>`).join('') : `<p style="font-size:12.5px; color:var(--ink-soft);">لا توجد صناديق موظفين أخرى مفتوحة</p>`}
       <div style="display:flex; justify-content:space-between; font-weight:800; border-top:1px solid var(--line); padding-top:8px; margin-top:4px;">
@@ -5993,7 +6003,7 @@ function journalEntriesForRange(from, to){
     // فواتير الدين (على الحساب) بعامود لحالها — ما بتنجمع مع الصندوق؛ يلي بيدخل الصندوق هو الإيصالات
     let usd = 0, lbp = 0, debt = 0;
     if(isPos){
-      posCreditReturnEntries(i).forEach(r=>{ if(r.date>=from && r.date<=to) rows.push({date:r.date, createdAt:r.createdAt, type:'مرتجع على الحساب', party:(cust?cust.name:'—')+' — فاتورة #'+i.number, usd:0, lbp:0, debt:-r.amountUSD, nav:null}); });
+      posCreditReturnEntries(i).forEach(r=>{ if(r.date>=from && r.date<=to) rows.push({cat:'custDebt', date:r.date, createdAt:r.createdAt, type:'مرتجع على الحساب', party:(cust?cust.name:'—')+' — فاتورة #'+i.number, usd:0, lbp:0, debt:-r.amountUSD, nav:null}); });
     }
     if(!isPos || onAcc) debt = total;
     else {
@@ -6002,13 +6012,14 @@ function journalEntriesForRange(from, to){
       const isLBP = posSaleCurrency(i)==='LBP';
       if(isLBP){ lbp = total * (i.exchangeRate || DB.settings.defaultExchangeRate || 90000); usd = 0; }
     }
-    rows.push({date:i.date, createdAt:i.createdAt||0, type:onAcc? 'بيع POS على الحساب (دين)' : (i.docType||'فاتورة'), party:cust?cust.name:'—', usd, lbp, debt,
+    rows.push({cat: debt? 'custDebt' : 'in', date:i.date, createdAt:i.createdAt||0, type:onAcc? 'بيع POS على الحساب (دين)' : (i.docType||'فاتورة'), party:cust?cust.name:'—', usd, lbp, debt,
       nav: isPos? null : `#/invoice/${i.id}`, reprintPosId: isPos? i.id : null, cashierUsername: i.cashierUsername||''});
   });
   DB.purchaseInvoices.filter(i=>!i.deleted && i.date>=from && i.date<=to).forEach(i=>{
     const sup = DB.suppliers.find(s=>s.id===i.supplierId);
     const total = computeInvoiceTotal(i).totalUSD;
-    rows.push({date:i.date, createdAt:i.createdAt||0, type:i.isReturn?'مرتجع مشتريات':'فاتورة مشتريات', party:sup?sup.name:'—', usd:0, lbp:0, debt:i.isReturn? total : -total, nav:null});
+    // المشتريات على الحساب: عامود لحالها (دين علينا للموردين) — ما بتختلط مع دين الزبائن
+    rows.push({cat:'supDebt', date:i.date, createdAt:i.createdAt||0, type:i.isReturn?'مرتجع مشتريات':'فاتورة مشتريات', party:sup?sup.name:'—', usd:0, lbp:0, debt:0, supDebt:i.isReturn? -total : total, nav:null});
   });
   // دفعات على فواتير POS المسجّلة على الحساب: نقد دخل الصندوق
   DB.receipts.filter(r=>!r.deleted && r.date>=from && r.date<=to && isPosPayReceipt(r)).forEach(r=>{
@@ -6016,39 +6027,120 @@ function journalEntriesForRange(from, to){
     const isLBP = !/\$/.test(r.method||'');
     const amt = Number(r.amount)||0;
     const m = String(r.details||'').match(/#(\S+)/);
-    rows.push({date:r.date, createdAt:r.createdAt||0, type:'دفعة من فاتورة على الحساب'+(m?' #'+m[1]:''), party:cust?cust.name:'—', usd:isLBP?0:amt, lbp:isLBP?amt:0, nav:null});
+    rows.push({cat:'in', date:r.date, createdAt:r.createdAt||0, type:'دفعة من فاتورة على الحساب'+(m?' #'+m[1]:''), party:cust?cust.name:'—', usd:isLBP?0:amt, lbp:isLBP?amt:0, nav:null});
   });
   DB.receipts.filter(r=>!r.deleted && r.date>=from && r.date<=to && !isPosReceipt(r)).forEach(r=>{
     const cust = DB.customers.find(c=>c.id===r.customerId);
     const isLBP = /ل\.ل/.test(r.method||'');
     const amt = Number(r.amount)||0;
-    rows.push({date:r.date, createdAt:r.createdAt||0, type:'إيصال قبض ('+(r.method||'')+')', party:cust?cust.name:'—', usd:isLBP?0:amt, lbp:isLBP?amt:0, nav:null});
+    rows.push({cat:'in', date:r.date, createdAt:r.createdAt||0, type:'إيصال قبض ('+(r.method||'')+')', party:cust?cust.name:'—', usd:isLBP?0:amt, lbp:isLBP?amt:0, nav:null});
   });
   DB.paymentVouchers.filter(v=>!v.deleted && v.date>=from && v.date<=to).forEach(v=>{
     const sup = DB.suppliers.find(s=>s.id===v.supplierId);
     const isLBP = /ل\.ل/.test(v.method||'');
     const amt = Number(v.amount)||0;
-    rows.push({date:v.date, createdAt:v.createdAt||0, type:'سند صرف ('+(v.method||'')+')', party:sup?sup.name:'—', usd:isLBP?0:-amt, lbp:isLBP?-amt:0, nav:null});
+    rows.push({cat:'paySup', date:v.date, createdAt:v.createdAt||0, type:'سند صرف ('+(v.method||'')+')', party:sup?sup.name:'—', usd:isLBP?0:-amt, lbp:isLBP?-amt:0, nav:null});
   });
   // حركات صندوق يدوية أو استرجاع (المبيعات نفسها موجودة أصلاً ضمن إيصالات القبض فوق، ما منكررها هون)
   (DB.cashMovements||[]).filter(m=>!m.deleted && m.type!=='sale' && m.date>=from && m.date<=to).forEach(m=>{
     const isLBP = m.currency==='LBP';
     const signed = m.type==='deposit'? Math.abs(m.amount) : -Math.abs(m.amount);
     const label = m.type==='deposit'?'إضافة يدوية للصندوق':m.type==='withdraw'?'سحب يدوي من الصندوق':'استرجاع POS';
-    rows.push({date:m.date, createdAt:m.createdAt||0, type:label, party:m.note||'—', usd:isLBP?0:signed, lbp:isLBP?signed:0, nav:null});
+    rows.push({cat: m.type==='deposit'? 'in' : 'out', date:m.date, createdAt:m.createdAt||0, type:label, party:m.note||'—', usd:isLBP?0:signed, lbp:isLBP?signed:0, nav:null});
   });
-  rows.forEach(r=>{ if(r.debt===undefined) r.debt = 0; });
+  // دفعات العمال
+  (DB.workerPayments||[]).filter(p=>!p.deleted && p.date>=from && p.date<=to).forEach(p=>{
+    const wk = (DB.workers||[]).find(w=>w.id===p.workerId);
+    const isLBP = /ل\.ل|LBP/.test(p.method||'');
+    const amt = Number(p.amount)||0;
+    rows.push({cat:'payWk', date:p.date, createdAt:p.createdAt||0, type:'دفعة عامل'+(p.method? ' ('+p.method+')' : ''), party:wk?wk.name:'—', usd:isLBP?0:-amt, lbp:isLBP?-amt:0, nav:null});
+  });
+  // رصيد افتتاح الصناديق (المبلغ يلي انحط وقت فتح الصندوق)
+  (DB.cashierShifts||[]).forEach(sh=>{
+    if(!sh.openedAt) return;
+    const d = new Date(sh.openedAt).toISOString().slice(0,10);
+    if(d<from || d>to) return;
+    const ou = Number(sh.openingUSD)||0, ol = Number(sh.openingLBP)||0;
+    if(!ou && !ol) return;
+    rows.push({cat:'open', date:d, createdAt:sh.openedAt, type:'رصيد افتتاح صندوق', party:sh.username||'—', usd:ou, lbp:ol, nav:null});
+  });
+  rows.forEach(r=>{ if(r.debt===undefined) r.debt = 0; if(r.supDebt===undefined) r.supDebt = 0; if(!r.cat) r.cat = 'in'; });
   rows.sort((a,b)=> a.date!==b.date? (a.date<b.date?1:-1) : (b.createdAt-a.createdAt));
   return rows;
+}
+// عرض اليومية: عامود لكل نوع حركة، والعملة حسب الإعدادات (دولار / ليرة / الاثنين)، والعواميد الفاضية بتختفي
+const JOURNAL_CATS = [
+  {key:'open',     label:'رصيد افتتاح', cash:true},
+  {key:'in',       label:'مقبوضات', cash:true},
+  {key:'paySup',   label:'دفعات موردين', cash:true},
+  {key:'payWk',    label:'دفعات عمال', cash:true},
+  {key:'out',      label:'سحب ومرتجعات', cash:true},
+  {key:'custDebt', label:'دين على الزبائن', cash:false},
+  {key:'supDebt',  label:'مشتريات على الحساب', cash:false}
+];
+function journalCurrencyMode(){ const m = DB.settings && DB.settings.journalCurrency; return (m==='USD' || m==='LBP') ? m : 'both'; }
+function journalTableHtml(rows){
+  const mode = journalCurrencyMode();
+  const rate = DB.settings.defaultExchangeRate || 90000;
+  const L = secCurLabel();
+  // قيم الخلية: {usd, lbp} موجبة لعواميد الصندوق، وموقّعة لعواميد الدين
+  const cellVals = (r, c)=>{
+    if(r.cat!==c.key) return null;
+    if(!c.cash){ const v = c.key==='custDebt' ? r.debt : r.supDebt; return {usd:v, lbp:0}; }
+    return {usd:Math.abs(r.usd||0), lbp:Math.abs(r.lbp||0)};
+  };
+  const subCols = c=>{
+    if(!c.cash) return [mode==='LBP' ? 'lbp' : 'usd'];
+    return mode==='both' ? ['usd','lbp'] : [mode==='USD' ? 'usd' : 'lbp'];
+  };
+  const pick = (v, sub, c)=>{
+    if(!v) return 0;
+    if(!c.cash) return sub==='lbp' ? v.usd*rate : v.usd;
+    if(mode==='both') return v[sub];
+    return sub==='usd' ? v.usd + v.lbp/rate : v.lbp + v.usd*rate;
+  };
+  const cols = [];
+  JOURNAL_CATS.forEach(c=>{
+    const used = rows.some(r=>{ const v = cellVals(r,c); return v && (v.usd || v.lbp); });
+    if(!used && c.key!=='in') return;
+    subCols(c).forEach(sub=>{
+      // بوضع العملتين: عامود العملة الفاضي لهالنوع ما بيظهر (إلا المقبوضات)
+      if(mode==='both' && c.cash && c.key!=='in' && !rows.some(r=>{ const v = cellVals(r,c); return v && v[sub]; })) return;
+      cols.push({c, sub, title: c.label + (sub==='usd' ? ' $' : ' '+L)});
+    });
+  });
+  const fmt = (n, sub)=> !n ? '—' : (n<0?'-':'') + (sub==='usd' ? '$'+Math.abs(n).toFixed(2) : fmtNum(Math.abs(Math.round(n))));
+  const color = c=> c.key==='open'||c.key==='in' ? 'var(--credit)' : (c.cash ? 'var(--debit)' : 'var(--bronze-deep, #8a5a1a)');
+  const totals = cols.map(col=> rows.reduce((s,r)=> s + pick(cellVals(r,col.c), col.sub, col.c), 0));
+  // صافي الصندوق = افتتاح + مقبوضات − (دفعات موردين + عمال + سحب ومرتجعات)
+  const net = sub=> rows.reduce((s,r)=>{ const c = JOURNAL_CATS.find(x=>x.key===r.cat); if(!c || !c.cash) return s;
+      const v = pick(cellVals(r,c), sub, c); return s + ((c.key==='open'||c.key==='in') ? v : -v); }, 0);
+  const netSubs = mode==='both' ? ['usd','lbp'] : [mode==='USD' ? 'usd' : 'lbp'];
+  return `<div class="table-scroll"><table>
+      <thead><tr><th>التاريخ</th><th>النوع</th><th>الطرف</th>${cols.map(col=>`<th style="white-space:nowrap;">${escapeHtml(col.title)}</th>`).join('')}</tr></thead>
+      <tbody>${rows.length? rows.map(r=>`<tr ${r.nav?`data-nav="${r.nav}"`:''} ${r.reprintPosId?`data-reprint-pos="${r.reprintPosId}"`:''} style="${(r.nav||r.reprintPosId)?'cursor:pointer;':''}">
+        <td class="num">${fmtDate(r.date)}</td>
+        <td style="min-width:150px;">${escapeHtml(r.type)}${r.reprintPosId?' 🖨':''}${(isPrivilegedUser(currentUser) && r.cashierUsername)? ` <span style="font-size:11px; color:var(--ink-soft);">— ${escapeHtml(r.cashierUsername)}</span>`:''}</td><td>${escapeHtml(r.party)}</td>
+        ${cols.map(col=>{ const v = pick(cellVals(r,col.c), col.sub, col.c); return `<td class="num" style="color:${v? color(col.c) : 'inherit'}">${fmt(v, col.sub)}</td>`; }).join('')}
+      </tr>`).join('') : `<tr><td colspan="${3+cols.length}" style="text-align:center; color:var(--ink-soft);">لا توجد حركات في هذه الفترة</td></tr>`}</tbody>
+      <tfoot><tr style="font-weight:800; border-top:2px solid var(--line);">
+        <td colspan="3">المجموع</td>
+        ${cols.map((col,i)=>`<td class="num" style="color:${color(col.c)}">${fmt(totals[i], col.sub)}</td>`).join('')}
+      </tr></tfoot>
+    </table></div>
+    <div style="display:flex; flex-wrap:wrap; gap:10px; margin-top:12px;">
+      <div style="flex:1; min-width:220px; background:var(--bg-2); border:1px solid var(--line); border-radius:8px; padding:10px 12px;">
+        <div style="font-size:12px; color:var(--ink-soft);">💵 صافي الصندوق (افتتاح + مقبوضات − مدفوعات)</div>
+        <div style="font-size:18px; font-weight:800; display:flex; gap:18px; flex-wrap:wrap;">${netSubs.map(sub=>`<span class="num" dir="ltr" style="color:${net(sub)<0?'var(--debit)':'var(--credit)'}">${sub==='usd' ? fmt(net(sub),'usd') : (net(sub)? fmt(net(sub),'lbp') : '0')+' '+L}</span>`).join('')}</div>
+      </div>
+    </div>
+    <div style="font-size:11.5px; color:var(--ink-soft); margin-top:8px;">عواميد الصندوق = مصاري فاتت أو طلعت فعلياً. «دين على الزبائن» و«مشتريات على الحساب» فواتير دين — كل واحد بعامود ومجموع لحالو، وما بينحسبو بالصندوق. العواميد يلي ما فيها حركة بالفترة ما بتظهر — وعملة العرض من الإعدادات.</div>`;
 }
 function journalView(qs){
   const period = qs.get('period')||'day';
   const a = qs.get('a')||''; const b = qs.get('b')||'';
   const {from, to} = computePeriodRange(period, a, b);
   const rows = journalEntriesForRange(from, to);
-  const totalUSD = rows.reduce((s,r)=>s+r.usd,0);
-  const totalLBP = rows.reduce((s,r)=>s+r.lbp,0);
-  const totalDebt = rows.reduce((s,r)=>s+(r.debt||0),0);
   const title = from===to? 'كشف يومية — '+fmtDate(from) : 'كشف يوميات من '+fmtDate(from)+' إلى '+fmtDate(to);
   return `
   <div class="card no-print">
@@ -6058,23 +6150,7 @@ function journalView(qs){
   </div>
   <div class="doc" style="box-shadow:none;">
     ${docHead(title)}
-    <div class="table-scroll"><table>
-      <thead><tr><th>التاريخ</th><th>النوع</th><th>الطرف</th><th>دولار $ (صندوق)</th><th>${secCurLabel()} (صندوق)</th><th>على الحساب (دين) $</th></tr></thead>
-      <tbody>${rows.length? rows.map(r=>`<tr ${r.nav?`data-nav="${r.nav}"`:''} ${r.reprintPosId?`data-reprint-pos="${r.reprintPosId}"`:''} style="${(r.nav||r.reprintPosId)?'cursor:pointer;':''}">
-        <td class="num">${fmtDate(r.date)}</td>
-        <td>${escapeHtml(r.type)}${r.reprintPosId?' 🖨':''}${(isPrivilegedUser(currentUser) && r.cashierUsername)? ` <span style="font-size:11px; color:var(--ink-soft);">— ${escapeHtml(r.cashierUsername)}</span>`:''}</td><td>${escapeHtml(r.party)}</td>
-        <td class="num" style="color:${r.usd<0?'var(--debit)':(r.usd>0?'var(--credit)':'inherit')}">${r.usd?(r.usd<0?'-':'')+'$'+Math.abs(r.usd).toFixed(2):'—'}</td>
-        <td class="num" style="color:${r.lbp<0?'var(--debit)':(r.lbp>0?'var(--credit)':'inherit')}">${r.lbp?(r.lbp<0?'-':'')+fmtNum(Math.abs(r.lbp)):'—'}</td>
-        <td class="num" style="color:${(r.debt||0)<0?'var(--debit)':((r.debt||0)>0?'var(--bronze-deep, #8a5a1a)':'inherit')}">${r.debt?(r.debt<0?'-':'')+'$'+Math.abs(r.debt).toFixed(2):'—'}</td>
-      </tr>`).join('') : `<tr><td colspan="6" style="text-align:center; color:var(--ink-soft);">لا توجد حركات في هذه الفترة</td></tr>`}</tbody>
-      <tfoot><tr style="font-weight:800; border-top:2px solid var(--line);">
-        <td colspan="3">المجموع</td>
-        <td class="num" style="color:${totalUSD<0?'var(--debit)':'var(--credit)'}">${totalUSD<0?'-':''}$${Math.abs(totalUSD).toFixed(2)}</td>
-        <td class="num" style="color:${totalLBP<0?'var(--debit)':'var(--credit)'}">${totalLBP<0?'-':''}${fmtNum(Math.abs(totalLBP))}</td>
-        <td class="num">${totalDebt<0?'-':''}$${Math.abs(totalDebt).toFixed(2)}</td>
-      </tr></tfoot>
-    </table></div>
-    <div style="font-size:11.5px; color:var(--ink-soft); margin-top:8px;">عامودا الدولار والليرة = ما دخل أو خرج من الصندوق فعلياً (بيع نقدي، إيصالات ودفعات، سندات صرف). عامود «على الحساب» = فواتير الدين (مبيعات على الحساب ومشتريات) — لا تُحسب ضمن الصندوق.</div>
+    ${journalTableHtml(rows)}
   </div>`;
 }
 function bindJournalEvents(){
@@ -6258,21 +6334,7 @@ function reportsView(qs){
       <div class="card" style="margin:0;"><div style="font-size:12.5px; color:var(--ink-soft);">إيصالات القبض</div><div style="font-size:18px; font-weight:800; color:var(--credit);" class="num">$${receiptsUSD.toFixed(2)} + ${fmtNum(receiptsLBP)} ${secCurLabel()}</div></div>
       <div class="card" style="margin:0;"><div style="font-size:12.5px; color:var(--ink-soft);">سندات الصرف</div><div style="font-size:18px; font-weight:800; color:var(--debit);" class="num">$${vouchersUSD.toFixed(2)} + ${fmtNum(vouchersLBP)} ${secCurLabel()}</div></div>
     </div>
-    <div class="table-scroll"><table>
-      <thead><tr><th>التاريخ</th><th>النوع</th><th>الطرف</th><th>دولار $ (صندوق)</th><th>${secCurLabel()} (صندوق)</th><th>على الحساب (دين) $</th></tr></thead>
-      <tbody>${rows.length? rows.map(r=>`<tr>
-        <td class="num">${fmtDate(r.date)}</td><td>${escapeHtml(r.type)}</td><td>${escapeHtml(r.party)}</td>
-        <td class="num" style="color:${r.usd<0?'var(--debit)':(r.usd>0?'var(--credit)':'inherit')}">${r.usd?(r.usd<0?'-':'')+'$'+Math.abs(r.usd).toFixed(2):'—'}</td>
-        <td class="num" style="color:${r.lbp<0?'var(--debit)':(r.lbp>0?'var(--credit)':'inherit')}">${r.lbp?(r.lbp<0?'-':'')+fmtNum(Math.abs(r.lbp)):'—'}</td>
-        <td class="num" style="color:${(r.debt||0)<0?'var(--debit)':((r.debt||0)>0?'var(--bronze-deep, #8a5a1a)':'inherit')}">${r.debt?(r.debt<0?'-':'')+'$'+Math.abs(r.debt).toFixed(2):'—'}</td>
-      </tr>`).join('') : `<tr><td colspan="6" style="text-align:center; color:var(--ink-soft);">لا توجد حركات في هذه الفترة</td></tr>`}</tbody>
-      <tfoot><tr style="font-weight:800; border-top:2px solid var(--line);">
-        <td colspan="3">المجموع</td>
-        <td class="num">${totalUSD<0?'-':''}$${Math.abs(totalUSD).toFixed(2)}</td>
-        <td class="num">${totalLBP<0?'-':''}${fmtNum(Math.abs(totalLBP))}</td>
-        <td class="num">${totalDebt<0?'-':''}$${Math.abs(totalDebt).toFixed(2)}</td>
-      </tr></tfoot>
-    </table></div>
+    ${journalTableHtml(rows)}
   </div>
   <div class="doc-actions no-print"><button class="btn btn-primary" onclick="printWithFilename('Report-${from}-to-${to}')">🖨 طباعة التقرير</button></div>`;
 }
@@ -7420,6 +7482,13 @@ function settingsView(){
         <option value="SECOND" ${s.posPaymentCurrency==='SECOND'?'selected':''}>العملة الثانية (${secCurLabel()})</option>
       </select>
     </div>
+    <div class="field" style="margin-top:10px; max-width:320px;"><label>عملة عرض اليومية والتقارير</label>
+      <select id="s_journal_currency">
+        <option value="both" ${(s.journalCurrency||'both')==='both'?'selected':''}>الاثنتان: دولار $ و${secCurLabel()} (عامود لكل عملة)</option>
+        <option value="USD" ${s.journalCurrency==='USD'?'selected':''}>دولار $ فقط (${secCurLabel()} تُحوَّل بسعر الصرف)</option>
+        <option value="LBP" ${s.journalCurrency==='LBP'?'selected':''}>${secCurLabel()} فقط (الدولار يُحوَّل بسعر الصرف)</option>
+      </select>
+    </div>
     <button class="btn btn-primary" id="saveCur2Btn" style="margin-top:10px;">💾 حفظ إعدادات العملة</button>
   </div>
 
@@ -7935,6 +8004,7 @@ function bindEvents(){
     DB.settings.secondCurrencyRate = Number(document.getElementById('s_cur2_rate').value)||0;
     DB.settings.defaultExchangeRate = DB.settings.secondCurrencyRate || DB.settings.defaultExchangeRate || 90000;
     DB.settings.posPaymentCurrency = document.getElementById('s_pos_pay_currency').value || 'USD';
+    const jc = document.getElementById('s_journal_currency'); if(jc) DB.settings.journalCurrency = jc.value || 'both';
     const ok = await save(KEYS.settings, DB.settings);
     toast(ok? 'تم حفظ إعدادات العملة':'حدث خطأ أثناء الحفظ');
     render();
