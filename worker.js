@@ -2675,6 +2675,11 @@ function pageFor(pathname) {
   if (p === '/store-info' || p === '/portal-store') return '/product-store.html';
   if (/^\/portal-store\/[^/]+\/admin\/?$/.test(p)) return '/store-admin.html';
   if (/^\/portal-store\/[^/]+\/?$/.test(p)) return '/store.html';
+  // برنامج النوادي: صفحة التلاميذ / لوحة الإدارة / شاشة الباب
+  if (p === '/portal-club') return '/club-admin.html';
+  if (/^\/portal-club\/[^/]+\/admin\/?$/.test(p)) return '/club-admin.html';
+  if (/^\/portal-club\/[^/]+\/door\/?$/.test(p))  return '/club-door.html';
+  if (/^\/portal-club\/[^/]+\/?$/.test(p))         return '/club.html';
   if (p.startsWith('/i/'))    return '/invoice.html';
   if (p === '/t' || p.startsWith('/t/')) return '/track.html';    // رابط تتبع الطلب للزبون
   if (p === '/d' || p.startsWith('/d/')) return '/driver.html';   // صفحة موظف التوصيل

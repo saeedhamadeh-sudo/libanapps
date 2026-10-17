@@ -390,6 +390,18 @@ td .btn{margin:2px 0}
 
   <!-- PLANS -->
   <section data-p="plans" class="hidden">
+    <div class="panel" id="clubProdPanel">
+      <h3>برنامج النوادي — إعدادات التفعيل</h3>
+      <p class="muted">السعر أول سنة، سعر التجديد السنوي، ومدة التجربة المجانية التي يبدأها الزبون من صفحة حسابه. لإصدار ترخيص يدوي لنادٍ: تبويب «إصدار ترخيص جديد» واختر «إدارة النوادي».</p>
+      <div class="g3">
+        <div><label>السعر أول سنة ($)</label><input type="number" id="cpPrice" step="1" min="0"></div>
+        <div><label>سعر التجديد السنوي ($)</label><input type="number" id="cpRenew" step="1" min="0"></div>
+        <div><label>التجربة المجانية (أيام — 0 = بدون تجربة)</label><input type="number" id="cpTrial" step="1" min="0" max="60"></div>
+      </div>
+      <div class="sw"><input type="checkbox" id="cpActive" checked><label for="cpActive" style="margin:0">البرنامج ظاهر للشراء في الموقع</label></div>
+      <div class="acts"><button class="btn" id="cpSave">حفظ إعدادات النوادي</button></div>
+      <div class="msg" id="cpMsg"></div>
+    </div>
     <div class="panel">
       <h3 id="planTitle">باقة جديدة</h3>
       <input type="hidden" id="plId">
@@ -402,6 +414,9 @@ td .btn{margin:2px 0}
         <div><label>السعر ($)</label><input type="number" id="plPrice" step="1"></div>
         <div><label>سعر مشطوب (اختياري)</label><input type="number" id="plOld" step="1"></div>
         <div><label>شارة (اختياري)</label><input type="text" id="plBadge" placeholder="الأكثر طلباً"></div>
+      </div>
+      <div class="g3">
+        <div><label>سعر التجديد ($) — فارغ = نفس السعر</label><input type="number" id="plRenew" step="1"></div>
       </div>
       <label>الميزات — سطر لكل ميزة</label>
       <textarea id="plFeat" style="min-height:120px" placeholder="منيو رقمي بلغتين&#10;رمز QR جاهز&#10;طلبات على الواتساب"></textarea>
@@ -912,6 +927,9 @@ function paintSubs(){
           (s.product_code==='store' && s.ref_slug
             ? '<a class="btn alt sm" style="text-decoration:none" target="_blank" '+
               'href="/portal-store/'+encodeURIComponent(s.ref_slug)+'/admin">لوحة المتجر</a> ' : '')+
+          (s.product_code==='club' && s.ref_slug
+            ? '<a class="btn alt sm" style="text-decoration:none" target="_blank" '+
+              'href="/portal-club/'+encodeURIComponent(s.ref_slug)+'/admin">لوحة النادي</a> ' : '')+
           (s.product_code==='trade'
             ? '<a class="btn alt sm" style="text-decoration:none" target="_blank" '+
               'href="/trade?c='+encodeURIComponent(s.client_id)+'">افتح البرنامج</a> ' : '')+
@@ -1135,13 +1153,35 @@ async function loadPlans(){
   $('#plList').innerHTML=PLANS.length?PLANS.map(function(p){
     return '<div class="row-item"><div class="t"><b>'+esc(p.name_ar)+
       (p.is_active?'':' <span class="tag bad">مخفية</span>')+'</b>'+
-      '<span>'+esc(pn[p.product_code]||p.product_code)+' · '+p.price_usd+' $ · '+p.days+' يوم · '+
+      '<span>'+esc(pn[p.product_code]||p.product_code)+' · '+p.price_usd+' $'+
+      (p.renew_price_usd!=null?' (التجديد '+p.renew_price_usd+' $)':'')+' · '+p.days+' يوم · '+
       (p.features_ar||[]).length+' ميزة</span></div>'+
       '<button class="btn alt sm" data-pled="'+p.id+'">تعديل</button></div>';
   }).join(''):'<p class="muted">لا توجد باقات</p>';
+  loadClubProd();
 }
+async function loadClubProd(){
+  var pl=PLANS.filter(function(x){return x.product_code==='club'})[0];
+  var pr=await sb.from('products').select('trial_days').eq('code','club').maybeSingle();
+  if(!pl && !(pr && pr.data)){ $('#clubProdPanel').classList.add('hidden'); return; }
+  $('#clubProdPanel').classList.remove('hidden');
+  $('#cpPrice').value=pl?pl.price_usd:500;
+  $('#cpRenew').value=pl&&pl.renew_price_usd!=null?pl.renew_price_usd:200;
+  $('#cpTrial').value=(pr&&pr.data&&pr.data.trial_days!=null)?pr.data.trial_days:7;
+  $('#cpActive').checked=pl?pl.is_active:true;
+}
+$('#cpSave').addEventListener('click',async function(){
+  var m=$('#cpMsg'); m.className='msg'; m.textContent='جارٍ الحفظ…'; this.disabled=true;
+  function num(id){ var v=$(id).value.trim(); return v===''?null:Number(v); }
+  if(num('#cpPrice')===null||num('#cpRenew')===null){ this.disabled=false; m.className='msg e'; m.textContent='اكتب السعر وسعر التجديد'; return; }
+  var r=await sb.rpc('admin_club_product',{p_price:num('#cpPrice'),p_renew:num('#cpRenew'),
+    p_trial:num('#cpTrial'),p_active:$('#cpActive').checked});
+  this.disabled=false;
+  if(r.error){ m.className='msg e'; m.textContent='لم يُحفظ: '+r.error.message; return; }
+  m.className='msg s'; m.textContent='تم الحفظ'; await loadPlans();
+});
 function plClear(){
-  ['#plId','#plName','#plPrice','#plOld','#plBadge','#plFeat'].forEach(function(x){$(x).value=''});
+  ['#plId','#plName','#plPrice','#plOld','#plBadge','#plFeat','#plRenew'].forEach(function(x){$(x).value=''});
   $('#plDays').value=365; $('#plActive').checked=true;
   $('#planTitle').textContent='باقة جديدة'; $('#plDel').classList.add('hidden');
   $('#plMsg').textContent='';
@@ -1153,6 +1193,7 @@ $('#plList').addEventListener('click',function(e){
   $('#plId').value=p.id; $('#plProd').value=p.product_code; $('#plName').value=p.name_ar;
   $('#plDays').value=p.days; $('#plPrice').value=p.price_usd;
   $('#plOld').value=p.old_price_usd||''; $('#plBadge').value=p.badge_ar||'';
+  $('#plRenew').value=(p.renew_price_usd!=null)?p.renew_price_usd:'';
   $('#plFeat').value=(p.features_ar||[]).join('\n');
   $('#plActive').checked=p.is_active;
   $('#planTitle').textContent='تعديل باقة'; $('#plDel').classList.remove('hidden');
@@ -1164,6 +1205,7 @@ $('#plSave').addEventListener('click',async function(){
   var o={product_code:$('#plProd').value, name_ar:name,
     days:Number($('#plDays').value)||365, price_usd:Number($('#plPrice').value)||0,
     old_price_usd:$('#plOld').value?Number($('#plOld').value):null,
+    renew_price_usd:$('#plRenew').value!==''?Number($('#plRenew').value):null,
     badge_ar:$('#plBadge').value.trim(),
     features_ar:$('#plFeat').value.split('\n').map(function(x){return x.trim()}).filter(Boolean),
     is_active:$('#plActive').checked};
@@ -1678,7 +1720,14 @@ $('#oCreate').addEventListener('click',async function(){
 /* ---------- generate ---------- */
 function toggleMenuBox(){
   $('#menuBox').classList.toggle('hidden', $('#nProd').value!=='menu');
-  $('#alumBox').classList.toggle('hidden', $('#nProd').value!=='alum' && $('#nProd').value!=='store');
+  var pv=$('#nProd').value;
+  $('#alumBox').classList.toggle('hidden', pv!=='alum' && pv!=='store' && pv!=='club');
+  aSlugPreview();
+}
+function aSlugPreview(){
+  var pv=$('#nProd').value, v=$('#aSlug').value;
+  var pre= pv==='club' ? 'libanapps.com/portal-club/' : (pv==='store' ? 'libanapps.com/portal-store/' : 'libanapps.com/portal/');
+  $('#aSlugPrev').textContent=pre+(v||'…');
 }
 $('#nProd').addEventListener('change',toggleMenuBox);
 $('#rSlug').addEventListener('input',function(){
@@ -1687,7 +1736,7 @@ $('#rSlug').addEventListener('input',function(){
 });
 $('#aSlug').addEventListener('input',function(){
   var v=this.value.toLowerCase().replace(/[^a-z0-9-]/g,'');
-  this.value=v; $('#aSlugPrev').textContent='libanapps.com/portal/'+(v||'…');
+  this.value=v; aSlugPreview();
 });
 
 $('#genBtn').addEventListener('click',async function(){
@@ -1716,6 +1765,13 @@ $('#genBtn').addEventListener('click',async function(){
         p_days:days,p_price:Number($('#nPrice').value)||0});
       if(sr.error) throw sr.error;
       show(sr.data.key,'https://libanapps.com/portal-store/'+sr.data.slug,sr.data.expires_at);
+    }else if(prod==='club'){
+      var clSlug=$('#aSlug').value.trim();
+      if(!clSlug) throw new Error('اكتب رابط النادي (بالإنكليزية)');
+      var cr=await sb.rpc('admin_new_club',{p_client:client,p_slug:clSlug,p_biz:$('#aBiz').value.trim(),
+        p_days:days,p_price:Number($('#nPrice').value)||0});
+      if(cr.error) throw cr.error;
+      show(cr.data.key,'https://libanapps.com/portal-club/'+cr.data.slug+'/admin',cr.data.expires_at);
     }else if(prod==='alum'){
       var aSlug=$('#aSlug').value.trim();
       var aBiz=$('#aBiz').value.trim();

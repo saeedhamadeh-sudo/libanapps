@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#0b1220">
+<title>Door</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+/*@@CSS@@*/
+html,body{height:100%;background:#0b1220;color:#fff;overflow:hidden}
+.bar{position:fixed;top:0;left:0;right:0;display:flex;align-items:center;gap:12px;padding:12px 16px;z-index:5;background:linear-gradient(180deg,rgba(0,0,0,.6),transparent)}
+.bar .logo{width:54px;height:54px;border-radius:50%;background:#fff;object-fit:contain;flex:none}
+.bar .logo.ph{display:flex;align-items:center;justify-content:center;color:var(--p);font-weight:800}
+.bar h1{margin:0;font-size:20px;line-height:1.2}
+.bar .sub{font-size:13px;opacity:.75}
+.bar .sp{flex:1}
+.clock{font-size:26px;font-weight:800;font-variant-numeric:tabular-nums;direction:ltr}
+.gear{border:0;background:rgba(255,255,255,.12);color:#fff;width:44px;height:44px;border-radius:12px;font-size:20px;cursor:pointer}
+.stage{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
+.stage video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1);opacity:.92}
+.stage video.nomirror{transform:none}
+.oval{position:absolute;width:min(56vw,46vh);aspect-ratio:3/4;border:5px solid rgba(255,255,255,.55);border-radius:50%;box-shadow:0 0 0 200vmax rgba(11,18,32,.45);transition:border-color .2s}
+.oval.seen{border-color:var(--a)}
+.hint{position:fixed;bottom:0;left:0;right:0;text-align:center;padding:22px 16px 30px;font-size:clamp(20px,3.4vw,34px);font-weight:800;background:linear-gradient(0deg,rgba(0,0,0,.7),transparent);z-index:4}
+.hint small{display:block;font-size:clamp(14px,1.8vw,18px);font-weight:600;opacity:.8;margin-top:4px}
+.res{position:fixed;inset:0;z-index:20;display:none;align-items:center;justify-content:center;flex-direction:column;text-align:center;padding:24px;gap:10px}
+.res.on{display:flex;animation:pop .25s ease-out}
+@keyframes pop{from{opacity:0;transform:scale(1.04)}to{opacity:1;transform:none}}
+.res.ok{background:radial-gradient(circle at 50% 30%,#22c55e,#15803d)}
+.res.warn{background:radial-gradient(circle at 50% 30%,#f59e0b,#b45309)}
+.res.bad{background:radial-gradient(circle at 50% 30%,#ef4444,#991b1b)}
+.res.unk{background:radial-gradient(circle at 50% 30%,#475569,#1e293b)}
+.res .ph{width:min(34vw,220px);aspect-ratio:5/6;border-radius:28px;object-fit:cover;border:6px solid rgba(255,255,255,.9);background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;font-size:60px;font-weight:800}
+.res .ic{font-size:clamp(60px,10vw,110px);line-height:1}
+.res h2{margin:0;font-size:clamp(30px,5.5vw,62px);line-height:1.15}
+.res .nm{font-size:clamp(24px,4vw,44px);font-weight:800}
+.res .d{font-size:clamp(18px,2.6vw,28px);font-weight:700;opacity:.95}
+.res .lv{display:inline-block;padding:4px 16px;border-radius:99px;font-weight:800;font-size:clamp(16px,2vw,22px);border:2px solid rgba(255,255,255,.6)}
+.full{position:fixed;inset:0;z-index:30;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:16px;text-align:center;padding:24px;background:#0b1220}
+.full p{max-width:560px;opacity:.85;font-size:17px}
+.full .spin{border-color:rgba(255,255,255,.2);border-top-color:#fff}
+.banner{position:fixed;top:84px;left:50%;transform:translateX(-50%);z-index:25;background:#dc2626;color:#fff;padding:8px 16px;border-radius:12px;font-weight:700;display:none}
+.banner.on{display:block}
+.cl-modal{color:var(--ink)}
+.wa-fab{bottom:auto;top:84px;width:52px;height:52px;z-index:6}
+</style>
+</head>
+<body>
+<div class="stage"><video id="v" playsinline autoplay muted></video><div class="oval" id="oval"></div></div>
+<div class="bar"><span id="logo"></span><div><h1 id="cName"></h1><div class="sub" id="dName"></div></div><div class="sp"></div><div class="clock" id="clock"></div><button class="gear" id="gear" data-tt="settings">⚙</button></div>
+<div class="hint" id="hint"></div>
+<div class="banner" id="banner"></div>
+<div class="res" id="res"></div>
+<div class="full" id="full"><div class="spin"></div><p id="fullTxt"></p></div>
+<a class="wa-fab hidden" id="waFab" target="_blank" rel="noopener"></a>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.0/dist/umd/supabase.min.js"></script>
+<script src="/assets/config.js"></script>
+<script>
+/*@@QR@@*/
+/*@@COMMON@@*/
+</script>
+<script>
+(function(){
+'use strict';
+var C=CLUB, t=C.t, esc=C.esc;
+C.add({
+  settings:['الإعدادات','Settings','Paramètres'],
+  stand:['قف أمام الكاميرا','Stand in front of the camera','Placez-vous devant la caméra'],
+  stand_qr:['أو اعرض بطاقتك (رمز QR) للكاميرا','or show your card (QR code) to the camera','ou présentez votre carte (QR) à la caméra'],
+  only_qr:['اعرض بطاقتك (رمز QR) للكاميرا','Show your card (QR code) to the camera','Présentez votre carte (QR) à la caméra'],
+  welcome:['أهلًا وسهلًا','Welcome','Bienvenue'],
+  door_opens:['تفضّل بالدخول','Please come in','Entrez, je vous prie'],
+  days_left:['متبقٍ {n} يوم في اشتراكك','{n} days left on your subscription','{n} jours restants'],
+  expiring_note:['اشتراكك ينتهي قريبًا — {n} يوم متبقٍ','Your subscription ends soon — {n} days left','Votre abonnement expire bientôt — {n} jours'],
+  grace_note:['انتهى اشتراكك — يُرجى التجديد اليوم','Your subscription has ended — please renew today','Votre abonnement a expiré — renouvelez aujourd’hui'],
+  expired:['انتهى اشتراكك','Your subscription has ended','Votre abonnement a expiré'],
+  none:['لا يوجد اشتراك مدفوع','No paid subscription','Aucun abonnement payé'],
+  inactive:['حسابك موقوف','Your account is paused','Votre compte est suspendu'],
+  owed:['المستحق: {v}','Amount due: {v}','Montant dû : {v}'],
+  see_admin:['يُرجى مراجعة الإدارة','Please see the front desk','Veuillez voir l’accueil'],
+  unknown:['لم يتم التعرّف عليك','You were not recognised','Vous n’avez pas été reconnu'],
+  unknown2:['استعمل بطاقتك أو راجع الإدارة','Use your card or see the front desk','Utilisez votre carte ou voyez l’accueil'],
+  bad_card:['بطاقة غير صالحة','Invalid card','Carte invalide'],
+  not_paired:['هذا الجهاز غير مربوط بالنادي','This device is not paired with the club','Cet appareil n’est pas appairé'],
+  pair_help:['من لوحة إدارة النادي ← الباب ← «ربط جهاز باب جديد»، ثم افتح الرابط على هذا الجهاز.','In the club admin → Door → “Pair a new door device”, then open the link on this device.','Dans l’admin du club → Porte → « Appairer un appareil », puis ouvrez le lien ici.'],
+  bad_key:['تم فصل هذا الجهاز أو المفتاح غير صالح','This device was unpaired or the key is invalid','Appareil dissocié ou clé invalide'],
+  club_off:['ترخيص النادي متوقف — تواصل مع LibanApps','The club licence is inactive — contact LibanApps','La licence du club est inactive — contactez LibanApps'],
+  cam_err:['تعذّر تشغيل الكاميرا. اسمح باستعمال الكاميرا لهذا الموقع ثم أعد التحميل.','Could not start the camera. Allow camera access for this site and reload.','Impossible de démarrer la caméra. Autorisez l’accès puis rechargez.'],
+  offline:['لا يوجد اتصال بالإنترنت','No internet connection','Pas de connexion Internet'],
+  loading_faces:['جارٍ تحميل نظام التعرّف على الوجه…','Loading face recognition…','Chargement de la reconnaissance faciale…'],
+  camera:['الكاميرا','Camera','Caméra'],
+  test_door:['تجربة فتح الباب','Test door opening','Tester l’ouverture'],
+  door_sent:['تم إرسال أمر الفتح','Open command sent','Commande d’ouverture envoyée'],
+  no_url:['لم يُحدَّد رابط فتح الباب في الإعدادات','No door-open URL set in settings','Aucune URL d’ouverture définie'],
+  fullscreen:['ملء الشاشة','Fullscreen','Plein écran'],
+  reload:['إعادة تحميل التلاميذ','Reload students','Recharger les élèves'],
+  reloaded:['تم التحديث — {n} وجه','Updated — {n} faces','Mis à jour — {n} visages'],
+  unpair:['فصل هذا الجهاز','Unpair this device','Dissocier cet appareil'],
+  unpair_q:['فصل هذا الجهاز عن النادي؟ ستحتاج رابطًا جديدًا من لوحة الإدارة.','Unpair this device? You will need a new link from the admin.','Dissocier ? Il faudra un nouveau lien depuis l’admin.'],
+  sound:['الصوت','Sound','Son'],
+  language:['اللغة','Language','Langue']
+});
+var CFG=window.LIBANAPPS, sb=window.supabase.createClient(CFG.SUPABASE_URL,CFG.SUPABASE_ANON_KEY,{auth:{persistSession:false,autoRefreshToken:false}});
+var $=function(s,r){return (r||document).querySelector(s)};
+var seg=location.pathname.split('/').filter(Boolean), SLUG=(seg[0]==='portal-club'&&seg[1])?decodeURIComponent(seg[1]).toLowerCase():'';
+var KK='club_door_'+SLUG, CAMK='club_door_cam_'+SLUG, SNDK='club_door_snd';
+var KEY='', R=null, FACES=[], BUSY=false, SHOWING=false, LAST={}, CAND=null, CANDN=0, NOMATCH=0, VID=$('#v'), STREAM=null, FACE_READY=false, QRDET=null, JSQR=false, wakeLock=null;
+
+function ls(k,v){ try{ if(v===undefined) return localStorage.getItem(k); if(v===null) localStorage.removeItem(k); else localStorage.setItem(k,v); }catch(e){ return null; } }
+function full(txt,spin){ var f=$('#full'); f.style.display='flex'; f.querySelector('.spin').style.display=spin===false?'none':''; $('#fullTxt').innerHTML=txt; }
+function hideFull(){ $('#full').style.display='none'; }
+function banner(txt){ var b=$('#banner'); b.textContent=txt||''; b.classList.toggle('on',!!txt); }
+
+/* ---------- الصوت ---------- */
+var AC=null;
+function beep(ok){ if(ls(SNDK)==='0') return; try{ AC=AC||new (window.AudioContext||window.webkitAudioContext)(); var o=AC.createOscillator(), g=AC.createGain(); o.connect(g); g.connect(AC.destination);
+  var now=AC.currentTime; o.type='sine';
+  if(ok){ o.frequency.setValueAtTime(880,now); o.frequency.setValueAtTime(1320,now+0.12); } else { o.frequency.setValueAtTime(330,now); o.frequency.setValueAtTime(220,now+0.18); }
+  g.gain.setValueAtTime(0.0001,now); g.gain.exponentialRampToValueAtTime(0.4,now+0.02); g.gain.exponentialRampToValueAtTime(0.0001,now+(ok?0.32:0.5)); o.start(now); o.stop(now+0.55); }catch(e){} }
+
+/* ---------- الواجهة ---------- */
+function brand(){
+  var cl=R.club, P=cl.primary_color||'#0f766e';
+  document.documentElement.style.setProperty('--p',P); document.documentElement.style.setProperty('--a',cl.accent_color||'#f59e0b');
+  $('#logo').innerHTML=cl.logo_url?'<img class="logo" src="'+esc(C.imgUrl(cl.logo_url,160))+'" alt="">':'<div class="logo ph">'+esc(C.initials(cl.name))+'</div>';
+  $('#cName').textContent=cl.name||''; $('#dName').textContent=R.door.name||'';
+  document.title=(cl.name||'')+' — '+(R.door.name||'Door');
+  var fab=$('#waFab'); if(cl.whatsapp){ fab.href=C.waLink(cl.whatsapp); fab.innerHTML=C.WA_SVG; fab.classList.remove('hidden'); }
+  idleHint(); C.applyAll();
+}
+function idleHint(){
+  var f=R&&R.club.face&&FACE_READY, q=R&&R.club.qr;
+  $('#hint').innerHTML=f?esc(t('stand'))+(q?'<small>'+esc(t('stand_qr'))+'</small>':''):esc(t('only_qr'));
+}
+setInterval(function(){ var d=new Date(); $('#clock').textContent=('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2); },1000);
+
+function showResult(kind,html,ms){
+  SHOWING=true; var r=$('#res'); r.className='res on '+kind; r.innerHTML=html;
+  clearTimeout(showResult.tm); showResult.tm=setTimeout(function(){ r.className='res'; r.innerHTML=''; SHOWING=false; CAND=null; CANDN=0; NOMATCH=0; },ms||4000);
+}
+function photoHtml(s){ var u=C.imgUrl(s.photo_url,480); return u?'<img class="ph" src="'+esc(u)+'" alt="">':'<div class="ph">'+esc(C.initials(s.name))+'</div>'; }
+
+/* ---------- فتح الباب ---------- */
+function openDoor(){
+  var u=(R.club.open_url||'').trim(); if(!u) return false;
+  var m=R.club.open_method||'GET', o={method:m,mode:'no-cors',cache:'no-store',keepalive:true};
+  if(m==='POST'&&R.club.open_body){ o.body=R.club.open_body; o.headers={'Content-Type':'text/plain'}; }
+  try{ fetch(u,o).catch(function(){ if(m==='GET'){ var im=new Image(); im.src=u+(u.indexOf('?')<0?'?':'&')+'_='+Date.now(); } }); }
+  catch(e){ if(m==='GET'){ var im2=new Image(); im2.src=u; } }
+  return true;
+}
+
+/* ---------- التحقق ---------- */
+async function check(studentId,card,method){
+  if(BUSY) return; BUSY=true;
+  try{
+    var r=await sb.rpc('club_door_check',{p_slug:SLUG,p_key:KEY,p_student:studentId||null,p_card:card||null,p_method:method});
+    if(r.error) throw r.error; var d=r.data||{};
+    banner('');
+    if(!d.ok){
+      if(d.reason==='bad_key'){ ls(KK,null); location.reload(); return; }
+      if(d.reason==='club_inactive'){ showResult('bad','<div class="ic">⛔</div><h2>'+esc(t('club_off'))+'</h2>',6000); beep(false); return; }
+      showResult('unk','<div class="ic">▦✕</div><h2>'+esc(t('bad_card'))+'</h2><div class="d">'+esc(t('see_admin'))+'</div>',3500); beep(false); return;
+    }
+    var s=d.student, st=d.status||{}, sym=d.currency_symbol||'$';
+    LAST[s.id]=Date.now();
+    var lv=d.level?'<span class="lv" style="background:'+esc(d.level.color)+';color:'+C.readable(d.level.color)+'">'+esc(d.level.name)+'</span>':'';
+    if(d.allowed){
+      openDoor(); beep(true);
+      var kind=st.state==='active'?'ok':'warn';
+      var note=st.state==='active'?t('days_left',{n:st.days_left}):(st.state==='expiring'?t('expiring_note',{n:st.days_left}):t('grace_note'));
+      showResult(kind,photoHtml(s)+'<h2>'+esc(t('welcome'))+'</h2><div class="nm">'+esc(s.name)+'</div>'+lv+'<div class="d">✓ '+esc(t('door_opens'))+'</div><div class="d">'+esc(note)+'</div>',kind==='ok'?3500:5000);
+    }else{
+      beep(false);
+      var head=d.reason==='inactive'?t('inactive'):(st.state==='none'?t('none'):t('expired'));
+      showResult('bad',photoHtml(s)+'<div class="nm">'+esc(s.name)+'</div><h2>⛔ '+esc(head)+'</h2>'+(st.owed>0?'<div class="d">'+esc(t('owed',{v:C.money(st.owed,sym)}))+'</div>':'')+'<div class="d">'+esc(t('see_admin'))+'</div>',6000);
+    }
+  }catch(e){
+    banner(/fetch|network/i.test(String(e&&e.message))?t('offline'):C.errText(e));
+  }finally{ BUSY=false; }
+}
+
+/* ---------- الوجوه ---------- */
+async function loadRoster(){
+  var r=await sb.rpc('club_door_roster',{p_slug:SLUG,p_key:KEY}); if(r.error) throw r.error; var d=r.data||{};
+  if(!d.ok){ ls(KK,null); full('<b style="font-size:22px">'+esc(t('bad_key'))+'</b><br><br>'+esc(t('pair_help')),false); throw new Error('stop'); }
+  R=d; FACES=[];
+  (d.students||[]).forEach(function(s){ (s.face||[]).forEach(function(f){ if(f&&f.length===128) FACES.push({id:s.id,d:f}); }); });
+  return d;
+}
+function bestMatch(desc){
+  // أقرب مسافة لكل تلميذ (قد يكون له أكثر من عيّنة)، ثم الأقرب والثاني
+  var per={};
+  for(var i=0;i<FACES.length;i++){ var x=C.faceDist(desc,FACES[i].d), id=FACES[i].id; if(per[id]==null||x<per[id]) per[id]=x; }
+  var bestId=null, bd=9, second=9;
+  for(var k in per){ if(per[k]<bd){ second=bd; bd=per[k]; bestId=k; } else if(per[k]<second) second=per[k]; }
+  return bestId?{id:bestId,dist:bd,second:second}:null;
+}
+async function faceLoop(){
+  if(!FACE_READY||!R||!R.club.face){ return; }
+  if(SHOWING||BUSY||VID.readyState<2){ return; }
+  var det=null;
+  try{ det=await C.faceDescriptor(VID,{inputSize:320}); }catch(e){ return; }
+  var ov=$('#oval');
+  if(!det){ ov.classList.remove('seen'); CAND=null; CANDN=0; NOMATCH=0; return; }
+  ov.classList.add('seen');
+  var th=Number(R.club.threshold||0.5), m=bestMatch(det.descriptor);
+  // لازم يكون أقرب وجه واضح الفرق عن تاني أقرب شخص (تفادي الخلط بين الإخوة مثلاً)
+  if(m&&m.dist<th&&(m.second-m.dist>0.04||m.dist<th-0.08)){
+    NOMATCH=0;
+    if(LAST[m.id]&&Date.now()-LAST[m.id]<9000) return;
+    if(CAND===m.id) CANDN++; else { CAND=m.id; CANDN=1; }
+    if(CANDN>=2){ CAND=null; CANDN=0; await check(m.id,null,'face'); }
+  }else{
+    CAND=null; CANDN=0; NOMATCH++;
+    if(NOMATCH>=10){ NOMATCH=0; showResult('unk','<div class="ic">🙂?</div><h2>'+esc(t('unknown'))+'</h2><div class="d">'+esc(t('unknown2'))+'</div>',3000); }
+  }
+}
+
+/* ---------- QR ---------- */
+var qrCv=document.createElement('canvas');
+async function qrLoop(){
+  if(!R||!R.club.qr||SHOWING||BUSY||VID.readyState<2) return;
+  var txt=null;
+  try{
+    if(QRDET){ var codes=await QRDET.detect(VID); if(codes&&codes[0]) txt=codes[0].rawValue; }
+    else if(JSQR&&window.jsQR){ var w=640, h=Math.round(VID.videoHeight*(w/VID.videoWidth))||480; qrCv.width=w; qrCv.height=h; var c=qrCv.getContext('2d',{willReadFrequently:true}); c.drawImage(VID,0,0,w,h);
+      var im=c.getImageData(0,0,w,h), q=window.jsQR(im.data,w,h,{inversionAttempts:'dontInvert'}); if(q) txt=q.data; }
+  }catch(e){ return; }
+  if(!txt) return;
+  var m=String(txt).match(/^LA-CLUB:([0-9a-f]{16,64})$/i);
+  if(!m){ return; }
+  var token=m[1].toLowerCase();
+  if(LAST['qr:'+token]&&Date.now()-LAST['qr:'+token]<9000) return;
+  LAST['qr:'+token]=Date.now();
+  await check(null,token,'qr');
+}
+async function initQr(){
+  if(!R.club.qr) return;
+  try{ if('BarcodeDetector' in window){ var f=await window.BarcodeDetector.getSupportedFormats(); if(f.indexOf('qr_code')>=0){ QRDET=new window.BarcodeDetector({formats:['qr_code']}); return; } } }catch(e){}
+  try{ await C.loadScript('https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js'); JSQR=true; }catch(e){}
+}
+
+/* ---------- الكاميرا ---------- */
+async function startCam(){
+  if(STREAM) STREAM.getTracks().forEach(function(x){x.stop()});
+  var dev=ls(CAMK);
+  var cons={video:dev?{deviceId:{exact:dev},width:{ideal:1280},height:{ideal:720}}:{facingMode:'user',width:{ideal:1280},height:{ideal:720}},audio:false};
+  try{ STREAM=await navigator.mediaDevices.getUserMedia(cons); }
+  catch(e){ if(dev){ ls(CAMK,null); return startCam(); } throw e; }
+  VID.srcObject=STREAM;
+  var tr=STREAM.getVideoTracks()[0], set=tr&&tr.getSettings?tr.getSettings():{};
+  VID.classList.toggle('nomirror',set.facingMode==='environment');
+  await new Promise(function(r){ if(VID.readyState>=2) r(); else VID.onloadeddata=function(){ r(); }; });
+}
+async function keepAwake(){ try{ if('wakeLock' in navigator){ wakeLock=await navigator.wakeLock.request('screen'); } }catch(e){} }
+document.addEventListener('visibilitychange',function(){ if(document.visibilityState==='visible') keepAwake(); });
+
+/* ---------- الإعدادات ---------- */
+$('#gear').onclick=async function(){
+  var cams=[]; try{ cams=(await navigator.mediaDevices.enumerateDevices()).filter(function(d){return d.kind==='videoinput'}); }catch(e){}
+  var cur=ls(CAMK)||'';
+  var m=C.modal({title:t('settings'),
+    body:'<div class="fld"><label>'+t('camera')+'</label><select id="sCam"><option value="">—</option>'+cams.map(function(c,i){ return '<option value="'+esc(c.deviceId)+'"'+(c.deviceId===cur?' selected':'')+'>'+esc(c.label||('Camera '+(i+1)))+'</option>'; }).join('')+'</select></div>'+
+      '<div class="fld"><label>'+t('language')+'</label><select id="sLang"><option value="ar">العربية</option><option value="en">English</option><option value="fr">Français</option></select></div>'+
+      '<label class="chk" style="display:flex;gap:8px;align-items:center;font-weight:600"><input type="checkbox" id="sSnd" style="width:18px;height:18px"'+(ls(SNDK)==='0'?'':' checked')+'> '+t('sound')+'</label>'+
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px"><button class="cl-btn alt sm" id="sTest">'+t('test_door')+'</button><button class="cl-btn alt sm" id="sFs">'+t('fullscreen')+'</button><button class="cl-btn alt sm" id="sRel">'+t('reload')+'</button><button class="cl-btn danger sm" id="sUn">'+t('unpair')+'</button></div>',
+    onSave:async function(api){ var nc=$('#sCam',api.el).value; ls(SNDK,$('#sSnd',api.el).checked?'1':'0');
+      var nl=$('#sLang',api.el).value; if(nl!==C.lang()){ C.setLang(nl); idleHint(); C.applyAll(); }
+      if(nc!==cur){ ls(CAMK,nc||null); await startCam(); } }});
+  $('#sLang',m.el).value=C.lang();
+  $('#sTest',m.el).onclick=function(){ m.msg(openDoor()?t('door_sent'):t('no_url'), R.club.open_url?'s':'e'); };
+  $('#sFs',m.el).onclick=function(){ try{ document.documentElement.requestFullscreen(); }catch(e){} };
+  $('#sRel',m.el).onclick=async function(){ try{ await loadRoster(); brand(); m.msg(t('reloaded',{n:FACES.length}),'s'); }catch(e){ m.msg(C.errText(e),'e'); } };
+  $('#sUn',m.el).onclick=async function(){ if(!(await C.confirmBox(t('unpair_q'),t('unpair'),true))) return; ls(KK,null); location.reload(); };
+};
+
+/* ---------- البدء ---------- */
+async function boot(){
+  var h=location.hash.match(/k=([0-9a-f]{20,80})/i);
+  if(h){ ls(KK,h[1].toLowerCase()); history.replaceState(null,'',location.pathname+location.search); }
+  KEY=ls(KK)||'';
+  C.initLang('ar');
+  if(!SLUG||!KEY){ full('<b style="font-size:24px">🚪 '+esc(t('not_paired'))+'</b><br><br>'+esc(t('pair_help')),false); return; }
+  full(esc(t('loading')));
+  try{ await loadRoster(); }catch(e){ if(e&&e.message==='stop') return; full(esc(C.errText(e)),false); setTimeout(boot,15000); return; }
+  if(!ls('club_lang')) C.setLang(R.club.default_lang||'ar');
+  brand();
+  if(!R.licensed){ full('<b style="font-size:22px">⛔ '+esc(t('club_off'))+'</b>',false); setTimeout(function(){ location.reload(); },300000); return; }
+  try{ await startCam(); }catch(e){ full('<b style="font-size:20px">📷 '+esc(t('cam_err'))+'</b>',false); return; }
+  hideFull(); keepAwake();
+  initQr();
+  if(R.club.face){
+    $('#hint').textContent=t('loading_faces');
+    C.loadFace().then(function(){ FACE_READY=true; idleHint(); }).catch(function(){ banner(t('face_failed')); idleHint(); });
+  } else idleHint();
+  (async function loopF(){ for(;;){ var t0=Date.now(); await faceLoop(); await new Promise(function(r){ setTimeout(r,Math.max(120,280-(Date.now()-t0))); }); } })();
+  (async function loopQ(){ for(;;){ await qrLoop(); await new Promise(function(r){ setTimeout(r,350); }); } })();
+  setInterval(function(){ loadRoster().then(function(){ banner(''); }).catch(function(e){ if(e&&e.message!=='stop') banner(t('offline')); }); },180000);
+  window.addEventListener('online',function(){ banner(''); });
+  window.addEventListener('offline',function(){ banner(t('offline')); });
+}
+window.addEventListener('hashchange',function(){ if(/k=/.test(location.hash)) location.reload(); });
+boot();
+})();
+</script>
+</body>
+</html>

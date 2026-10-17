@@ -639,6 +639,7 @@ html[data-theme="horizon"] .hz-aside-foot::before{content:'';width:8px;height:8p
 }
 /* ===== HORIZON THEME END ===== */
 </style>
+<script>window.SUBS_PLAN=window.SUBS_PLAN||{};</script>
 <script>
 /* رسائل قديمة ترجع من قاعدة البيانات بالعامية — تُعرض بالفصحى (وتُترجم عبر القاموس) */
 window.dbMsg=function(m){ var M={
@@ -1152,6 +1153,7 @@ if(sb) sb.auth.getSession().then(function(r){
     if(qs.get('renew')){
       var lic=(await sb.rpc('my_licenses')).data||[];
       var f=lic.find(function(x){return x.id===qs.get('renew')});
+      lic.forEach(function(x){ window.SUBS_PLAN[x.id]=x.plan; });
       if(f) openRenew(f.id, f.product);
     }
   }
@@ -1424,6 +1426,7 @@ function laWaForce(sb, opts){
   async function loadSubs(){
     var lic=await sb.rpc('my_licenses');
     var rows=(lic.data)||[];
+    rows.forEach(function(x){ window.SUBS_PLAN[x.id]=x.plan; });
 
     // مطاعم مربوطة بالحساب بدون اشتراك مسجّل باسمه
     var rest=await sb.rpc('my_restaurants');
@@ -1459,6 +1462,12 @@ function laWaForce(sb, opts){
             '<a class="btn btn-g sm" href="/portal-store/'+esc(p.slug)+'" target="_blank">عرض متجرك</a>'+
             '<a class="btn btn-p sm" href="/portal-store/'+esc(p.slug)+'/admin" target="_blank">لوحة التحكم</a></div>'
           : '<p class="hint">رابط المتجر غير محدد — تواصل معنا.</p>';
+      } else if(p.product==='club'){
+        extra = p.slug
+          ? '<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">'+
+            '<a class="btn btn-p sm" href="/portal-club/'+esc(p.slug)+'/admin" target="_blank">لوحة إدارة النادي</a>'+
+            '<a class="btn btn-g sm" href="/portal-club/'+esc(p.slug)+'" target="_blank">صفحة التلاميذ</a></div>'
+          : '<p class="hint">رابط النادي غير محدد — تواصل معنا.</p>';
       } else if(p.product==='alum' || p.product==='trade'){
         var appUrl = (p.product==='alum')
           ? (p.slug ? '/portal/'+esc(p.slug) : '/alum')
@@ -1562,7 +1571,7 @@ function laWaForce(sb, opts){
     var lic=(await sb.rpc('my_licenses')).data||[];
     var have={}; lic.forEach(function(x){ have[x.product]=1; });
 
-    var PROD=[['menu','منيو المطاعم'],['alum','محاسبة الصناعيين'],['trade','محاسبة التجارة'],['store','متجر إلكتروني']];
+    var PROD=[['menu','منيو المطاعم'],['alum','محاسبة الصناعيين'],['trade','محاسبة التجارة'],['store','متجر إلكتروني'],['club','إدارة النوادي']];
     var open=PROD.filter(function(p){ return !have[p[0]] });
     if(!open.length){ $('#trialBox').classList.add('hidden'); return; }
 
@@ -1577,9 +1586,11 @@ function laWaForce(sb, opts){
   $('#trialList').addEventListener('click',async function(e){
     var b=e.target.closest('[data-trial]'); if(!b) return;
     var prod=b.dataset.trial, slug='', biz='';
-    if(prod==='menu' || prod==='alum' || prod==='trade' || prod==='store'){
+    if(prod==='menu' || prod==='alum' || prod==='trade' || prod==='store' || prod==='club'){
       var needsFactoryWording=(prod==='alum'||prod==='trade'||prod==='store');
-      slug=prompt(prod==='store'
+      slug=prompt(prod==='club'
+        ? 'اختر رابط ناديك (بالإنجليزية ودون مسافات)\n\nمثال: myclub\nسيصبح: libanapps.com/portal-club/myclub'
+        : prod==='store'
         ? 'اختر رابط متجرك (بالإنجليزية ودون مسافات)\n\nمثال: mystore\nسيصبح: libanapps.com/portal-store/mystore'
         : needsFactoryWording
         ? 'اختر رابط محلك/مصنعك (بالإنجليزية ودون مسافات)\n\nمثال: myfactory\n'+
@@ -1589,10 +1600,12 @@ function laWaForce(sb, opts){
       if(slug===null) return;
       slug=slug.toLowerCase().replace(/[^a-z0-9-]/g,'');
       if(slug.length<2){ alert('الرابط قصير'); return; }
-      biz=prompt(prod==='store'?'اسم المتجر:':(needsFactoryWording?'اسم المحل/المصنع بالعربية:':'اسم المطعم بالعربية:'),'')||slug;
+      biz=prompt(prod==='club'?'اسم النادي:':prod==='store'?'اسم المتجر:':(needsFactoryWording?'اسم المحل/المصنع بالعربية:':'اسم المطعم بالعربية:'),'')||slug;
     }
     b.disabled=true; b.textContent='جارٍ التفعيل…';
-    var r= prod==='store'
+    var r= prod==='club'
+      ? await sb.rpc('start_club_trial',{p_slug:slug,p_biz:biz})
+      : prod==='store'
       ? await sb.rpc('start_store_trial',{p_slug:slug,p_biz:biz})
       : await sb.rpc('start_trial',{p_product:prod,p_slug:slug,p_biz:biz});
     if(r.error){
@@ -1604,8 +1617,9 @@ function laWaForce(sb, opts){
       alert(dbMsg(r.data.reason)||'لم تنجح التجربة');
       b.disabled=false; b.textContent='ابدأ التجربة'; return;
     }
-    alertBox('فُعِّلت تجربتك المجانية لمدة '+(prod==='store'?(r.data.days||5):TRIAL_DAYS)+' أيام ✓ '+
-      (prod==='menu' ? 'المنيو جاهز على libanapps.com/'+esc(r.data.slug)
+    alertBox('فُعِّلت تجربتك المجانية لمدة '+((prod==='store'||prod==='club')?(r.data.days||TRIAL_DAYS):TRIAL_DAYS)+' أيام ✓ '+
+      (prod==='club' && r.data.slug ? 'لوحة ناديك جاهزة على libanapps.com/portal-club/'+esc(r.data.slug)+'/admin'
+       : prod==='menu' ? 'المنيو جاهز على libanapps.com/'+esc(r.data.slug)
        : prod==='alum' && r.data.slug ? 'برنامجك جاهز على libanapps.com/portal/'+esc(r.data.slug)
        : prod==='trade' && r.data.slug ? 'برنامجك جاهز على libanapps.com/portal-trade/'+esc(r.data.slug)
        : prod==='store' && r.data.slug ? 'متجرك جاهز على libanapps.com/portal-store/'+esc(r.data.slug)
@@ -1616,7 +1630,7 @@ function laWaForce(sb, opts){
   async function loadPlans(){
     var r=await sb.from('plans').select('*').eq('is_active',true).order('product_code').order('sort');
     PLANS=r.data||[];
-    var NAMES={menu:'منيو المطاعم',alum:'محاسبة الصناعيين',trade:'محاسبة التجارة',store:'متجر إلكتروني'};
+    var NAMES={menu:'منيو المطاعم',alum:'محاسبة الصناعيين',trade:'محاسبة التجارة',store:'متجر إلكتروني',club:'إدارة النوادي'};
     $('#planList').innerHTML=PLANS.map(function(p){
       if(window.siteLearn){ siteLearn(p.name_ar,p.name_en); (p.features_ar||[]).forEach(function(x,i){ siteLearn(x,(p.features_en||[])[i]); }); }
       var f=(p.features_ar||[]).slice(0,4).map(function(x){return '<li>'+esc(x)+'</li>'}).join('');
@@ -1626,6 +1640,7 @@ function laWaForce(sb, opts){
           esc(NAMES[p.product_code]||p.product_code)+'</div>'+
         '<h3>'+esc(p.name_ar)+'</h3>'+
         '<div class="price">'+p.price_usd+' <small>$</small></div>'+
+        (p.renew_price_usd!=null&&Number(p.renew_price_usd)!==Number(p.price_usd)?'<div class="hint" style="margin-top:-4px">التجديد السنوي: '+p.renew_price_usd+' $</div>':'')+
         '<ul>'+f+'</ul>'+
         '<button class="btn btn-o full" data-plan="'+p.id+'">اشترك</button></div>';
     }).join('');
@@ -1636,12 +1651,17 @@ function laWaForce(sb, opts){
     var b=e.target.closest('[data-plan]'); if(b) openPlan(b.dataset.plan);
   });
 
+  // التجديد بسعر التجديد (إن وُجد) — إلا بعد التجربة المجانية: أول دفعة بالسعر الكامل
+  function renewPrice(p, subId){
+    if(window.SUBS_PLAN[subId]==='trial' || p.renew_price_usd==null) return p.price_usd;
+    return p.renew_price_usd;
+  }
   function openRenew(subId, product){
     var opts=PLANS.filter(function(x){return x.product_code===product});
     if(!opts.length){ alert('لا توجد باقة متاحة لهذا البرنامج — تواصل معنا'); return; }
     RENEW=subId; PICK=opts[0];
     if(opts.length>1){
-      var list=opts.map(function(p,i){return (i+1)+'. '+p.name_ar+' — '+p.price_usd+' $'}).join('\n');
+      var list=opts.map(function(p,i){return (i+1)+'. '+p.name_ar+' — '+renewPrice(p,subId)+' $'}).join('\n');
       var pick=prompt('اختر باقة التجديد:\n\n'+list+'\n\nأدخل الرقم:','1');
       if(pick===null) { RENEW=null; return; }
       var idx=parseInt(pick,10)-1;
@@ -1649,7 +1669,7 @@ function laWaForce(sb, opts){
       PICK=opts[idx];
     }
     $('#mTitle').textContent=PICK.name_ar;
-    $('#mSub').textContent='المبلغ: '+PICK.price_usd+' $ · المدة المضافة إلى اشتراكك الحالي: '+PICK.days+' يومًا';
+    $('#mSub').textContent='المبلغ: '+renewPrice(PICK,subId)+' $ · المدة المضافة إلى اشتراكك الحالي: '+PICK.days+' يومًا';
     $('#mSlug').classList.add('hidden');
     msg(''); $('#modal').classList.remove('hidden');
   }
@@ -1660,13 +1680,18 @@ function laWaForce(sb, opts){
     if(!PICK) return;
     $('#mTitle').textContent=PICK.name_ar;
     $('#mSub').textContent='المبلغ: '+PICK.price_usd+' $ · المدة: '+PICK.days+' يومًا';
-    var needsSlug=(PICK.product_code==='menu'||PICK.product_code==='alum'||PICK.product_code==='trade'||PICK.product_code==='store');
+    var needsSlug=(PICK.product_code==='menu'||PICK.product_code==='alum'||PICK.product_code==='trade'||PICK.product_code==='store'||PICK.product_code==='club');
     $('#mSlug').classList.toggle('hidden', !needsSlug);
     if(PICK.product_code==='alum'){
       $('#mSlugLbl').textContent='رابط محلك/مصنعك';
       $('#slug').placeholder='myfactory';
       $('#mBizLbl').textContent='اسم المحل/المصنع';
       $('#slugPrev').textContent='libanapps.com/portal/…';
+    }else if(PICK.product_code==='club'){
+      $('#mSlugLbl').textContent='رابط ناديك';
+      $('#slug').placeholder='myclub';
+      $('#mBizLbl').textContent='اسم النادي';
+      $('#slugPrev').textContent='libanapps.com/portal-club/…';
     }else if(PICK.product_code==='store'){
       $('#mSlugLbl').textContent='رابط متجرك';
       $('#slug').placeholder='mystore';
@@ -1691,19 +1716,20 @@ function laWaForce(sb, opts){
     this.value=this.value.toLowerCase().replace(/[^a-z0-9-]/g,'');
     var prefix=(PICK && PICK.product_code==='alum') ? 'libanapps.com/portal/'
       : (PICK && PICK.product_code==='trade') ? 'libanapps.com/portal-trade/'
-      : (PICK && PICK.product_code==='store') ? 'libanapps.com/portal-store/' : 'libanapps.com/';
+      : (PICK && PICK.product_code==='store') ? 'libanapps.com/portal-store/'
+      : (PICK && PICK.product_code==='club') ? 'libanapps.com/portal-club/' : 'libanapps.com/';
     $('#slugPrev').textContent=prefix+(this.value||'…');
   });
 
   $('#payBtn').addEventListener('click',async function(){
     if(!PICK) return;
     var slug='', biz='';
-    if((PICK.product_code==='menu'||PICK.product_code==='alum'||PICK.product_code==='trade'||PICK.product_code==='store') && !RENEW){
+    if((PICK.product_code==='menu'||PICK.product_code==='alum'||PICK.product_code==='trade'||PICK.product_code==='store'||PICK.product_code==='club') && !RENEW){
       slug=$('#slug').value.trim(); biz=$('#bizName').value.trim();
       if(slug.length<2) return msg('اكتب الرابط بالإنجليزية',false);
       if(!biz) return msg('أدخل الاسم',false);
-      if(PICK.product_code==='store'){
-        var av=await sb.rpc('store_slug_available',{p_slug:slug});
+      if(PICK.product_code==='store'||PICK.product_code==='club'){
+        var av=await sb.rpc(PICK.product_code==='club'?'club_slug_available':'store_slug_available',{p_slug:slug});
         if(av.error) return msg(String(av.error.message||av.error),false);
         if(!av.data) return msg('هذا الرابط محجوز أو غير صالح — اختر رابطًا آخر (أحرف إنجليزية وأرقام وشَرطة)',false);
       }

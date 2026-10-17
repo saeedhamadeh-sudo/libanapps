@@ -1,0 +1,975 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Club Admin — LibanApps</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+/*@@CSS@@*/
+/* ---------- admin layout ---------- */
+.gate{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:var(--bg);z-index:50;padding:20px;text-align:center}
+.gate p{color:var(--ink2);margin:16px 0}
+.top{position:sticky;top:0;z-index:20;background:var(--p);color:var(--on-p);box-shadow:0 2px 10px rgba(0,0,0,.12)}
+.top-in{max-width:1280px;margin:0 auto;display:flex;align-items:center;gap:12px;padding:10px 16px}
+.top .logo{width:42px;height:42px;border-radius:50%;background:#fff;object-fit:contain;flex:none}
+.top .logo.ph{display:flex;align-items:center;justify-content:center;color:var(--p);font-weight:800}
+.top h1{font-size:17px;margin:0;line-height:1.2}
+.top .sub{font-size:12px;opacity:.85}
+.top .sp{flex:1}
+.top a.tl,.top button.tl{color:inherit;background:rgba(255,255,255,.14);border:0;border-radius:9px;padding:7px 11px;font-size:13px;font-weight:700;text-decoration:none;cursor:pointer;white-space:nowrap}
+.imp{background:#7c3aed;color:#fff;text-align:center;font-size:13px;padding:6px;font-weight:700}
+.licbar{text-align:center;font-size:13.5px;padding:7px 12px;font-weight:700}
+.licbar.warn{background:var(--warnbg);color:#92400e}
+.licbar.bad{background:var(--badbg);color:#991b1b}
+.wrap{max-width:1280px;margin:0 auto;display:grid;grid-template-columns:220px minmax(0,1fr);gap:18px;padding:18px 16px 90px}
+.wrap>*{min-width:0}
+.top-in>div:nth-child(2){min-width:0}
+.top h1,.top .sub{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nav{position:sticky;top:78px;align-self:start;display:flex;flex-direction:column;gap:3px}
+.nav button{display:flex;align-items:center;gap:10px;border:0;background:transparent;padding:10px 12px;border-radius:10px;cursor:pointer;font-weight:700;color:var(--ink2);text-align:start}
+.nav button .ic{width:22px;text-align:center;font-size:17px}
+.nav button.on{background:var(--card);color:var(--p);box-shadow:var(--sh)}
+.nav button .cnt{margin-inline-start:auto;background:var(--badbg);color:var(--bad);border-radius:99px;font-size:11.5px;padding:0 7px}
+@media (max-width:900px){
+  .wrap{grid-template-columns:1fr;padding-top:0}
+  .nav{position:sticky;top:62px;z-index:15;flex-direction:row;overflow-x:auto;background:var(--bg);padding:8px 0;margin:0 -16px;padding-inline:12px;scrollbar-width:none}
+  .nav::-webkit-scrollbar{display:none}
+  .nav button{flex:none;padding:8px 12px;font-size:13.5px}
+  .nav button .cnt{margin-inline-start:4px}
+  .top .hide-m,.top .sub{display:none}
+  .top-in{gap:8px;padding:8px 12px}
+}
+.card{background:var(--card);border-radius:var(--r);box-shadow:var(--sh);padding:16px}
+.hd{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+.hd h2{margin:0;font-size:20px}
+.hd .sp{flex:1}
+.stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:12px;margin-bottom:16px}
+.stat{background:var(--card);border-radius:var(--r);box-shadow:var(--sh);padding:14px 16px;cursor:default}
+.stat[data-go]{cursor:pointer}
+.stat .n{font-size:28px;font-weight:800;line-height:1.2}
+.stat .l{font-size:13px;color:var(--ink2);font-weight:600}
+.stat.ok .n{color:var(--ok)} .stat.warn .n{color:var(--warn)} .stat.bad .n{color:var(--bad)} .stat.p .n{color:var(--p)}
+.bars{display:flex;align-items:flex-end;gap:6px;height:130px;padding-top:10px}
+.bars .b{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;height:100%;justify-content:flex-end}
+.bars .b i{display:block;width:100%;max-width:34px;background:var(--p);border-radius:6px 6px 2px 2px;min-height:3px}
+.bars .b small{font-size:10.5px;color:var(--mut)}
+.bars .b em{font-style:normal;font-size:11px;font-weight:700;color:var(--ink2)}
+.cols2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media (max-width:1000px){.cols2{grid-template-columns:1fr}}
+.tools{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.tools input,.tools select{width:auto;flex:1 1 160px;min-width:0}
+.list{display:flex;flex-direction:column}
+.row{display:flex;align-items:center;gap:12px;padding:10px 4px;border-bottom:1px solid var(--line)}
+.row:last-child{border-bottom:0}
+.row .av{width:46px;height:46px;border-radius:12px;object-fit:cover;background:#e2e8f0;flex:none;display:flex;align-items:center;justify-content:center;font-weight:800;color:#64748b;font-size:15px}
+.row .main{flex:1;min-width:0}
+.row .nm{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .meta{font-size:12.5px;color:var(--ink2);display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.row .acts{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.row.click{cursor:pointer}
+.row.click:hover{background:#f8fafc}
+.lv{display:inline-block;padding:1px 9px;border-radius:99px;font-size:11.5px;font-weight:800;border:1px solid rgba(0,0,0,.1)}
+.empty{text-align:center;color:var(--mut);padding:30px 10px}
+.muted{color:var(--mut);font-size:13px}
+.sec{margin-top:18px}
+.sec h4{margin:0 0 10px;font-size:15px;display:flex;align-items:center;gap:8px}
+.sec h4 .sp{flex:1}
+.prof-h{display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+.prof-h img,.prof-h .ph{width:110px;height:130px;border-radius:16px;object-fit:cover;background:#e2e8f0;display:flex;align-items:center;justify-content:center;font-size:34px;font-weight:800;color:#64748b}
+.prof-h .info{flex:1;min-width:200px}
+.prof-h .info h3{margin:0 0 4px;font-size:21px}
+.kv{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px 16px;font-size:14px}
+.kv div b{display:block;font-size:12px;color:var(--mut);font-weight:600}
+.medal{display:flex;gap:10px;align-items:center;padding:8px 0;border-bottom:1px dashed var(--line)}
+.medal .md{width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:20px;flex:none}
+.md.gold{background:#fef3c7}.md.silver{background:#e5e7eb}.md.bronze{background:#fde4cf}.md.participation,.md.other{background:#e0f2fe}
+.photo-pick{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+.photo-pick .pv{width:96px;height:116px;border-radius:14px;background:#e2e8f0;object-fit:cover;display:flex;align-items:center;justify-content:center;color:#64748b;font-weight:800;font-size:26px}
+.cam{position:relative;background:#000;border-radius:14px;overflow:hidden;aspect-ratio:3/4;max-height:60vh;margin:0 auto}
+.cam video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
+.cam .guide{position:absolute;inset:12% 18%;border:3px dashed rgba(255,255,255,.7);border-radius:50%}
+.cardprev{display:flex;gap:12px;flex-wrap:wrap}
+.cardprev canvas,.cardprev img{width:100%;max-width:340px;border-radius:14px;box-shadow:var(--sh);background:#fff}
+.chk{display:flex;align-items:center;gap:8px;font-weight:600;color:var(--ink);cursor:pointer;margin:0}
+.chk input{width:18px;height:18px;flex:none}
+.copybox{display:flex;gap:8px}
+.copybox input{direction:ltr;font-size:12.5px}
+.tag{font-size:11.5px;background:var(--nonebg);color:var(--ink2);border-radius:6px;padding:1px 7px;font-weight:700}
+table.t{width:100%;border-collapse:collapse;font-size:14px}
+table.t th,table.t td{padding:9px 8px;border-bottom:1px solid var(--line);text-align:start;vertical-align:middle}
+table.t th{font-size:12.5px;color:var(--ink2);font-weight:700}
+.scrollx{overflow-x:auto}
+.inl{display:flex;gap:8px;align-items:center}
+.inl input[type=color]{width:46px;height:40px;padding:3px;flex:none}
+.note{background:#f8fafc;border:1px solid var(--line);border-radius:12px;padding:12px 14px;font-size:13.5px;color:var(--ink2)}
+.note b{color:var(--ink)}
+.dot{width:9px;height:9px;border-radius:50%;display:inline-block}
+.prog{height:8px;background:var(--line);border-radius:99px;overflow:hidden}
+.prog i{display:block;height:100%;background:var(--p);width:0;transition:width .2s}
+</style>
+</head>
+<body>
+<div class="gate" id="gate"><div><div class="spin"></div><p id="gateNote"></p><a class="cl-btn hidden" id="gateBtn" href="/login"></a></div></div>
+
+<div id="app" class="hidden">
+  <div class="imp hidden" id="impBar"></div>
+  <div class="top"><div class="top-in">
+    <span id="topLogo"></span>
+    <div><h1 id="topName"></h1><div class="sub" id="topSub"></div></div>
+    <div class="sp"></div>
+    <a class="tl hide-m" id="lnkPortal" target="_blank" data-t="portal_link"></a>
+    <a class="tl hide-m" id="lnkDoor" target="_blank" data-t="door_link"></a>
+    <div class="lang-sw" id="langSw"></div>
+    <button class="tl" id="outBtn" data-t="logout"></button>
+  </div></div>
+  <div class="licbar hidden" id="licBar"></div>
+  <div class="wrap">
+    <nav class="nav" id="nav"></nav>
+    <main id="main"></main>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.0/dist/umd/supabase.min.js"></script>
+<script src="/assets/config.js"></script>
+<script>
+/*@@QR@@*/
+/*@@COMMON@@*/
+</script>
+<script>
+(function(){
+'use strict';
+var C=CLUB, t=C.t, esc=C.esc;
+C.add({
+  portal_link:['صفحة التلاميذ','Students page','Espace élèves'],
+  door_link:['شاشة الباب','Door screen','Écran de porte'],
+  logout:['خروج','Sign out','Déconnexion'],
+  nav_dash:['الرئيسية','Dashboard','Tableau de bord'],
+  nav_students:['التلاميذ','Students','Élèves'],
+  nav_payments:['الدفعات','Payments','Paiements'],
+  nav_att:['الحضور','Attendance','Présences'],
+  nav_medals:['الميداليات','Medals','Médailles'],
+  nav_setup:['المستويات والفرق','Levels & groups','Niveaux et groupes'],
+  nav_cards:['البطاقات','Cards','Cartes'],
+  nav_door:['الباب','Door','Porte'],
+  nav_settings:['الإعدادات','Settings','Paramètres'],
+  need_login:['يجب تسجيل الدخول أولاً — جارٍ التحويل…','Please sign in first — redirecting…','Veuillez vous connecter — redirection…'],
+  no_club:['لا يوجد نادٍ مرتبط بحسابك بعد.','No club is linked to your account yet.','Aucun club n’est lié à votre compte.'],
+  not_linked:['هذا الحساب غير مرتبط بهذا النادي.','This account is not linked to this club.','Ce compte n’est pas lié à ce club.'],
+  my_account:['صفحة حسابي','My account','Mon compte'],
+  imp_note:['أنت تدير هذا النادي بصفتك مشرف المنصة','You are managing this club as platform admin','Vous gérez ce club en tant qu’administrateur'],
+  lic_trial:['نسخة تجريبية — متبقٍ {n} يوم','Trial — {n} days left','Essai — {n} jours restants'],
+  lic_soon:['ينتهي ترخيص البرنامج بعد {n} يوم — جدِّد الاشتراك','Licence expires in {n} days — please renew','La licence expire dans {n} jours — renouvelez'],
+  lic_expired:['انتهى ترخيص البرنامج. صفحة التلاميذ والباب متوقفتان حتى التجديد.','Licence expired. Student page and door are stopped until renewal.','Licence expirée. L’espace élèves et la porte sont arrêtés jusqu’au renouvellement.'],
+  /* dashboard */
+  d_students:['التلاميذ النشطون','Active students','Élèves actifs'],
+  d_active:['اشتراك فعّال','Active subscription','Abonnement actif'],
+  d_expiring:['ينتهي خلال أيام','Expiring soon','Expire bientôt'],
+  d_expired:['منتهٍ / غير مدفوع','Expired / unpaid','Expiré / impayé'],
+  d_rev:['دخل هذا الشهر','Revenue this month','Recettes du mois'],
+  d_rev_prev:['الشهر الماضي: {v}','Last month: {v}','Mois dernier : {v}'],
+  d_owed:['إجمالي المستحق','Total due','Total dû'],
+  d_today:['حضور اليوم','Check-ins today','Présences aujourd’hui'],
+  d_denied:['رُفض اليوم: {n}','Denied today: {n}','Refusés aujourd’hui : {n}'],
+  d_medals:['الميداليات','Medals','Médailles'],
+  d_chart:['الحضور خلال آخر 14 يومًا','Attendance — last 14 days','Présences — 14 derniers jours'],
+  d_expiring_list:['اشتراكات تنتهي قريبًا','Expiring soon','Expirent bientôt'],
+  d_expired_list:['اشتراكات منتهية','Expired subscriptions','Abonnements expirés'],
+  d_none:['لا يوجد','None','Aucun'],
+  remind:['تذكير','Remind','Rappel'],
+  /* students */
+  add_student:['إضافة تلميذ','Add student','Ajouter un élève'],
+  search:['بحث بالاسم أو الرقم أو الهاتف','Search name, number or phone','Rechercher nom, numéro ou téléphone'],
+  f_all:['كل الحالات','All statuses','Tous les statuts'],
+  f_all_groups:['كل الفرق','All groups','Tous les groupes'],
+  f_all_levels:['كل المستويات','All levels','Tous les niveaux'],
+  f_inactive:['الموقوفون','Inactive','Inactifs'],
+  pay:['دفعة','Payment','Paiement'],
+  profile:['الملف','Profile','Profil'],
+  edit:['تعديل','Edit','Modifier'],
+  del:['حذف','Delete','Supprimer'],
+  n_students:['{n} تلميذ','{n} students','{n} élèves'],
+  no_students:['لا يوجد تلاميذ بعد — ابدأ بإضافة أول تلميذ.','No students yet — add your first one.','Aucun élève — ajoutez le premier.'],
+  no_face:['بلا بصمة وجه','No face print','Sans empreinte faciale'],
+  face_n:['بصمة وجه ×{n}','Face ×{n}','Visage ×{n}'],
+  no_login:['بلا حساب','No login','Sans compte'],
+  /* student form */
+  st_new:['تلميذ جديد','New student','Nouvel élève'],
+  st_edit:['تعديل بيانات التلميذ','Edit student','Modifier l’élève'],
+  photo:['الصورة','Photo','Photo'],
+  upload_photo:['رفع صورة','Upload photo','Importer une photo'],
+  take_photo:['التقاط بالكاميرا','Take with camera','Prendre avec la caméra'],
+  photo_hint:['صورة واضحة للوجه من الأمام، بإضاءة جيدة — تُستعمل للبطاقة وللتعرّف عند الباب.','A clear front-facing photo in good light — used for the card and door recognition.','Photo de face, nette et bien éclairée — utilisée pour la carte et la porte.'],
+  full_name:['الاسم الكامل','Full name','Nom complet'],
+  birth:['تاريخ الميلاد','Date of birth','Date de naissance'],
+  gender:['الجنس','Gender','Sexe'],
+  g_m:['ذكر','Male','Garçon'],
+  g_f:['أنثى','Female','Fille'],
+  phone:['هاتف التلميذ','Student phone','Téléphone de l’élève'],
+  parent_name:['اسم وليّ الأمر','Parent name','Nom du parent'],
+  parent_phone:['هاتف/واتساب وليّ الأمر','Parent phone / WhatsApp','Téléphone / WhatsApp du parent'],
+  address:['العنوان','Address','Adresse'],
+  fee_override:['القسط الشهري الخاص','Custom monthly fee','Mensualité personnalisée'],
+  fee_default_hint:['فارغ = قسط الفرقة أو النادي ({v})','Empty = group / club fee ({v})','Vide = tarif du groupe / club ({v})'],
+  joined:['تاريخ الانتساب','Join date','Date d’inscription'],
+  paid_until_edit:['مدفوع حتى (تعديل يدوي)','Paid until (manual)','Payé jusqu’au (manuel)'],
+  notes:['ملاحظات','Notes','Notes'],
+  is_active:['التلميذ نشط','Student is active','Élève actif'],
+  none_opt:['— بدون —','— None —','— Aucun —'],
+  name_required:['اكتب اسم التلميذ','Enter the student name','Saisissez le nom de l’élève'],
+  uploading:['جارٍ رفع الصورة…','Uploading photo…','Envoi de la photo…'],
+  face_reading:['جارٍ قراءة بصمة الوجه…','Reading face print…','Lecture de l’empreinte faciale…'],
+  face_ok:['تمت إضافة بصمة الوجه ✓','Face print added ✓','Empreinte faciale ajoutée ✓'],
+  face_none:['لم يُعثر على وجه واضح في الصورة — لن يعمل التعرّف عند الباب لهذا التلميذ حتى تضيف صورة أوضح أو تلتقط عيّنات بالكاميرا.','No clear face found in the photo — door recognition will not work for this student until you add a clearer photo or capture samples.','Aucun visage net trouvé — la reconnaissance à la porte ne fonctionnera pas tant qu’une photo plus nette ou des échantillons ne sont pas ajoutés.'],
+  saved:['تم الحفظ ✓','Saved ✓','Enregistré ✓'],
+  del_student_q:['حذف التلميذ وكل سجلاته (دفعات، ميداليات، حضور)؟ لا يمكن التراجع.','Delete this student and all records (payments, medals, attendance)? This cannot be undone.','Supprimer cet élève et tout son historique ? Action irréversible.'],
+  deactivate_hint:['لإيقافه مؤقتًا بدون حذف السجلات، ألغِ خيار «التلميذ نشط».','To pause without deleting records, untick “Student is active”.','Pour suspendre sans supprimer, décochez « Élève actif ».'],
+  /* camera */
+  cam_title:['الكاميرا','Camera','Caméra'],
+  cam_capture:['التقاط','Capture','Capturer'],
+  cam_switch:['تبديل الكاميرا','Switch camera','Changer de caméra'],
+  cam_denied:['لا يمكن فتح الكاميرا. اسمح للمتصفح باستعمال الكاميرا ثم أعد المحاولة.','Cannot open the camera. Allow camera access and try again.','Impossible d’ouvrir la caméra. Autorisez l’accès puis réessayez.'],
+  /* profile */
+  sub_section:['الاشتراك','Subscription','Abonnement'],
+  state_lbl:['الحالة','Status','Statut'],
+  monthly_fee:['القسط الشهري','Monthly fee','Mensualité'],
+  add_payment:['تسجيل دفعة','Record payment','Enregistrer un paiement'],
+  payments:['الدفعات','Payments','Paiements'],
+  no_payments:['لا يوجد دفعات','No payments','Aucun paiement'],
+  period:['الفترة','Period','Période'],
+  months:['أشهر','Months','Mois'],
+  amount:['المبلغ','Amount','Montant'],
+  method:['الطريقة','Method','Mode'],
+  medals:['الميداليات والإنجازات','Medals & achievements','Médailles et résultats'],
+  add_medal:['إضافة ميدالية','Add medal','Ajouter une médaille'],
+  no_medals:['لا يوجد ميداليات بعد','No medals yet','Aucune médaille'],
+  level_hist:['سجل المستويات','Level history','Historique des niveaux'],
+  att_recent:['آخر الحضور','Recent attendance','Présences récentes'],
+  checkin_now:['تسجيل حضور الآن','Check in now','Pointer maintenant'],
+  checked_in:['تم تسجيل الحضور ✓','Checked in ✓','Présence enregistrée ✓'],
+  login_sec:['حساب الدخول للتلميذ','Student login','Compte de l’élève'],
+  username:['اسم المستخدم','Username','Identifiant'],
+  password:['كلمة المرور','Password','Mot de passe'],
+  new_password:['كلمة مرور جديدة','New password','Nouveau mot de passe'],
+  pw_keep:['اتركه فارغًا للإبقاء على كلمة المرور الحالية','Leave empty to keep the current password','Laisser vide pour garder l’actuel'],
+  gen:['توليد','Generate','Générer'],
+  set_login:['حفظ بيانات الدخول','Save login','Enregistrer'],
+  send_login_wa:['إرسال بيانات الدخول على واتساب','Send login via WhatsApp','Envoyer par WhatsApp'],
+  login_msg:['مرحبًا، هذه بيانات دخول {name} إلى صفحة نادي {club}:\nالرابط: {url}\nاسم المستخدم: {u}\nكلمة المرور: {p}','Hello, here are {name}’s login details for {club}:\nLink: {url}\nUsername: {u}\nPassword: {p}','Bonjour, voici les identifiants de {name} pour {club} :\nLien : {url}\nIdentifiant : {u}\nMot de passe : {p}'],
+  has_pw:['لديه كلمة مرور','Has a password','Mot de passe défini'],
+  no_pw:['لم تُحدَّد كلمة مرور بعد','No password set yet','Aucun mot de passe'],
+  pw_required:['اكتب كلمة مرور (4 أحرف على الأقل)','Enter a password (min 4 characters)','Saisissez un mot de passe (4 min.)'],
+  face_sec:['التعرّف على الوجه','Face recognition','Reconnaissance faciale'],
+  face_count:['عدد العيّنات: {n}','Samples: {n}','Échantillons : {n}'],
+  face_add:['التقاط عيّنات بالكاميرا','Capture samples with camera','Capturer des échantillons'],
+  face_from_photo:['إعادة القراءة من الصورة','Re-read from photo','Relire depuis la photo'],
+  face_clear:['مسح البصمات','Clear prints','Effacer'],
+  face_tip:['للحصول على دقة أعلى: التقط 3 إلى 5 عيّنات بزوايا وإضاءة مختلفة قليلاً، ويفضَّل بنفس كاميرا الباب.','For better accuracy capture 3–5 samples at slightly different angles/light, ideally with the door camera.','Pour plus de précision, capturez 3 à 5 échantillons sous des angles/lumières variés, idéalement avec la caméra de la porte.'],
+  enroll_title:['التقاط عيّنات الوجه','Capture face samples','Capturer des échantillons'],
+  enroll_hint:['اجعل الوجه داخل الدائرة ثم اضغط «التقاط عيّنة». كرّر 3 مرات مع تحريك الرأس قليلاً.','Keep the face inside the circle and press “Capture sample”. Repeat 3 times moving the head slightly.','Placez le visage dans le cercle puis « Capturer ». Répétez 3 fois en bougeant légèrement la tête.'],
+  enroll_cap:['التقاط عيّنة','Capture sample','Capturer'],
+  enroll_got:['تمت إضافة عيّنة ({n})','Sample added ({n})','Échantillon ajouté ({n})'],
+  enroll_noface:['لم يُعثر على وجه — اقترب من الكاميرا','No face found — move closer','Aucun visage — rapprochez-vous'],
+  max_samples:['الحد الأقصى 8 عيّنات','Maximum 8 samples','8 échantillons maximum'],
+  card_sec:['البطاقة','Card','Carte'],
+  dl_card:['تنزيل البطاقة PDF','Download card PDF','Télécharger la carte PDF'],
+  new_qr:['بطاقة بديلة (رمز QR جديد)','Replacement card (new QR)','Carte de remplacement (nouveau QR)'],
+  new_qr_q:['سيتوقف رمز البطاقة القديمة عن العمل عند الباب. متابعة؟','The old card’s QR will stop working at the door. Continue?','L’ancien QR ne fonctionnera plus. Continuer ?'],
+  /* payment */
+  pay_title:['تسجيل دفعة','Record payment','Enregistrer un paiement'],
+  student:['التلميذ','Student','Élève'],
+  pick_student:['اختر التلميذ','Choose student','Choisir l’élève'],
+  start_from:['بداية الفترة الجديدة','New period starts','Début de la période'],
+  from_continue:['من تاريخ انتهاء الاشتراك ({d}) — يسدّد الأشهر المتأخرة','From the expiry date ({d}) — settles overdue months','À partir de l’échéance ({d}) — règle les mois en retard'],
+  from_today:['من اليوم — تجاهل الفترة الفائتة','From today — ignore the gap','À partir d’aujourd’hui — ignorer l’écart'],
+  pay_preview:['يغطي: {a} ← {b}','Covers: {a} → {b}','Couvre : {a} → {b}'],
+  note:['ملاحظة','Note','Note'],
+  pay_done:['تم تسجيل الدفعة ✓ — الاشتراك حتى {d}','Payment recorded ✓ — valid until {d}','Paiement enregistré ✓ — valable jusqu’au {d}'],
+  send_receipt:['إرسال إيصال على واتساب','Send receipt on WhatsApp','Envoyer le reçu par WhatsApp'],
+  receipt_msg:['{club}\nإيصال دفع: {name}\nالمبلغ: {amt}\nالفترة: {a} حتى {b}\nشكرًا لكم.','{club}\nPayment receipt: {name}\nAmount: {amt}\nPeriod: {a} to {b}\nThank you.','{club}\nReçu de paiement : {name}\nMontant : {amt}\nPériode : {a} au {b}\nMerci.'],
+  remind_msg_exp:['مرحبًا {parent}، نذكّركم بأن اشتراك {name} في {club} انتهى بتاريخ {d}. المبلغ المستحق: {owed}. شكرًا لكم.','Hello {parent}, a reminder that {name}’s subscription at {club} ended on {d}. Amount due: {owed}. Thank you.','Bonjour {parent}, l’abonnement de {name} au {club} a expiré le {d}. Montant dû : {owed}. Merci.'],
+  remind_msg_soon:['مرحبًا {parent}، نذكّركم بأن اشتراك {name} في {club} ينتهي بتاريخ {d}. القسط الشهري: {fee}. شكرًا لكم.','Hello {parent}, a reminder that {name}’s subscription at {club} ends on {d}. Monthly fee: {fee}. Thank you.','Bonjour {parent}, l’abonnement de {name} au {club} se termine le {d}. Mensualité : {fee}. Merci.'],
+  del_pay_q:['حذف هذه الدفعة؟ سيُعاد تاريخ «مدفوع حتى» إلى آخر دفعة متبقية.','Delete this payment? “Paid until” will go back to the last remaining payment.','Supprimer ce paiement ? « Payé jusqu’au » reviendra au dernier paiement restant.'],
+  month:['الشهر','Month','Mois'],
+  total:['المجموع','Total','Total'],
+  date:['التاريخ','Date','Date'],
+  /* attendance */
+  att_title:['سجل الحضور','Attendance log','Registre des présences'],
+  att_manual:['حضور يدوي','Manual check-in','Pointage manuel'],
+  att_allowed:['دخل','Entered','Entré'],
+  att_denied:['مرفوض','Denied','Refusé'],
+  att_face:['وجه','Face','Visage'],
+  att_qr:['بطاقة','Card','Carte'],
+  att_m:['يدوي','Manual','Manuel'],
+  no_att:['لا يوجد حضور في هذا اليوم','No attendance on this day','Aucune présence ce jour'],
+  att_summary:['{a} دخلوا · {d} مرفوض','{a} entered · {d} denied','{a} entrés · {d} refusés'],
+  /* medals */
+  medal_title:['البطولة / المباراة','Championship / match','Compétition / match'],
+  opponent:['الخصم أو المكان','Opponent or venue','Adversaire ou lieu'],
+  event_date:['تاريخ المباراة','Match date','Date du match'],
+  place:['النتيجة','Result','Résultat'],
+  category:['الفئة (عمر / وزن)','Category (age / weight)','Catégorie (âge / poids)'],
+  medal_photo:['صورة الميدالية أو التتويج','Medal / podium photo','Photo de la médaille / podium'],
+  title_required:['اكتب اسم البطولة أو المباراة','Enter the championship or match','Saisissez la compétition'],
+  del_medal_q:['حذف هذه الميدالية؟','Delete this medal?','Supprimer cette médaille ?'],
+  /* setup */
+  levels:['المستويات (أحزمة / درجات)','Levels (belts / grades)','Niveaux (ceintures / grades)'],
+  groups:['الفرق والحصص','Groups & classes','Groupes et cours'],
+  add_level:['إضافة مستوى','Add level','Ajouter un niveau'],
+  add_group:['إضافة فرقة','Add group','Ajouter un groupe'],
+  lv_name:['اسم المستوى','Level name','Nom du niveau'],
+  color:['اللون','Color','Couleur'],
+  order:['الترتيب','Order','Ordre'],
+  gr_name:['اسم الفرقة','Group name','Nom du groupe'],
+  schedule:['المواعيد','Schedule','Horaires'],
+  coach:['المدرّب','Coach','Entraîneur'],
+  gr_fee:['قسط الفرقة الشهري','Group monthly fee','Mensualité du groupe'],
+  del_level_q:['حذف هذا المستوى؟ التلاميذ عليه سيصبحون بلا مستوى.','Delete this level? Its students will have no level.','Supprimer ce niveau ? Ses élèves n’auront plus de niveau.'],
+  del_group_q:['حذف هذه الفرقة؟ التلاميذ فيها سيصبحون بلا فرقة.','Delete this group? Its students will have no group.','Supprimer ce groupe ? Ses élèves n’auront plus de groupe.'],
+  /* cards */
+  cards_title:['طباعة البطاقات CR80','Print CR80 cards','Impression des cartes CR80'],
+  cards_hint:['مقاس CR80 = ‎85.6 × 54 مم (مقاس البطاقة البنكية). الوجه: الصورة والاسم والمستوى. الظهر: رمز QR للباب.','CR80 = 85.6 × 54 mm (bank-card size). Front: photo, name, level. Back: QR for the door.','CR80 = 85,6 × 54 mm (format carte bancaire). Recto : photo, nom, niveau. Verso : QR pour la porte.'],
+  mode_cr80:['PDF بمقاس البطاقة (لطابعة البطاقات)','Card-size PDF (card printer)','PDF format carte (imprimante à cartes)'],
+  mode_a4:['ورقة A4 — 10 بطاقات مع علامات القص','A4 sheet — 10 cards with crop marks','Feuille A4 — 10 cartes avec traits de coupe'],
+  select_all:['تحديد الكل','Select all','Tout sélectionner'],
+  selected_n:['المحدَّد: {n}','Selected: {n}','Sélection : {n}'],
+  dl_pdf:['تنزيل PDF','Download PDF','Télécharger le PDF'],
+  building:['جارٍ تجهيز البطاقات {a} / {b}','Preparing cards {a} / {b}','Préparation des cartes {a} / {b}'],
+  pick_some:['حدِّد تلميذًا واحدًا على الأقل','Select at least one student','Sélectionnez au moins un élève'],
+  preview:['معاينة','Preview','Aperçu'],
+  /* door */
+  door_title:['أجهزة الباب','Door devices','Appareils de porte'],
+  door_hint:['افتح رابط الجهاز مرة واحدة على الجهاز اللوحي أو الكمبيوتر المثبّت عند الباب (فيه كاميرا). بعدها يبقى مربوطًا. لا تشارك الرابط.','Open the device link once on the tablet or PC at the door (with a camera). It stays paired afterwards. Do not share the link.','Ouvrez le lien une fois sur la tablette ou le PC à l’entrée (avec caméra). Il reste appairé. Ne partagez pas le lien.'],
+  add_door:['ربط جهاز باب جديد','Pair a new door device','Appairer un appareil'],
+  door_name:['اسم الجهاز','Device name','Nom de l’appareil'],
+  door_main:['الباب الرئيسي','Main door','Porte principale'],
+  door_link_once:['هذا الرابط يظهر مرة واحدة فقط. افتحه على جهاز الباب أو امسح الرمز بكاميرته:','This link is shown only once. Open it on the door device or scan the code with it:','Ce lien n’est affiché qu’une fois. Ouvrez-le sur l’appareil ou scannez le code :'],
+  copy:['نسخ','Copy','Copier'],
+  copied:['تم النسخ ✓','Copied ✓','Copié ✓'],
+  last_seen:['آخر اتصال','Last seen','Dernière connexion'],
+  never:['لم يتصل بعد','Never','Jamais'],
+  revoke:['فصل','Unpair','Dissocier'],
+  revoked:['مفصول','Unpaired','Dissocié'],
+  revoke_q:['فصل هذا الجهاز؟ سيتوقف عن فتح الباب.','Unpair this device? It will stop opening the door.','Dissocier cet appareil ? Il n’ouvrira plus la porte.'],
+  door_settings:['إعدادات الدخول','Entry settings','Paramètres d’entrée'],
+  door_face:['التعرّف على الوجه','Face recognition','Reconnaissance faciale'],
+  door_qr:['مسح رمز QR من البطاقة','Scan card QR','Scanner le QR de la carte'],
+  threshold:['دقة التعرّف','Recognition strictness','Sévérité de reconnaissance'],
+  th_strict:['صارم','Strict','Strict'],
+  th_loose:['متساهل','Lenient','Souple'],
+  grace:['أيام سماح بعد انتهاء الاشتراك','Grace days after expiry','Jours de grâce après expiration'],
+  open_url:['رابط فتح الباب (الريليه)','Door-open URL (relay)','URL d’ouverture (relais)'],
+  open_method:['طريقة الطلب','Request method','Méthode'],
+  open_body:['محتوى الطلب (اختياري)','Request body (optional)','Corps de la requête (optionnel)'],
+  relay_help:['<b>كيف يُفتح الباب؟</b> عند السماح بالدخول ترسل شاشة الباب طلبًا إلى هذا الرابط. يعمل مع قفل كهربائي أو باب دوّار موصول بريليه Wi-Fi مثل Shelly أو ESP32/Tasmota.<br>• Shelly Cloud (موصى به — يعمل عبر الإنترنت): استعمل رابط HTTPS من تطبيق Shelly.<br>• جهاز على الشبكة المحلية مثل <code dir="ltr">http://192.168.1.50/relay/0?turn=on&amp;timer=3</code>: يجب السماح بـ«المحتوى غير الآمن» لموقع libanapps.com في إعدادات Chrome على جهاز الباب.<br>اتركه فارغًا إذا كان الموظف يفتح الباب يدويًا — الشاشة تعرض أخضر/أحمر.','<b>How does the door open?</b> When entry is allowed, the door screen sends a request to this URL. Works with an electric lock or turnstile wired to a Wi-Fi relay such as Shelly or ESP32/Tasmota.<br>• Shelly Cloud (recommended — works over the internet): use the HTTPS link from the Shelly app.<br>• A local device like <code dir="ltr">http://192.168.1.50/relay/0?turn=on&amp;timer=3</code>: allow “Insecure content” for libanapps.com in Chrome settings on the door device.<br>Leave empty if staff open the door manually — the screen shows green/red.','<b>Comment la porte s’ouvre ?</b> Quand l’entrée est autorisée, l’écran envoie une requête à cette URL. Fonctionne avec une serrure électrique ou un tourniquet relié à un relais Wi-Fi (Shelly, ESP32/Tasmota).<br>• Shelly Cloud (recommandé) : utilisez le lien HTTPS de l’application Shelly.<br>• Appareil local comme <code dir="ltr">http://192.168.1.50/relay/0?turn=on&amp;timer=3</code> : autorisez le « Contenu non sécurisé » pour libanapps.com dans Chrome sur l’appareil.<br>Laissez vide si le personnel ouvre manuellement — l’écran affiche vert/rouge.'],
+  /* settings */
+  set_title:['إعدادات النادي','Club settings','Paramètres du club'],
+  club_name:['اسم النادي','Club name','Nom du club'],
+  sport:['الرياضة / النشاط','Sport / activity','Sport / activité'],
+  logo:['الشعار (لوغو)','Logo','Logo'],
+  wa:['رقم واتساب النادي (مع رمز الدولة)','Club WhatsApp (with country code)','WhatsApp du club (avec indicatif)'],
+  club_phone:['هاتف النادي','Club phone','Téléphone du club'],
+  primary:['اللون الأساسي','Primary color','Couleur principale'],
+  accent:['اللون الثانوي','Accent color','Couleur d’accent'],
+  currency:['رمز العملة','Currency symbol','Symbole monétaire'],
+  default_fee:['القسط الشهري الافتراضي','Default monthly fee','Mensualité par défaut'],
+  expiring_days:['تنبيه «ينتهي قريبًا» قبل (أيام)','“Expiring soon” warning (days)','Alerte « expire bientôt » (jours)'],
+  def_lang:['لغة صفحة التلاميذ والباب','Language of student page & door','Langue de l’espace élèves et de la porte'],
+  card_note:['نص ظهر البطاقة','Card back text','Texte au verso de la carte'],
+  card_note_ph:['مثال: في حال العثور على البطاقة يُرجى إعادتها إلى النادي','e.g. If found, please return to the club','ex. En cas de perte, merci de la rapporter au club'],
+  links:['الروابط','Links','Liens'],
+  open:['فتح','Open','Ouvrir']
+});
+
+var CFG=window.LIBANAPPS, sb=window.supabase.createClient(CFG.SUPABASE_URL,CFG.SUPABASE_ANON_KEY);
+var $=function(s,r){return (r||document).querySelector(s)}, $$=function(s,r){return Array.prototype.slice.call((r||document).querySelectorAll(s))};
+var CL=null, LIC={ok:false}, IMP=false, LV=[], GR=[], STS=[], LOGINS={}, TODAY='', TAB='dash', DASH=null;
+var STCOLS='id,code,full_name,photo_url,birth_date,gender,phone,parent_name,parent_phone,address,group_id,level_id,level_since,monthly_fee,joined_at,paid_until,username,face_count,card_token,notes,is_active,created_at';
+var F={q:'',st:'',gr:'',lv:''};
+
+C.initLang('ar');
+
+/* ---------- helpers ---------- */
+function chk(r){ if(r.error) throw r.error; return r.data; }
+function lvById(id){ for(var i=0;i<LV.length;i++) if(LV[i].id===id) return LV[i]; return null; }
+function grById(id){ for(var i=0;i<GR.length;i++) if(GR[i].id===id) return GR[i]; return null; }
+function stById(id){ for(var i=0;i<STS.length;i++) if(STS[i].id===id) return STS[i]; return null; }
+function feeOf(s){ if(s.monthly_fee!=null) return Number(s.monthly_fee); var g=grById(s.group_id); if(g&&g.monthly_fee!=null) return Number(g.monthly_fee); return Number(CL.default_fee||0); }
+function stStatus(s){ if(!s.is_active) return {state:'inactive',days_left:0,owed:0,owed_months:0,overdue_days:0}; return C.status(s.paid_until,feeOf(s),TODAY,CL.expiring_days,CL.grace_days); }
+function money(v){ return C.money(v,CL.currency_symbol); }
+function chip(s){ var x=stStatus(s); var txt=x.state==='inactive'?t('st_inactive'):(x.state==='none'?t('st_none'):C.statusLabel(x)); return '<span class="chip '+x.state+'">'+esc(txt)+'</span>'; }
+function lvChip(id){ var l=lvById(id); return l?'<span class="lv" style="background:'+esc(l.color)+';color:'+C.readable(l.color)+'">'+esc(l.name)+'</span>':''; }
+function avatar(s,size){ var u=C.imgUrl(s.photo_url,160); return u?'<img class="av" src="'+esc(u)+'" alt="" loading="lazy"'+(size?' style="width:'+size+'px;height:'+size+'px"':'')+'>':'<div class="av">'+esc(C.initials(s.full_name))+'</div>'; }
+function opts(list,sel,empty){ return (empty!=null?'<option value="">'+esc(empty)+'</option>':'')+list.map(function(x){return '<option value="'+esc(x.id)+'"'+(x.id===sel?' selected':'')+'>'+esc(x.name)+'</option>'}).join(''); }
+function rnd(n){ var a='abcdefghjkmnpqrstuvwxyz23456789',s=''; var b=new Uint8Array(n); crypto.getRandomValues(b); for(var i=0;i<n;i++) s+=a[b[i]%a.length]; return s; }
+function baseUrl(){ return location.origin+'/portal-club/'+CL.slug; }
+function parentOf(s){ return s.parent_name||s.full_name; }
+function phoneOf(s){ return s.parent_phone||s.phone; }
+function remindLink(s){
+  var x=stStatus(s);
+  var msg = x.state==='expired'||x.state==='none'
+    ? t('remind_msg_exp',{parent:parentOf(s),name:s.full_name,club:CL.name,d:C.fmtDate(s.paid_until||s.joined_at),owed:money(x.owed)})
+    : t('remind_msg_soon',{parent:parentOf(s),name:s.full_name,club:CL.name,d:C.fmtDate(s.paid_until),fee:money(feeOf(s))});
+  return C.waLink(phoneOf(s),msg);
+}
+
+/* ---------- رفع الصور ---------- */
+function shrink(fileOrBlob,max,quality){
+  return new Promise(function(res,rej){
+    var url=URL.createObjectURL(fileOrBlob), im=new Image();
+    im.onload=function(){ var s=Math.min(1,max/Math.max(im.width,im.height)); var cv=document.createElement('canvas');
+      cv.width=Math.round(im.width*s); cv.height=Math.round(im.height*s); var c=cv.getContext('2d');
+      c.fillStyle='#fff'; c.fillRect(0,0,cv.width,cv.height); c.drawImage(im,0,0,cv.width,cv.height); URL.revokeObjectURL(url);
+      cv.toBlob(function(b){ b?res(b):rej(new Error('image')); },'image/jpeg',quality||0.88); };
+    im.onerror=function(){ URL.revokeObjectURL(url); rej(new Error('image')); };
+    im.src=url;
+  });
+}
+async function upload(blob,folder,max){
+  var b=await shrink(blob,max||900);
+  var path='club-'+CL.id+'/'+folder+'/'+Date.now()+'-'+rnd(10)+'.jpg';
+  chk(await sb.storage.from('club').upload(path,b,{contentType:'image/jpeg',upsert:false}));
+  return { url: sb.storage.from('club').getPublicUrl(path).data.publicUrl, blob:b };
+}
+async function faceFromBlob(blob){
+  var url=URL.createObjectURL(blob);
+  try{ var im=await C.loadImg(url); if(!im) return null; var r=await C.faceDescriptor(im,{ssd:true}); return r?r.descriptor:null; }
+  finally{ URL.revokeObjectURL(url); }
+}
+
+/* ---------- الكاميرا ---------- */
+function camera(opts){
+  return new Promise(function(resolve){
+    var stream=null, facing='user', done=false;
+    var m=C.modal({ title: opts.title||t('cam_title'),
+      body:'<div class="cam"><video playsinline autoplay muted></video><div class="guide"></div></div>'+(opts.hint?'<p class="muted" style="margin:10px 0 0">'+esc(opts.hint)+'</p>':'')+'<div class="muted" id="camInfo" style="margin-top:8px;font-weight:700"></div>',
+      buttons:[{text:t('cam_switch'),cls:'ghost',onClick:function(){ facing=facing==='user'?'environment':'user'; start(); }},
+               {text:opts.captureText||t('cam_capture'),cls:'',onClick:async function(api,btn){ btn.disabled=true; try{ await opts.onCapture(grab(),api); } finally{ btn.disabled=false; } }}],
+      onClose:function(){ stop(); if(!done) resolve(null); } });
+    var v=m.$('video');
+    function stop(){ if(stream){ stream.getTracks().forEach(function(x){x.stop()}); stream=null; } }
+    async function start(){ stop();
+      try{ stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:facing,width:{ideal:1280},height:{ideal:960}},audio:false}); v.srcObject=stream; v.style.transform=facing==='user'?'scaleX(-1)':'none'; }
+      catch(e){ m.msg(t('cam_denied'),'e'); } }
+    function grab(){ var cv=document.createElement('canvas'); cv.width=v.videoWidth||640; cv.height=v.videoHeight||480;
+      var c=cv.getContext('2d'); if(facing==='user'){ c.translate(cv.width,0); c.scale(-1,1); } c.drawImage(v,0,0,cv.width,cv.height); return cv; }
+    m.finish=function(val){ done=true; stop(); resolve(val); m.close(); };
+    opts.api=m; start();
+  });
+}
+function canvasBlob(cv){ return new Promise(function(r){ cv.toBlob(r,'image/jpeg',0.9); }); }
+
+/* ---------- التحميل ---------- */
+async function loadAll(){
+  var r=await Promise.all([
+    sb.from('club_levels').select('*').eq('club_id',CL.id).order('sort').order('name'),
+    sb.from('club_groups').select('*').eq('club_id',CL.id).order('sort').order('name'),
+    sb.from('club_students').select(STCOLS).eq('club_id',CL.id).order('full_name'),
+    sb.rpc('club_login_status',{p_club:CL.id})
+  ]);
+  LV=chk(r[0])||[]; GR=chk(r[1])||[]; STS=chk(r[2])||[];
+  LOGINS={}; (chk(r[3])||[]).forEach(function(id){ LOGINS[id]=1; });
+  TODAY=C.todayIn(CL.timezone);
+}
+async function reloadStudents(){ var r=await sb.from('club_students').select(STCOLS).eq('club_id',CL.id).order('full_name'); STS=chk(r)||[]; var l=await sb.rpc('club_login_status',{p_club:CL.id}); LOGINS={}; (chk(l)||[]).forEach(function(id){LOGINS[id]=1}); }
+
+/* ---------- الهيكل ---------- */
+var NAV=[['dash','◉','nav_dash'],['students','👥','nav_students'],['payments','💵','nav_payments'],['att','🕑','nav_att'],['medals','🏅','nav_medals'],['setup','🎚','nav_setup'],['cards','🪪','nav_cards'],['door','🚪','nav_door'],['settings','⚙','nav_settings']];
+function paintShell(){
+  document.documentElement.style.setProperty('--p',CL.primary_color||'#0f766e');
+  document.documentElement.style.setProperty('--a',CL.accent_color||'#f59e0b');
+  document.documentElement.style.setProperty('--on-p',C.readable(CL.primary_color||'#0f766e'));
+  $('#topLogo').innerHTML=CL.logo_url?'<img class="logo" src="'+esc(C.imgUrl(CL.logo_url,160))+'" alt="">':'<div class="logo ph">'+esc(C.initials(CL.name))+'</div>';
+  $('#topName').textContent=CL.name||CL.slug; $('#topSub').textContent='libanapps.com/portal-club/'+CL.slug;
+  $('#lnkPortal').href='/portal-club/'+CL.slug; $('#lnkDoor').href='/portal-club/'+CL.slug+'/door';
+  $('#langSw').innerHTML=C.LANGS.map(function(l){return '<button data-lang="'+l+'" class="'+(l===C.lang()?'on':'')+'">'+({ar:'ع',en:'EN',fr:'FR'})[l]+'</button>'}).join('');
+  var nexp=STS.filter(function(s){var x=stStatus(s);return x.state==='expired'||x.state==='none'}).length;
+  $('#nav').innerHTML=NAV.map(function(n){ return '<button data-tab="'+n[0]+'" class="'+(TAB===n[0]?'on':'')+'"><span class="ic">'+n[1]+'</span><span>'+esc(t(n[2]))+'</span>'+(n[0]==='students'&&nexp?'<span class="cnt">'+nexp+'</span>':'')+'</button>'; }).join('');
+  $('#impBar').classList.toggle('hidden',!IMP); $('#impBar').textContent=t('imp_note');
+  var lb=$('#licBar'); lb.className='licbar hidden';
+  if(!LIC.ok){ lb.className='licbar bad'; lb.textContent=t('lic_expired'); }
+  else if(LIC.trial){ lb.className='licbar warn'; lb.textContent=t('lic_trial',{n:LIC.days_left}); }
+  else if(LIC.days_left<=15){ lb.className='licbar warn'; lb.textContent=t('lic_soon',{n:LIC.days_left}); }
+  C.applyAll();
+}
+function go(tab){ TAB=tab; $$('#nav button').forEach(function(b){ b.classList.toggle('on',b.getAttribute('data-tab')===tab); }); render(); window.scrollTo(0,0); }
+function render(){
+  var fn={dash:vDash,students:vStudents,payments:vPayments,att:vAtt,medals:vMedals,setup:vSetup,cards:vCards,door:vDoor,settings:vSettings}[TAB];
+  $('#main').innerHTML='<div class="card"><div class="spin"></div></div>';
+  Promise.resolve(fn()).catch(function(e){ $('#main').innerHTML='<div class="card"><div class="cl-msg e">'+esc(C.errText(e))+'</div></div>'; });
+}
+
+/* ---------- الرئيسية ---------- */
+async function vDash(){
+  var d=chk(await sb.rpc('club_dashboard',{p_club:CL.id})); DASH=d;
+  var mx=Math.max.apply(null,(d.by_day||[]).map(function(x){return x.n}).concat([1]));
+  var soon=STS.filter(function(s){return stStatus(s).state==='expiring'}).sort(function(a,b){return a.paid_until<b.paid_until?-1:1});
+  var late=STS.filter(function(s){var x=stStatus(s);return x.state==='expired'||x.state==='none'}).sort(function(a,b){return (a.paid_until||'')<(b.paid_until||'')?1:-1});
+  function mini(list){ if(!list.length) return '<div class="empty">'+t('d_none')+'</div>';
+    return '<div class="list">'+list.slice(0,40).map(function(s){ return '<div class="row">'+avatar(s)+'<div class="main"><div class="nm">'+esc(s.full_name)+'</div><div class="meta">'+chip(s)+(stStatus(s).owed?'<b>'+esc(money(stStatus(s).owed))+'</b>':'')+'</div></div><div class="acts">'+
+      (phoneOf(s)?'<a class="cl-btn wa sm" target="_blank" href="'+esc(remindLink(s))+'">'+t('remind')+'</a>':'')+'<button class="cl-btn sm" data-act="pay" data-id="'+s.id+'">'+t('pay')+'</button></div></div>'; }).join('')+'</div>'; }
+  $('#main').innerHTML=
+    '<div class="stats">'+
+      '<div class="stat p" data-go="students"><div class="n">'+d.students+'</div><div class="l">'+t('d_students')+'</div></div>'+
+      '<div class="stat ok" data-go="students" data-f="active"><div class="n">'+d.active+'</div><div class="l">'+t('d_active')+'</div></div>'+
+      '<div class="stat warn" data-go="students" data-f="expiring"><div class="n">'+d.expiring+'</div><div class="l">'+t('d_expiring')+'</div></div>'+
+      '<div class="stat bad" data-go="students" data-f="expired"><div class="n">'+d.expired+'</div><div class="l">'+t('d_expired')+'</div></div>'+
+      '<div class="stat p" data-go="payments"><div class="n">'+esc(money(d.revenue_month))+'</div><div class="l">'+t('d_rev')+'</div><div class="muted">'+esc(t('d_rev_prev',{v:money(d.revenue_prev)}))+'</div></div>'+
+      '<div class="stat bad"><div class="n">'+esc(money(d.owed_total))+'</div><div class="l">'+t('d_owed')+'</div></div>'+
+      '<div class="stat ok" data-go="att"><div class="n">'+d.checkins_today+'</div><div class="l">'+t('d_today')+'</div><div class="muted">'+esc(t('d_denied',{n:d.denied_today}))+'</div></div>'+
+      '<div class="stat" data-go="medals"><div class="n">🏅 '+d.medals+'</div><div class="l">'+t('d_medals')+'</div></div>'+
+    '</div>'+
+    '<div class="card" style="margin-bottom:16px"><div class="hd"><h2 style="font-size:16px">'+t('d_chart')+'</h2></div><div class="bars">'+
+      (d.by_day||[]).map(function(x){ var dd=C.parseDate(x.d); return '<div class="b"><em>'+(x.n||'')+'</em><i style="height:'+Math.round(x.n/mx*100)+'%"></i><small>'+dd.getDate()+'/'+(dd.getMonth()+1)+'</small></div>'; }).join('')+'</div></div>'+
+    '<div class="cols2"><div class="card"><div class="hd"><h2 style="font-size:16px">⚠ '+t('d_expiring_list')+' ('+soon.length+')</h2></div>'+mini(soon)+'</div>'+
+    '<div class="card"><div class="hd"><h2 style="font-size:16px">⛔ '+t('d_expired_list')+' ('+late.length+')</h2></div>'+mini(late)+'</div></div>';
+}
+
+/* ---------- التلاميذ ---------- */
+function filtered(){
+  var q=F.q.trim().toLowerCase();
+  return STS.filter(function(s){
+    var x=stStatus(s);
+    if(F.st==='inactive'){ if(s.is_active) return false; } else if(F.st){ if(!s.is_active) return false; if(F.st==='expired'){ if(x.state!=='expired'&&x.state!=='none') return false; } else if(x.state!==F.st) return false; }
+    if(F.gr&&s.group_id!==F.gr) return false;
+    if(F.lv&&s.level_id!==F.lv) return false;
+    if(q&&(s.full_name+' '+s.code+' '+(s.phone||'')+' '+(s.parent_phone||'')+' '+(s.username||'')+' '+(s.parent_name||'')).toLowerCase().indexOf(q)<0) return false;
+    return true;
+  });
+}
+function vStudents(){
+  $('#main').innerHTML='<div class="card"><div class="hd"><h2>'+t('nav_students')+'</h2><span class="muted" id="stCount"></span><div class="sp"></div><button class="cl-btn" data-act="new-st">+ '+t('add_student')+'</button></div>'+
+    '<div class="tools"><input id="fQ" type="search" placeholder="'+esc(t('search'))+'" value="'+esc(F.q)+'">'+
+    '<select id="fSt"><option value="">'+t('f_all')+'</option><option value="active">'+t('st_active')+'</option><option value="expiring">'+t('st_expiring')+'</option><option value="expired">'+t('st_expired')+'</option><option value="inactive">'+t('f_inactive')+'</option></select>'+
+    '<select id="fGr">'+opts(GR,F.gr,t('f_all_groups'))+'</select><select id="fLv">'+opts(LV,F.lv,t('f_all_levels'))+'</select></div>'+
+    '<div class="list" id="stList"></div></div>';
+  $('#fSt').value=F.st; paintStudents();
+}
+function paintStudents(){
+  var list=filtered(); $('#stCount').textContent=t('n_students',{n:list.length});
+  if(!STS.length){ $('#stList').innerHTML='<div class="empty">'+t('no_students')+'</div>'; return; }
+  $('#stList').innerHTML=list.map(function(s){
+    var g=grById(s.group_id), x=stStatus(s);
+    return '<div class="row click" data-act="profile" data-id="'+s.id+'">'+avatar(s)+'<div class="main"><div class="nm">'+esc(s.full_name)+' <span class="muted">#'+esc(s.code)+'</span></div>'+
+      '<div class="meta">'+chip(s)+(x.owed?'<b style="color:var(--bad)">'+esc(money(x.owed))+'</b>':'')+lvChip(s.level_id)+(g?'<span class="tag">'+esc(g.name)+'</span>':'')+
+      (s.face_count?'':'<span class="tag" title="'+esc(t('no_face'))+'">🙂✕</span>')+(LOGINS[s.id]?'':'<span class="tag">'+t('no_login')+'</span>')+'</div></div>'+
+      '<div class="acts"><button class="cl-btn sm" data-act="pay" data-id="'+s.id+'">'+t('pay')+'</button></div></div>';
+  }).join('')||'<div class="empty">—</div>';
+}
+
+/* نموذج إضافة / تعديل تلميذ */
+function studentForm(s){
+  s=s||{}; var isNew=!s.id, newPhoto=null;
+  var m=C.modal({title:isNew?t('st_new'):t('st_edit'), wide:true,
+    body:'<div class="photo-pick"><div id="pv">'+(s.photo_url?'<img class="pv" src="'+esc(C.imgUrl(s.photo_url,320))+'">':'<div class="pv">'+esc(C.initials(s.full_name)||'+')+'</div>')+'</div>'+
+      '<div style="flex:1;min-width:220px"><label>'+t('photo')+'</label><div class="inl" style="flex-wrap:wrap"><label class="cl-btn alt sm" style="margin:0">'+t('upload_photo')+'<input type="file" accept="image/*" id="pFile" hidden></label><button type="button" class="cl-btn alt sm" id="pCam">📷 '+t('take_photo')+'</button></div><p class="muted" style="margin:8px 0 0">'+t('photo_hint')+'</p></div></div>'+
+      '<div class="g2"><div class="fld"><label>'+t('full_name')+' *</label><input id="sName" value="'+esc(s.full_name||'')+'"></div>'+
+      '<div class="fld"><label>'+t('birth')+'</label><input type="date" id="sBirth" value="'+esc(s.birth_date||'')+'"></div>'+
+      '<div class="fld"><label>'+t('group')+'</label><select id="sGr">'+opts(GR,s.group_id,t('none_opt'))+'</select></div>'+
+      '<div class="fld"><label>'+t('level')+'</label><select id="sLv">'+opts(LV,s.level_id,t('none_opt'))+'</select></div>'+
+      '<div class="fld"><label>'+t('parent_name')+'</label><input id="sPName" value="'+esc(s.parent_name||'')+'"></div>'+
+      '<div class="fld"><label>'+t('parent_phone')+'</label><input id="sPPhone" inputmode="tel" dir="ltr" value="'+esc(s.parent_phone||'')+'"></div>'+
+      '<div class="fld"><label>'+t('phone')+'</label><input id="sPhone" inputmode="tel" dir="ltr" value="'+esc(s.phone||'')+'"></div>'+
+      '<div class="fld"><label>'+t('gender')+'</label><select id="sGen"><option value="">—</option><option value="m">'+t('g_m')+'</option><option value="f">'+t('g_f')+'</option></select></div>'+
+      '<div class="fld"><label>'+t('fee_override')+'</label><input type="number" min="0" step="0.01" id="sFee" value="'+(s.monthly_fee!=null?esc(s.monthly_fee):'')+'"><div class="muted" id="feeHint"></div></div>'+
+      '<div class="fld"><label>'+t('joined')+'</label><input type="date" id="sJoin" value="'+esc(s.joined_at||TODAY)+'"></div>'+
+      (isNew?'':'<div class="fld"><label>'+t('paid_until_edit')+'</label><input type="date" id="sPaid" value="'+esc(s.paid_until||'')+'"></div>')+
+      '<div class="fld"><label>'+t('address')+'</label><input id="sAddr" value="'+esc(s.address||'')+'"></div></div>'+
+      '<div class="fld"><label>'+t('notes')+'</label><textarea id="sNotes">'+esc(s.notes||'')+'</textarea></div>'+
+      (isNew?'<div class="g2"><div class="fld"><label>'+t('username')+'</label><input id="sUser" dir="ltr" autocomplete="off"></div><div class="fld"><label>'+t('password')+'</label><div class="inl"><input id="sPass" dir="ltr" autocomplete="off"><button type="button" class="cl-btn alt sm" id="sGenPw">'+t('gen')+'</button></div></div></div>':'')+
+      '<label class="chk"><input type="checkbox" id="sAct"'+(s.is_active===false?'':' checked')+'> '+t('is_active')+'</label>'+
+      (isNew?'':'<p class="muted">'+t('deactivate_hint')+'</p>'),
+    buttons: isNew?[]:[{text:t('del'),cls:'danger',onClick:async function(api){ if(!(await C.confirmBox(t('del_student_q'),t('del'),true))) return; try{ chk(await sb.from('club_students').delete().eq('id',s.id)); api.close(); closeProfile(); await reloadStudents(); paintShell(); render(); C.toast(t('saved'),'s'); }catch(e){ api.msg(C.errText(e),'e'); } }}],
+    onSave: async function(api){
+      var name=$('#sName',api.el).value.trim(); if(!name){ api.msg(t('name_required'),'e'); return false; }
+      var row={ full_name:name, birth_date:$('#sBirth',api.el).value||null, group_id:$('#sGr',api.el).value||null, level_id:$('#sLv',api.el).value||null,
+        parent_name:$('#sPName',api.el).value.trim(), parent_phone:$('#sPPhone',api.el).value.trim(), phone:$('#sPhone',api.el).value.trim(),
+        gender:$('#sGen',api.el).value, monthly_fee:$('#sFee',api.el).value===''?null:Number($('#sFee',api.el).value),
+        joined_at:$('#sJoin',api.el).value||TODAY, address:$('#sAddr',api.el).value.trim(), notes:$('#sNotes',api.el).value.trim(), is_active:$('#sAct',api.el).checked };
+      if(!isNew){ row.paid_until=$('#sPaid',api.el).value||null; }
+      if(isNew){ var u0=$('#sUser',api.el).value.trim().toLowerCase();
+        if(u0&&!/^[a-z0-9._-]{3,30}$/.test(u0)){ api.msg(C.errText('invalid username'),'e'); return false; }
+        if(u0&&STS.some(function(x){return (x.username||'')===u0})){ api.msg(C.errText('username taken'),'e'); return false; }
+        if(u0&&$('#sPass',api.el).value.length<4){ api.msg(C.errText('password too short'),'e'); return false; } }
+      var faceNote='';
+      if(newPhoto){ api.msg(t('uploading')); var up=await upload(newPhoto,'st',900); row.photo_url=up.url;
+        api.msg(t('face_reading')); var fd=null; try{ fd=await faceFromBlob(up.blob); }catch(e){ faceNote=C.errText(e); }
+        row.face=fd?[fd]:[]; faceNote=fd?t('face_ok'):(faceNote||t('face_none')); }
+      var saved;
+      if(isNew){ row.club_id=CL.id; saved=chk(await sb.from('club_students').insert(row).select(STCOLS).single()); }
+      else saved=chk(await sb.from('club_students').update(row).eq('id',s.id).select(STCOLS).single());
+      if(isNew){ var u=$('#sUser',api.el).value.trim(), p=$('#sPass',api.el).value;
+        if(u&&p){ try{ chk(await sb.rpc('club_set_login',{p_student:saved.id,p_username:u,p_password:p})); }catch(e){ C.toast(C.errText(e),'e'); } } }
+      await reloadStudents(); paintShell(); if(TAB==='students') paintStudents(); else render();
+      if(faceNote) C.toast(faceNote, faceNote===t('face_ok')?'s':'e'); else C.toast(t('saved'),'s');
+      if(isNew) setTimeout(function(){ openProfile(saved.id); },150); else refreshProfile();
+    }});
+  $('#sGen',m.el).value=s.gender||'';
+  function hint(){ var g=grById($('#sGr',m.el).value); $('#feeHint',m.el).textContent=t('fee_default_hint',{v:money(g&&g.monthly_fee!=null?g.monthly_fee:CL.default_fee)}); }
+  $('#sGr',m.el).onchange=hint; hint();
+  function setPrev(blob){ newPhoto=blob; $('#pv',m.el).innerHTML='<img class="pv" src="'+URL.createObjectURL(blob)+'">'; }
+  $('#pFile',m.el).onchange=function(){ if(this.files[0]) setPrev(this.files[0]); };
+  $('#pCam',m.el).onclick=function(){ camera({onCapture:async function(cv,api){ setPrev(await canvasBlob(cv)); api.finish(true); }}); };
+  if(isNew){ $('#sGenPw',m.el).onclick=function(){ $('#sPass',m.el).value=rnd(6); };
+    $('#sName',m.el).addEventListener('blur',function(){ var u=$('#sUser',m.el); if(!u.value){ var base=this.value.trim().toLowerCase().normalize('NFD').replace(/[^a-z0-9]+/g,'').slice(0,12); u.value=(base.length>=3?base:'st')+(STS.length+1); } if(!$('#sPass',m.el).value) $('#sPass',m.el).value=rnd(6); }); }
+}
+
+/* ملف التلميذ */
+var PROF=null;
+function closeProfile(){ if(PROF){ var p=PROF; PROF=null; p.close(); } }
+async function openProfile(id){
+  closeProfile();
+  PROF=C.modal({title:t('profile'),wide:true,body:'<div id="profBody"><div class="spin"></div></div>',onClose:function(){ PROF=null; }});
+  PROF.sid=id; await refreshProfile();
+}
+async function refreshProfile(){
+  if(!PROF) return; var id=PROF.sid, s=stById(id); if(!s){ closeProfile(); return; }
+  var r=await Promise.all([
+    sb.from('club_payments').select('*').eq('student_id',id).order('created_at',{ascending:false}).limit(100),
+    sb.from('club_achievements').select('*').eq('student_id',id).order('event_date',{ascending:false,nullsFirst:false}),
+    sb.from('club_level_history').select('*').eq('student_id',id).order('changed_at',{ascending:false}).limit(30),
+    sb.from('club_attendance').select('*').eq('student_id',id).order('at',{ascending:false}).limit(20)
+  ]);
+  var pays=chk(r[0])||[], ach=chk(r[1])||[], lvh=chk(r[2])||[], att=chk(r[3])||[];
+  var x=stStatus(s), g=grById(s.group_id), PB=$('#profBody',PROF.el); if(!PB) return;
+  PB.innerHTML=
+    '<div class="prof-h">'+(s.photo_url?'<img src="'+esc(C.imgUrl(s.photo_url,320))+'">':'<div class="ph">'+esc(C.initials(s.full_name))+'</div>')+
+    '<div class="info"><h3>'+esc(s.full_name)+'</h3><div class="meta" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"><span class="muted">#'+esc(s.code)+'</span>'+chip(s)+lvChip(s.level_id)+(g?'<span class="tag">'+esc(g.name)+'</span>':'')+'</div>'+
+    '<div class="inl" style="margin-top:10px;flex-wrap:wrap"><button class="cl-btn sm" data-act="pay" data-id="'+s.id+'">💵 '+t('add_payment')+'</button><button class="cl-btn alt sm" data-act="edit-st" data-id="'+s.id+'">✎ '+t('edit')+'</button>'+
+    '<button class="cl-btn alt sm" data-act="checkin" data-id="'+s.id+'">✓ '+t('checkin_now')+'</button>'+(phoneOf(s)&&(x.state!=='active')?'<a class="cl-btn wa sm" target="_blank" href="'+esc(remindLink(s))+'">'+t('remind')+'</a>':'')+'</div></div></div>'+
+    '<div class="sec"><h4>'+t('sub_section')+'</h4><div class="kv">'+
+      '<div><b>'+t('paid_until')+'</b>'+esc(C.fmtDate(s.paid_until))+'</div><div><b>'+t('monthly_fee')+'</b>'+esc(money(feeOf(s)))+'</div>'+
+      '<div><b>'+t('state_lbl')+'</b>'+esc(x.state==='inactive'?t('st_inactive'):(x.owed?t('owed',{v:money(x.owed)}):t('paid_up')))+'</div>'+
+      '<div><b>'+t('member_since')+'</b>'+esc(C.fmtDate(s.joined_at))+'</div>'+
+      (s.parent_name||s.parent_phone?'<div><b>'+t('parent_name')+'</b>'+esc(s.parent_name||'—')+(s.parent_phone?' · <a dir="ltr" target="_blank" href="'+esc(C.waLink(s.parent_phone))+'">'+esc(s.parent_phone)+'</a>':'')+'</div>':'')+
+      (s.phone?'<div><b>'+t('phone')+'</b><a dir="ltr" href="tel:'+esc(s.phone)+'">'+esc(s.phone)+'</a></div>':'')+
+      (s.birth_date?'<div><b>'+t('birth')+'</b>'+esc(C.fmtDate(s.birth_date))+'</div>':'')+
+      (g&&g.schedule?'<div><b>'+t('schedule')+'</b>'+esc(g.schedule)+(g.coach?' · '+esc(g.coach):'')+'</div>':'')+
+      (s.notes?'<div style="grid-column:1/-1"><b>'+t('notes')+'</b>'+esc(s.notes)+'</div>':'')+'</div></div>'+
+    '<div class="sec"><h4>'+t('payments')+'<span class="sp"></span></h4>'+(pays.length?'<div class="scrollx"><table class="t"><tr><th>'+t('date')+'</th><th>'+t('period')+'</th><th>'+t('amount')+'</th><th>'+t('method')+'</th><th></th></tr>'+
+      pays.map(function(p){ return '<tr><td>'+esc(C.fmtDate(p.created_at))+'</td><td>'+esc(C.fmtDate(p.period_from))+' – '+esc(C.fmtDate(p.period_to))+' <span class="muted">('+p.months+')</span></td><td><b>'+esc(money(p.amount))+'</b></td><td>'+esc(t('m_'+p.method))+(p.note?' <span class="muted">'+esc(p.note)+'</span>':'')+'</td><td><button class="cl-btn ghost sm" data-act="del-pay" data-id="'+p.id+'">✕</button></td></tr>'; }).join('')+'</table></div>':'<div class="muted">'+t('no_payments')+'</div>')+'</div>'+
+    '<div class="sec"><h4>🏅 '+t('medals')+'<span class="sp"></span><button class="cl-btn alt sm" data-act="new-medal" data-id="'+s.id+'">+ '+t('add_medal')+'</button></h4>'+(ach.length?ach.map(medalRow).join(''):'<div class="muted">'+t('no_medals')+'</div>')+'</div>'+
+    '<div class="sec"><h4>'+t('level_hist')+'</h4>'+(lvh.length?lvh.map(function(h){ return '<div class="row" style="padding:6px 0"><span class="dot" style="background:'+esc(h.level_color||'#999')+'"></span><div class="main">'+esc(h.level_name)+'</div><span class="muted">'+esc(C.fmtDate(h.changed_at))+'</span></div>'; }).join(''):'<div class="muted">—</div>')+'</div>'+
+    '<div class="sec"><h4>'+t('att_recent')+'</h4>'+(att.length?'<div class="inl" style="flex-wrap:wrap">'+att.map(function(a){ return '<span class="chip '+(a.allowed?'active':'expired')+'">'+esc(C.fmtDateTime(a.at))+'</span>'; }).join('')+'</div>':'<div class="muted">—</div>')+'</div>'+
+    '<div class="sec"><h4>🔑 '+t('login_sec')+'</h4><div class="g2"><div class="fld"><label>'+t('username')+'</label><input id="lgU" dir="ltr" value="'+esc(s.username||'')+'" autocomplete="off"></div>'+
+      '<div class="fld"><label>'+t('new_password')+'</label><div class="inl"><input id="lgP" dir="ltr" autocomplete="off" placeholder="'+esc(LOGINS[s.id]?t('pw_keep'):'')+'"><button type="button" class="cl-btn alt sm" id="lgGen">'+t('gen')+'</button></div></div></div>'+
+      '<div class="inl" style="flex-wrap:wrap"><span class="muted">'+(LOGINS[s.id]?'✓ '+t('has_pw'):t('no_pw'))+'</span><span class="sp" style="flex:1"></span><button class="cl-btn sm" id="lgSave">'+t('set_login')+'</button><button class="cl-btn wa sm" id="lgWa">'+t('send_login_wa')+'</button></div><div class="cl-msg" id="lgMsg"></div></div>'+
+    '<div class="sec"><h4>🙂 '+t('face_sec')+'</h4><div class="inl" style="flex-wrap:wrap"><span class="chip '+(s.face_count?'active':'expired')+'">'+esc(s.face_count?t('face_count',{n:s.face_count}):t('no_face'))+'</span><span class="sp" style="flex:1"></span>'+
+      '<button class="cl-btn alt sm" data-act="enroll" data-id="'+s.id+'">📷 '+t('face_add')+'</button>'+(s.photo_url?'<button class="cl-btn ghost sm" data-act="face-photo" data-id="'+s.id+'">'+t('face_from_photo')+'</button>':'')+(s.face_count?'<button class="cl-btn ghost sm" data-act="face-clear" data-id="'+s.id+'">'+t('face_clear')+'</button>':'')+'</div><p class="muted">'+t('face_tip')+'</p></div>'+
+    '<div class="sec"><h4>🪪 '+t('card_sec')+'</h4><div class="cardprev" id="cardPrev"><div class="spin"></div></div><div class="inl" style="margin-top:10px;flex-wrap:wrap"><button class="cl-btn sm" data-act="card-pdf" data-id="'+s.id+'">⬇ '+t('dl_card')+'</button><button class="cl-btn ghost sm" data-act="new-qr" data-id="'+s.id+'">'+t('new_qr')+'</button></div></div>';
+  PROF.$('h3').textContent=s.full_name;
+  $('#lgGen',PB).onclick=function(){ $('#lgP',PB).value=rnd(6); };
+  $('#lgSave',PB).onclick=async function(){ var b=this, m=$('#lgMsg',PB); b.disabled=true; m.className='cl-msg'; m.textContent=t('saving');
+    try{ var u=$('#lgU',PB).value.trim(), p=$('#lgP',PB).value; if(!LOGINS[s.id]&&p.length<4) throw new Error(t('pw_required'));
+      var r2=chk(await sb.rpc('club_set_login',{p_student:s.id,p_username:u,p_password:p})); s.username=r2.username; if(r2.has_password) LOGINS[s.id]=1;
+      m.className='cl-msg s'; m.textContent=t('saved'); }catch(e){ m.className='cl-msg e'; m.textContent=C.errText(e); } finally{ b.disabled=false; } };
+  $('#lgWa',PB).onclick=function(){ var u=$('#lgU',PB).value.trim()||s.username||'', p=$('#lgP',PB).value||'••••';
+    window.open(C.waLink(phoneOf(s),t('login_msg',{name:s.full_name,club:CL.name,url:baseUrl(),u:u,p:p})),'_blank'); };
+  C.renderCard('front',cardData(s)).then(function(cv){ var cp=$('#cardPrev',PB); if(!cp) return; cp.innerHTML=''; cp.appendChild(cv);
+    return C.renderCard('back',cardData(s)).then(function(cv2){ cp.appendChild(cv2); }); }).catch(function(e){ var cp=$('#cardPrev',PB); if(cp) cp.innerHTML='<div class="cl-msg e">'+esc(C.errText(e))+'</div>'; });
+}
+function medalIcon(p){ return {gold:'🥇',silver:'🥈',bronze:'🥉',participation:'🎖',other:'🏆'}[p]||'🏆'; }
+function medalRow(a){ var s=stById(a.student_id);
+  return '<div class="medal"><div class="md '+esc(a.place)+'">'+medalIcon(a.place)+'</div><div class="main" style="flex:1;min-width:0"><div class="nm"><b>'+esc(a.title)+'</b> <span class="muted">· '+esc(t('medal_'+a.place))+'</span></div>'+
+    '<div class="muted">'+(TAB==='medals'&&s?esc(s.full_name)+' · ':'')+esc(a.event_date?C.fmtDate(a.event_date):'')+(a.opponent?' · '+esc(a.opponent):'')+(a.category?' · '+esc(a.category):'')+'</div></div>'+
+    (a.image_url?'<a href="'+esc(C.imgUrl(a.image_url))+'" target="_blank"><img src="'+esc(C.imgUrl(a.image_url,160))+'" style="width:46px;height:46px;border-radius:10px;object-fit:cover"></a>':'')+
+    '<button class="cl-btn ghost sm" data-act="edit-medal" data-id="'+a.id+'">✎</button></div>'; }
+function cardData(s){ return {club:CL, student:s, level:lvById(s.level_id), group:grById(s.group_id)}; }
+
+/* الدفعة */
+function paymentForm(sid){
+  var s=sid?stById(sid):null;
+  var m=C.modal({title:t('pay_title'),
+    body:(s?'<div class="row" style="padding:0 0 12px">'+avatar(s)+'<div class="main"><div class="nm">'+esc(s.full_name)+'</div><div class="meta">'+chip(s)+'</div></div></div>':
+      '<div class="fld"><label>'+t('student')+'</label><select id="pSt"><option value="">'+t('pick_student')+'</option>'+STS.filter(function(x){return x.is_active}).map(function(x){return '<option value="'+x.id+'">'+esc(x.full_name)+' #'+esc(x.code)+'</option>'}).join('')+'</select></div>')+
+      '<div class="g3"><div class="fld"><label>'+t('months')+'</label><select id="pM">'+[1,2,3,4,6,9,12].map(function(n){return '<option>'+n+'</option>'}).join('')+'</select></div>'+
+      '<div class="fld"><label>'+t('amount')+' ('+esc(CL.currency_symbol)+')</label><input type="number" min="0" step="0.01" id="pA"></div>'+
+      '<div class="fld"><label>'+t('method')+'</label><select id="pMe">'+['cash','whish','card','transfer','other'].map(function(k){return '<option value="'+k+'">'+t('m_'+k)+'</option>'}).join('')+'</select></div></div>'+
+      '<div class="fld hidden" id="pFromBox"><label>'+t('start_from')+'</label><label class="chk" style="margin-bottom:6px"><input type="radio" name="pFrom" value="continue" checked> <span id="pFromC"></span></label><label class="chk"><input type="radio" name="pFrom" value="today"> '+t('from_today')+'</label></div>'+
+      '<div class="note" id="pPrev"></div><div class="fld" style="margin-top:12px"><label>'+t('note')+'</label><input id="pN"></div>',
+    onSave:async function(api){
+      var st=s||stById($('#pSt',api.el).value); if(!st){ api.msg(t('pick_student'),'e'); return false; }
+      var months=Number($('#pM',api.el).value), amt=Number($('#pA',api.el).value||0), fr=($('input[name=pFrom]:checked',api.el)||{}).value||'continue';
+      var r=chk(await sb.rpc('club_add_payment',{p_student:st.id,p_months:months,p_amount:amt,p_method:$('#pMe',api.el).value,p_note:$('#pN',api.el).value.trim(),p_from:fr}));
+      await reloadStudents(); paintShell(); if(TAB==='students') paintStudents(); else if(TAB!=='settings') render(); refreshProfile();
+      var rec=t('receipt_msg',{club:CL.name,name:st.full_name,amt:money(amt),a:C.fmtDate(r.period_from),b:C.fmtDate(r.period_to)});
+      var done=C.modal({title:t('pay_done',{d:C.fmtDate(r.period_to)}),body:'<p class="muted">'+esc(st.full_name)+' · '+esc(money(amt))+'</p>',
+        buttons:phoneOf(st)?[{text:t('send_receipt'),cls:'wa',onClick:function(a2){ window.open(C.waLink(phoneOf(st),rec),'_blank'); a2.close(); }}]:[]});
+    }});
+  function cur(){ return s||stById(($('#pSt',m.el)||{}).value); }
+  function upd(auto){ var st=cur(), box=$('#pFromBox',m.el); if(!st){ $('#pPrev',m.el).textContent=''; box.classList.add('hidden'); return; }
+    var months=Number($('#pM',m.el).value); if(auto!==false) $('#pA',m.el).value=Math.round(feeOf(st)*months*100)/100;
+    var from; var expired=st.paid_until&&st.paid_until<TODAY;
+    box.classList.toggle('hidden',!expired); if(expired) $('#pFromC',m.el).textContent=t('from_continue',{d:C.fmtDate(C.addDays(st.paid_until,1))});
+    var fr=($('input[name=pFrom]:checked',m.el)||{}).value;
+    if(!st.paid_until) from=TODAY; else if(st.paid_until>=TODAY) from=C.addDays(st.paid_until,1); else from=fr==='today'?TODAY:C.addDays(st.paid_until,1);
+    var to=C.addDays(C.addMonths(from,months),-1);
+    $('#pPrev',m.el).innerHTML='<b>'+esc(t('pay_preview',{a:C.fmtDate(from),b:C.fmtDate(to)}))+'</b>'; }
+  $('#pM',m.el).onchange=function(){upd(true)}; if($('#pSt',m.el)) $('#pSt',m.el).onchange=function(){upd(true)};
+  $$('input[name=pFrom]',m.el).forEach(function(r){ r.onchange=function(){upd(false)}; }); upd(true);
+}
+
+/* الميدالية */
+function medalForm(a,sid){
+  a=a||{student_id:sid,place:'gold'}; var img=null;
+  C.modal({title:a.id?t('edit'):t('add_medal'),
+    body:(a.id||sid?'':'')+'<div class="fld"><label>'+t('student')+'</label><select id="aSt">'+STS.map(function(x){return '<option value="'+x.id+'"'+(x.id===a.student_id?' selected':'')+'>'+esc(x.full_name)+' #'+esc(x.code)+'</option>'}).join('')+'</select></div>'+
+      '<div class="fld"><label>'+t('medal_title')+' *</label><input id="aT" value="'+esc(a.title||'')+'"></div>'+
+      '<div class="g2"><div class="fld"><label>'+t('place')+'</label><select id="aP">'+['gold','silver','bronze','participation','other'].map(function(k){return '<option value="'+k+'"'+(a.place===k?' selected':'')+'>'+medalIcon(k)+' '+t('medal_'+k)+'</option>'}).join('')+'</select></div>'+
+      '<div class="fld"><label>'+t('event_date')+'</label><input type="date" id="aD" value="'+esc(a.event_date||TODAY)+'"></div>'+
+      '<div class="fld"><label>'+t('opponent')+'</label><input id="aO" value="'+esc(a.opponent||'')+'"></div>'+
+      '<div class="fld"><label>'+t('category')+'</label><input id="aC" value="'+esc(a.category||'')+'"></div></div>'+
+      '<div class="fld"><label>'+t('medal_photo')+'</label><input type="file" accept="image/*" id="aI">'+(a.image_url?'<img src="'+esc(C.imgUrl(a.image_url,320))+'" style="max-width:140px;border-radius:10px;margin-top:8px">':'')+'</div>'+
+      '<div class="fld"><label>'+t('notes')+'</label><input id="aN" value="'+esc(a.note||'')+'"></div>',
+    buttons:a.id?[{text:t('del'),cls:'danger',onClick:async function(api){ if(!(await C.confirmBox(t('del_medal_q'),t('del'),true))) return; try{ chk(await sb.from('club_achievements').delete().eq('id',a.id)); api.close(); afterMedal(); }catch(e){ api.msg(C.errText(e),'e'); } }}]:[],
+    onOpen:function(api){ $('#aI',api.el).onchange=function(){ img=this.files[0]||null; }; },
+    onSave:async function(api){
+      var row={student_id:$('#aSt',api.el).value,title:$('#aT',api.el).value.trim(),place:$('#aP',api.el).value,event_date:$('#aD',api.el).value||null,
+        opponent:$('#aO',api.el).value.trim(),category:$('#aC',api.el).value.trim(),note:$('#aN',api.el).value.trim()};
+      if(!row.title){ api.msg(t('title_required'),'e'); return false; }
+      if(img){ api.msg(t('uploading')); row.image_url=(await upload(img,'medals',1200)).url; }
+      if(a.id) chk(await sb.from('club_achievements').update(row).eq('id',a.id)); else { row.club_id=CL.id; chk(await sb.from('club_achievements').insert(row)); }
+      afterMedal(); C.toast(t('saved'),'s');
+    }});
+}
+function afterMedal(){ if(TAB==='medals'||TAB==='dash') render(); refreshProfile(); }
+
+/* بصمات الوجه من الكاميرا */
+async function enroll(sid){
+  var s=stById(sid); var r=await sb.from('club_students').select('face').eq('id',sid).single(); var faces=(chk(r).face||[]).slice(), added=0;
+  var info=null;
+  C.toast(t('face_loading'));
+  try{ await C.loadFace(); }catch(e){ C.toast(C.errText(e),'e'); return; }
+  await camera({title:t('enroll_title')+' — '+s.full_name, hint:t('enroll_hint'), captureText:t('enroll_cap'),
+    onCapture:async function(cv,api){
+      if(faces.length>=8){ api.msg(t('max_samples'),'e'); return; }
+      var d=await C.faceDescriptor(cv,{inputSize:416});
+      if(!d){ api.msg(t('enroll_noface'),'e'); return; }
+      faces.push(d.descriptor); added++;
+      chk(await sb.from('club_students').update({face:faces}).eq('id',sid));
+      api.msg(t('enroll_got',{n:faces.length}),'s');
+    }});
+  if(added){ await reloadStudents(); refreshProfile(); if(TAB==='students') paintStudents(); }
+}
+async function faceFromPhoto(sid){
+  var s=stById(sid); C.toast(t('face_reading'));
+  try{ var res=await fetch(C.imgUrl(s.photo_url)); var blob=await res.blob(); var fd=await faceFromBlob(blob);
+    if(!fd){ C.toast(t('face_none'),'e'); return; }
+    var r=await sb.from('club_students').select('face').eq('id',sid).single(); var faces=chk(r).face||[];
+    faces=[fd].concat(faces.slice(1)).slice(0,8);
+    chk(await sb.from('club_students').update({face:faces}).eq('id',sid)); await reloadStudents(); refreshProfile(); C.toast(t('face_ok'),'s');
+  }catch(e){ C.toast(C.errText(e),'e'); }
+}
+
+/* ---------- الدفعات ---------- */
+var PM=null;
+async function vPayments(){
+  if(!PM) PM=TODAY.slice(0,7);
+  var y=+PM.slice(0,4), mo=+PM.slice(5,7), a=new Date(y,mo-1,1), b=new Date(y,mo,1);
+  var list=chk(await sb.from('club_payments').select('*').eq('club_id',CL.id).gte('created_at',a.toISOString()).lt('created_at',b.toISOString()).order('created_at',{ascending:false}))||[];
+  var tot=list.reduce(function(s,p){return s+Number(p.amount||0)},0);
+  $('#main').innerHTML='<div class="card"><div class="hd"><h2>'+t('nav_payments')+'</h2><div class="sp"></div><input type="month" id="pmM" value="'+PM+'" style="width:auto"><button class="cl-btn" data-act="pay">+ '+t('add_payment')+'</button></div>'+
+    '<div class="stats" style="margin-bottom:10px"><div class="stat p"><div class="n">'+esc(money(tot))+'</div><div class="l">'+t('total')+' · '+list.length+'</div></div></div>'+
+    (list.length?'<div class="scrollx"><table class="t"><tr><th>'+t('date')+'</th><th>'+t('student')+'</th><th>'+t('period')+'</th><th>'+t('amount')+'</th><th>'+t('method')+'</th><th></th></tr>'+
+    list.map(function(p){ var s=stById(p.student_id); return '<tr><td>'+esc(C.fmtDateTime(p.created_at))+'</td><td>'+(s?'<a href="#" data-act="profile" data-id="'+s.id+'">'+esc(s.full_name)+'</a>':'—')+'</td><td>'+esc(C.fmtDate(p.period_from))+' – '+esc(C.fmtDate(p.period_to))+'</td><td><b>'+esc(money(p.amount))+'</b></td><td>'+esc(t('m_'+p.method))+(p.note?' <span class="muted">'+esc(p.note)+'</span>':'')+'</td><td><button class="cl-btn ghost sm" data-act="del-pay" data-id="'+p.id+'">✕</button></td></tr>'; }).join('')+'</table></div>':'<div class="empty">'+t('no_payments')+'</div>')+'</div>';
+  $('#pmM').onchange=function(){ PM=this.value||TODAY.slice(0,7); render(); };
+}
+
+/* ---------- الحضور ---------- */
+var AD=null;
+async function vAtt(){
+  if(!AD) AD=TODAY;
+  var d=C.parseDate(AD), a=new Date(d.getFullYear(),d.getMonth(),d.getDate()), b=new Date(a); b.setDate(b.getDate()+1);
+  var list=chk(await sb.from('club_attendance').select('*').eq('club_id',CL.id).gte('at',a.toISOString()).lt('at',b.toISOString()).order('at',{ascending:false}).limit(1000))||[];
+  var ok=list.filter(function(x){return x.allowed}).length;
+  $('#main').innerHTML='<div class="card"><div class="hd"><h2>'+t('att_title')+'</h2><span class="muted">'+esc(t('att_summary',{a:ok,d:list.length-ok}))+'</span><div class="sp"></div><input type="date" id="adD" value="'+AD+'" style="width:auto"><button class="cl-btn" data-act="manual-att">+ '+t('att_manual')+'</button></div>'+
+    (list.length?'<div class="list">'+list.map(function(x){ var s=stById(x.student_id)||{full_name:'—'}; return '<div class="row'+(s.id?' click':'')+'"'+(s.id?' data-act="profile" data-id="'+s.id+'"':'')+'>'+avatar(s)+'<div class="main"><div class="nm">'+esc(s.full_name)+'</div><div class="meta"><span class="chip '+(x.allowed?'active':'expired')+'">'+(x.allowed?t('att_allowed'):t('att_denied'))+'</span><span class="tag">'+esc(t('att_'+(x.method==='manual'?'m':x.method)))+'</span>'+(x.door_name?'<span class="muted">'+esc(x.door_name)+'</span>':'')+(!x.allowed&&x.reason?'<span class="muted">'+esc(t('st_'+x.reason)||x.reason)+'</span>':'')+'</div></div><b>'+esc(C.fmtTime(x.at))+'</b></div>'; }).join('')+'</div>':'<div class="empty">'+t('no_att')+'</div>')+'</div>';
+  $('#adD').onchange=function(){ AD=this.value||TODAY; render(); };
+}
+function manualAtt(){
+  C.modal({title:t('att_manual'),body:'<div class="fld"><label>'+t('student')+'</label><select id="maS"><option value="">'+t('pick_student')+'</option>'+STS.filter(function(x){return x.is_active}).map(function(x){return '<option value="'+x.id+'">'+esc(x.full_name)+' #'+esc(x.code)+'</option>'}).join('')+'</select></div>',
+    saveText:t('checkin_now'),onSave:async function(api){ var id=$('#maS',api.el).value; if(!id){ api.msg(t('pick_student'),'e'); return false; } chk(await sb.rpc('club_manual_checkin',{p_student:id})); C.toast(t('checked_in'),'s'); if(TAB==='att') render(); }});
+}
+
+/* ---------- الميداليات ---------- */
+async function vMedals(){
+  var list=chk(await sb.from('club_achievements').select('*').eq('club_id',CL.id).order('event_date',{ascending:false,nullsFirst:false}).limit(500))||[];
+  var cnt={gold:0,silver:0,bronze:0}; list.forEach(function(a){ if(cnt[a.place]!=null) cnt[a.place]++; });
+  $('#main').innerHTML='<div class="card"><div class="hd"><h2>'+t('medals')+'</h2><div class="sp"></div><button class="cl-btn" data-act="new-medal">+ '+t('add_medal')+'</button></div>'+
+    '<div class="stats"><div class="stat"><div class="n">🥇 '+cnt.gold+'</div><div class="l">'+t('medal_gold')+'</div></div><div class="stat"><div class="n">🥈 '+cnt.silver+'</div><div class="l">'+t('medal_silver')+'</div></div><div class="stat"><div class="n">🥉 '+cnt.bronze+'</div><div class="l">'+t('medal_bronze')+'</div></div></div>'+
+    (list.length?list.map(medalRow).join(''):'<div class="empty">'+t('no_medals')+'</div>')+'</div>';
+  MEDALS=list;
+}
+var MEDALS=[];
+
+/* ---------- المستويات والفرق ---------- */
+function vSetup(){
+  $('#main').innerHTML='<div class="cols2"><div class="card"><div class="hd"><h2 style="font-size:17px">'+t('levels')+'</h2><div class="sp"></div><button class="cl-btn sm" data-act="new-lv">+ '+t('add_level')+'</button></div>'+
+    (LV.length?LV.map(function(l){ var n=STS.filter(function(s){return s.level_id===l.id}).length; return '<div class="row"><span class="lv" style="background:'+esc(l.color)+';color:'+C.readable(l.color)+';min-width:70px;text-align:center">'+esc(l.name)+'</span><div class="main muted">'+t('n_students',{n:n})+'</div><button class="cl-btn ghost sm" data-act="edit-lv" data-id="'+l.id+'">✎</button></div>'; }).join(''):'<div class="empty">—</div>')+'</div>'+
+    '<div class="card"><div class="hd"><h2 style="font-size:17px">'+t('groups')+'</h2><div class="sp"></div><button class="cl-btn sm" data-act="new-gr">+ '+t('add_group')+'</button></div>'+
+    (GR.length?GR.map(function(g){ var n=STS.filter(function(s){return s.group_id===g.id}).length; return '<div class="row"><div class="main"><div class="nm">'+esc(g.name)+'</div><div class="meta">'+(g.schedule?esc(g.schedule)+' · ':'')+(g.coach?esc(g.coach)+' · ':'')+esc(money(g.monthly_fee!=null?g.monthly_fee:CL.default_fee))+' · '+t('n_students',{n:n})+'</div></div><button class="cl-btn ghost sm" data-act="edit-gr" data-id="'+g.id+'">✎</button></div>'; }).join(''):'<div class="empty">—</div>')+'</div></div>';
+}
+function levelForm(l){ l=l||{color:'#64748b',sort:(LV.length?LV[LV.length-1].sort+1:1)};
+  C.modal({title:l.id?t('edit'):t('add_level'),body:'<div class="fld"><label>'+t('lv_name')+'</label><input id="lN" value="'+esc(l.name||'')+'"></div><div class="g2"><div class="fld"><label>'+t('color')+'</label><div class="inl"><input type="color" id="lC" value="'+esc(l.color)+'"><input id="lCt" dir="ltr" value="'+esc(l.color)+'"></div></div><div class="fld"><label>'+t('order')+'</label><input type="number" id="lS" value="'+esc(l.sort)+'"></div></div>',
+    onOpen:function(api){ $('#lC',api.el).oninput=function(){ $('#lCt',api.el).value=this.value; }; $('#lCt',api.el).oninput=function(){ if(/^#[0-9a-f]{6}$/i.test(this.value)) $('#lC',api.el).value=this.value; }; },
+    buttons:l.id?[{text:t('del'),cls:'danger',onClick:async function(api){ if(!(await C.confirmBox(t('del_level_q'),t('del'),true))) return; try{ chk(await sb.from('club_levels').delete().eq('id',l.id)); api.close(); await loadAll(); render(); }catch(e){ api.msg(C.errText(e),'e'); } }}]:[],
+    onSave:async function(api){ var row={name:$('#lN',api.el).value.trim(),color:$('#lCt',api.el).value.trim()||'#64748b',sort:Number($('#lS',api.el).value||0)}; if(!row.name){ api.msg(t('lv_name'),'e'); return false; }
+      if(l.id) chk(await sb.from('club_levels').update(row).eq('id',l.id)); else { row.club_id=CL.id; chk(await sb.from('club_levels').insert(row)); } await loadAll(); render(); }});
+}
+function groupForm(g){ g=g||{sort:GR.length+1};
+  C.modal({title:g.id?t('edit'):t('add_group'),body:'<div class="fld"><label>'+t('gr_name')+'</label><input id="gN" value="'+esc(g.name||'')+'"></div><div class="g2"><div class="fld"><label>'+t('schedule')+'</label><input id="gS" value="'+esc(g.schedule||'')+'"></div><div class="fld"><label>'+t('coach')+'</label><input id="gC" value="'+esc(g.coach||'')+'"></div><div class="fld"><label>'+t('gr_fee')+'</label><input type="number" min="0" step="0.01" id="gF" value="'+(g.monthly_fee!=null?esc(g.monthly_fee):'')+'" placeholder="'+esc(money(CL.default_fee))+'"></div><div class="fld"><label>'+t('order')+'</label><input type="number" id="gO" value="'+esc(g.sort)+'"></div></div>',
+    buttons:g.id?[{text:t('del'),cls:'danger',onClick:async function(api){ if(!(await C.confirmBox(t('del_group_q'),t('del'),true))) return; try{ chk(await sb.from('club_groups').delete().eq('id',g.id)); api.close(); await loadAll(); render(); }catch(e){ api.msg(C.errText(e),'e'); } }}]:[],
+    onSave:async function(api){ var row={name:$('#gN',api.el).value.trim(),schedule:$('#gS',api.el).value.trim(),coach:$('#gC',api.el).value.trim(),monthly_fee:$('#gF',api.el).value===''?null:Number($('#gF',api.el).value),sort:Number($('#gO',api.el).value||0)}; if(!row.name){ api.msg(t('gr_name'),'e'); return false; }
+      if(g.id) chk(await sb.from('club_groups').update(row).eq('id',g.id)); else { row.club_id=CL.id; chk(await sb.from('club_groups').insert(row)); } await loadAll(); render(); }});
+}
+
+/* ---------- البطاقات ---------- */
+var CSEL={}, CF={gr:'',lv:''};
+function vCards(){
+  $('#main').innerHTML='<div class="card"><div class="hd"><h2>'+t('cards_title')+'</h2></div><p class="note">'+t('cards_hint')+'</p>'+
+    '<div class="tools" style="margin-top:12px"><select id="cfG">'+opts(GR,CF.gr,t('f_all_groups'))+'</select><select id="cfL">'+opts(LV,CF.lv,t('f_all_levels'))+'</select><select id="cMode"><option value="cr80">'+t('mode_cr80')+'</option><option value="a4">'+t('mode_a4')+'</option></select></div>'+
+    '<div class="inl" style="margin-bottom:8px"><label class="chk"><input type="checkbox" id="cAll"> '+t('select_all')+'</label><span class="sp" style="flex:1"></span><span class="muted" id="cN"></span><button class="cl-btn" id="cGo">⬇ '+t('dl_pdf')+'</button></div>'+
+    '<div class="prog hidden" id="cProg"><i></i></div><div class="cl-msg" id="cMsg"></div>'+
+    '<div class="list" id="cList"></div></div>';
+  paintCards();
+  $('#cfG').onchange=function(){ CF.gr=this.value; paintCards(); }; $('#cfL').onchange=function(){ CF.lv=this.value; paintCards(); };
+  $('#cAll').onchange=function(){ var on=this.checked; cardList().forEach(function(s){ if(on) CSEL[s.id]=1; else delete CSEL[s.id]; }); paintCards(); };
+  $('#cGo').onclick=async function(){ var sel=STS.filter(function(s){return CSEL[s.id]}); if(!sel.length){ C.toast(t('pick_some'),'e'); return; }
+    var b=this; b.disabled=true; $('#cProg').classList.remove('hidden'); $('#cMsg').className='cl-msg'; $('#cMsg').textContent='';
+    try{ var blob=await C.cardsPdf(sel.map(cardData),$('#cMode').value,function(a,n){ $('#cProg i').style.width=Math.round(a/n*100)+'%'; $('#cMsg').textContent=t('building',{a:a,b:n}); });
+      C.download(blob,(CL.slug||'club')+'-cards-'+TODAY+'.pdf'); $('#cMsg').className='cl-msg s'; $('#cMsg').textContent=t('saved'); }
+    catch(e){ $('#cMsg').className='cl-msg e'; $('#cMsg').textContent=C.errText(e); } finally{ b.disabled=false; setTimeout(function(){ var p=$('#cProg'); if(p) p.classList.add('hidden'); },800); } };
+}
+function cardList(){ return STS.filter(function(s){ return s.is_active&&(!CF.gr||s.group_id===CF.gr)&&(!CF.lv||s.level_id===CF.lv); }); }
+function paintCards(){ var list=cardList();
+  $('#cList').innerHTML=list.map(function(s){ return '<label class="row" style="cursor:pointer"><input type="checkbox" data-csel="'+s.id+'"'+(CSEL[s.id]?' checked':'')+' style="width:20px;height:20px;flex:none">'+avatar(s)+'<div class="main"><div class="nm">'+esc(s.full_name)+' <span class="muted">#'+esc(s.code)+'</span></div><div class="meta">'+lvChip(s.level_id)+(s.photo_url?'':'<span class="tag">'+t('photo')+' ✕</span>')+'</div></div></label>'; }).join('')||'<div class="empty">—</div>';
+  $('#cN').textContent=t('selected_n',{n:Object.keys(CSEL).length}); }
+
+/* ---------- الباب ---------- */
+async function vDoor(){
+  var doors=chk(await sb.from('club_doors').select('*').eq('club_id',CL.id).order('created_at'))||[];
+  var th=Number(CL.door_threshold||0.5);
+  $('#main').innerHTML='<div class="card" style="margin-bottom:16px"><div class="hd"><h2>'+t('door_title')+'</h2><div class="sp"></div><button class="cl-btn" data-act="new-door">+ '+t('add_door')+'</button></div><p class="note">'+t('door_hint')+'</p>'+
+    (doors.length?'<div class="list">'+doors.map(function(d){ return '<div class="row"><span style="font-size:24px">🚪</span><div class="main"><div class="nm">'+esc(d.name)+'</div><div class="meta">'+(d.revoked?'<span class="chip expired">'+t('revoked')+'</span>':'<span class="muted">'+t('last_seen')+': '+(d.last_seen_at?esc(C.fmtDateTime(d.last_seen_at)):t('never'))+'</span>')+'</div></div>'+(d.revoked?'':'<button class="cl-btn ghost sm" data-act="revoke-door" data-id="'+d.id+'">'+t('revoke')+'</button>')+'</div>'; }).join('')+'</div>':'')+'</div>'+
+    '<div class="card"><div class="hd"><h2 style="font-size:17px">'+t('door_settings')+'</h2></div>'+
+    '<div class="g2"><label class="chk"><input type="checkbox" id="dF"'+(CL.door_face_enabled?' checked':'')+'> 🙂 '+t('door_face')+'</label><label class="chk"><input type="checkbox" id="dQ"'+(CL.door_qr_enabled?' checked':'')+'> ▦ '+t('door_qr')+'</label></div>'+
+    '<div class="g2" style="margin-top:12px"><div class="fld"><label>'+t('threshold')+' <b id="thV" dir="ltr"></b></label><input type="range" min="0.38" max="0.6" step="0.01" id="dT" value="'+th+'"><div class="inl muted"><span>'+t('th_strict')+'</span><span style="flex:1"></span><span>'+t('th_loose')+'</span></div></div>'+
+    '<div class="fld"><label>'+t('grace')+'</label><input type="number" min="0" max="30" id="dG" value="'+esc(CL.grace_days)+'"></div></div>'+
+    '<div class="fld"><label>'+t('open_url')+'</label><input id="dU" dir="ltr" value="'+esc(CL.door_open_url||'')+'" placeholder="https://…"></div>'+
+    '<div class="g2"><div class="fld"><label>'+t('open_method')+'</label><select id="dM"><option>GET</option><option>POST</option></select></div><div class="fld"><label>'+t('open_body')+'</label><input id="dB" dir="ltr" value="'+esc(CL.door_open_body||'')+'"></div></div>'+
+    '<p class="note">'+t('relay_help')+'</p><div class="inl" style="margin-top:12px"><span class="sp" style="flex:1"></span><button class="cl-btn" id="dSave">'+t('save')+'</button></div><div class="cl-msg" id="dMsg"></div></div>';
+  $('#dM').value=CL.door_open_method||'GET';
+  function thv(){ $('#thV').textContent=Number($('#dT').value).toFixed(2); } $('#dT').oninput=thv; thv();
+  $('#dSave').onclick=async function(){ var b=this; b.disabled=true; var m=$('#dMsg');
+    try{ var row={door_face_enabled:$('#dF').checked,door_qr_enabled:$('#dQ').checked,door_threshold:Number($('#dT').value),grace_days:Math.max(0,Math.min(30,Number($('#dG').value||0))),door_open_url:$('#dU').value.trim(),door_open_method:$('#dM').value,door_open_body:$('#dB').value};
+      CL=chk(await sb.from('clubs').update(row).eq('id',CL.id).select('*').single()); m.className='cl-msg s'; m.textContent=t('saved'); }
+    catch(e){ m.className='cl-msg e'; m.textContent=C.errText(e); } finally{ b.disabled=false; } };
+}
+function newDoor(){
+  C.modal({title:t('add_door'),body:'<div class="fld"><label>'+t('door_name')+'</label><input id="dnN" value="'+esc(t('door_main'))+'"></div>',saveText:t('add_door'),
+    onSave:async function(api){ var r=chk(await sb.rpc('club_new_door',{p_club:CL.id,p_name:$('#dnN',api.el).value.trim()}));
+      var link=baseUrl()+'/door#k='+r.key;
+      C.modal({title:t('add_door'),body:'<p>'+t('door_link_once')+'</p><div class="copybox"><input readonly value="'+esc(link)+'" id="dlk"><button class="cl-btn sm" id="dcp">'+t('copy')+'</button></div><div style="text-align:center;margin-top:14px">'+C.qrSvg(link,220)+'</div>',
+        onOpen:function(a2){ $('#dcp',a2.el).onclick=function(){ var i=$('#dlk',a2.el); i.select(); try{ navigator.clipboard.writeText(i.value); }catch(e){ document.execCommand('copy'); } C.toast(t('copied'),'s'); }; },
+        buttons:[{text:t('open'),cls:'alt',onClick:function(){ window.open(link,'_blank'); }}]});
+      if(TAB==='door') render(); }});
+}
+
+/* ---------- الإعدادات ---------- */
+function vSettings(){
+  var logo=null;
+  $('#main').innerHTML='<div class="card"><div class="hd"><h2>'+t('set_title')+'</h2></div>'+
+    '<div class="photo-pick"><div id="lgPv">'+(CL.logo_url?'<img class="pv" style="object-fit:contain;background:#fff" src="'+esc(C.imgUrl(CL.logo_url,320))+'">':'<div class="pv">'+esc(C.initials(CL.name))+'</div>')+'</div><div><label>'+t('logo')+'</label><label class="cl-btn alt sm" style="margin:0">'+t('upload_photo')+'<input type="file" accept="image/*" id="lgF" hidden></label></div></div>'+
+    '<div class="g2"><div class="fld"><label>'+t('club_name')+'</label><input id="cN" value="'+esc(CL.name)+'"></div><div class="fld"><label>'+t('sport')+'</label><input id="cS" value="'+esc(CL.sport||'')+'"></div>'+
+    '<div class="fld"><label>'+t('wa')+'</label><input id="cW" dir="ltr" inputmode="tel" value="'+esc(CL.whatsapp||'')+'" placeholder="9613044010"></div><div class="fld"><label>'+t('club_phone')+'</label><input id="cP" dir="ltr" value="'+esc(CL.phone||'')+'"></div>'+
+    '<div class="fld"><label>'+t('address')+'</label><input id="cA" value="'+esc(CL.address||'')+'"></div><div class="fld"><label>'+t('def_lang')+'</label><select id="cL"><option value="ar">العربية</option><option value="en">English</option><option value="fr">Français</option></select></div>'+
+    '<div class="fld"><label>'+t('primary')+'</label><div class="inl"><input type="color" id="cPc" value="'+esc(CL.primary_color)+'"><input id="cPt" dir="ltr" value="'+esc(CL.primary_color)+'"></div></div><div class="fld"><label>'+t('accent')+'</label><div class="inl"><input type="color" id="cAc" value="'+esc(CL.accent_color)+'"><input id="cAt" dir="ltr" value="'+esc(CL.accent_color)+'"></div></div>'+
+    '<div class="fld"><label>'+t('default_fee')+'</label><input type="number" min="0" step="0.01" id="cF" value="'+esc(CL.default_fee)+'"></div><div class="fld"><label>'+t('currency')+'</label><input id="cC" value="'+esc(CL.currency_symbol)+'" maxlength="6"></div>'+
+    '<div class="fld"><label>'+t('expiring_days')+'</label><input type="number" min="0" max="60" id="cE" value="'+esc(CL.expiring_days)+'"></div></div>'+
+    '<div class="fld"><label>'+t('card_note')+'</label><input id="cNote" value="'+esc(CL.card_note||'')+'" placeholder="'+esc(t('card_note_ph'))+'"></div>'+
+    '<div class="inl"><span class="sp" style="flex:1"></span><button class="cl-btn" id="cSave">'+t('save')+'</button></div><div class="cl-msg" id="cMsg"></div></div>'+
+    '<div class="card" style="margin-top:16px"><div class="hd"><h2 style="font-size:17px">'+t('links')+'</h2></div><div class="list">'+
+      [[t('portal_link'),baseUrl()],[t('nav_dash'),baseUrl()+'/admin'],[t('door_link'),baseUrl()+'/door']].map(function(x){ return '<div class="row"><div class="main"><div class="nm">'+esc(x[0])+'</div><div class="muted" dir="ltr" style="text-align:start">'+esc(x[1])+'</div></div><a class="cl-btn alt sm" target="_blank" href="'+esc(x[1])+'">'+t('open')+'</a></div>'; }).join('')+'</div></div>';
+  $('#cL').value=CL.default_lang||'ar';
+  [['#cPc','#cPt'],['#cAc','#cAt']].forEach(function(p){ $(p[0]).oninput=function(){ $(p[1]).value=this.value; }; $(p[1]).oninput=function(){ if(/^#[0-9a-f]{6}$/i.test(this.value)) $(p[0]).value=this.value; }; });
+  $('#lgF').onchange=function(){ logo=this.files[0]||null; if(logo) $('#lgPv').innerHTML='<img class="pv" style="object-fit:contain;background:#fff" src="'+URL.createObjectURL(logo)+'">'; };
+  $('#cSave').onclick=async function(){ var b=this, m=$('#cMsg'); b.disabled=true; m.className='cl-msg'; m.textContent=t('saving');
+    try{ var row={name:$('#cN').value.trim()||CL.slug,sport:$('#cS').value.trim(),whatsapp:$('#cW').value.replace(/\D/g,''),phone:$('#cP').value.trim(),address:$('#cA').value.trim(),
+        default_lang:$('#cL').value,primary_color:$('#cPt').value.trim()||'#0f766e',accent_color:$('#cAt').value.trim()||'#f59e0b',default_fee:Number($('#cF').value||0),
+        currency_symbol:$('#cC').value.trim()||'$',expiring_days:Math.max(0,Math.min(60,Number($('#cE').value||0))),card_note:$('#cNote').value.trim()};
+      if(logo){ m.textContent=t('uploading'); row.logo_url=(await upload(logo,'logo',600)).url; }
+      CL=chk(await sb.from('clubs').update(row).eq('id',CL.id).select('*').single()); paintShell(); m.className='cl-msg s'; m.textContent=t('saved'); logo=null; }
+    catch(e){ m.className='cl-msg e'; m.textContent=C.errText(e); } finally{ b.disabled=false; } };
+}
+
+/* ---------- الأحداث ---------- */
+document.addEventListener('click',async function(e){
+  var el=e.target.closest('[data-tab],[data-lang],[data-act],[data-go],#outBtn,[data-csel]'); if(!el) return;
+  if(el.hasAttribute('data-csel')){ var id0=el.getAttribute('data-csel'); if(el.checked) CSEL[id0]=1; else delete CSEL[id0]; $('#cN').textContent=t('selected_n',{n:Object.keys(CSEL).length}); return; }
+  if(el.id==='outBtn'){ sb.auth.signOut().then(function(){ location.href='/login'; }); return; }
+  if(el.hasAttribute('data-tab')){ go(el.getAttribute('data-tab')); return; }
+  if(el.hasAttribute('data-lang')){ C.setLang(el.getAttribute('data-lang')); paintShell(); render(); return; }
+  if(el.hasAttribute('data-go')){ var f=el.getAttribute('data-f'); if(el.getAttribute('data-go')==='students'){ F.st=f||''; } go(el.getAttribute('data-go')); return; }
+  var act=el.getAttribute('data-act'), id=el.getAttribute('data-id');
+  if(el.tagName==='A'&&el.getAttribute('href')==='#') e.preventDefault();
+  if(act==='profile'){ if(e.target.closest('button,a:not([href="#"])')&&e.target.closest('button,a')!==el) return; openProfile(id); }
+  else if(act==='pay'){ e.stopPropagation(); paymentForm(id); }
+  else if(act==='new-st') studentForm(null);
+  else if(act==='edit-st') studentForm(stById(id));
+  else if(act==='checkin'){ try{ chk(await sb.rpc('club_manual_checkin',{p_student:id})); C.toast(t('checked_in'),'s'); refreshProfile(); }catch(er){ C.toast(C.errText(er),'e'); } }
+  else if(act==='del-pay'){ if(!(await C.confirmBox(t('del_pay_q'),t('del'),true))) return; try{ chk(await sb.rpc('club_delete_payment',{p_id:id})); await reloadStudents(); paintShell(); refreshProfile(); if(TAB==='payments'||TAB==='dash') render(); else if(TAB==='students') paintStudents(); }catch(er){ C.toast(C.errText(er),'e'); } }
+  else if(act==='new-medal') medalForm(null,id||(STS[0]&&STS[0].id));
+  else if(act==='edit-medal'){ var r=await sb.from('club_achievements').select('*').eq('id',id).single(); if(!r.error) medalForm(r.data); }
+  else if(act==='enroll') enroll(id);
+  else if(act==='face-photo') faceFromPhoto(id);
+  else if(act==='face-clear'){ if(!(await C.confirmBox(t('face_clear')+'?',t('face_clear'),true))) return; try{ chk(await sb.from('club_students').update({face:[]}).eq('id',id)); await reloadStudents(); refreshProfile(); }catch(er){ C.toast(C.errText(er),'e'); } }
+  else if(act==='card-pdf'){ var s=stById(id); el.disabled=true; try{ C.download(await C.cardsPdf([cardData(s)],'cr80'),'card-'+s.code+'.pdf'); }catch(er){ C.toast(C.errText(er),'e'); } finally{ el.disabled=false; } }
+  else if(act==='new-qr'){ if(!(await C.confirmBox(t('new_qr_q'),t('yes'),true))) return; try{ chk(await sb.rpc('club_new_card_token',{p_student:id})); await reloadStudents(); refreshProfile(); }catch(er){ C.toast(C.errText(er),'e'); } }
+  else if(act==='manual-att') manualAtt();
+  else if(act==='new-lv') levelForm(null);
+  else if(act==='edit-lv') levelForm(lvById(id));
+  else if(act==='new-gr') groupForm(null);
+  else if(act==='edit-gr') groupForm(grById(id));
+  else if(act==='new-door') newDoor();
+  else if(act==='revoke-door'){ if(!(await C.confirmBox(t('revoke_q'),t('revoke'),true))) return; try{ chk(await sb.rpc('club_revoke_door',{p_door:id})); render(); }catch(er){ C.toast(C.errText(er),'e'); } }
+});
+document.addEventListener('input',function(e){
+  if(e.target.id==='fQ'){ F.q=e.target.value; paintStudents(); }
+});
+document.addEventListener('change',function(e){
+  if(e.target.id==='fSt'){ F.st=e.target.value; paintStudents(); }
+  if(e.target.id==='fGr'){ F.gr=e.target.value; paintStudents(); }
+  if(e.target.id==='fLv'){ F.lv=e.target.value; paintStudents(); }
+});
+
+/* ---------- البدء ---------- */
+function gate(txt,btn,href){ $('#gateNote').textContent=txt; var b=$('#gateBtn'); if(btn){ b.textContent=btn; b.href=href||'/login'; b.classList.remove('hidden'); } }
+async function boot(){
+  try{
+    var s=await sb.auth.getSession();
+    if(!s.data.session){ gate(t('need_login')); setTimeout(function(){ location.href='/login?next='+encodeURIComponent(location.pathname); },800); return; }
+    var seg=location.pathname.split('/').filter(Boolean), slug=(seg[0]==='portal-club'&&seg[1])?decodeURIComponent(seg[1]).toLowerCase():'';
+    if(!slug){ var mine=await sb.from('clubs').select('slug').limit(1);
+      if(mine.data&&mine.data[0]){ location.replace('/portal-club/'+mine.data[0].slug+'/admin'); return; }
+      gate(t('no_club'),t('my_account'),'/account'); return; }
+    var r=await sb.from('clubs').select('*').eq('slug',slug).maybeSingle();
+    if(r.error){ gate(C.errText(r.error),t('my_account'),'/account'); return; }
+    if(r.data) CL=r.data;
+    else{ var e2=await sb.rpc('ensure_club',{p_slug:slug}); if(e2.error||!e2.data){ gate(t('not_linked'),t('my_account'),'/account'); return; } CL=e2.data; }
+    var adm=await sb.rpc('is_admin'), cid=await sb.rpc('my_client_id');
+    IMP=!!(adm.data&&cid.data!==CL.client_id);
+    var lc=await sb.rpc('club_license',{cid:CL.id}); LIC=lc.data||{ok:false};
+    try{ if(!localStorage.getItem('club_lang')) C.setLang(CL.default_lang||'ar'); }catch(e){}
+    await loadAll();
+    $('#gate').classList.add('hidden'); $('#app').classList.remove('hidden');
+    document.title=(CL.name||CL.slug)+' — '+t('nav_dash');
+    paintShell(); go('dash');
+  }catch(e){ gate(C.errText(e),t('my_account'),'/account'); }
+}
+gate(t('loading')); boot();
+})();
+</script>
+</body>
+</html>
