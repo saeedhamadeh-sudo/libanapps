@@ -18,7 +18,8 @@
     const iso0 = P.get.call(inp);
     const picker = document.createElement('input');
     picker.type='date'; picker.tabIndex=-1; picker.setAttribute('aria-hidden','true');
-    picker.style.cssText='position:absolute;opacity:0;width:1px;height:1px;pointer-events:none;border:0;padding:0;margin:0;';
+    // الروزنامة المخفية بتغطي نفس مكان الحقل — هيك المتصفح بيفتح الجدول تحت الحقل مش برّا الشاشة
+    picker.style.cssText='position:absolute;left:0;top:0;width:100%;height:100%;opacity:0;pointer-events:none;border:0;padding:0;margin:0;box-sizing:border-box;';
     inp.type='text'; inp.setAttribute('inputmode','numeric'); inp.setAttribute('placeholder','dd/mm/yyyy');
     inp.setAttribute('maxlength','10'); inp.setAttribute('autocomplete','off'); inp.dataset.dmy='1';
     inp.style.direction='ltr';
