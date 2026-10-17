@@ -1836,6 +1836,7 @@ function waLoginFlow(){
 // ---------- إجبار المستخدم القديم على إضافة رقمه بعد الدخول ----------
 function waAfterRender(){
   if(!authenticated || !currentUser || PLATFORM_ADMIN || _waSkipThisSession) return;
+  try{ const t = +localStorage.getItem('la_wa_skip_'+currentUser.username)||0; if(Date.now()-t < 7*864e5) return; }catch(e){}
   if(currentUser.phone || document.getElementById('wa_force_modal')) return;
   waLoadConfig().then(cfg=>{
     if(!cfg.enabled || !authenticated || !currentUser || currentUser.phone || document.getElementById('wa_force_modal')) return;
@@ -1847,7 +1848,7 @@ function openWaOwnPhoneModal(forced){
   wrap.className = 'modal-bg'; wrap.id = 'wa_force_modal';
   wrap.innerHTML = `<div class="modal" style="max-width:420px;">
     <h3>📱 ${forced? 'أضف رقم واتساب لحسابك' : 'رقم الواتساب لحسابي'}</h3>
-    <p style="font-size:13px; color:var(--ink-soft); line-height:1.7;">${forced? 'مطلوب لتفعيل الدخول عبر واتساب. ' : ''}يصلك رمز على واتساب للتأكد من الرقم — بعدها يمكنك الدخول به بدل كلمة السر. الحساب: <b>${escapeHtml(currentUser.username)}</b></p>
+    <p style="font-size:13px; color:var(--ink-soft); line-height:1.7;">${forced? 'اختياري — يفعّل لك الدخول عبر واتساب. ' : ''}يصلك رمز على واتساب للتأكد من الرقم — بعدها يمكنك الدخول به بدل كلمة السر. الحساب: <b>${escapeHtml(currentUser.username)}</b></p>
     <div class="field"><label>رقم الواتساب</label>
       <div style="display:flex; gap:6px;"><input type="tel" id="wo_ph" dir="ltr" placeholder="03 000 000" style="flex:1;" value="${escapeHtml(currentUser.phone? fmtPhoneLB(currentUser.phone) : '')}"><button class="btn btn-primary" id="wo_send">أرسل الرمز</button></div></div>
     <div id="wo_code_box" style="display:none;">
@@ -1856,7 +1857,7 @@ function openWaOwnPhoneModal(forced){
     </div>
     <div id="wo_msg" style="font-size:12.5px; min-height:16px; margin:6px 0; text-align:center;"></div>
     <div class="row">
-      ${forced? `<button class="btn" id="wo_logout">🔒 خروج</button><button class="btn" id="wo_skip" style="display:none;">متابعة الآن بدون رقم</button>` : `<button class="btn" id="wo_cancel">إغلاق</button>`}
+      ${forced? `<button class="btn" id="wo_skip">لاحقاً</button>` : `<button class="btn" id="wo_cancel">إغلاق</button>`}
     </div>
   </div>`;
   document.body.appendChild(wrap);
@@ -1865,7 +1866,7 @@ function openWaOwnPhoneModal(forced){
   let sentTo = '', timer = null;
   if($('#wo_cancel')) $('#wo_cancel').addEventListener('click', ()=>{ clearInterval(timer); wrap.remove(); });
   if($('#wo_logout')) $('#wo_logout').addEventListener('click', ()=>{ clearInterval(timer); wrap.remove(); const lb = document.getElementById('logoutBtn'); if(lb) lb.click(); });
-  if($('#wo_skip')) $('#wo_skip').addEventListener('click', ()=>{ _waSkipThisSession = true; clearInterval(timer); wrap.remove(); });
+  if($('#wo_skip')) $('#wo_skip').addEventListener('click', ()=>{ _waSkipThisSession = true; try{ localStorage.setItem('la_wa_skip_'+(currentUser&&currentUser.username||''), String(Date.now())); }catch(e){} clearInterval(timer); wrap.remove(); });
   $('#wo_send').addEventListener('click', async ()=>{
     const ph = $('#wo_ph').value.trim();
     if(normPhoneLB(ph).length < 10){ msg('رقم الهاتف غير صحيح', true); return; }
@@ -5885,7 +5886,6 @@ function openUserModal(user){
     const phoneRaw = (wrap.querySelector('#um_phone')||{value:''}).value.trim();
     const phone = phoneRaw ? normPhoneLB(phoneRaw) : '';
     if(phoneRaw && phone.length < 10){ toast('رقم الواتساب غير صحيح'); return; }
-    if(!phone && isNew && waEnabledNow()){ toast('يجب كتابة رقم واتساب للمستخدم الجديد'); return; }
     const dupPhone = phone && (DB.settings.users||[]).find(u=> u.phone && normPhoneLB(u.phone)===phone && (!user || u.id!==user.id));
     if(dupPhone){ toast('رقم الواتساب هذا مسجّل للمستخدم «'+dupPhone.username+'»'); return; }
     if(isNew){

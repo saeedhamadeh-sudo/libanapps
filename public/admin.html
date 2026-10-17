@@ -655,27 +655,26 @@ function laWaForce(sb, opts){
     if(!st || st.error || st.phone || !st.wa_enabled || st.is_admin) return st;
     if(opts.onlyClientWa && !st.client_wa) return st;
     if(document.getElementById('laWaForce')) return st;
+    try{ if(Date.now() - (+localStorage.getItem('la_wa_skip')||0) < 7*864e5) return st; }catch(e){}
     var d = document.createElement('div');
     d.id = 'laWaForce';
     d.setAttribute('style','position:fixed;inset:0;z-index:9999;background:rgba(14,36,56,.6);display:flex;align-items:center;justify-content:center;padding:16px;direction:rtl;font-family:inherit');
     d.innerHTML = '<div style="background:#fff;color:#14202e;max-width:420px;width:100%;border-radius:16px;padding:20px;box-shadow:0 20px 50px rgba(0,0,0,.3)">'+
       '<h3 style="margin:0 0 6px;font-size:19px">📱 أضف رقم واتساب لحسابك</h3>'+
-      '<p style="margin:0 0 12px;font-size:13.5px;color:#5b6675;line-height:1.7">مطلوب لتفعيل الدخول عبر واتساب. يصلك رمز على واتساب للتأكد من الرقم — بعدها تدخل به بدل كلمة المرور.</p>'+
+      '<p style="margin:0 0 12px;font-size:13.5px;color:#5b6675;line-height:1.7">اختياري — يفعّل لك الدخول عبر واتساب. يصلك رمز على واتساب للتأكد من الرقم — بعدها تدخل به بدل كلمة المرور.</p>'+
       '<div style="display:flex;gap:8px"><input id="lwf_ph" type="tel" dir="ltr" placeholder="03 000 000" style="flex:1;min-width:0;padding:10px;border:1px solid #d8dee6;border-radius:10px;font-size:16px">'+
       '<button id="lwf_send" style="padding:10px 14px;border:0;border-radius:10px;background:#25D366;color:#fff;font-weight:800;cursor:pointer">أرسل الرمز</button></div>'+
       '<div id="lwf_codebox" style="display:none;margin-top:10px"><div style="display:flex;gap:8px"><input id="lwf_code" inputmode="numeric" maxlength="6" dir="ltr" placeholder="••••••" style="flex:1;min-width:0;padding:10px;border:1px solid #d8dee6;border-radius:10px;font-size:18px;letter-spacing:6px;text-align:center">'+
       '<button id="lwf_verify" style="padding:10px 14px;border:0;border-radius:10px;background:#0E2438;color:#fff;font-weight:800;cursor:pointer">تأكيد</button></div></div>'+
       '<div id="lwf_msg" style="min-height:18px;margin:10px 0 4px;font-size:13px;text-align:center"></div>'+
       '<div style="display:flex;gap:8px;justify-content:space-between">'+
-      '<button id="lwf_out" style="padding:8px 12px;border:1px solid #d8dee6;border-radius:10px;background:#fff;cursor:pointer">خروج</button>'+
-      '<button id="lwf_skip" style="display:none;padding:8px 12px;border:1px solid #d8dee6;border-radius:10px;background:#fff;cursor:pointer">متابعة الآن بدون رقم</button></div></div>';
+      '<span></span><button id="lwf_skip" style="padding:8px 12px;border:1px solid #d8dee6;border-radius:10px;background:#fff;cursor:pointer">لاحقاً</button></div></div>';
     document.body.appendChild(d);
     var $q = function(id){ return d.querySelector(id); };
     var msg = function(t, bad){ var m = $q('#lwf_msg'); m.textContent = t||''; m.style.color = bad ? '#c0392b' : '#1e8449'; };
     if(opts.prefill) $q('#lwf_ph').value = opts.prefill;
     var sentTo = '', timer = null;
-    $q('#lwf_out').onclick = async function(){ try{ await sb.auth.signOut(); }catch(e){} location.href = '/login'; };
-    $q('#lwf_skip').onclick = function(){ clearInterval(timer); d.remove(); };
+    $q('#lwf_skip').onclick = function(){ clearInterval(timer); d.remove(); try{ localStorage.setItem('la_wa_skip', String(Date.now())); }catch(e){} };
     $q('#lwf_send').onclick = async function(){
       var ph = $q('#lwf_ph').value.trim(), b = this;
       if(ph.replace(/\D/g,'').length < 7){ msg('رقم الهاتف غير صحيح', true); return; }
