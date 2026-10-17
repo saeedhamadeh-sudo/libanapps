@@ -1169,8 +1169,15 @@ function amountWords(usd){
 /* ============================= POS: العملة والمرتجعات ============================= */
 const POS_SALE_RE = /بيع نقطة بيع #/;
 const POS_REFUND_RE = /استرجاع نقطة بيع #/;
+const POS_PAY_RE = /دفعة نقطة بيع #/;     // دفعة جزئية على فاتورة POS مسجّلة على الحساب
 function isPosRefundReceipt(r){ return POS_REFUND_RE.test(r.details||''); }
-function isPosReceipt(r){ return POS_SALE_RE.test(r.details||'') || isPosRefundReceipt(r); }
+function isPosPayReceipt(r){ return POS_PAY_RE.test(r.details||''); }
+function isPosReceipt(r){ return POS_SALE_RE.test(r.details||'') || isPosRefundReceipt(r) || isPosPayReceipt(r); }
+// المدفوع (بالدولار) على فاتورة POS مسجّلة على الحساب
+function posPaidOnAccount(inv){
+  const re = new RegExp('دفعة نقطة بيع #'+String(inv.number).replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'(?![\\w\\d])');
+  return DB.receipts.filter(r=>!r.deleted && re.test(r.details||'')).reduce((s,r)=>s+receiptAmountUSD(r),0);
+}
 function posInvoiceForReceipt(r){
   const m = String(r.details||'').match(/نقطة بيع #(\S+?)(?=\s|$|—)/);
   if(!m) return null;
@@ -3924,8 +3931,12 @@ function hubView(){
       <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:10px;">
         <h2 style="margin:0;"><span class="dot"></span> 💵 صناديق الموظفين</h2>
       </div>
-      <div style="font-size:12px; color:var(--ink-soft); margin-bottom:10px;">مبيعات اليوم (POS): <b class="num">${todaySales.count} عملية — $${todaySales.totalUSD.toFixed(2)}</b></div>
-      ${openShifts.length? openShifts.map(sh=>`
+      <div style="font-size:12px; color:var(--ink-soft); margin-bottom:10px;">مبيعات اليوم (POS، تقرير فقط): <b class="num">${todaySales.count} عملية — $${todaySales.totalUSD.toFixed(2)}</b></div>
+      <div style="display:flex; justify-content:space-between; align-items:center; background:var(--bg-2); border:1px solid var(--line); border-radius:8px; padding:8px 12px; margin-bottom:8px; flex-wrap:wrap; gap:8px;">
+        <div><b>صندوقي (${escapeHtml(currentUser.username)})</b><div style="font-size:11px; color:var(--ink-soft);">${myShift? 'مفتوح منذ '+new Date(myShift.openedAt).toLocaleTimeString('ar') : 'مقفل'}</div></div>
+        <div class="num" style="font-weight:800;">$${(myShift? myShift.cashUSD : 0).toFixed(2)} + ${fmtNum(myShift? myShift.cashLBP : 0)} ${secCurLabel()}</div>
+      </div>
+      ${openShifts.filter(sh=>!myShift || sh.id!==myShift.id).length? openShifts.filter(sh=>!myShift || sh.id!==myShift.id).map(sh=>`
       <div style="display:flex; justify-content:space-between; align-items:center; background:var(--bg-2); border:1px solid var(--line); border-radius:8px; padding:8px 12px; margin-bottom:8px; flex-wrap:wrap; gap:8px;">
         <div><b>${escapeHtml(sh.username)}</b><div style="font-size:11px; color:var(--ink-soft);">مفتوح منذ ${new Date(sh.openedAt).toLocaleTimeString('ar')}</div></div>
         <div class="num" style="font-weight:800;">$${sh.cashUSD.toFixed(2)} + ${fmtNum(sh.cashLBP)} ${secCurLabel()}</div>
@@ -3933,7 +3944,7 @@ function hubView(){
           <button class="btn btn-sm" data-admin-cashmove="deposit" data-shift="${sh.id}" data-currency="USD" style="padding:3px 8px;">➕$</button>
           <button class="btn btn-sm" data-admin-cashmove="withdraw" data-shift="${sh.id}" data-currency="USD" style="padding:3px 8px;">➖$</button>
         </div>
-      </div>`).join('') : `<p style="font-size:12.5px; color:var(--ink-soft);">لا توجد صناديق مفتوحة حالياً</p>`}
+      </div>`).join('') : `<p style="font-size:12.5px; color:var(--ink-soft);">لا توجد صناديق موظفين أخرى مفتوحة</p>`}
       <div style="display:flex; justify-content:space-between; font-weight:800; border-top:1px solid var(--line); padding-top:8px; margin-top:4px;">
         <span>المجموع الكلي (كل الصناديق المفتوحة)</span>
         <span class="num">$${grandUSD.toFixed(2)} + ${fmtNum(grandLBP)} ${secCurLabel()}</span>
@@ -5002,11 +5013,7 @@ function bindPosEvents(){
   const payBtn = document.getElementById('pos_pay_btn');
   if(payBtn) payBtn.addEventListener('click', ()=>openPosPaymentModal(DB.settings.posPaymentCurrency==='SECOND'?'LBP':'USD'));
   const creditBtn = document.getElementById('pos_credit_btn');
-  if(creditBtn) creditBtn.addEventListener('click', ()=>{
-    if(!ticket.cart.length) return;
-    if(!confirm('تسجيل الفاتورة ($'+posTotalUSD(ticket).toFixed(2)+') ديناً على حساب '+ticket.customerLabel+'؟')) return;
-    completePosSale('CREDIT', null, null);
-  });
+  if(creditBtn) creditBtn.addEventListener('click', ()=>{ if(ticket.cart.length) openPosCreditModal(ticket); });
 
   document.querySelectorAll('[data-pos-tab]').forEach(b=>b.addEventListener('click', (e)=>{
     if(e.target.closest('[data-pos-close-tab]')) return;
@@ -5344,6 +5351,53 @@ function openPosReturnModal(){
     render();
   });
 }
+// «على الحساب»: هل دفع الزبون شيئاً الآن؟ المدفوع يصير إيصال قبض، والباقي دين على حسابه
+function openPosCreditModal(ticket){
+  const rate = DB.settings.defaultExchangeRate || 90000;
+  const totalUSD = posTotalUSD(ticket);
+  const bal = customerBalance(ticket.customerId);
+  let cur = DB.settings.posPaymentCurrency==='SECOND' ? 'LBP' : 'USD';
+  const wrap = document.createElement('div');
+  wrap.className = 'modal-bg';
+  wrap.innerHTML = `<div class="modal" style="max-width:420px;">
+    <h3>📒 على حساب ${escapeHtml(ticket.customerLabel)}</h3>
+    <div style="display:flex; justify-content:space-between; font-size:14px; margin-bottom:4px;"><span>قيمة الفاتورة</span><b class="num">$${totalUSD.toFixed(2)} <span style="font-weight:500; color:var(--ink-soft); font-size:12px;">(${fmtNum(totalUSD*rate)} ${secCurLabel()})</span></b></div>
+    <div style="display:flex; justify-content:space-between; font-size:13px; color:var(--ink-soft); margin-bottom:10px;"><span>رصيد الحساب قبل الفاتورة</span><span class="num">${fmtMoney(bal)}</span></div>
+    <div class="field"><label>هل دفع شيئاً من الفاتورة الآن؟ (اتركه 0 إذا كلها دين)</label>
+      <div style="display:flex; gap:6px;">
+        <input type="number" step="0.01" min="0" id="pc_paid" class="num" value="0" style="flex:1; font-size:18px; padding:10px;">
+        <select id="pc_cur" style="width:80px;"><option value="USD" ${cur==='USD'?'selected':''}>$</option><option value="LBP" ${cur==='LBP'?'selected':''}>${secCurLabel()}</option></select>
+      </div>
+    </div>
+    <div id="pc_sum" style="font-size:14px; line-height:1.9; background:var(--bg-2); border:1px solid var(--line); border-radius:8px; padding:8px 12px;"></div>
+    <div class="row" style="margin-top:14px;">
+      <button class="btn" id="pc_cancel">إلغاء</button>
+      <button class="btn btn-primary" id="pc_ok">✅ تسجيل</button>
+    </div>
+  </div>`;
+  document.body.appendChild(wrap);
+  const $ = q=>wrap.querySelector(q);
+  const paidUSD = ()=>{ const v = Math.max(0, Number($('#pc_paid').value)||0); return $('#pc_cur').value==='USD' ? v : v/rate; };
+  const upd = ()=>{
+    const p = paidUSD(), rest = Math.max(0, totalUSD - p);
+    $('#pc_sum').innerHTML = p>0
+      ? `المدفوع الآن: <b class="num">$${p.toFixed(2)}</b> — يصدر به إيصال قبض ويدخل صندوقك<br>الباقي ديناً على الحساب: <b class="num" style="color:var(--debit);">$${rest.toFixed(2)}</b>${p>=totalUSD-0.005? '<br><span style="color:var(--credit);">المبلغ يغطي كامل الفاتورة — ستُسجَّل كبيع نقدي</span>' : ''}`
+      : `كامل الفاتورة ديناً على الحساب: <b class="num" style="color:var(--debit);">$${totalUSD.toFixed(2)}</b><br>رصيد الحساب بعدها: <b class="num">${fmtMoney(bal+totalUSD)}</b>`;
+  };
+  $('#pc_paid').addEventListener('input', upd); $('#pc_cur').addEventListener('change', upd); upd();
+  setTimeout(()=>{ $('#pc_paid').focus(); $('#pc_paid').select(); }, 30);
+  $('#pc_cancel').addEventListener('click', ()=>wrap.remove());
+  $('#pc_ok').addEventListener('click', ()=>{
+    const c = $('#pc_cur').value, raw = Math.max(0, Number($('#pc_paid').value)||0), p = paidUSD();
+    wrap.remove();
+    if(p >= totalUSD-0.005){
+      // دفع كامل المبلغ (أو أكثر): بيع نقدي عادي مع الباقي له
+      const due = c==='USD' ? totalUSD : totalUSD*rate;
+      return completePosSale(c, raw, due);
+    }
+    completePosSale('CREDIT', null, null, {paid: c==='USD' ? Math.round(raw*100)/100 : Math.round(raw), paidCurrency: c});
+  });
+}
 function openPosPaymentModal(currency){
   const ticket = posActiveTicket();
   if(!ticket.cart.length) return;
@@ -5382,7 +5436,8 @@ function openPosPaymentModal(currency){
     completePosSale(currency, received, due);
   });
 }
-async function completePosSale(currency, received, due){
+async function completePosSale(currency, received, due, opts){
+  opts = opts || {};
   const ticket = posActiveTicket();
   if(!ticket.cart.length) return;
   const myShift = currentUserShift();
@@ -5417,11 +5472,21 @@ async function completePosSale(currency, received, due){
     DB.stockOuts.push({id:uid(), createdAt:now, itemId:l.itemId, qty:l.qty, date, number:nextStockOutNumber(), note:'بيع POS #'+inv.number});
   });
   if(onAccount){
-    // دين على الحساب: لا إيصال قبض ولا حركة صندوق — يظهر في كشف حساب الزبون
-    await Promise.all([ save(KEYS.invoices, DB.invoices), save(KEYS.stockOuts, DB.stockOuts) ]);
+    // دين على الحساب — وإذا دفع الزبون جزءاً منها: إيصال قبض بالمدفوع فقط + يدخل الصندوق
+    const saves = [ save(KEYS.invoices, DB.invoices), save(KEYS.stockOuts, DB.stockOuts) ];
+    const paid = Number(opts.paid)||0, payCur = opts.paidCurrency==='LBP' ? 'LBP' : 'USD';
+    if(paid>0){
+      DB.receipts.push({id:uid(), createdAt:now+1, customerId, number:nextReceiptNumber(), date, shiftId:myShift.id,
+        amount: paid, method: payCur==='USD'?'نقد $ (POS)':'نقد '+secCurLabel()+' (POS)',
+        details:'دفعة نقطة بيع #'+inv.number+' — الكاشير: '+currentUser.username});
+      DB.cashMovements.push({id:uid(), createdAt:now+1, type:'sale', currency:payCur, amount:paid, note:'دفعة من فاتورة POS على الحساب #'+inv.number+' — '+currentUser.username, refSaleId:inv.id, date, shiftId:myShift.id});
+      if(payCur==='USD') myShift.cashUSD = (myShift.cashUSD||0) + paid; else myShift.cashLBP = (myShift.cashLBP||0) + paid;
+      saves.push(save(KEYS.receipts, DB.receipts), save(KEYS.cashMovements, DB.cashMovements), save(KEYS.cashierShifts, DB.cashierShifts));
+    }
+    await Promise.all(saves);
     await printPosReceipt(inv, 'CREDIT', totalUSD, rate, ticket.customerLabel, customerBalance(customerId), null);
     _posTickets = _posTickets.filter(t=>t.id!==ticket.id);
-    toast('تم تسجيل الفاتورة على حساب '+ticket.customerLabel+' ✅');
+    toast(paid>0 ? 'تم: الفاتورة على حساب '+ticket.customerLabel+' مع إيصال بالمدفوع ✅' : 'تم تسجيل الفاتورة على حساب '+ticket.customerLabel+' ✅');
     go('#/pos'); render();
     return;
   }
@@ -5526,6 +5591,8 @@ async function renderReceiptToCanvas(inv, currency, totalUSD, rate, customerLabe
   dashed();
   if(currency==='CREDIT'){
     rowLR('على الحساب (دين)', 'طريقة الدفع', 18, true);
+    const paidAcc = posPaidOnAccount(inv);
+    if(paidAcc>0){ rowLR(fmtMoney(paidAcc), 'المدفوع', 18, false); rowLR(fmtMoney(Math.max(0, totals.totalUSD-paidAcc)), 'الباقي على الحساب', 18, true); }
     if(received!=null) rowLR(fmtMoney(received), 'رصيد الحساب', 18, false);
   } else rowLR(currency==='USD'?'نقد دولار':'نقد '+secCurLabel(), 'طريقة الدفع', 17, false);
   if(currency!=='CREDIT' && received!=null && changeDue!=null){
@@ -5613,10 +5680,13 @@ async function printReceiptRaw(inv, currency, totalUSD, rate, customerLabel, rec
   }catch(e){ console.error('raw print failed', e && e.message); toast('⚠️ فشلت الطباعة المباشرة: '+(e&&e.message||'')); return false; }
 }
 function posPrintFormat(){ return (DB.settings && DB.settings.posPrintFormat==='a4') ? 'a4' : 'thermal80'; }
-function posPaymentLinesHtml(currency, received, changeDue, small){
+function posPaymentLinesHtml(currency, received, changeDue, small, inv){
   const fs = small ? '11.5px' : '13px';
   const fmt = v=> currency==='USD' ? '$'+Number(v).toFixed(2) : fmtNum(v)+' '+secCurLabel();
+  const paidAcc = (currency==='CREDIT' && inv) ? posPaidOnAccount(inv) : 0;
+  const totAcc = (currency==='CREDIT' && inv) ? computeInvoiceTotal(inv).totalUSD : 0;
   if(currency==='CREDIT') return `<div style="display:flex; justify-content:space-between; font-size:${fs}; font-weight:800;"><span>طريقة الدفع</span><span>على الحساب (دين)</span></div>`
+    + (paidAcc>0? `<div style="display:flex; justify-content:space-between; font-size:${fs};"><span>المدفوع</span><span class="num">${fmtMoney(paidAcc)}</span></div><div style="display:flex; justify-content:space-between; font-size:${fs}; font-weight:800;"><span>الباقي على الحساب</span><span class="num">${fmtMoney(Math.max(0,totAcc-paidAcc))}</span></div>` : '')
     + (received!=null? `<div style="display:flex; justify-content:space-between; font-size:${fs};"><span>رصيد الحساب بعد الفاتورة</span><span class="num">${fmtMoney(received)}</span></div>` : '');
   return `<div style="display:flex; justify-content:space-between; font-size:${fs};"><span>طريقة الدفع</span><span>${currency==='USD'?'نقد دولار':'نقد '+secCurLabel()}</span></div>
     ${(received!=null && changeDue!=null)? `
@@ -5638,7 +5708,7 @@ function posReceiptHtml(inv, currency, totalUSD, rate, customerLabel, received, 
       const sig = doc.querySelector('.sig');
       const extra = document.createElement('div');
       extra.style.cssText = 'margin-top:12px; max-width:320px; margin-inline-start:auto; border:1px solid #ccc; border-radius:8px; padding:8px 12px;';
-      extra.innerHTML = (inv.cashierUsername? `<div style="display:flex; justify-content:space-between; font-size:13px;"><span>الموظف</span><span>${escapeHtml(inv.cashierUsername)}</span></div>` : '') + posPaymentLinesHtml(currency, received, changeDue, false);
+      extra.innerHTML = (inv.cashierUsername? `<div style="display:flex; justify-content:space-between; font-size:13px;"><span>الموظف</span><span>${escapeHtml(inv.cashierUsername)}</span></div>` : '') + posPaymentLinesHtml(currency, received, changeDue, false, inv);
       if(sig) doc.insertBefore(extra, sig); else doc.appendChild(extra);
     }
     return tmp.innerHTML;
@@ -5676,7 +5746,7 @@ function posReceiptHtml(inv, currency, totalUSD, rate, customerLabel, received, 
       <div style="font-size:10.5px; margin-top:4px; border:1px dashed #000; padding:4px; text-align:center;">${amountWords(totals.totalUSD)}</div>
     </div>
     <div style="border-top:1px dashed #000; margin:6px 0;"></div>
-    ${posPaymentLinesHtml(currency, received, changeDue, true)}
+    ${posPaymentLinesHtml(currency, received, changeDue, true, inv)}
     <div style="font-size:11px; margin-top:14px;">التوقيع: ....................</div>
     <div style="text-align:center; font-size:11px; margin-top:10px;">شكراً لزيارتكم 🙏</div>
     <div style="height:50px;"></div>`;
@@ -5920,22 +5990,33 @@ function journalEntriesForRange(from, to){
     const total = (i.items||[]).reduce((s,it)=>s+(Number(it.total)||0),0) - (Number(i.discount)||0);
     const isPos = i.docType==='بيع نقطة بيع (POS)';
     const onAcc = isPos && posIsOnAccount(i);
-    let usd = total, lbp = 0;
+    // فواتير الدين (على الحساب) بعامود لحالها — ما بتنجمع مع الصندوق؛ يلي بيدخل الصندوق هو الإيصالات
+    let usd = 0, lbp = 0, debt = 0;
     if(isPos){
-      posCreditReturnEntries(i).forEach(r=>{ if(r.date>=from && r.date<=to) rows.push({date:r.date, createdAt:r.createdAt, type:'مرتجع على الحساب', party:(cust?cust.name:'—')+' — فاتورة #'+i.number, usd:-r.amountUSD, lbp:0, nav:null}); });
+      posCreditReturnEntries(i).forEach(r=>{ if(r.date>=from && r.date<=to) rows.push({date:r.date, createdAt:r.createdAt, type:'مرتجع على الحساب', party:(cust?cust.name:'—')+' — فاتورة #'+i.number, usd:0, lbp:0, debt:-r.amountUSD, nav:null}); });
     }
-    if(isPos && !onAcc){
+    if(!isPos || onAcc) debt = total;
+    else {
+      usd = total;
       // فاتورة POS بتحمل المبلغ الحقيقي مباشرة (بدل ما نكرره بسطر إيصال منفصل) — منحدد عملتها من الإيصال المرتبط
       const isLBP = posSaleCurrency(i)==='LBP';
       if(isLBP){ lbp = total * (i.exchangeRate || DB.settings.defaultExchangeRate || 90000); usd = 0; }
     }
-    rows.push({date:i.date, createdAt:i.createdAt||0, type:onAcc? 'بيع POS على الحساب (دين)' : (i.docType||'فاتورة'), party:cust?cust.name:'—', usd, lbp,
+    rows.push({date:i.date, createdAt:i.createdAt||0, type:onAcc? 'بيع POS على الحساب (دين)' : (i.docType||'فاتورة'), party:cust?cust.name:'—', usd, lbp, debt,
       nav: isPos? null : `#/invoice/${i.id}`, reprintPosId: isPos? i.id : null, cashierUsername: i.cashierUsername||''});
   });
   DB.purchaseInvoices.filter(i=>!i.deleted && i.date>=from && i.date<=to).forEach(i=>{
     const sup = DB.suppliers.find(s=>s.id===i.supplierId);
     const total = computeInvoiceTotal(i).totalUSD;
-    rows.push({date:i.date, createdAt:i.createdAt||0, type:i.isReturn?'مرتجع مشتريات':'فاتورة مشتريات', party:sup?sup.name:'—', usd:i.isReturn? total : -total, lbp:0, nav:null});
+    rows.push({date:i.date, createdAt:i.createdAt||0, type:i.isReturn?'مرتجع مشتريات':'فاتورة مشتريات', party:sup?sup.name:'—', usd:0, lbp:0, debt:i.isReturn? total : -total, nav:null});
+  });
+  // دفعات على فواتير POS المسجّلة على الحساب: نقد دخل الصندوق
+  DB.receipts.filter(r=>!r.deleted && r.date>=from && r.date<=to && isPosPayReceipt(r)).forEach(r=>{
+    const cust = DB.customers.find(c=>c.id===r.customerId);
+    const isLBP = !/\$/.test(r.method||'');
+    const amt = Number(r.amount)||0;
+    const m = String(r.details||'').match(/#(\S+)/);
+    rows.push({date:r.date, createdAt:r.createdAt||0, type:'دفعة من فاتورة على الحساب'+(m?' #'+m[1]:''), party:cust?cust.name:'—', usd:isLBP?0:amt, lbp:isLBP?amt:0, nav:null});
   });
   DB.receipts.filter(r=>!r.deleted && r.date>=from && r.date<=to && !isPosReceipt(r)).forEach(r=>{
     const cust = DB.customers.find(c=>c.id===r.customerId);
@@ -5956,6 +6037,7 @@ function journalEntriesForRange(from, to){
     const label = m.type==='deposit'?'إضافة يدوية للصندوق':m.type==='withdraw'?'سحب يدوي من الصندوق':'استرجاع POS';
     rows.push({date:m.date, createdAt:m.createdAt||0, type:label, party:m.note||'—', usd:isLBP?0:signed, lbp:isLBP?signed:0, nav:null});
   });
+  rows.forEach(r=>{ if(r.debt===undefined) r.debt = 0; });
   rows.sort((a,b)=> a.date!==b.date? (a.date<b.date?1:-1) : (b.createdAt-a.createdAt));
   return rows;
 }
@@ -5966,6 +6048,7 @@ function journalView(qs){
   const rows = journalEntriesForRange(from, to);
   const totalUSD = rows.reduce((s,r)=>s+r.usd,0);
   const totalLBP = rows.reduce((s,r)=>s+r.lbp,0);
+  const totalDebt = rows.reduce((s,r)=>s+(r.debt||0),0);
   const title = from===to? 'كشف يومية — '+fmtDate(from) : 'كشف يوميات من '+fmtDate(from)+' إلى '+fmtDate(to);
   return `
   <div class="card no-print">
@@ -5976,19 +6059,22 @@ function journalView(qs){
   <div class="doc" style="box-shadow:none;">
     ${docHead(title)}
     <div class="table-scroll"><table>
-      <thead><tr><th>التاريخ</th><th>النوع</th><th>الطرف</th><th>دولار $</th><th>${secCurLabel()}</th></tr></thead>
+      <thead><tr><th>التاريخ</th><th>النوع</th><th>الطرف</th><th>دولار $ (صندوق)</th><th>${secCurLabel()} (صندوق)</th><th>على الحساب (دين) $</th></tr></thead>
       <tbody>${rows.length? rows.map(r=>`<tr ${r.nav?`data-nav="${r.nav}"`:''} ${r.reprintPosId?`data-reprint-pos="${r.reprintPosId}"`:''} style="${(r.nav||r.reprintPosId)?'cursor:pointer;':''}">
         <td class="num">${fmtDate(r.date)}</td>
         <td>${escapeHtml(r.type)}${r.reprintPosId?' 🖨':''}${(isPrivilegedUser(currentUser) && r.cashierUsername)? ` <span style="font-size:11px; color:var(--ink-soft);">— ${escapeHtml(r.cashierUsername)}</span>`:''}</td><td>${escapeHtml(r.party)}</td>
         <td class="num" style="color:${r.usd<0?'var(--debit)':(r.usd>0?'var(--credit)':'inherit')}">${r.usd?(r.usd<0?'-':'')+'$'+Math.abs(r.usd).toFixed(2):'—'}</td>
-        <td class="num" style="color:${r.lbp<0?'var(--debit)':(r.lbp>0?'var(--credit)':'inherit')}">${r.lbp?(r.lbp<0?'-':'')+fmtMoney(Math.abs(r.lbp)):'—'}</td>
-      </tr>`).join('') : `<tr><td colspan="5" style="text-align:center; color:var(--ink-soft);">لا توجد حركات في هذه الفترة</td></tr>`}</tbody>
+        <td class="num" style="color:${r.lbp<0?'var(--debit)':(r.lbp>0?'var(--credit)':'inherit')}">${r.lbp?(r.lbp<0?'-':'')+fmtNum(Math.abs(r.lbp)):'—'}</td>
+        <td class="num" style="color:${(r.debt||0)<0?'var(--debit)':((r.debt||0)>0?'var(--bronze-deep, #8a5a1a)':'inherit')}">${r.debt?(r.debt<0?'-':'')+'$'+Math.abs(r.debt).toFixed(2):'—'}</td>
+      </tr>`).join('') : `<tr><td colspan="6" style="text-align:center; color:var(--ink-soft);">لا توجد حركات في هذه الفترة</td></tr>`}</tbody>
       <tfoot><tr style="font-weight:800; border-top:2px solid var(--line);">
         <td colspan="3">المجموع</td>
         <td class="num" style="color:${totalUSD<0?'var(--debit)':'var(--credit)'}">${totalUSD<0?'-':''}$${Math.abs(totalUSD).toFixed(2)}</td>
-        <td class="num" style="color:${totalLBP<0?'var(--debit)':'var(--credit)'}">${totalLBP<0?'-':''}${fmtMoney(Math.abs(totalLBP))}</td>
+        <td class="num" style="color:${totalLBP<0?'var(--debit)':'var(--credit)'}">${totalLBP<0?'-':''}${fmtNum(Math.abs(totalLBP))}</td>
+        <td class="num">${totalDebt<0?'-':''}$${Math.abs(totalDebt).toFixed(2)}</td>
       </tr></tfoot>
     </table></div>
+    <div style="font-size:11.5px; color:var(--ink-soft); margin-top:8px;">عامودا الدولار والليرة = ما دخل أو خرج من الصندوق فعلياً (بيع نقدي، إيصالات ودفعات، سندات صرف). عامود «على الحساب» = فواتير الدين (مبيعات على الحساب ومشتريات) — لا تُحسب ضمن الصندوق.</div>
   </div>`;
 }
 function bindJournalEvents(){
@@ -6151,7 +6237,8 @@ function reportsView(qs){
     .reduce((s,i)=>s + ((i.items||[]).reduce((s2,it)=>s2+(Number(it.total)||0),0) - (Number(i.discount)||0)), 0);
   const returnsTotal = posRefundReceiptsInRange(from, to).reduce((s,r)=>s+Math.abs(receiptAmountUSD(r)),0) + posCreditReturnsInRange(from, to);
   const salesTotal = salesGross - returnsTotal;
-  const invoicesTotal = rows.filter(r=>r.nav && r.nav.includes('/invoice/')).reduce((s,r)=>s+r.usd,0) + salesTotal;
+  const invoicesTotal = rows.filter(r=>r.nav && r.nav.includes('/invoice/')).reduce((s,r)=>s+(r.debt||0),0) + salesTotal;
+  const totalDebt = rows.reduce((s,r)=>s+(r.debt||0),0);
   const receiptsUSD = rows.filter(r=>String(r.type).includes('إيصال قبض')).reduce((s,r)=>s+r.usd,0);
   const receiptsLBP = rows.filter(r=>String(r.type).includes('إيصال قبض')).reduce((s,r)=>s+r.lbp,0);
   const vouchersUSD = rows.filter(r=>String(r.type).includes('سند صرف')).reduce((s,r)=>s-r.usd,0);
@@ -6172,16 +6259,18 @@ function reportsView(qs){
       <div class="card" style="margin:0;"><div style="font-size:12.5px; color:var(--ink-soft);">سندات الصرف</div><div style="font-size:18px; font-weight:800; color:var(--debit);" class="num">$${vouchersUSD.toFixed(2)} + ${fmtNum(vouchersLBP)} ${secCurLabel()}</div></div>
     </div>
     <div class="table-scroll"><table>
-      <thead><tr><th>التاريخ</th><th>النوع</th><th>الطرف</th><th>دولار $</th><th>${secCurLabel()}</th></tr></thead>
+      <thead><tr><th>التاريخ</th><th>النوع</th><th>الطرف</th><th>دولار $ (صندوق)</th><th>${secCurLabel()} (صندوق)</th><th>على الحساب (دين) $</th></tr></thead>
       <tbody>${rows.length? rows.map(r=>`<tr>
         <td class="num">${fmtDate(r.date)}</td><td>${escapeHtml(r.type)}</td><td>${escapeHtml(r.party)}</td>
         <td class="num" style="color:${r.usd<0?'var(--debit)':(r.usd>0?'var(--credit)':'inherit')}">${r.usd?(r.usd<0?'-':'')+'$'+Math.abs(r.usd).toFixed(2):'—'}</td>
-        <td class="num" style="color:${r.lbp<0?'var(--debit)':(r.lbp>0?'var(--credit)':'inherit')}">${r.lbp?(r.lbp<0?'-':'')+fmtMoney(Math.abs(r.lbp)):'—'}</td>
-      </tr>`).join('') : `<tr><td colspan="5" style="text-align:center; color:var(--ink-soft);">لا توجد حركات في هذه الفترة</td></tr>`}</tbody>
+        <td class="num" style="color:${r.lbp<0?'var(--debit)':(r.lbp>0?'var(--credit)':'inherit')}">${r.lbp?(r.lbp<0?'-':'')+fmtNum(Math.abs(r.lbp)):'—'}</td>
+        <td class="num" style="color:${(r.debt||0)<0?'var(--debit)':((r.debt||0)>0?'var(--bronze-deep, #8a5a1a)':'inherit')}">${r.debt?(r.debt<0?'-':'')+'$'+Math.abs(r.debt).toFixed(2):'—'}</td>
+      </tr>`).join('') : `<tr><td colspan="6" style="text-align:center; color:var(--ink-soft);">لا توجد حركات في هذه الفترة</td></tr>`}</tbody>
       <tfoot><tr style="font-weight:800; border-top:2px solid var(--line);">
         <td colspan="3">المجموع</td>
         <td class="num">${totalUSD<0?'-':''}$${Math.abs(totalUSD).toFixed(2)}</td>
-        <td class="num">${totalLBP<0?'-':''}${fmtMoney(Math.abs(totalLBP))}</td>
+        <td class="num">${totalLBP<0?'-':''}${fmtNum(Math.abs(totalLBP))}</td>
+        <td class="num">${totalDebt<0?'-':''}$${Math.abs(totalDebt).toFixed(2)}</td>
       </tr></tfoot>
     </table></div>
   </div>
