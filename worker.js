@@ -2220,14 +2220,18 @@ async function storeSitemap(env, slug, base) {
 }
 
 // عنوان ووصف وصورة المشاركة + canonical (+ JSON-LD للمنتج) ليشوفها غوغل وواتساب بدون تشغيل الجافاسكربت
-async function storeHead(env, url, slug, primaryHost) {
-  const st = (await sbGet(env, `stores?slug=eq.${encodeURIComponent(slug)}&select=id,name,tagline,seo_title,seo_desc,logo_url,og_image,currency_code&limit=1`))[0];
+async function storeHead(env, url, slug, primaryHost, data) {
+  // بيانات المتجر والمنتجات غالباً وصلتنا أصلاً من storePublicData (مخبّأة) — منستعملها مباشرة
+  // بدل ما نعمل طلبين إضافيين لقاعدة البيانات بكل زيارة. منرجع لطلب حيّ بس لو هالبيانات مش متوفرة.
+  let st = data && data.ok && data.store;
+  if (!st) st = (await sbGet(env, `stores?slug=eq.${encodeURIComponent(slug)}&select=id,name,tagline,seo_title,seo_desc,logo_url,og_image,currency_code&limit=1`))[0];
   if (!st) return null;
   const origin = url.origin, cOrigin = primaryHost ? 'https://' + primaryHost : origin, canonBase = cOrigin + (url.pathname.replace(/\/+$/, '') || '/');
   let title = st.seo_title || st.name || 'Store', desc = st.seo_desc || st.tagline || '', image = st.og_image || st.logo_url || '', canon = canonBase, ld = '';
   const pid = url.searchParams.get('p');
   if (pid && /^[0-9a-f-]{36}$/i.test(pid)) {
-    const pr = (await sbGet(env, `store_products?id=eq.${pid}&store_id=eq.${st.id}&is_active=eq.true&select=name_ar,name_en,desc_ar,desc_en,price,image_url,brand,sku&limit=1`))[0];
+    const fromList = data && Array.isArray(data.products) && data.products.filter(x => x.id === pid)[0];
+    const pr = fromList || (await sbGet(env, `store_products?id=eq.${pid}&store_id=eq.${st.id}&is_active=eq.true&select=name_ar,name_en,desc_ar,desc_en,price,image_url,brand,sku&limit=1`))[0];
     if (pr) {
       const nm = pr.name_en || pr.name_ar;
       title = nm + ' | ' + (st.name || '');
@@ -2399,8 +2403,9 @@ async function serveStore(env, url, slug, primaryHost, ctx) {
   let html = await res.text();
   const spUrl = url.pathname.startsWith('/portal-store/') ? '/portal-store/' + encodeURIComponent(slug) + '/_sp.json' : '/_sp.json';
   html = html.replace('<!--STORE_BOOT-->', '<!--SPD--><script>window.__STORE_SLUG__=' + JSON.stringify(slug) + ';window.__SP_URL__=' + JSON.stringify(spUrl) + ';</script>');
+  let e = null;
   try { // preload لصورة أول سلايد (عنصر الـ LCP) عشان تنطلب من أول الصفحة مش بعد ما توصل البيانات
-    const e = await Promise.race([storePublicData(env, slug, ctx), new Promise(r => setTimeout(() => r(null), 700))]); // ما بنأخّر الصفحة أكتر من 0.7ث لو الكاش بارد
+    e = await Promise.race([storePublicData(env, slug, ctx), new Promise(r => setTimeout(() => r(null), 700))]); // ما بنأخّر الصفحة أكتر من 0.7ث لو الكاش بارد
     // بيانات أول شاشة جوّا الصفحة نفسها — بتوفّر طلب كامل قبل ما يبين أي شي (الكاملة بتنزل بالخلفية متل قبل)
     if (e && e.data && e.data.ok && Array.isArray(e.data.products)) {
       const pid = url.searchParams.get('p');
@@ -2417,11 +2422,13 @@ async function serveStore(env, url, slug, primaryHost, ctx) {
       const ws = [640, 1024, 1600];
       html = html.replace('</head>', () => `<link rel="preload" as="image" fetchpriority="high" href="${attrEsc(r0 + '?w=1024')}" imagesrcset="${attrEsc(ws.map(w => r0 + '?w=' + w + ' ' + w + 'w').join(', '))}" imagesizes="100vw">\n</head>`);
     }
-  } catch (e) { /* بدون preload */ }
+  } catch (er) { /* بدون preload */ }
   try {
-    const h = await storeHead(env, url, slug, primaryHost);
+    // منمرر بيانات المتجر يلي وصلتنا فوق (عادةً مخبّأة) لـstoreHead بدل ما يعمل طلبين إضافيين
+    // لقاعدة البيانات بكل زيارة فقط لبناء وسوم الـSEO — هاد كان السبب الرئيسي وراء البطء المتقطّع.
+    const h = await storeHead(env, url, slug, primaryHost, e && e.data);
     if (h) html = html.replace('<title>Store</title>', () => h.title).replace('</head>', () => h.tags + '\n</head>');
-  } catch (e) { /* بلا SEO إضافي لو فشلت القراءة — المتجر بيشتغل عادي */ }
+  } catch (er) { /* بلا SEO إضافي لو فشلت القراءة — المتجر بيشتغل عادي */ }
   // 20ث كاش بالمتصفح/الحافة: بيتفادى تحميل الصفحة كاملة (200+ كيلوبايت) من جديد بزيارات متكرّرة
   // قريبة (رجوع للخلف، فتح نفس الصفحة بتاب تاني)، وبنفس هامش التحديث يلي بيانات المتجر أصلاً
   // بتتحمّل عليه (SP_FRESH = 60ث) فما في خطر تعرض بيانات قديمة بشكل ملحوظ.
