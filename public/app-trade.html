@@ -432,11 +432,89 @@ async function safeGet(key, fallback){
     return fallback;
   }catch(e){ return fallback; }
 }
+/* ===== صندوق الموظف يتأثر بالسندات النقدية: قبض بيزيد، صرف (مورد، عامل، مصروف ميزانية) بينقص =====
+   كل سند نقدي إلو حركة صندوق «مرآة» (note تبدأ بـ [سند]، refSaleId = رقم السند). التعديل/الحذف/الاسترجاع
+   بيصحّح الحركة والصندوق تلقائياً. السند الجديد بيروح على صندوق المستخدم الحالي المفتوح. */
+const DOC_MIRROR_TAG = '[سند] ';
+const DOC_BOX_KEYS = { receipts:'receipts', paymentVouchers:'paymentVouchers', workerPayments:'workerPayments', budgetEntries:'budgetEntries' };
+function isDocMirrorMove(m){ return !!(m && m.refSaleId && String(m.note||'').indexOf(DOC_MIRROR_TAG)===0); }
+function docMethodIsCash(method){ const t = String(method||'').trim(); return !t || /نقد|كاش|cash/i.test(t); }
+// المبلغ الموقّع (+ داخل / − خارج) والعملة لسند معيّن — أو null إذا ما بيأثر عالصندوق
+function docBoxEffect(kind, d){
+  if(!d || d.deleted) return null;
+  const amt = Math.abs(Number(d.amount)||0); if(!amt) return null;
+  if(kind==='receipts'){
+    if(d.shiftId || isPosReceipt(d) || !docMethodIsCash(d.method)) return null;   // إيصالات نقطة البيع محسوبة أصلاً
+    return { sign:1, currency:/ل\.ل/.test(d.method||'')?'LBP':'USD', amt, label:'إيصال قبض #'+(d.number||'') };
+  }
+  if(kind==='paymentVouchers'){
+    if(!docMethodIsCash(d.method)) return null;
+    return { sign:-1, currency:/ل\.ل/.test(d.method||'')?'LBP':'USD', amt, label:'سند صرف مورد #'+(d.number||'') };
+  }
+  if(kind==='workerPayments'){
+    if(!docMethodIsCash(d.method)) return null;
+    return { sign:-1, currency:/ل\.ل|LBP/.test(d.method||'')?'LBP':'USD', amt, label:'دفعة عامل' };
+  }
+  if(kind==='budgetEntries'){
+    const c = (DB.budgetCategories||[]).find(x=>x.id===d.categoryId);
+    if(!c || c.auto) return null;
+    return { sign: c.type==='income'? 1 : -1, currency:'USD', amt, label:(c.type==='income'?'دخل: ':'مصروف: ')+c.name };
+  }
+  return null;
+}
+function _shiftAdd(shiftId, currency, v){
+  const sh = (DB.cashierShifts||[]).find(x=>x.id===shiftId);
+  if(!sh || sh.status!=='open' || !v) return false;
+  if(currency==='LBP') sh.cashLBP = (Number(sh.cashLBP)||0) + v; else sh.cashUSD = (Number(sh.cashUSD)||0) + v;
+  return true;
+}
+let _docBoxBusy = false;
+function syncDocsToBox(key, arr){
+  if(_docBoxBusy || !Array.isArray(arr) || typeof currentUser==='undefined' || !currentUser) return;
+  _docBoxBusy = true;
+  try{
+    DB.cashMovements = DB.cashMovements || [];
+    const byRef = {};
+    DB.cashMovements.forEach(m=>{ if(isDocMirrorMove(m)) byRef[m.refSaleId] = m; });
+    let movesChanged = false, shiftsChanged = false;
+    const now = Date.now();
+    const myShift = currentUserShift();
+    arr.forEach(d=>{
+      if(!d || !d.id) return;
+      const eff = docBoxEffect(key, d);
+      const m = byRef[d.id];
+      if(!m){
+        // سند جديد هلق (مش سندات قديمة) → على صندوقي المفتوح
+        if(!eff || !myShift || !(d.createdAt >= myShift.openedAt) || now - (d.createdAt||0) > 5*60*1000) return;
+        const mv = {id:uid(), createdAt:now, type: eff.sign>0?'deposit':'withdraw', currency:eff.currency, amount:eff.amt,
+          note:DOC_MIRROR_TAG+eff.label+' — '+currentUser.username, refSaleId:d.id, date:d.date||todayISO(), shiftId:myShift.id, deleted:false};
+        DB.cashMovements.push(mv); movesChanged = true;
+        if(_shiftAdd(myShift.id, eff.currency, eff.sign*eff.amt)) shiftsChanged = true;
+        return;
+      }
+      const oldSigned = m.deleted? 0 : (m.type==='deposit'?1:-1)*Math.abs(Number(m.amount)||0);
+      const newSigned = eff? eff.sign*eff.amt : 0;
+      const newCur = eff? eff.currency : m.currency;
+      if(oldSigned===newSigned && newCur===m.currency) return;
+      if(oldSigned && _shiftAdd(m.shiftId, m.currency, -oldSigned)) shiftsChanged = true;
+      if(eff){
+        m.type = eff.sign>0?'deposit':'withdraw'; m.currency = eff.currency; m.amount = eff.amt; m.deleted = false;
+        m.date = d.date || m.date; m.note = DOC_MIRROR_TAG+eff.label+' — '+(String(m.note).split(' — ').pop()||currentUser.username);
+        if(_shiftAdd(m.shiftId, eff.currency, newSigned)) shiftsChanged = true;
+      } else m.deleted = true;
+      movesChanged = true;
+    });
+    if(movesChanged) save(KEYS.cashMovements, DB.cashMovements);
+    if(shiftsChanged) save(KEYS.cashierShifts, DB.cashierShifts);
+  }catch(e){ console.error('syncDocsToBox', e); }
+  finally{ _docBoxBusy = false; }
+}
 async function save(key, value){
   try{
     localStorage.setItem(skey(key), JSON.stringify(value));
   }catch(e){ console.error('storage error', key, e); return false; }
   if(key===KEYS.warehouseItems || key===KEYS.stockIns || key===KEYS.stockOuts || key===KEYS.suppliers) invalidateWarehouseCaches();
+  if(DOC_BOX_KEYS[key]) syncDocsToBox(key, value);
   if(key===KEYS.settings){
     syncSettingsToSupabase(value);
     syncUsersToSupabase(value.users||[]);
@@ -4748,7 +4826,7 @@ function printShiftReport(shift, moves){
   <h3 style="margin-top:20px;">تفاصيل العمليات (${moves.length})</h3>
   <table>
     <tr><th>الوقت</th><th>النوع</th><th>العملة</th><th>المبلغ</th><th>ملاحظة</th></tr>
-    ${moves.map(m=>`<tr><td>${new Date(m.createdAt).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}</td><td>${m.type==='sale'?'بيع':m.type==='deposit'?'إضافة':m.type==='withdraw'?'سحب':'استرجاع'}</td><td>${m.currency}</td><td>${Number(m.amount).toFixed(2)}</td><td>${escapeHtml(m.note||'')}</td></tr>`).join('')}
+    ${moves.map(m=>`<tr><td>${new Date(m.createdAt).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}</td><td>${isDocMirrorMove(m)?(m.type==='deposit'?'قبض':'صرف'):m.type==='sale'?'بيع':m.type==='deposit'?'إضافة':m.type==='withdraw'?'سحب':'استرجاع'}</td><td>${m.currency}</td><td>${Number(m.amount).toFixed(2)}</td><td>${escapeHtml(m.note||'')}</td></tr>`).join('')}
   </table>
   </body></html>`);
   w.document.close();
@@ -6073,7 +6151,7 @@ function journalEntriesForRange(from, to){
     rows.push({cat:'paySup', date:v.date, createdAt:v.createdAt||0, type:'سند صرف ('+(v.method||'')+')', party:sup?sup.name:'—', usd:isLBP?0:-amt, lbp:isLBP?-amt:0, nav:null});
   });
   // حركات صندوق يدوية أو استرجاع (المبيعات نفسها موجودة أصلاً ضمن إيصالات القبض فوق، ما منكررها هون)
-  (DB.cashMovements||[]).filter(m=>!m.deleted && m.type!=='sale' && m.date>=from && m.date<=to).forEach(m=>{
+  (DB.cashMovements||[]).filter(m=>!m.deleted && m.type!=='sale' && !isDocMirrorMove(m) && m.date>=from && m.date<=to).forEach(m=>{
     const isLBP = m.currency==='LBP';
     const signed = m.type==='deposit'? Math.abs(m.amount) : -Math.abs(m.amount);
     const label = m.type==='deposit'?'إضافة يدوية للصندوق':m.type==='withdraw'?'سحب يدوي من الصندوق':'استرجاع POS';
