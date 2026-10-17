@@ -1571,5 +1571,87 @@ try{ var savedL=localStorage.getItem('la_admin_lang'); }catch(e){ var savedL=nul
 boot().then(function(){ if(savedL==='en') applyAdminLang('en'); });
 })();
 </script>
+<script>
+// ===== حقول التاريخ: عرض وإدخال بصيغة dd/mm/yyyy بكل البرنامج — والقيمة (.value) بتضل ISO yyyy-mm-dd للكود =====
+(function(){
+  if(window.__laDmy) return; window.__laDmy = true;
+  const P = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+  const pad = n => String(n).padStart(2,'0');
+  const isoToDmy = v => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(v||''); return m ? m[3]+'/'+m[2]+'/'+m[1] : ''; };
+  function dmyToIso(t){
+    const iso = /^\s*(\d{4})-(\d{1,2})-(\d{1,2})\s*$/.exec(t||'');
+    if(iso) t = iso[3]+'/'+iso[2]+'/'+iso[1];
+    const m = /^\s*(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2}|\d{4})\s*$/.exec(t||''); if(!m) return '';
+    let d=+m[1], mo=+m[2], y=+m[3]; if(y<100) y+=2000;
+    const dt = new Date(y, mo-1, d);
+    if(dt.getFullYear()!==y || dt.getMonth()!==mo-1 || dt.getDate()!==d) return '';
+    return y+'-'+pad(mo)+'-'+pad(d);
+  }
+  function enhance(inp){
+    if(inp.__dmy || inp.type!=='date' || inp.hasAttribute('aria-hidden')) return; inp.__dmy = true;
+    const iso0 = P.get.call(inp);
+    const picker = document.createElement('input');
+    picker.type='date'; picker.tabIndex=-1; picker.setAttribute('aria-hidden','true');
+    picker.style.cssText='position:absolute;opacity:0;width:1px;height:1px;pointer-events:none;border:0;padding:0;margin:0;';
+    inp.type='text'; inp.setAttribute('inputmode','numeric'); inp.setAttribute('placeholder','dd/mm/yyyy');
+    inp.setAttribute('maxlength','10'); inp.setAttribute('autocomplete','off'); inp.dataset.dmy='1';
+    inp.style.direction='ltr';
+    Object.defineProperty(inp, 'value', {
+      configurable:true,
+      get(){ return dmyToIso(P.get.call(this)); },
+      set(v){ v = v==null ? '' : String(v); const ok=/^\d{4}-\d{2}-\d{2}/.test(v); if(ok) this.__dmyLast=v.slice(0,10); P.set.call(this, ok ? isoToDmy(v) : v); }
+    });
+    Object.defineProperty(inp, 'valueAsDate', { configurable:true,
+      get(){ const v=this.value; return v? new Date(v+'T00:00:00Z') : null; },
+      set(d){ this.value = d? d.toISOString().slice(0,10) : ''; } });
+    P.set.call(inp, isoToDmy(iso0)); inp.__dmyLast = iso0||'';
+    // كتابة سريعة: الشحطات بتنحط لحالها
+    inp.addEventListener('input', function(e){
+      let raw = P.get.call(inp), digits = raw.replace(/\D/g,'').slice(0,8);
+      if(e.inputType && e.inputType.indexOf('delete')===0) return;
+      if(/[\/.\-]/.test(raw) && /^\d{1,2}[\/.\-]\d{1,2}([\/.\-]\d{0,4})?$/.test(raw)) return;
+      let out = digits; if(digits.length>4) out = digits.slice(0,2)+'/'+digits.slice(2,4)+'/'+digits.slice(4);
+      else if(digits.length>2) out = digits.slice(0,2)+'/'+digits.slice(2);
+      if(out!==raw) P.set.call(inp, out);
+    }, true);
+    inp.addEventListener('blur', function(){
+      const raw = P.get.call(inp), iso = dmyToIso(raw);
+      if(iso){ P.set.call(inp, isoToDmy(iso)); inp.__dmyLast = iso; return; }
+      if(!raw) return;
+      // تاريخ غلط (مثلاً 31/02) — منرجّع آخر تاريخ صحيح بدل ما ينحفظ فاضي
+      P.set.call(inp, isoToDmy(inp.__dmyLast||''));
+      inp.dispatchEvent(new Event('input', {bubbles:true})); inp.dispatchEvent(new Event('change', {bubbles:true}));
+    });
+    const btn = document.createElement('button');
+    btn.type='button'; btn.textContent='📅'; btn.title='اختر من الروزنامة'; btn.tabIndex=-1;
+    btn.style.cssText='position:absolute;top:50%;right:6px;transform:translateY(-50%);border:0;background:transparent;cursor:pointer;font-size:15px;padding:2px;line-height:1;';
+    btn.addEventListener('click', function(ev){
+      ev.preventDefault(); ev.stopPropagation();
+      P.set.call(picker, inp.value || '');
+      if(inp.min) picker.min = inp.min; if(inp.max) picker.max = inp.max;
+      try{ picker.showPicker(); }catch(_){ picker.focus(); picker.click(); }
+    });
+    picker.addEventListener('change', function(){
+      const v = P.get.call(picker); if(!v) return;
+      inp.value = v; inp.__dmyLast = v;
+      inp.dispatchEvent(new Event('input', {bubbles:true}));
+      inp.dispatchEvent(new Event('change', {bubbles:true}));
+    });
+    const blockish = getComputedStyle(inp).display==='block' || inp.closest('.field');
+    const wrap = document.createElement('span');
+    wrap.className='la-dmy';
+    wrap.style.cssText='position:relative;display:'+(blockish?'block':'inline-block')+';'+(blockish?'width:100%;':'');
+    inp.parentNode.insertBefore(wrap, inp);
+    wrap.appendChild(inp); wrap.appendChild(btn); wrap.appendChild(picker);
+    inp.style.paddingRight='30px';
+    if(blockish) inp.style.width='100%';
+    if(inp.disabled || inp.readOnly){ btn.style.display='none'; }
+  }
+  function scan(root){ (root||document).querySelectorAll && (root||document).querySelectorAll('input[type=date]:not([aria-hidden])').forEach(enhance); }
+  window.laDmyScan = scan;
+  const start = () => { scan(document); new MutationObserver(ms => { for(const m of ms) for(const n of m.addedNodes){ if(n.nodeType!==1) continue; if(n.tagName==='INPUT') enhance(n); else if(n.querySelector && n.querySelector('input[type=date]')) scan(n); } }).observe(document.documentElement, {childList:true, subtree:true}); };
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', start); else start();
+})();
+</script>
 </body>
 </html>
