@@ -1046,7 +1046,8 @@ function fmtDate(d){
   const dd=String(dt.getDate()).padStart(2,'0'), mm=String(dt.getMonth()+1).padStart(2,'0'), yy=dt.getFullYear();
   return `${dd}/${mm}/${yy}`;
 }
-function todayISO(){ return new Date().toISOString().slice(0,10); }
+// تاريخ اليوم حسب ساعة الجهاز (بلبنان UTC+3) — مش UTC، وإلا الحركات بعد نص الليل بتنسجل على البارحة
+function todayISO(){ const d = new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 function timestampForFilename(){
   const d = new Date();
   const pad = n=>String(n).padStart(2,'0');
@@ -6093,7 +6094,7 @@ function journalEntriesForRange(from, to){
   // رصيد افتتاح الصناديق (المبلغ يلي انحط وقت فتح الصندوق)
   (DB.cashierShifts||[]).forEach(sh=>{
     if(!sh.openedAt) return;
-    const d = new Date(sh.openedAt).toISOString().slice(0,10);
+    const od = new Date(sh.openedAt); const d = od.getFullYear()+'-'+String(od.getMonth()+1).padStart(2,'0')+'-'+String(od.getDate()).padStart(2,'0');
     if(d<from || d>to) return;
     const ou = Number(sh.openingUSD)||0, ol = Number(sh.openingLBP)||0;
     if(!ou && !ol) return;
@@ -6154,10 +6155,12 @@ function journalTableHtml(rows){
   const CATS = journalCatsFor(rows);
   CATS.forEach(c=>{
     const used = rows.some(r=>{ const v = cellVals(r,c); return v && (v.usd || v.lbp); });
-    if(!used && c.key!=='custRcpt') return;
+    // العواميد الأساسية بتضل ظاهرة حتى لو فاضية: المبيعات النقدية، إيصالات الزبائن، دفعات الموردين، والديون
+    const core = ['cashSale','custRcpt','paySup','custDebt','supDebt'].includes(c.key);
+    if(!used && !core) return;
     subCols(c).forEach(sub=>{
       // بوضع العملتين: عامود العملة الفاضي لهالنوع ما بيظهر (إلا المقبوضات)
-      if(mode==='both' && c.cash && c.key!=='custRcpt' && !rows.some(r=>{ const v = cellVals(r,c); return v && v[sub]; })) return;
+      if(mode==='both' && c.cash && sub==='lbp' && !rows.some(r=>{ const v = cellVals(r,c); return v && v[sub]; })) return;
       cols.push({c, sub, title: c.label + (sub==='usd' ? ' $' : ' '+L)});
     });
   });
@@ -7062,6 +7065,11 @@ function itemDocFormView(kind, doc, partyId, isReturn){
           <input type="number" step="0.01" id="f_vat_rate" class="num" value="${d.vatRate!=null && d.vatRate!==''? d.vatRate : settingsVatRate()}" style="width:80px; ${d.vatEnabled?'':'opacity:.5;'}" ${d.vatEnabled?'':'disabled'}> %
         </label>
         <div style="font-size:11.5px; color:var(--ink-soft); margin-top:4px;">الأسعار في البنود بدون ضريبة — تُضاف الـTVA على مجموع الفاتورة.</div>
+      </div>` : ''}
+      ${(kind==='purchase' && !d.isReturn && !d.id)? `<div class="field" style="max-width:260px; background:var(--paper); border:1px solid var(--line); border-radius:8px; padding:8px 12px;">
+        <label>💵 المدفوع للمورد الآن $ (اختياري)</label>
+        <input type="number" step="0.01" min="0" id="f_paid_now" class="num" value="${d.paidNow||''}" placeholder="0">
+        <div style="font-size:11.5px; color:var(--ink-soft); margin-top:4px;">يصدر به سند صرف تلقائياً ويظهر بعامود «دفعات موردين» باليومية — والباقي دين للمورد.</div>
       </div>` : ''}
     </div>
 
@@ -9407,6 +9415,8 @@ function bindItemDocFormEvents(){
   document.getElementById('f_doctype').addEventListener('input', e=>_itemDocDraft.docType=e.target.value);
   document.getElementById('f_rate').addEventListener('input', e=>{ _itemDocDraft.exchangeRate=Number(e.target.value)||0; refreshInvoiceTotals(); });
   document.getElementById('f_discount').addEventListener('input', e=>{ _itemDocDraft.discount=Number(e.target.value)||0; refreshInvoiceTotals(); });
+  const paidNowEl = document.getElementById('f_paid_now');
+  if(paidNowEl) paidNowEl.addEventListener('input', ()=>{ _itemDocDraft.paidNow = paidNowEl.value; });
   const vatOn = document.getElementById('f_vat_on'), vatRateEl = document.getElementById('f_vat_rate');
   if(vatOn) vatOn.addEventListener('change', ()=>{
     _itemDocDraft.vatEnabled = vatOn.checked;
@@ -9631,6 +9641,15 @@ function bindItemDocFormEvents(){
     }
     let ok = await save(KEYS[cfg.keyName], DB[cfg.docArr]);
     let stockMsg = '';
+    if(ok && isPurchase && isNewDoc && !_itemDocDraft.isReturn && Number(_itemDocDraft.paidNow)>0){
+      // دفعة للمورد مع الفاتورة → سند صرف (بيظهر بكشف المورد وباليومية بعامود دفعات الموردين)
+      const savedP = DB.purchaseInvoices.find(x=>x.id===savedId);
+      const amt = Math.round(Number(_itemDocDraft.paidNow)*100)/100;
+      DB.paymentVouchers.push({id:uid(), createdAt:Date.now(), supplierId:_itemDocDraft.supplierId, number:nextVoucherNumber(), date:_itemDocDraft.date,
+        amount:amt, method:'نقدًا', details:'دفعة من فاتورة مشتريات #'+(savedP? savedP.number : _itemDocDraft.number)});
+      if(!(await save(KEYS.paymentVouchers, DB.paymentVouchers))) ok = false;
+      else stockMsg += ' — وصدر سند صرف بـ $'+amt.toFixed(2);
+    }
     if(ok && isPurchase){
       const savedDoc = DB.purchaseInvoices.find(x=>x.id===savedId);
       if(isAutoShop() || createdItems || (savedDoc && savedDoc.addToStock)) await save(KEYS.warehouseItems, DB.warehouseItems);
