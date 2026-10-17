@@ -15,9 +15,20 @@
 create extension if not exists "pgcrypto";
 
 -- ---------- دوال أساسية (نفسها الموجودة — إعادة تعريف آمنة) ----------
+create table if not exists public.portal_users (
+  user_id    uuid primary key references auth.users(id) on delete cascade,
+  client_id  uuid not null unique references public.clients(id) on delete cascade,
+  created_at timestamptz not null default now()
+);
+alter table public.portal_users add column if not exists email text;
+alter table public.portal_users enable row level security;
+-- ملاحظة: لازم تضل تعرف حساب «رابط الزبون» (portal_users) — وإلا الرابط بيطلع «أكمل بياناتك»
 create or replace function public.my_client_id()
 returns uuid language sql stable security definer set search_path = public as $$
-  select c.id from public.clients c where c.user_id = auth.uid() limit 1;
+  select coalesce(
+    (select p.client_id from public.portal_users p where p.user_id = auth.uid() limit 1),
+    (select c.id from public.clients c where c.user_id = auth.uid() limit 1)
+  );
 $$;
 
 create or replace function public.owns(cid uuid)
