@@ -17,17 +17,9 @@
 create extension if not exists "pgcrypto";
 
 -- ============================================================
---  0) دوال أساسية (إعادة تعريف آمنة — نفس الموجود)
+--  0) ملاحظة: الملف ما بيعيد تعريف my_client_id / owns عن قصد —
+--     بيستعمل النسخة الموجودة (اللي بتعرف حسابات portal_users).
 -- ============================================================
-create or replace function public.my_client_id()
-returns uuid language sql stable security definer set search_path = public as $$
-  select c.id from public.clients c where c.user_id = auth.uid() limit 1;
-$$;
-
-create or replace function public.owns(cid uuid)
-returns boolean language sql stable security definer set search_path = public as $$
-  select public.is_admin() or (cid is not null and cid = public.my_client_id());
-$$;
 
 -- ============================================================
 --  1) المنتج
@@ -291,6 +283,32 @@ create table if not exists public.club_doors (
 );
 create index if not exists club_doors_idx on public.club_doors (club_id);
 
+-- ---------- البنية الجسدية والإصابات ----------
+-- خيارات يحددها مدير النادي (يضيف ويحذف منها)
+alter table public.clubs add column if not exists body_options   text[] not null
+  default array['ممتازة','جيدة','متوسطة','تحتاج إلى متابعة'];
+alter table public.clubs add column if not exists injury_options text[] not null
+  default array['التواء الكاحل','إصابة الركبة','إصابة الكتف','آلام الظهر','كسر سابق','إصابة الرأس / ارتجاج'];
+
+alter table public.club_students add column if not exists weight_kg    numeric(5,1);
+alter table public.club_students add column if not exists height_cm    numeric(5,1);
+alter table public.club_students add column if not exists body_status  text not null default '';
+alter table public.club_students add column if not exists injuries     text[] not null default '{}';
+alter table public.club_students add column if not exists injury_notes text not null default '';
+
+-- سجل القياسات: كل تغيير بالوزن أو الطول أو البنية بينحفظ تلقائيًا
+create table if not exists public.club_body_log (
+  id          bigint generated always as identity primary key,
+  club_id     uuid not null references public.clubs(id) on delete cascade,
+  student_id  uuid not null references public.club_students(id) on delete cascade,
+  measured_on date not null default current_date,
+  weight_kg   numeric(5,1),
+  height_cm   numeric(5,1),
+  body_status text default '',
+  created_at  timestamptz not null default now()
+);
+create index if not exists club_body_log_idx on public.club_body_log (student_id, measured_on desc);
+
 -- ============================================================
 --  3) المحفّزات (Triggers)
 -- ============================================================
@@ -351,6 +369,31 @@ drop trigger if exists club_students_lvl on public.club_students;
 create trigger club_students_lvl after insert or update of level_id on public.club_students
   for each row execute function public.club_students_level_log();
 
+create or replace function public.club_students_body_log()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare tz text; d date;
+begin
+  if tg_op = 'INSERT' then
+    if new.weight_kg is null and new.height_cm is null and coalesce(new.body_status,'') = '' then return new; end if;
+  elsif new.weight_kg is not distinct from old.weight_kg and new.height_cm is not distinct from old.height_cm
+        and coalesce(new.body_status,'') = coalesce(old.body_status,'') then
+    return new;
+  end if;
+  select timezone into tz from public.clubs where id = new.club_id;
+  d := (now() at time zone coalesce(tz,'Asia/Beirut'))::date;
+  -- قياس واحد باليوم: تعديل بنفس اليوم بيحدّث نفس السطر
+  update public.club_body_log set weight_kg = new.weight_kg, height_cm = new.height_cm, body_status = new.body_status
+   where student_id = new.id and measured_on = d;
+  if not found then
+    insert into public.club_body_log (club_id, student_id, measured_on, weight_kg, height_cm, body_status)
+    values (new.club_id, new.id, d, new.weight_kg, new.height_cm, new.body_status);
+  end if;
+  return new;
+end $$;
+drop trigger if exists club_students_body on public.club_students;
+create trigger club_students_body after insert or update of weight_kg, height_cm, body_status on public.club_students
+  for each row execute function public.club_students_body_log();
+
 -- ============================================================
 --  4) الصلاحيات (RLS)
 -- ============================================================
@@ -372,6 +415,7 @@ alter table public.club_achievements    enable row level security;
 alter table public.club_level_history   enable row level security;
 alter table public.club_attendance      enable row level security;
 alter table public.club_doors           enable row level security;
+alter table public.club_body_log        enable row level security;
 
 drop policy if exists own_clubs on public.clubs;
 create policy own_clubs on public.clubs for all to authenticated
@@ -381,7 +425,7 @@ create policy own_clubs on public.clubs for all to authenticated
 do $$
 declare t text;
 begin
-  foreach t in array array['club_groups','club_levels','club_students','club_achievements','club_attendance']
+  foreach t in array array['club_groups','club_levels','club_students','club_achievements','club_attendance','club_body_log']
   loop
     execute format('drop policy if exists own_%1$s on public.%1$s', t);
     execute format('create policy own_%1$s on public.%1$s for all to authenticated
@@ -867,6 +911,12 @@ begin
              'joined_at', st.joined_at, 'paid_until', st.paid_until, 'username', st.username,
              'card_token', st.card_token, 'level_since', st.level_since,
              'fee', public._club_fee(st)),
+    'body', jsonb_build_object('weight_kg', st.weight_kg, 'height_cm', st.height_cm,
+             'body_status', st.body_status, 'injuries', to_jsonb(st.injuries), 'injury_notes', st.injury_notes),
+    'body_log', coalesce((select jsonb_agg(jsonb_build_object('on', b.measured_on, 'weight_kg', b.weight_kg,
+                           'height_cm', b.height_cm, 'body_status', b.body_status) order by b.measured_on desc)
+                          from (select * from public.club_body_log where student_id = st.id
+                                order by measured_on desc limit 24) b), '[]'::jsonb),
     'status', public._club_status(st.paid_until, public._club_fee(st), t, cl.expiring_days, cl.grace_days),
     'level', (select jsonb_build_object('name', l.name, 'color', l.color, 'sort', l.sort)
               from public.club_levels l where l.id = st.level_id),
@@ -1053,4 +1103,7 @@ select 'club product' as item, exists (select 1 from public.products where code 
 union all select 'clubs table', to_regclass('public.clubs') is not null
 union all select 'students table', to_regclass('public.club_students') is not null
 union all select 'club plan', exists (select 1 from public.plans where product_code = 'club')
+union all select 'body fields', exists (select 1 from information_schema.columns
+                                       where table_name = 'club_students' and column_name = 'injuries')
+union all select 'portal link ok', pg_get_functiondef('public.my_client_id()'::regprocedure) like '%portal_users%'
 union all select 'door function', to_regprocedure('public.club_door_check(text,text,uuid,text,text)') is not null;

@@ -138,6 +138,17 @@ C.add({
   short:['كلمة المرور قصيرة (4 أحرف على الأقل)','Password too short (min 4)','Mot de passe trop court (4 min.)'],
   pw_changed:['تم تغيير كلمة المرور ✓','Password changed ✓','Mot de passe modifié ✓'],
   months_n:['{n} شهر','{n} month(s)','{n} mois'],
+  body:['بنيتي الجسدية','My body','Ma condition physique'],
+  weight:['الوزن','Weight','Poids'],
+  height:['الطول','Height','Taille'],
+  kg:['كغ','kg','kg'],
+  cm:['سم','cm','cm'],
+  bmi:['مؤشر كتلة الجسم','BMI','IMC'],
+  body_status:['البنية الجسدية','Physical condition','Condition physique'],
+  injuries:['إصابات سابقة','Past injuries','Blessures antérieures'],
+  no_injuries:['لا يوجد إصابات مسجّلة','No injuries recorded','Aucune blessure enregistrée'],
+  body_hist:['تطوّر القياسات','Measurement progress','Évolution des mesures'],
+  date:['التاريخ','Date','Date'],
   refresh:['تحديث','Refresh','Actualiser']
 });
 var CFG=window.LIBANAPPS, sb=window.supabase.createClient(CFG.SUPABASE_URL,CFG.SUPABASE_ANON_KEY,{auth:{persistSession:false,autoRefreshToken:false}});
@@ -209,6 +220,7 @@ function vProfile(){
       ME.achievements.map(function(a){ return '<div class="medal"><div class="ic">'+medalIcon(a.place)+'</div><b>'+esc(a.title)+'</b><small>'+esc(t('medal_'+a.place))+(a.event_date?' · '+esc(C.fmtDate(a.event_date)):'')+'</small>'+
         (a.opponent?'<small>'+esc(a.opponent)+'</small>':'')+(a.category?'<small>'+esc(a.category)+'</small>':'')+(a.image_url?'<a href="'+esc(C.imgUrl(a.image_url))+'" target="_blank"><img src="'+esc(C.imgUrl(a.image_url,480))+'" alt="" loading="lazy"></a>':'')+'</div>'; }).join('')+'</div>'
       :'<div class="empty">'+t('no_medals')+'</div>')+'</section>'+
+    bodyHtml()+
     (ME.level_history.length?'<section class="box"><h3 class="h">🎚 '+t('levels')+'</h3><div class="tl">'+ME.level_history.map(function(h){ return '<div class="it"><i style="background:'+esc(h.color||'#999')+'"></i><b>'+esc(h.name)+'</b> <span class="muted">· '+esc(C.fmtDate(h.at))+'</span></div>'; }).join('')+'</div></section>':'')+
     '<section class="box"><h3 class="h">🕑 '+t('attendance')+'</h3><div class="att"><div><b>'+ME.attendance.month+'</b><span class="muted">'+t('this_month')+'</span></div><div><b>'+ME.attendance.total+'</b><span class="muted">'+t('all_time')+'</span></div></div>'+
       '<div class="dots">'+ME.attendance.recent.slice(0,12).map(function(a){ return '<span>'+esc(C.fmtDate(a))+'</span>'; }).join('')+'</div></section>'+
@@ -221,6 +233,21 @@ function vProfile(){
   $('#out').onclick=async function(){ try{ await sb.rpc('club_student_logout',{p_token:tok()}); }catch(e){} setTok(''); ME=null; vLogin(); };
   $('#rf').onclick=function(){ loadMe().catch(function(e){ C.toast(C.errText(e),'e'); }); };
   $('#cpw').onclick=changePw;
+}
+function bmiOf(w,h){ w=Number(w); h=Number(h); if(!(w>0&&h>0)) return ''; return (w/((h/100)*(h/100))).toFixed(1); }
+function bodyHtml(){
+  var b=ME.body||{}, log=ME.body_log||[], inj=b.injuries||[];
+  if(b.weight_kg==null&&b.height_cm==null&&!b.body_status&&!inj.length&&!log.length) return '';
+  var bmi=bmiOf(b.weight_kg,b.height_cm);
+  return '<section class="box"><h3 class="h">💪 '+t('body')+'</h3><div class="att">'+
+    '<div><b>'+(b.weight_kg!=null?esc(b.weight_kg):'—')+'</b><span class="muted">'+t('weight')+' ('+t('kg')+')</span></div>'+
+    '<div><b>'+(b.height_cm!=null?esc(b.height_cm):'—')+'</b><span class="muted">'+t('height')+' ('+t('cm')+')</span></div>'+
+    '<div><b>'+(bmi||'—')+'</b><span class="muted">'+t('bmi')+'</span></div></div>'+
+    '<div class="kv"><div><b>'+t('body_status')+'</b>'+esc(b.body_status||'—')+'</div>'+
+    '<div style="grid-column:1/-1"><b>'+t('injuries')+'</b>'+(inj.length?'<div class="dots" style="margin-top:4px">'+inj.map(function(x){ return '<span style="background:var(--badbg);color:var(--bad)">'+esc(x)+'</span>'; }).join('')+'</div>':'<span class="muted">'+t('no_injuries')+'</span>')+'</div>'+
+    (b.injury_notes?'<div style="grid-column:1/-1">'+esc(b.injury_notes)+'</div>':'')+'</div>'+
+    (log.length>1?'<div style="margin-top:12px"><b style="font-size:13px">'+t('body_hist')+'</b>'+log.map(function(x){ return '<div class="pay"><span>'+esc(C.fmtDate(x.on))+'</span><span>'+(x.weight_kg!=null?esc(x.weight_kg)+' '+t('kg'):'')+(x.height_cm!=null?' · '+esc(x.height_cm)+' '+t('cm'):'')+(x.body_status?' · '+esc(x.body_status):'')+'</span></div>'; }).join('')+'</div>':'')+
+    '</section>';
 }
 function cardData(){ return {club:Object.assign({},PUB.club,ME.club), student:ME.student, level:ME.level, group:ME.group}; }
 function drawCard(){ C.renderCard(SIDE,cardData()).then(function(cv){ var b=$('#cardBox'); if(b){ b.innerHTML=''; b.appendChild(cv); } }).catch(function(e){ var b=$('#cardBox'); if(b) b.innerHTML='<div class="cl-msg e">'+esc(C.errText(e))+'</div>'; }); }

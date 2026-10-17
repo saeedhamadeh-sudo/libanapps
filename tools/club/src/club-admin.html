@@ -234,6 +234,25 @@ C.add({
   /* profile */
   sub_section:['الاشتراك','Subscription','Abonnement'],
   state_lbl:['الحالة','Status','Statut'],
+  body_sec:['البنية الجسدية والإصابات','Body & injuries','Condition physique et blessures'],
+  weight:['الوزن (كغ)','Weight (kg)','Poids (kg)'],
+  height:['الطول (سم)','Height (cm)','Taille (cm)'],
+  bmi:['مؤشر كتلة الجسم','BMI','IMC'],
+  body_status:['حالة البنية الجسدية','Physical condition','Condition physique'],
+  injuries:['إصابات سابقة','Past injuries','Blessures antérieures'],
+  injury_notes:['تفاصيل الإصابات / ملاحظات طبية','Injury details / medical notes','Détails des blessures / notes médicales'],
+  no_injuries:['لا يوجد إصابات مسجّلة','No injuries recorded','Aucune blessure enregistrée'],
+  body_hist:['سجل القياسات','Measurement history','Historique des mesures'],
+  body_hist_hint:['كل تعديل بالوزن أو الطول أو البنية يُحفظ تلقائيًا في السجل (قياس واحد لكل يوم).','Every change to weight, height or condition is saved to the history automatically (one entry per day).','Chaque modification du poids, de la taille ou de la condition est enregistrée automatiquement (une mesure par jour).'],
+  body_opts:['خيارات البنية الجسدية','Physical condition options','Options de condition physique'],
+  injury_opts:['خيارات الإصابات','Injury options','Options de blessures'],
+  opts_hint:['هذه الخيارات تظهر في ملف كل تلميذ. أضف أو احذف كما تريد.','These options appear in each student’s file. Add or remove as you like.','Ces options apparaissent dans la fiche de chaque élève. Ajoutez ou supprimez à volonté.'],
+  add_opt:['إضافة','Add','Ajouter'],
+  new_opt:['خيار جديد','New option','Nouvelle option'],
+  opt_exists:['هذا الخيار موجود','This option already exists','Cette option existe déjà'],
+  del_opt_q:['حذف الخيار «{o}»؟ لن يُحذف من ملفات التلاميذ الذين اختاروه سابقًا.','Delete option “{o}”? Students who already have it keep it.','Supprimer « {o} » ? Les élèves qui l’ont déjà le gardent.'],
+  manage_opts:['إدارة الخيارات','Manage options','Gérer les options'],
+  has_injury:['إصابة','Injury','Blessure'],
   monthly_fee:['القسط الشهري','Monthly fee','Mensualité'],
   add_payment:['تسجيل دفعة','Record payment','Enregistrer un paiement'],
   payments:['الدفعات','Payments','Paiements'],
@@ -386,7 +405,7 @@ C.add({
 var CFG=window.LIBANAPPS, sb=window.supabase.createClient(CFG.SUPABASE_URL,CFG.SUPABASE_ANON_KEY);
 var $=function(s,r){return (r||document).querySelector(s)}, $$=function(s,r){return Array.prototype.slice.call((r||document).querySelectorAll(s))};
 var CL=null, LIC={ok:false}, IMP=false, LV=[], GR=[], STS=[], LOGINS={}, TODAY='', TAB='dash', DASH=null;
-var STCOLS='id,code,full_name,photo_url,birth_date,gender,phone,parent_name,parent_phone,address,group_id,level_id,level_since,monthly_fee,joined_at,paid_until,username,face_count,card_token,notes,is_active,created_at';
+var STCOLS='id,code,full_name,photo_url,birth_date,gender,phone,parent_name,parent_phone,address,group_id,level_id,level_since,monthly_fee,joined_at,paid_until,username,face_count,card_token,notes,is_active,created_at,weight_kg,height_cm,body_status,injuries,injury_notes';
 var F={q:'',st:'',gr:'',lv:''};
 
 C.initLang('ar');
@@ -554,6 +573,7 @@ function paintStudents(){
     var g=grById(s.group_id), x=stStatus(s);
     return '<div class="row click" data-act="profile" data-id="'+s.id+'">'+avatar(s)+'<div class="main"><div class="nm">'+esc(s.full_name)+' <span class="muted">#'+esc(s.code)+'</span></div>'+
       '<div class="meta">'+chip(s)+(x.owed?'<b style="color:var(--bad)">'+esc(money(x.owed))+'</b>':'')+lvChip(s.level_id)+(g?'<span class="tag">'+esc(g.name)+'</span>':'')+
+      ((s.injuries||[]).length?'<span class="tag" style="background:#fee2e2;color:#b91c1c" title="'+esc((s.injuries||[]).join('، '))+'">⚕ '+t('has_injury')+'</span>':'')+
       (s.face_count?'':'<span class="tag" title="'+esc(t('no_face'))+'">🙂✕</span>')+(LOGINS[s.id]?'':'<span class="tag">'+t('no_login')+'</span>')+'</div></div>'+
       '<div class="acts"><button class="cl-btn sm" data-act="pay" data-id="'+s.id+'">'+t('pay')+'</button></div></div>';
   }).join('')||'<div class="empty">—</div>';
@@ -577,6 +597,7 @@ function studentForm(s){
       '<div class="fld"><label>'+t('joined')+'</label><input type="date" id="sJoin" value="'+esc(s.joined_at||TODAY)+'"></div>'+
       (isNew?'':'<div class="fld"><label>'+t('paid_until_edit')+'</label><input type="date" id="sPaid" value="'+esc(s.paid_until||'')+'"></div>')+
       '<div class="fld"><label>'+t('address')+'</label><input id="sAddr" value="'+esc(s.address||'')+'"></div></div>'+
+      bodyFields(s)+
       '<div class="fld"><label>'+t('notes')+'</label><textarea id="sNotes">'+esc(s.notes||'')+'</textarea></div>'+
       (isNew?'<div class="g2"><div class="fld"><label>'+t('username')+'</label><input id="sUser" dir="ltr" autocomplete="off"></div><div class="fld"><label>'+t('password')+'</label><div class="inl"><input id="sPass" dir="ltr" autocomplete="off"><button type="button" class="cl-btn alt sm" id="sGenPw">'+t('gen')+'</button></div></div></div>':'')+
       '<label class="chk"><input type="checkbox" id="sAct"'+(s.is_active===false?'':' checked')+'> '+t('is_active')+'</label>'+
@@ -588,6 +609,7 @@ function studentForm(s){
         parent_name:$('#sPName',api.el).value.trim(), parent_phone:$('#sPPhone',api.el).value.trim(), phone:$('#sPhone',api.el).value.trim(),
         gender:$('#sGen',api.el).value, monthly_fee:$('#sFee',api.el).value===''?null:Number($('#sFee',api.el).value),
         joined_at:$('#sJoin',api.el).value||TODAY, address:$('#sAddr',api.el).value.trim(), notes:$('#sNotes',api.el).value.trim(), is_active:$('#sAct',api.el).checked };
+      Object.assign(row, readBody(api.el));
       if(!isNew){ row.paid_until=$('#sPaid',api.el).value||null; }
       if(isNew){ var u0=$('#sUser',api.el).value.trim().toLowerCase();
         if(u0&&!/^[a-z0-9._-]{3,30}$/.test(u0)){ api.msg(C.errText('invalid username'),'e'); return false; }
@@ -607,6 +629,7 @@ function studentForm(s){
       if(isNew) setTimeout(function(){ openProfile(saved.id); },150); else refreshProfile();
     }});
   $('#sGen',m.el).value=s.gender||'';
+  wireBody(m.el);
   function hint(){ var g=grById($('#sGr',m.el).value); $('#feeHint',m.el).textContent=t('fee_default_hint',{v:money(g&&g.monthly_fee!=null?g.monthly_fee:CL.default_fee)}); }
   $('#sGr',m.el).onchange=hint; hint();
   function setPrev(blob){ newPhoto=blob; $('#pv',m.el).innerHTML='<img class="pv" src="'+URL.createObjectURL(blob)+'">'; }
@@ -630,9 +653,10 @@ async function refreshProfile(){
     sb.from('club_payments').select('*').eq('student_id',id).order('created_at',{ascending:false}).limit(100),
     sb.from('club_achievements').select('*').eq('student_id',id).order('event_date',{ascending:false,nullsFirst:false}),
     sb.from('club_level_history').select('*').eq('student_id',id).order('changed_at',{ascending:false}).limit(30),
-    sb.from('club_attendance').select('*').eq('student_id',id).order('at',{ascending:false}).limit(20)
+    sb.from('club_attendance').select('*').eq('student_id',id).order('at',{ascending:false}).limit(20),
+    sb.from('club_body_log').select('*').eq('student_id',id).order('measured_on',{ascending:false}).limit(24)
   ]);
-  var pays=chk(r[0])||[], ach=chk(r[1])||[], lvh=chk(r[2])||[], att=chk(r[3])||[];
+  var pays=chk(r[0])||[], ach=chk(r[1])||[], lvh=chk(r[2])||[], att=chk(r[3])||[], blog=chk(r[4])||[];
   var x=stStatus(s), g=grById(s.group_id), PB=$('#profBody',PROF.el); if(!PB) return;
   PB.innerHTML=
     '<div class="prof-h">'+(s.photo_url?'<img src="'+esc(C.imgUrl(s.photo_url,320))+'">':'<div class="ph">'+esc(C.initials(s.full_name))+'</div>')+
@@ -648,6 +672,7 @@ async function refreshProfile(){
       (s.birth_date?'<div><b>'+t('birth')+'</b>'+esc(C.fmtDate(s.birth_date))+'</div>':'')+
       (g&&g.schedule?'<div><b>'+t('schedule')+'</b>'+esc(g.schedule)+(g.coach?' · '+esc(g.coach):'')+'</div>':'')+
       (s.notes?'<div style="grid-column:1/-1"><b>'+t('notes')+'</b>'+esc(s.notes)+'</div>':'')+'</div></div>'+
+    bodySection(s,blog)+
     '<div class="sec"><h4>'+t('payments')+'<span class="sp"></span></h4>'+(pays.length?'<div class="scrollx"><table class="t"><tr><th>'+t('date')+'</th><th>'+t('period')+'</th><th>'+t('amount')+'</th><th>'+t('method')+'</th><th></th></tr>'+
       pays.map(function(p){ return '<tr><td>'+esc(C.fmtDate(p.created_at))+'</td><td>'+esc(C.fmtDate(p.period_from))+' – '+esc(C.fmtDate(p.period_to))+' <span class="muted">('+p.months+')</span></td><td><b>'+esc(money(p.amount))+'</b></td><td>'+esc(t('m_'+p.method))+(p.note?' <span class="muted">'+esc(p.note)+'</span>':'')+'</td><td><button class="cl-btn ghost sm" data-act="del-pay" data-id="'+p.id+'">✕</button></td></tr>'; }).join('')+'</table></div>':'<div class="muted">'+t('no_payments')+'</div>')+'</div>'+
     '<div class="sec"><h4>🏅 '+t('medals')+'<span class="sp"></span><button class="cl-btn alt sm" data-act="new-medal" data-id="'+s.id+'">+ '+t('add_medal')+'</button></h4>'+(ach.length?ach.map(medalRow).join(''):'<div class="muted">'+t('no_medals')+'</div>')+'</div>'+
@@ -809,7 +834,63 @@ function vSetup(){
   $('#main').innerHTML='<div class="cols2"><div class="card"><div class="hd"><h2 style="font-size:17px">'+t('levels')+'</h2><div class="sp"></div><button class="cl-btn sm" data-act="new-lv">+ '+t('add_level')+'</button></div>'+
     (LV.length?LV.map(function(l){ var n=STS.filter(function(s){return s.level_id===l.id}).length; return '<div class="row"><span class="lv" style="background:'+esc(l.color)+';color:'+C.readable(l.color)+';min-width:70px;text-align:center">'+esc(l.name)+'</span><div class="main muted">'+t('n_students',{n:n})+'</div><button class="cl-btn ghost sm" data-act="edit-lv" data-id="'+l.id+'">✎</button></div>'; }).join(''):'<div class="empty">—</div>')+'</div>'+
     '<div class="card"><div class="hd"><h2 style="font-size:17px">'+t('groups')+'</h2><div class="sp"></div><button class="cl-btn sm" data-act="new-gr">+ '+t('add_group')+'</button></div>'+
-    (GR.length?GR.map(function(g){ var n=STS.filter(function(s){return s.group_id===g.id}).length; return '<div class="row"><div class="main"><div class="nm">'+esc(g.name)+'</div><div class="meta">'+(g.schedule?esc(g.schedule)+' · ':'')+(g.coach?esc(g.coach)+' · ':'')+esc(money(g.monthly_fee!=null?g.monthly_fee:CL.default_fee))+' · '+t('n_students',{n:n})+'</div></div><button class="cl-btn ghost sm" data-act="edit-gr" data-id="'+g.id+'">✎</button></div>'; }).join(''):'<div class="empty">—</div>')+'</div></div>';
+    (GR.length?GR.map(function(g){ var n=STS.filter(function(s){return s.group_id===g.id}).length; return '<div class="row"><div class="main"><div class="nm">'+esc(g.name)+'</div><div class="meta">'+(g.schedule?esc(g.schedule)+' · ':'')+(g.coach?esc(g.coach)+' · ':'')+esc(money(g.monthly_fee!=null?g.monthly_fee:CL.default_fee))+' · '+t('n_students',{n:n})+'</div></div><button class="cl-btn ghost sm" data-act="edit-gr" data-id="'+g.id+'">✎</button></div>'; }).join(''):'<div class="empty">—</div>')+'</div></div>'+
+    '<div class="cols2" style="margin-top:16px">'+optCard('body_options','body_opts')+optCard('injury_options','injury_opts')+'</div>';
+}
+function optCard(col,title){
+  var list=CL[col]||[];
+  return '<div class="card" id="opt-'+col+'"><div class="hd"><h2 style="font-size:17px">'+t(title)+'</h2></div><p class="muted" style="margin-top:-6px">'+t('opts_hint')+'</p>'+
+    '<div class="inl" style="flex-wrap:wrap;gap:6px;margin-bottom:12px">'+(list.length?list.map(function(o,i){ var n=STS.filter(function(s){ return col==='body_options'?s.body_status===o:(s.injuries||[]).indexOf(o)>=0; }).length;
+      return '<span class="chip none" style="font-size:13.5px;padding:5px 6px 5px 12px;gap:8px">'+esc(o)+(n?' <span class="muted">('+n+')</span>':'')+'<button class="cl-btn ghost sm" style="padding:0 7px;border:0" data-act="del-opt" data-col="'+col+'" data-i="'+i+'" aria-label="'+esc(t('del'))+'">✕</button></span>'; }).join(''):'<span class="muted">—</span>')+'</div>'+
+    '<div class="inl"><input id="optIn-'+col+'" placeholder="'+esc(t('new_opt'))+'" maxlength="60"><button class="cl-btn sm" data-act="add-opt" data-col="'+col+'">+ '+t('add_opt')+'</button></div><div class="cl-msg" id="optMsg-'+col+'"></div></div>';
+}
+var OPTM=null;
+function afterOpts(){ if(OPTM){ OPTM.body.querySelector('#optBody').innerHTML=optCard('body_options','body_opts')+optCard('injury_options','injury_opts'); } if(TAB==='setup'&&!OPTM) render(); }
+/* إدارة الخيارات فوق نموذج التلميذ — بدون ما يضيع شي من النموذج */
+function optionsModal(formEl){
+  OPTM=C.modal({title:t('manage_opts'),wide:true,body:'<div id="optBody" class="cols2">'+optCard('body_options','body_opts')+optCard('injury_options','injury_opts')+'</div>',
+    onClose:function(){ OPTM=null; if(TAB==='setup') render();
+      var box=formEl&&formEl.querySelector('#bodyBox'); if(!box) return;
+      var cur=readBody(formEl); var tmp=document.createElement('div'); tmp.innerHTML=bodyFields(cur);
+      box.replaceWith(tmp.firstChild); wireBody(formEl); }});
+}
+async function saveOpts(col,list){
+  var row={}; row[col]=list;
+  CL=chk(await sb.from('clubs').update(row).eq('id',CL.id).select('*').single());
+}
+
+/* ---------- البنية الجسدية: حقول النموذج ---------- */
+function bmiOf(w,h){ w=Number(w); h=Number(h); if(!(w>0&&h>0)) return ''; return (w/((h/100)*(h/100))).toFixed(1); }
+function bodyFields(s){
+  var bo=(CL.body_options||[]).slice(), io=(CL.injury_options||[]).slice(), inj=s.injuries||[];
+  if(s.body_status&&bo.indexOf(s.body_status)<0) bo.push(s.body_status);
+  inj.forEach(function(x){ if(io.indexOf(x)<0) io.push(x); });
+  return '<div class="sec" id="bodyBox" style="margin-top:4px;padding-top:12px;border-top:1px solid var(--line)"><h4>⚕ '+t('body_sec')+'<span class="sp"></span><button type="button" class="cl-btn ghost sm" data-act="manage-opts">'+t('manage_opts')+'</button></h4>'+
+    '<div class="g3"><div class="fld"><label>'+t('weight')+'</label><input type="number" min="0" max="300" step="0.1" id="bW" inputmode="decimal" value="'+(s.weight_kg!=null?esc(s.weight_kg):'')+'"></div>'+
+    '<div class="fld"><label>'+t('height')+'</label><input type="number" min="0" max="250" step="0.1" id="bH" inputmode="decimal" value="'+(s.height_cm!=null?esc(s.height_cm):'')+'"></div>'+
+    '<div class="fld"><label>'+t('bmi')+'</label><input id="bBmi" readonly tabindex="-1" style="background:#f8fafc" value="'+bmiOf(s.weight_kg,s.height_cm)+'"></div></div>'+
+    '<div class="fld"><label>'+t('body_status')+'</label><select id="bS"><option value="">—</option>'+bo.map(function(o){ return '<option'+(o===s.body_status?' selected':'')+'>'+esc(o)+'</option>'; }).join('')+'</select></div>'+
+    '<div class="fld"><label>'+t('injuries')+'</label><div class="inl" style="flex-wrap:wrap;gap:6px 14px" id="bInj">'+(io.length?io.map(function(o){ return '<label class="chk" style="font-weight:600"><input type="checkbox" value="'+esc(o)+'"'+(inj.indexOf(o)>=0?' checked':'')+'> '+esc(o)+'</label>'; }).join(''):'<span class="muted">—</span>')+'</div></div>'+
+    '<div class="fld"><label>'+t('injury_notes')+'</label><textarea id="bN" style="min-height:60px">'+esc(s.injury_notes||'')+'</textarea></div></div>';
+}
+function wireBody(root){
+  function upd(){ $('#bBmi',root).value=bmiOf($('#bW',root).value,$('#bH',root).value); }
+  $('#bW',root).oninput=upd; $('#bH',root).oninput=upd;
+}
+function readBody(root){
+  function n(id){ var v=$(id,root).value; return v===''?null:Math.round(Number(v)*10)/10; }
+  return { weight_kg:n('#bW'), height_cm:n('#bH'), body_status:$('#bS',root).value,
+    injuries:Array.prototype.map.call(root.querySelectorAll('#bInj input:checked'),function(x){return x.value}), injury_notes:$('#bN',root).value.trim() };
+}
+function bodySection(s,blog){
+  var inj=s.injuries||[], bmi=bmiOf(s.weight_kg,s.height_cm);
+  return '<div class="sec"><h4>⚕ '+t('body_sec')+'<span class="sp"></span><button class="cl-btn alt sm" data-act="edit-st" data-id="'+s.id+'">✎ '+t('edit')+'</button></h4><div class="kv">'+
+    '<div><b>'+t('weight')+'</b>'+(s.weight_kg!=null?esc(s.weight_kg):'—')+'</div><div><b>'+t('height')+'</b>'+(s.height_cm!=null?esc(s.height_cm):'—')+'</div>'+
+    '<div><b>'+t('bmi')+'</b>'+(bmi||'—')+'</div><div><b>'+t('body_status')+'</b>'+esc(s.body_status||'—')+'</div>'+
+    '<div style="grid-column:1/-1"><b>'+t('injuries')+'</b>'+(inj.length?'<div class="inl" style="flex-wrap:wrap;gap:6px;margin-top:4px">'+inj.map(function(x){ return '<span class="chip expired">'+esc(x)+'</span>'; }).join('')+'</div>':'<span class="muted">'+t('no_injuries')+'</span>')+'</div>'+
+    (s.injury_notes?'<div style="grid-column:1/-1"><b>'+t('injury_notes')+'</b>'+esc(s.injury_notes)+'</div>':'')+'</div>'+
+    (blog.length?'<div style="margin-top:12px"><b style="font-size:13px">'+t('body_hist')+'</b><div class="scrollx"><table class="t"><tr><th>'+t('date')+'</th><th>'+t('weight')+'</th><th>'+t('height')+'</th><th>'+t('bmi')+'</th><th>'+t('body_status')+'</th></tr>'+
+      blog.map(function(b){ return '<tr><td>'+esc(C.fmtDate(b.measured_on))+'</td><td>'+(b.weight_kg!=null?esc(b.weight_kg):'—')+'</td><td>'+(b.height_cm!=null?esc(b.height_cm):'—')+'</td><td>'+(bmiOf(b.weight_kg,b.height_cm)||'—')+'</td><td>'+esc(b.body_status||'—')+'</td></tr>'; }).join('')+'</table></div><p class="muted" style="margin:6px 0 0">'+t('body_hist_hint')+'</p></div>':'')+'</div>';
 }
 function levelForm(l){ l=l||{color:'#64748b',sort:(LV.length?LV[LV.length-1].sort+1:1)};
   C.modal({title:l.id?t('edit'):t('add_level'),body:'<div class="fld"><label>'+t('lv_name')+'</label><input id="lN" value="'+esc(l.name||'')+'"></div><div class="g2"><div class="fld"><label>'+t('color')+'</label><div class="inl"><input type="color" id="lC" value="'+esc(l.color)+'"><input id="lCt" dir="ltr" value="'+esc(l.color)+'"></div></div><div class="fld"><label>'+t('order')+'</label><input type="number" id="lS" value="'+esc(l.sort)+'"></div></div>',
@@ -928,12 +1009,21 @@ document.addEventListener('click',async function(e){
   else if(act==='card-pdf'){ var s=stById(id); el.disabled=true; try{ C.download(await C.cardsPdf([cardData(s)],'cr80'),'card-'+s.code+'.pdf'); }catch(er){ C.toast(C.errText(er),'e'); } finally{ el.disabled=false; } }
   else if(act==='new-qr'){ if(!(await C.confirmBox(t('new_qr_q'),t('yes'),true))) return; try{ chk(await sb.rpc('club_new_card_token',{p_student:id})); await reloadStudents(); refreshProfile(); }catch(er){ C.toast(C.errText(er),'e'); } }
   else if(act==='manual-att') manualAtt();
+  else if(act==='manage-opts') optionsModal(el.closest('.cl-modal'));
+  else if(act==='add-opt'){ var col=el.getAttribute('data-col'), inp=el.parentNode.querySelector('input'), v=(inp.value||'').trim(), mm=el.closest('.card').querySelector('.cl-msg'); if(!v) return;
+    var list=(CL[col]||[]).slice(); if(list.indexOf(v)>=0){ mm.className='cl-msg e'; mm.textContent=t('opt_exists'); return; }
+    list.push(v); el.disabled=true; try{ await saveOpts(col,list); afterOpts(); }catch(er){ mm.className='cl-msg e'; mm.textContent=C.errText(er); el.disabled=false; } }
+  else if(act==='del-opt'){ var col2=el.getAttribute('data-col'), i2=+el.getAttribute('data-i'), list2=(CL[col2]||[]).slice(), o=list2[i2];
+    if(!(await C.confirmBox(t('del_opt_q',{o:o}),t('del'),true))) return; list2.splice(i2,1); try{ await saveOpts(col2,list2); afterOpts(); }catch(er){ C.toast(C.errText(er),'e'); } }
   else if(act==='new-lv') levelForm(null);
   else if(act==='edit-lv') levelForm(lvById(id));
   else if(act==='new-gr') groupForm(null);
   else if(act==='edit-gr') groupForm(grById(id));
   else if(act==='new-door') newDoor();
   else if(act==='revoke-door'){ if(!(await C.confirmBox(t('revoke_q'),t('revoke'),true))) return; try{ chk(await sb.rpc('club_revoke_door',{p_door:id})); render(); }catch(er){ C.toast(C.errText(er),'e'); } }
+});
+document.addEventListener('keydown',function(e){
+  if(e.key==='Enter'&&e.target.id&&e.target.id.indexOf('optIn-')===0){ e.preventDefault(); var b=e.target.parentNode.querySelector('[data-act=add-opt]'); if(b) b.click(); }
 });
 document.addEventListener('input',function(e){
   if(e.target.id==='fQ'){ F.q=e.target.value; paintStudents(); }
