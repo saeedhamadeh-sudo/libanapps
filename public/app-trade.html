@@ -6012,7 +6012,7 @@ function journalEntriesForRange(from, to){
       const isLBP = posSaleCurrency(i)==='LBP';
       if(isLBP){ lbp = total * (i.exchangeRate || DB.settings.defaultExchangeRate || 90000); usd = 0; }
     }
-    rows.push({cat: debt? 'custDebt' : 'in', date:i.date, createdAt:i.createdAt||0, type:onAcc? 'بيع POS على الحساب (دين)' : (i.docType||'فاتورة'), party:cust?cust.name:'—', usd, lbp, debt,
+    rows.push({cat: debt? 'custDebt' : 'cashSale', date:i.date, createdAt:i.createdAt||0, type:onAcc? 'بيع POS على الحساب (دين)' : (i.docType||'فاتورة'), party:cust?cust.name:'—', usd, lbp, debt,
       nav: isPos? null : `#/invoice/${i.id}`, reprintPosId: isPos? i.id : null, cashierUsername: i.cashierUsername||''});
   });
   DB.purchaseInvoices.filter(i=>!i.deleted && i.date>=from && i.date<=to).forEach(i=>{
@@ -6027,13 +6027,13 @@ function journalEntriesForRange(from, to){
     const isLBP = !/\$/.test(r.method||'');
     const amt = Number(r.amount)||0;
     const m = String(r.details||'').match(/#(\S+)/);
-    rows.push({cat:'in', date:r.date, createdAt:r.createdAt||0, type:'دفعة من فاتورة على الحساب'+(m?' #'+m[1]:''), party:cust?cust.name:'—', usd:isLBP?0:amt, lbp:isLBP?amt:0, nav:null});
+    rows.push({cat:'custRcpt', date:r.date, createdAt:r.createdAt||0, type:'دفعة من فاتورة على الحساب'+(m?' #'+m[1]:''), party:cust?cust.name:'—', usd:isLBP?0:amt, lbp:isLBP?amt:0, nav:null});
   });
   DB.receipts.filter(r=>!r.deleted && r.date>=from && r.date<=to && !isPosReceipt(r)).forEach(r=>{
     const cust = DB.customers.find(c=>c.id===r.customerId);
     const isLBP = /ل\.ل/.test(r.method||'');
     const amt = Number(r.amount)||0;
-    rows.push({cat:'in', date:r.date, createdAt:r.createdAt||0, type:'إيصال قبض ('+(r.method||'')+')', party:cust?cust.name:'—', usd:isLBP?0:amt, lbp:isLBP?amt:0, nav:null});
+    rows.push({cat:'custRcpt', date:r.date, createdAt:r.createdAt||0, type:'إيصال قبض ('+(r.method||'')+')', party:cust?cust.name:'—', usd:isLBP?0:amt, lbp:isLBP?amt:0, nav:null});
   });
   DB.paymentVouchers.filter(v=>!v.deleted && v.date>=from && v.date<=to).forEach(v=>{
     const sup = DB.suppliers.find(s=>s.id===v.supplierId);
@@ -6046,7 +6046,7 @@ function journalEntriesForRange(from, to){
     const isLBP = m.currency==='LBP';
     const signed = m.type==='deposit'? Math.abs(m.amount) : -Math.abs(m.amount);
     const label = m.type==='deposit'?'إضافة يدوية للصندوق':m.type==='withdraw'?'سحب يدوي من الصندوق':'استرجاع POS';
-    rows.push({cat: m.type==='deposit'? 'in' : 'out', date:m.date, createdAt:m.createdAt||0, type:label, party:m.note||'—', usd:isLBP?0:signed, lbp:isLBP?signed:0, nav:null});
+    rows.push({cat: m.type==='deposit'? 'deposit' : 'out', date:m.date, createdAt:m.createdAt||0, type:label, party:m.note||'—', usd:isLBP?0:signed, lbp:isLBP?signed:0, nav:null});
   });
   // دفعات العمال
   (DB.workerPayments||[]).filter(p=>!p.deleted && p.date>=from && p.date<=to).forEach(p=>{
@@ -6054,6 +6054,14 @@ function journalEntriesForRange(from, to){
     const isLBP = /ل\.ل|LBP/.test(p.method||'');
     const amt = Number(p.amount)||0;
     rows.push({cat:'payWk', date:p.date, createdAt:p.createdAt||0, type:'دفعة عامل'+(p.method? ' ('+p.method+')' : ''), party:wk?wk.name:'—', usd:isLBP?0:-amt, lbp:isLBP?-amt:0, nav:null});
+  });
+  // سندات الميزانية اليدوية (محروقات، تصليح آليات، إيجار، دخل آخر...) — كل حقل بعامود لحالو
+  (DB.budgetEntries||[]).filter(e=>!e.deleted && e.date>=from && e.date<=to).forEach(e=>{
+    const c = (DB.budgetCategories||[]).find(x=>x.id===e.categoryId);
+    if(!c || c.auto) return;                 // الحقول التلقائية (إيصالات، سندات، عمال) محسوبة فوق
+    const amt = Math.abs(Number(e.amount)||0);
+    const sign = c.type==='income' ? 1 : -1;
+    rows.push({cat:'bud:'+c.id, budName:c.name, budType:c.type, date:e.date, createdAt:e.createdAt||0, type:(c.type==='income'?'دخل: ':'مصروف: ')+c.name, party:e.note||'—', usd:sign*amt, lbp:0, nav:null});
   });
   // رصيد افتتاح الصناديق (المبلغ يلي انحط وقت فتح الصندوق)
   (DB.cashierShifts||[]).forEach(sh=>{
@@ -6064,20 +6072,36 @@ function journalEntriesForRange(from, to){
     if(!ou && !ol) return;
     rows.push({cat:'open', date:d, createdAt:sh.openedAt, type:'رصيد افتتاح صندوق', party:sh.username||'—', usd:ou, lbp:ol, nav:null});
   });
-  rows.forEach(r=>{ if(r.debt===undefined) r.debt = 0; if(r.supDebt===undefined) r.supDebt = 0; if(!r.cat) r.cat = 'in'; });
+  rows.forEach(r=>{ if(r.debt===undefined) r.debt = 0; if(r.supDebt===undefined) r.supDebt = 0; if(!r.cat) r.cat = 'custRcpt'; });
   rows.sort((a,b)=> a.date!==b.date? (a.date<b.date?1:-1) : (b.createdAt-a.createdAt));
   return rows;
 }
 // عرض اليومية: عامود لكل نوع حركة، والعملة حسب الإعدادات (دولار / ليرة / الاثنين)، والعواميد الفاضية بتختفي
+// inflow: يزيد الصندوق — outflow: ينقصه — cash:false: دين (عامود لحالو، ما بيدخل بالصافي)
 const JOURNAL_CATS = [
-  {key:'open',     label:'رصيد افتتاح', cash:true},
-  {key:'in',       label:'مقبوضات', cash:true},
+  {key:'open',     label:'رصيد افتتاح', cash:true, inflow:true},
+  {key:'cashSale', label:'مبيعات نقدية', cash:true, inflow:true},
+  {key:'custRcpt', label:'إيصالات الزبائن', cash:true, inflow:true},
+  {key:'deposit',  label:'إضافة للصندوق', cash:true, inflow:true},
   {key:'paySup',   label:'دفعات موردين', cash:true},
   {key:'payWk',    label:'دفعات عمال', cash:true},
   {key:'out',      label:'سحب ومرتجعات', cash:true},
   {key:'custDebt', label:'دين على الزبائن', cash:false},
   {key:'supDebt',  label:'مشتريات على الحساب', cash:false}
 ];
+// عواميد الميزانية (دخل ومصاريف يدوية) تنضاف حسب الحقول المستعملة بالفترة
+function journalCatsFor(rows){
+  const base = JOURNAL_CATS.slice();
+  const seen = new Set();
+  const inc = [], exp = [];
+  rows.forEach(r=>{ if(String(r.cat).startsWith('bud:') && !seen.has(r.cat)){ seen.add(r.cat);
+    (r.budType==='income' ? inc : exp).push({key:r.cat, label:r.budName, cash:true, inflow:r.budType==='income'}); } });
+  const at = base.findIndex(c=>c.key==='paySup');
+  base.splice(at, 0, ...inc);                       // الدخل بعد المقبوضات
+  const at2 = base.findIndex(c=>c.key==='custDebt');
+  base.splice(at2, 0, ...exp);                      // المصاريف بعد المدفوعات
+  return base;
+}
 function journalCurrencyMode(){ const m = DB.settings && DB.settings.journalCurrency; return (m==='USD' || m==='LBP') ? m : 'both'; }
 function journalTableHtml(rows){
   const mode = journalCurrencyMode();
@@ -6100,21 +6124,23 @@ function journalTableHtml(rows){
     return sub==='usd' ? v.usd + v.lbp/rate : v.lbp + v.usd*rate;
   };
   const cols = [];
-  JOURNAL_CATS.forEach(c=>{
+  const CATS = journalCatsFor(rows);
+  CATS.forEach(c=>{
     const used = rows.some(r=>{ const v = cellVals(r,c); return v && (v.usd || v.lbp); });
-    if(!used && c.key!=='in') return;
+    if(!used && c.key!=='custRcpt') return;
     subCols(c).forEach(sub=>{
       // بوضع العملتين: عامود العملة الفاضي لهالنوع ما بيظهر (إلا المقبوضات)
-      if(mode==='both' && c.cash && c.key!=='in' && !rows.some(r=>{ const v = cellVals(r,c); return v && v[sub]; })) return;
+      if(mode==='both' && c.cash && c.key!=='custRcpt' && !rows.some(r=>{ const v = cellVals(r,c); return v && v[sub]; })) return;
       cols.push({c, sub, title: c.label + (sub==='usd' ? ' $' : ' '+L)});
     });
   });
   const fmt = (n, sub)=> !n ? '—' : (n<0?'-':'') + (sub==='usd' ? '$'+Math.abs(n).toFixed(2) : fmtNum(Math.abs(Math.round(n))));
-  const color = c=> c.key==='open'||c.key==='in' ? 'var(--credit)' : (c.cash ? 'var(--debit)' : 'var(--bronze-deep, #8a5a1a)');
+  const color = c=> c.inflow ? 'var(--credit)' : (c.cash ? 'var(--debit)' : 'var(--bronze-deep, #8a5a1a)');
   const totals = cols.map(col=> rows.reduce((s,r)=> s + pick(cellVals(r,col.c), col.sub, col.c), 0));
   // صافي الصندوق = افتتاح + مقبوضات − (دفعات موردين + عمال + سحب ومرتجعات)
-  const net = sub=> rows.reduce((s,r)=>{ const c = JOURNAL_CATS.find(x=>x.key===r.cat); if(!c || !c.cash) return s;
-      const v = pick(cellVals(r,c), sub, c); return s + ((c.key==='open'||c.key==='in') ? v : -v); }, 0);
+  const net = sub=> rows.reduce((s,r)=>{ const c = CATS.find(x=>x.key===r.cat); if(!c || !c.cash) return s;
+      const v = pick(cellVals(r,c), sub, c); return s + (c.inflow ? v : -v); }, 0);
+  const sumKind = (sub, inflow)=> rows.reduce((s,r)=>{ const c = CATS.find(x=>x.key===r.cat); if(!c || !c.cash || !!c.inflow!==inflow) return s; return s + pick(cellVals(r,c), sub, c); }, 0);
   const netSubs = mode==='both' ? ['usd','lbp'] : [mode==='USD' ? 'usd' : 'lbp'];
   return `<div class="table-scroll"><table>
       <thead><tr><th>التاريخ</th><th>النوع</th><th>الطرف</th>${cols.map(col=>`<th style="white-space:nowrap;">${escapeHtml(col.title)}</th>`).join('')}</tr></thead>
@@ -6129,12 +6155,20 @@ function journalTableHtml(rows){
       </tr></tfoot>
     </table></div>
     <div style="display:flex; flex-wrap:wrap; gap:10px; margin-top:12px;">
-      <div style="flex:1; min-width:220px; background:var(--bg-2); border:1px solid var(--line); border-radius:8px; padding:10px 12px;">
-        <div style="font-size:12px; color:var(--ink-soft);">💵 صافي الصندوق (افتتاح + مقبوضات − مدفوعات)</div>
+      <div style="flex:1; min-width:180px; background:var(--bg-2); border:1px solid var(--line); border-radius:8px; padding:10px 12px;">
+        <div style="font-size:12px; color:var(--ink-soft);">⬇ كل ما دخل الصندوق</div>
+        <div style="font-size:16px; font-weight:800; color:var(--credit); display:flex; gap:14px; flex-wrap:wrap;">${netSubs.map(sub=>`<span class="num" dir="ltr">${sub==='usd'? fmt(sumKind(sub,true),'usd') : fmt(sumKind(sub,true),'lbp')+' '+L}</span>`).join('')}</div>
+      </div>
+      <div style="flex:1; min-width:180px; background:var(--bg-2); border:1px solid var(--line); border-radius:8px; padding:10px 12px;">
+        <div style="font-size:12px; color:var(--ink-soft);">⬆ كل ما خرج من الصندوق (دفعات ومصاريف)</div>
+        <div style="font-size:16px; font-weight:800; color:var(--debit); display:flex; gap:14px; flex-wrap:wrap;">${netSubs.map(sub=>`<span class="num" dir="ltr">${sub==='usd'? fmt(sumKind(sub,false),'usd') : fmt(sumKind(sub,false),'lbp')+' '+L}</span>`).join('')}</div>
+      </div>
+      <div style="flex:1; min-width:220px; background:var(--bg-2); border:2px solid var(--line); border-radius:8px; padding:10px 12px;">
+        <div style="font-size:12px; color:var(--ink-soft);">💵 صافي الصندوق (الداخل − الخارج)</div>
         <div style="font-size:18px; font-weight:800; display:flex; gap:18px; flex-wrap:wrap;">${netSubs.map(sub=>`<span class="num" dir="ltr" style="color:${net(sub)<0?'var(--debit)':'var(--credit)'}">${sub==='usd' ? fmt(net(sub),'usd') : (net(sub)? fmt(net(sub),'lbp') : '0')+' '+L}</span>`).join('')}</div>
       </div>
     </div>
-    <div style="font-size:11.5px; color:var(--ink-soft); margin-top:8px;">عواميد الصندوق = مصاري فاتت أو طلعت فعلياً. «دين على الزبائن» و«مشتريات على الحساب» فواتير دين — كل واحد بعامود ومجموع لحالو، وما بينحسبو بالصندوق. العواميد يلي ما فيها حركة بالفترة ما بتظهر — وعملة العرض من الإعدادات.</div>`;
+    <div style="font-size:11.5px; color:var(--ink-soft); margin-top:8px;">العواميد الخضرا دخلت الصندوق والحمرا طلعت منه (دفعات موردين وعمال، سحب، ومصاريف الميزانية مثل المحروقات وتصليح الآليات — كل حقل بعامود). «دين على الزبائن» و«مشتريات على الحساب» فواتير دين بعامود لحالها وما بتدخل بالصافي. العواميد الفاضية بالفترة ما بتظهر — وعملة العرض من الإعدادات.</div>`;
 }
 function journalView(qs){
   const period = qs.get('period')||'day';
