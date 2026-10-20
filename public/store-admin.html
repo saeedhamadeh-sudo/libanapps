@@ -2229,6 +2229,8 @@ function renderSettings(){
    '<div class="g3"><label class="f"><span>'+L('رسوم التوصيل الافتراضية','Default delivery fee')+'</span><input type="number" step="any" min="0" id="sFee" value="'+esc(s.delivery_fee)+'"><small>'+L('بتنطبق إذا ما حطيت مناطق شحن','Used when there are no shipping zones')+'</small></label>'+
    '<label class="f"><span>'+L('توصيل مجاني للطلبات فوق','Free delivery over')+'</span><input type="number" step="any" min="0" id="sFree" value="'+esc(s.free_delivery_over==null?'':s.free_delivery_over)+'"><small>'+L('فاضي = بلا','Empty = never')+'</small></label>'+
    '<label class="f"><span>'+L('الحد الأدنى للطلب','Minimum order')+'</span><input type="number" step="any" min="0" id="sMin" value="'+esc(s.min_order)+'"></label></div>'+
+   '<label class="sw" style="margin-top:14px"><input type="checkbox" id="sPhV"'+(s.phone_verify_enabled?' checked':'')+'>'+L('تأكيد رقم واتساب الزبون بكود قبل تثبيت الطلب','Verify customer WhatsApp number with a code before placing the order')+'</label>'+
+   '<small class="muted">'+L('بيمنع وصول طلبات برقم غلط/ناقص — بيتطلب ربط واتساب بالمنصة.','Prevents orders with a wrong/incomplete number — requires WhatsApp sending to be set up on the platform.')+'</small>'+
    '<h3 style="font-size:15px;margin-top:6px">'+L('مناطق الشحن','Shipping zones')+' <small>'+L('اختياري — رسوم لكل منطقة','optional — a fee per zone')+'</small></h3><div class="rows" id="znRows">'+zoneRows()+'</div><button class="btn alt sm" id="znAdd" style="margin-top:10px">+ '+L('إضافة منطقة','Add zone')+'</button></div>'+
 
    '<div class="card"><h3>'+L('دليل المقاسات','Size guide')+'</h3><p class="sub">'+L('بيظهر برابط «دليل المقاسات» بصفحة المنتج.','Shown via a “Size guide” link on product pages.')+'</p><label class="f"><textarea id="sSG" style="min-height:110px">'+esc(s.size_guide||'')+'</textarea></label></div>'+
@@ -2262,7 +2264,7 @@ async function saveSettings(){
     var zones=setZones.filter(function(z){return String(z.n).trim()}).map(function(z){return {n:String(z.n).trim(),f:Number(z.f)||0}});
     var o={name:nm,tagline:$('#sTag').value.trim(),store_type:setType,country_code:$('#sCty').value,whatsapp:normPhone($('#sWa').value,dial),phone:$('#sPh').value.trim(),email:$('#sEm').value.trim(),
       address:$('#sAd').value.trim(),footer_note:$('#sFt').value.trim(),currency_code:code,currency_symbol:$('#sSym').value.trim()||CUR[code][0],currency_decimals:CUR[code][1],
-      delivery_enabled:$('#sDel').checked,pickup_enabled:$('#sPick').checked,delivery_fee:num($('#sFee').value)||0,free_delivery_over:num($('#sFree').value),min_order:num($('#sMin').value)||0,
+      delivery_enabled:$('#sDel').checked,pickup_enabled:$('#sPick').checked,delivery_fee:num($('#sFee').value)||0,free_delivery_over:num($('#sFree').value),min_order:num($('#sMin').value)||0,phone_verify_enabled:$('#sPhV').checked,
       shipping_zones:zones,size_guide:$('#sSG').value.trim(),seo_title:$('#sSeoT').value.trim(),seo_desc:$('#sSeoD').value.trim(),logo_height:Number($('#sLH').value)||44,
       instagram:$('#sIg').value.trim(),facebook:$('#sFb').value.trim(),tiktok:$('#sTk').value.trim(),is_active:$('#sAct').checked};
     if(!o.delivery_enabled&&!o.pickup_enabled) throw new Error(L('فعّل التوصيل أو الاستلام من المتجر','Enable delivery or store pickup'));

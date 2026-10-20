@@ -856,6 +856,20 @@ function waEnabled(env) {
   const keyOk = prov !== 'verifyway' || !!String(env.VERIFYWAY_API_KEY || '').trim();
   return String(env.WA_ENABLED || '') === '1' && !!prov && keyOk;
 }
+// POST /api/checkout-otp/verify  { phone, code } — تأكيد رقم الزبون عند تثبيت الطلب،
+// بنفس أكواد تسجيل الدخول بواتساب (phone_otps) بس بدون إنشاء أي حساب — store_place_order
+// بيتحقّق لاحقًا إنه الرقم فعلاً انأكّد (used_at) قبل ما يقبل الطلب.
+async function checkoutOtpVerify(request, env) {
+  let body; try { body = await request.json(); } catch { return json(400, { error: 'bad json' }); }
+  const phone = normPhone(body.phone);
+  const code = String(body.code || '').replace(/\D/g, '');
+  if (!validPhone(phone)) return json(400, { error: 'رقم الهاتف غير صحيح' });
+  if (code.length !== 6) return json(400, { error: 'أدخل الرمز المكوّن من ٦ أرقام' });
+  const chk = await otpCheck(env, phone, code);
+  if (chk.resp) return chk.resp;
+  await sbPatch(env, `phone_otps?id=eq.${chk.otp.id}`, { used_at: new Date().toISOString() });
+  return json(200, { ok: true });
+}
 const isWaAccount = u => new RegExp('@' + WA_EMAIL_DOMAIN.replace(/\./g, '\\.') + '$', 'i').test(String(u && u.email || ''));
 
 // ---------- صفحة الحساب: رقم واتس اب للدخول ----------
@@ -2826,6 +2840,10 @@ export default {
         if (url.pathname === '/api/otp/verify') {
           if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
           return await otpVerify(request, env);
+        }
+        if (url.pathname === '/api/checkout-otp/verify') {
+          if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
+          return await checkoutOtpVerify(request, env);
         }
         if (url.pathname === '/api/auth/reset-with-backup') {
           if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
