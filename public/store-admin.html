@@ -645,7 +645,7 @@ function renderOrders(){
       return '<tr><td><b dir="ltr">'+esc(o.order_no)+'</b></td><td>'+esc(dt(o.created_at))+'</td><td>'+esc(o.customer_name)+'<div class="muted" dir="ltr" style="text-align:start">'+esc(o.customer_phone)+'</div></td>'+
         '<td><b>'+esc(fm(o.total))+'</b></td><td>'+esc(pmL(o.payment_method))+'<div class="muted">'+(o.delivery_method==='pickup'?L('استلام','Pickup'):L('توصيل','Delivery'))+'</div></td>'+
         '<td><select data-ost="'+o.id+'" style="min-width:140px">'+Object.keys(STATUS).map(function(k){return '<option value="'+k+'"'+(o.status===k?' selected':'')+'>'+esc(stL(k))+'</option>'}).join('')+'</select></td>'+
-        '<td class="acts"><button class="btn alt sm" data-ov="'+o.id+'">'+L('تفاصيل','Details')+'</button></td></tr>';
+        '<td class="acts"><button class="btn alt sm" data-ov="'+o.id+'">'+L('تفاصيل','Details')+'</button><button class="btn dg sm" data-odel="'+o.id+'">'+L('حذف','Delete')+'</button></td></tr>';
     }).join('')+'</tbody></table></div>':emptyBox('orders',L('ما في طلبات مطابقة','No matching orders'),L('الطلبات الجديدة رح تظهر هون','New orders will show up here')))+'</div>';
   $('#oQ').oninput=function(){ordQ=this.value;var p=this.selectionStart;renderOrders();var n=$('#oQ');n.focus();n.setSelectionRange(p,p);};
   $('#oF').onchange=function(){ordFilter=this.value;renderOrders();};
@@ -657,6 +657,19 @@ async function cancelOrder(id){
     if(r.error) throw r.error;
     var x=ORDERS.filter(function(z){return z.id===id})[0]; if(x) x.status='cancelled';
     paintNav(); toast(L('تم إلغاء الطلب وإرجاع المخزون ✓','Order cancelled and restocked ✓'));
+    return true;
+  }catch(e){ alert(errTxt(e)); return false; }
+}
+async function deleteOrder(id){
+  var o=ORDERS.filter(function(z){return z.id===id})[0];
+  var warn=o&&o.status!=='cancelled'?L('هذا الطلب مش ملغي — رح نرجّع مخزونه أولًا ثم نحذفه نهائيًا من القائمة ومن التقارير. ما في تراجع.','This order isn\'t cancelled yet — its stock will be restocked first, then it\'s permanently deleted from the list and reports. This can\'t be undone.')
+    :L('حذف هذا الطلب نهائيًا من القائمة ومن التقارير؟ ما في تراجع.','Permanently delete this order from the list and reports? This can\'t be undone.');
+  if(!confirmBox(warn)) return false;
+  try{
+    var r=await sb.rpc('store_delete_order',{p_order_id:id});
+    if(r.error) throw r.error;
+    ORDERS=ORDERS.filter(function(z){return z.id!==id});
+    paintNav(); toast(L('تم حذف الطلب نهائيًا','Order deleted'));
     return true;
   }catch(e){ alert(errTxt(e)); return false; }
 }
@@ -754,9 +767,11 @@ async function orderDetails(id){
     (ph?'<a class="btn ok" target="_blank" rel="noopener" href="https://wa.me/'+esc(ph)+'">'+L('واتساب للزبون','WhatsApp customer')+'</a>':'')+
     (online&&o.status==='awaiting_payment'?'<button class="btn acc" id="oVer" data-tok="'+esc(o.token)+'">'+L('تحقق من الدفع','Verify payment')+'</button>':'')+
     '<button class="btn alt" id="oPrint">'+L('طباعة الفاتورة','Print invoice')+'</button>'+
-    (o.status!=='cancelled'?'<button class="btn dg" id="oCancel">'+L('إلغاء الطلب','Cancel order')+'</button>':'')+'</div>');
+    (o.status!=='cancelled'?'<button class="btn dg" id="oCancel">'+L('إلغاء الطلب','Cancel order')+'</button>':'')+
+    '<button class="btn dg" id="oDel">'+L('حذف نهائي','Delete permanently')+'</button></div>');
   var pb=$('#oPrint'); if(pb) pb.onclick=function(){printInvoice(o,items)};
   var cb=$('#oCancel'); if(cb) cb.onclick=async function(){ this.disabled=true; var ok=await cancelOrder(id); if(ok){ closeModal(); renderOrders(); } else this.disabled=false; };
+  var db2=$('#oDel'); if(db2) db2.onclick=async function(){ this.disabled=true; var ok=await deleteOrder(id); if(ok){ closeModal(); renderOrders(); } else this.disabled=false; };
   var vb=$('#oVer'); if(vb) vb.onclick=async function(){
     this.disabled=true; showMsg('mMsg',L('عم نتحقق من البوابة…','Checking with the gateway…'));
     try{var rr=await fetch('/api/store/pay/verify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:this.dataset.tok})}); var j=await rr.json();
@@ -2542,6 +2557,7 @@ document.addEventListener('click',function(e){
   if(t.closest('#oRef')){LOADERS.orders();return;}
   if(t.closest('#oCsv')){var rows=[['Order','Date','Customer','Phone','Total','Currency','Payment','Status','City','Address']].concat(ORDERS.map(function(o){return [o.order_no,o.created_at,o.customer_name,o.customer_phone,o.total,o.currency_code,o.payment_method,o.status,o.city,o.address_text]}));downloadCsv('orders.csv',rows);return;}
   if((el=t.closest('[data-ov]'))){orderDetails(Number(el.dataset.ov));return;}
+  if((el=t.closest('[data-odel]'))){deleteOrder(Number(el.dataset.odel)).then(function(ok){if(ok)renderOrders();});return;}
   // categories
   if(t.closest('#cNew')){catModal();return;}
   if((el=t.closest('[data-ce]'))){catModal(el.dataset.ce);return;}
