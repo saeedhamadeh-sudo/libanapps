@@ -6721,6 +6721,7 @@ function warehouseItemView(item){
       </div>
       <div class="action-row">
         <button class="btn btn-debit" data-nav="#/stockout/new?item=${item.id}">📤 أمر سحب</button>
+        <button class="btn btn-sm" id="printItemBarcodeBtn" data-item="${item.id}">${item.barcode? '🖨 طباعة باركود' : '🏷 إنشاء باركود'}</button>
         <button class="btn btn-sm" id="editWhItemBtn">✎ تعديل بيانات المنتج</button>
         <button class="btn btn-sm btn-danger" id="deleteWhItemBtn">🗑 حذف المنتج نهائيًا</button>
       </div>
@@ -8034,7 +8035,7 @@ function generateInternalBarcode(){
   for(let t=0; t<500; t++){
     const body = '200' + String(Date.now()%1e6).padStart(6,'0') + String(Math.floor(Math.random()*1000)).padStart(3,'0');
     const code = body + ean13Check(body);
-    if(!used.has(code)) return code;
+    if(!used.has(code) && !findItemByBarcode(code)) return code;
   }
   return '';
 }
@@ -8176,8 +8177,10 @@ function bcSaveQuickCfg(){
     showName: g('bc_show_name').checked, showPrice: g('bc_show_price').checked });
   return save(KEYS.settings, DB.settings);
 }
-async function bcAddExisting(it){
-  if(!it.barcode){
+async function bcAddExisting(it, noRender){
+  // المنتج إلو باركود (مولّد أو مدخل يدوي) → ما منولّد جديد، بس منضيفه للطباعة
+  if(!String(it.barcode||'').trim()){
+    if(denyIfNo('edit_products','إضافة باركود للمنتجات')) return;
     const code = generateInternalBarcode();
     if(!code){ toast('تعذّر توليد باركود'); return; }
     it.barcode = code;
@@ -8185,7 +8188,7 @@ async function bcAddExisting(it){
     toast('تم إنشاء باركود جديد للمنتج «'+it.name+'»: '+code);
   } else toast('أُضيف «'+it.name+'» لقائمة الطباعة');
   bcQueueAdd(it.id, 1);
-  render();
+  if(!noRender) render();
 }
 function openBarcodeCreateChooser(){
   const wrap = document.createElement('div');
@@ -8221,7 +8224,10 @@ function bindBarcodesEvents(){
     const found = smartSearchWarehouse(v, (DB.warehouseItems||[]).filter(i=>!i.deleted)).slice(0, 12);
     res.innerHTML = found.length? found.map(it=>`<div class="bc-res" data-bc-pick="${it.id}" style="display:flex; justify-content:space-between; gap:8px; padding:8px 10px; border:1px solid var(--line); border-radius:8px; margin-bottom:5px; cursor:pointer; background:var(--bg-2);">
         <span><b>${escapeHtml(it.name||'')}</b> ${it.brand? '<span style="color:var(--ink-soft); font-size:12px;">'+escapeHtml(it.brand)+'</span>' : ''}</span>
-        <span class="num" style="font-size:12px; direction:ltr; color:${it.barcode?'var(--ink-soft)':'var(--bronze-deep)'};">${it.barcode? escapeHtml(it.barcode) : '+ إنشاء باركود'}</span>
+        <span style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; justify-content:flex-end;">
+          ${it.barcode? `<span class="num" style="font-size:12px; direction:ltr; color:var(--ink-soft);">${escapeHtml(it.barcode)}</span>` : ''}
+          <span class="btn btn-sm ${it.barcode?'':'btn-primary'}" style="padding:3px 10px; pointer-events:none;">${it.barcode? '🖨 طباعة باركود' : '➕ إنشاء باركود'}</span>
+        </span>
       </div>`).join('') : `<div style="font-size:13px; color:var(--ink-soft);">لا توجد نتائج</div>`;
     res.querySelectorAll('[data-bc-pick]').forEach(el=>el.addEventListener('click', ()=>{
       const it = DB.warehouseItems.find(i=>i.id===el.getAttribute('data-bc-pick')); if(it) bcAddExisting(it);
@@ -8350,6 +8356,13 @@ function bindEvents(){
     const item = DB.warehouseItems.find(x=>x.id===parts[1]);
     editWhItemBtn.addEventListener('click', ()=>openWarehouseItemModal(item));
   }
+  const printItemBarcodeBtn = document.getElementById('printItemBarcodeBtn');
+  if(printItemBarcodeBtn) printItemBarcodeBtn.addEventListener('click', async ()=>{
+    const it = DB.warehouseItems.find(x=>x.id===printItemBarcodeBtn.getAttribute('data-item'));
+    if(!it) return;
+    await bcAddExisting(it, true);
+    go('#/barcodes');
+  });
   const deleteWhItemBtn = document.getElementById('deleteWhItemBtn');
   if(deleteWhItemBtn){
     const parts = currentRoute();
@@ -9447,9 +9460,10 @@ function openWarehouseItemModal(item, presetBarcode, opts){
   wrap.className='modal-bg';
   const sec = (title)=>`<div style="font-weight:800; color:var(--bronze-deep); margin:14px 0 6px; border-bottom:1px solid var(--line); padding-bottom:4px;">${title}</div>`;
   const barcodeField = `<div class="field"><label>الباركود ${auto?'':''}</label>
-      <div style="display:flex; gap:8px;">
-        <input type="text" id="wm_barcode" class="num" style="flex:1;" value="${escapeHtml(item? item.barcode||'' : (presetBarcode||''))}" placeholder="امسح أو اكتب الرقم">
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <input type="text" id="wm_barcode" class="num" style="flex:1; min-width:160px;" value="${escapeHtml(item? item.barcode||'' : (presetBarcode||''))}" placeholder="امسح أو اكتب الرقم">
         <button type="button" class="btn btn-sm" id="wm_scan_btn">📷 SCAN</button>
+        <button type="button" class="btn btn-sm" id="wm_gen_btn" title="توليد باركود داخلي فريد (اختياري)">🏷 توليد باركود</button>
       </div>
       <div id="wm_barcode_hint" style="font-size:12px; margin-top:4px; min-height:14px;"></div>
     </div>`;
@@ -9595,6 +9609,13 @@ function openWarehouseItemModal(item, presetBarcode, opts){
   };
   if($('#wm_category')) $('#wm_category').addEventListener('input', applyService);
   applyService();
+  $('#wm_gen_btn').addEventListener('click', ()=>{
+    const cur = $('#wm_barcode').value.trim();
+    if(cur){ toast('هذا المنتج إلو باركود — امسحه أولاً إذا بدك باركود جديد'); return; }
+    const code = generateInternalBarcode();
+    if(!code){ toast('تعذّر توليد باركود'); return; }
+    $('#wm_barcode').value = code; checkBarcode();
+  });
   $('#wm_scan_btn').addEventListener('click', ()=>{
     openBarcodeScannerModal((code)=>{ $('#wm_barcode').value = code; checkBarcode(); });
   });
