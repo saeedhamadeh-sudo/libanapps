@@ -650,21 +650,31 @@ function renderOrders(){
   $('#oQ').oninput=function(){ordQ=this.value;var p=this.selectionStart;renderOrders();var n=$('#oQ');n.focus();n.setSelectionRange(p,p);};
   $('#oF').onchange=function(){ordFilter=this.value;renderOrders();};
 }
+async function cancelOrder(id){
+  if(!confirmBox(L('إلغاء الطلب وإرجاع الكمية للمخزون؟ ما في تراجع.','Cancel the order and restock its items? This can\'t be undone.'))) return false;
+  try{
+    var r=await sb.rpc('store_cancel_order',{p_order_id:id});
+    if(r.error) throw r.error;
+    var x=ORDERS.filter(function(z){return z.id===id})[0]; if(x) x.status='cancelled';
+    paintNav(); toast(L('تم إلغاء الطلب وإرجاع المخزون ✓','Order cancelled and restocked ✓'));
+    return true;
+  }catch(e){ alert(errTxt(e)); return false; }
+}
 function csvEsc(v){v=String(v==null?'':v);return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v}
 function downloadCsv(name,rows){
   var blob=new Blob(['\ufeff'+rows.map(function(r){return r.map(csvEsc).join(',')}).join('\n')],{type:'text/csv;charset=utf-8'});
   var a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name; document.body.appendChild(a); a.click(); a.remove();
 }
 /* ---------- \u0627\u0644\u0632\u0628\u0627\u0626\u0646 (\u062a\u062c\u0645\u064a\u0639 \u0645\u0646 \u0627\u0644\u0637\u0644\u0628\u0627\u062a) ---------- */
-var custQ='';
+var custQ='', custShowHidden=false;
 LOADERS.customers=async function(){ try{await loadOrders();}catch(e){return pageErr(e);} renderCustomers(); };
 function custKey(phone){ return String(phone||'').replace(/\D/g,''); }
 function buildCustomers(){
   var map={};
   ORDERS.forEach(function(o){
     var k=custKey(o.customer_phone); if(!k) return;
-    if(!map[k]) map[k]={phone:o.customer_phone,name:o.customer_name,email:o.customer_email||'',orders:0,total:0,first:o.created_at,last:o.created_at};
-    var c=map[k]; c.orders++; c.total+=Number(o.total)||0;
+    if(!map[k]) map[k]={key:k,phone:o.customer_phone,name:o.customer_name,email:o.customer_email||'',orders:0,total:0,first:o.created_at,last:o.created_at,ids:[]};
+    var c=map[k]; c.orders++; c.total+=Number(o.total)||0; c.ids.push(o.id);
     if(new Date(o.created_at)>new Date(c.last)){ c.last=o.created_at; c.name=o.customer_name||c.name; c.phone=o.customer_phone||c.phone; }
     if(new Date(o.created_at)<new Date(c.first)) c.first=o.created_at;
     if(!c.email&&o.customer_email) c.email=o.customer_email;
@@ -672,17 +682,53 @@ function buildCustomers(){
   return Object.keys(map).map(function(k){return map[k]});
 }
 function renderCustomers(){
-  var q=custQ.trim().toLowerCase();
-  var list=buildCustomers().filter(function(c){ if(!q) return true; return (c.name+' '+c.phone+' '+c.email).toLowerCase().indexOf(q)>=0; });
+  var q=custQ.trim().toLowerCase(), hidden=ST.hidden_customers||[];
+  var all=buildCustomers();
+  var list=all.filter(function(c){
+    if(custShowHidden!==(hidden.indexOf(c.key)>=0)) return false;
+    if(!q) return true; return (c.name+' '+c.phone+' '+c.email).toLowerCase().indexOf(q)>=0;
+  });
   list.sort(function(a,b){return new Date(b.last)-new Date(a.last)});
   viewEl().innerHTML='<div class="card"><div class="tools"><input type="search" id="cuQ" placeholder="'+L('\u0628\u062d\u062b \u0628\u0627\u0644\u0627\u0633\u0645 \u0623\u0648 \u0627\u0644\u0647\u0627\u062a\u0641 \u0623\u0648 \u0627\u0644\u0625\u064a\u0645\u064a\u0644\u2026','Search name, phone or email\u2026')+'" value="'+esc(custQ)+'">'+
     '<span class="muted">'+list.length+' '+L('\u0632\u0628\u0648\u0646','customers')+(ORDERS.length>=500?' \u00b7 '+L('\u0622\u062e\u0631 500 \u0637\u0644\u0628 \u0641\u0642\u0637','last 500 orders only'):'')+'</span>'+
+    '<label class="sw sm" style="margin-inline-start:auto"><input type="checkbox" id="cuHid"'+(custShowHidden?' checked':'')+'>'+L('\u0639\u0631\u0636 \u0627\u0644\u0645\u062e\u0641\u064a\u064a\u0646','Show hidden')+'</label>'+
     '<button class="btn alt sp" id="cuCsv"'+(list.length?'':' disabled')+'>'+L('\u062a\u0635\u062f\u064a\u0631 CSV','Export CSV')+'</button></div>'+
-    (list.length?'<div class="wrapx"><table class="tbl"><thead><tr><th>'+L('\u0627\u0644\u0627\u0633\u0645','Name')+'</th><th>'+L('\u0627\u0644\u0647\u0627\u062a\u0641','Phone')+'</th><th>'+L('\u0627\u0644\u0625\u064a\u0645\u064a\u0644','Email')+'</th><th>'+L('\u0639\u062f\u062f \u0627\u0644\u0637\u0644\u0628\u0627\u062a','Orders')+'</th><th>'+L('\u0625\u062c\u0645\u0627\u0644\u064a \u0627\u0644\u0634\u0631\u0627\u0621','Total spent')+'</th><th>'+L('\u0623\u0648\u0644 \u0637\u0644\u0628','First order')+'</th><th>'+L('\u0622\u062e\u0631 \u0637\u0644\u0628','Last order')+'</th></tr></thead><tbody>'+
+    (list.length?'<div class="wrapx"><table class="tbl"><thead><tr><th>'+L('\u0627\u0644\u0627\u0633\u0645','Name')+'</th><th>'+L('\u0627\u0644\u0647\u0627\u062a\u0641','Phone')+'</th><th>'+L('\u0627\u0644\u0625\u064a\u0645\u064a\u0644','Email')+'</th><th>'+L('\u0639\u062f\u062f \u0627\u0644\u0637\u0644\u0628\u0627\u062a','Orders')+'</th><th>'+L('\u0625\u062c\u0645\u0627\u0644\u064a \u0627\u0644\u0634\u0631\u0627\u0621','Total spent')+'</th><th>'+L('\u0623\u0648\u0644 \u0637\u0644\u0628','First order')+'</th><th>'+L('\u0622\u062e\u0631 \u0637\u0644\u0628','Last order')+'</th><th></th></tr></thead><tbody>'+
     list.map(function(c){
-      return '<tr><td><b>'+esc(c.name||'\u2014')+'</b></td><td dir="ltr" style="text-align:start">'+esc(c.phone)+'</td><td dir="ltr" style="text-align:start">'+esc(c.email||'\u2014')+'</td><td>'+c.orders+'</td><td><b>'+esc(fm(c.total))+'</b></td><td>'+esc(dt(c.first))+'</td><td>'+esc(dt(c.last))+'</td></tr>';
-    }).join('')+'</tbody></table></div>':emptyBox('customers',L('\u0645\u0627 \u0641\u064a \u0632\u0628\u0627\u0626\u0646 \u0628\u0639\u062f','No customers yet'),L('\u0628\u064a\u0638\u0647\u0631\u0648\u0627 \u0647\u0648\u0646 \u0623\u0648\u0644 \u0645\u0627 \u064a\u0648\u0635\u0644 \u0637\u0644\u0628','They\u2019ll show up here once an order arrives')))+'</div>';
+      return '<tr><td><b>'+esc(c.name||'\u2014')+'</b></td><td dir="ltr" style="text-align:start">'+esc(c.phone)+'</td><td dir="ltr" style="text-align:start">'+esc(c.email||'\u2014')+'</td><td>'+c.orders+'</td><td><b>'+esc(fm(c.total))+'</b></td><td>'+esc(dt(c.first))+'</td><td>'+esc(dt(c.last))+'</td>'+
+        '<td class="acts"><button class="btn alt sm" data-cue="'+c.key+'">'+L('\u062a\u0639\u062f\u064a\u0644','Edit')+'</button>'+(custShowHidden?'<button class="btn alt sm" data-cuuh="'+c.key+'">'+L('\u0625\u0644\u063a\u0627\u0621 \u0627\u0644\u0625\u062e\u0641\u0627\u0621','Unhide')+'</button>':'<button class="btn dg sm" data-cuh="'+c.key+'">'+L('\u0625\u062e\u0641\u0627\u0621','Hide')+'</button>')+'</td></tr>';
+    }).join('')+'</tbody></table></div>':emptyBox('customers',custShowHidden?L('\u0645\u0627 \u0641\u064a \u0632\u0628\u0627\u0626\u0646 \u0645\u062e\u0641\u064a\u064a\u0646','No hidden customers'):L('\u0645\u0627 \u0641\u064a \u0632\u0628\u0627\u0626\u0646 \u0628\u0639\u062f','No customers yet'),custShowHidden?'':L('\u0628\u064a\u0638\u0647\u0631\u0648\u0627 \u0647\u0648\u0646 \u0623\u0648\u0644 \u0645\u0627 \u064a\u0648\u0635\u0644 \u0637\u0644\u0628','They\u2019ll show up here once an order arrives')))+'</div>';
   $('#cuQ').oninput=function(){custQ=this.value;var p=this.selectionStart;renderCustomers();var n=$('#cuQ');n.focus();n.setSelectionRange(p,p);};
+  $('#cuHid').onchange=function(){custShowHidden=this.checked;renderCustomers();};
+}
+async function hideCustomer(key,on){
+  var hidden=(ST.hidden_customers||[]).slice();
+  var i=hidden.indexOf(key);
+  if(on&&i<0) hidden.push(key); if(!on&&i>=0) hidden.splice(i,1);
+  var r=await sb.from('stores').update({hidden_customers:hidden}).eq('id',ST.id);
+  if(r.error){alert(errTxt(r.error));return;}
+  ST.hidden_customers=hidden; renderCustomers();
+}
+function custEditModal(key){
+  var c=buildCustomers().filter(function(x){return x.key===key})[0]; if(!c) return;
+  openModal(L('\u062a\u0639\u062f\u064a\u0644 \u0628\u064a\u0627\u0646\u0627\u062a \u0627\u0644\u0632\u0628\u0648\u0646','Edit customer'),
+    '<label class="fld"><span>'+L('\u0627\u0644\u0627\u0633\u0645','Name')+'</span><input id="cuN" value="'+esc(c.name||'')+'"></label>'+
+    '<label class="fld"><span>'+L('\u0627\u0644\u0647\u0627\u062a\u0641','Phone')+'</span><input id="cuP" dir="ltr" value="'+esc(c.phone||'')+'"></label>'+
+    '<label class="fld"><span>'+L('\u0627\u0644\u0625\u064a\u0645\u064a\u0644','Email')+'</span><input id="cuE" dir="ltr" value="'+esc(c.email||'')+'"></label>'+
+    '<p class="muted" style="font-size:13px">'+L('\u0627\u0644\u062a\u0639\u062f\u064a\u0644 \u0628\u064a\u0646\u0637\u0628\u0642 \u0639\u0644\u0649 \u0643\u0644 \u0637\u0644\u0628\u0627\u062a\u0647 \u0627\u0644\u0633\u0627\u0628\u0642\u0629 ('+c.orders+').','This updates all of this customer\'s past orders ('+c.orders+').')+'</p>'+
+    '<p class="msg" id="mMsg"></p>'+
+    '<button class="btn full" id="cuSave" style="margin-top:6px">'+L('\u062d\u0641\u0638','Save')+'</button>');
+  $('#cuSave').onclick=async function(){
+    var name=$('#cuN').value.trim(), phone=$('#cuP').value.trim(), email=$('#cuE').value.trim();
+    if(name.length<2||phone.replace(/\D/g,'').length<7){ showMsg('mMsg',L('\u062a\u0623\u0643\u062f \u0645\u0646 \u0627\u0644\u0627\u0633\u0645 \u0648\u0627\u0644\u0647\u0627\u062a\u0641','Check the name and phone'),false); return; }
+    this.disabled=true; showMsg('mMsg',L('\u0639\u0645 \u0646\u062d\u0641\u0638\u2026','Saving\u2026'));
+    try{
+      var r=await sb.from('store_orders').update({customer_name:name,customer_phone:phone,customer_email:email}).in('id',c.ids);
+      if(r.error) throw r.error;
+      c.ids.forEach(function(id){ var o=ORDERS.filter(function(z){return z.id===id})[0]; if(o){o.customer_name=name;o.customer_phone=phone;o.customer_email=email;} });
+      closeModal(); toast(L('\u062a\u0645 \u0627\u0644\u062d\u0641\u0638 \u2713','Saved \u2713')); renderCustomers();
+    }catch(e){ showMsg('mMsg',errTxt(e),false); this.disabled=false; }
+  };
 }
 async function orderDetails(id){
   var o=ORDERS.filter(function(x){return x.id===id})[0]; if(!o) return;
@@ -707,8 +753,10 @@ async function orderDetails(id){
     '<div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap">'+
     (ph?'<a class="btn ok" target="_blank" rel="noopener" href="https://wa.me/'+esc(ph)+'">'+L('واتساب للزبون','WhatsApp customer')+'</a>':'')+
     (online&&o.status==='awaiting_payment'?'<button class="btn acc" id="oVer" data-tok="'+esc(o.token)+'">'+L('تحقق من الدفع','Verify payment')+'</button>':'')+
-    '<button class="btn alt" id="oPrint">'+L('طباعة الفاتورة','Print invoice')+'</button></div>');
+    '<button class="btn alt" id="oPrint">'+L('طباعة الفاتورة','Print invoice')+'</button>'+
+    (o.status!=='cancelled'?'<button class="btn dg" id="oCancel">'+L('إلغاء الطلب','Cancel order')+'</button>':'')+'</div>');
   var pb=$('#oPrint'); if(pb) pb.onclick=function(){printInvoice(o,items)};
+  var cb=$('#oCancel'); if(cb) cb.onclick=async function(){ this.disabled=true; var ok=await cancelOrder(id); if(ok){ closeModal(); renderOrders(); } else this.disabled=false; };
   var vb=$('#oVer'); if(vb) vb.onclick=async function(){
     this.disabled=true; showMsg('mMsg',L('عم نتحقق من البوابة…','Checking with the gateway…'));
     try{var rr=await fetch('/api/store/pay/verify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:this.dataset.tok})}); var j=await rr.json();
@@ -2604,7 +2652,10 @@ document.addEventListener('click',function(e){
   if(t.closest('#subCsv')){downloadCsv('subscribers.csv',[['email','date']].concat(SUBS.map(function(s){return [s.email,s.created_at]})));return;}
   if((el=t.closest('[data-subd]'))){sb.from('store_subscribers').delete().eq('id',el.dataset.subd).then(function(r){if(r.error)alert(errTxt(r.error));else LOADERS.subscribers();});return;}
   // customers
-  if(t.closest('#cuCsv')){var crows=[['Name','Phone','Email','Orders','Total spent','First order','Last order']].concat(buildCustomers().map(function(c){return [c.name,c.phone,c.email,c.orders,c.total,c.first,c.last]}));downloadCsv('customers.csv',crows);return;}
+  if(t.closest('#cuCsv')){var hid0=ST.hidden_customers||[];var crows=[['Name','Phone','Email','Orders','Total spent','First order','Last order']].concat(buildCustomers().filter(function(c){return hid0.indexOf(c.key)<0}).map(function(c){return [c.name,c.phone,c.email,c.orders,c.total,c.first,c.last]}));downloadCsv('customers.csv',crows);return;}
+  if((el=t.closest('[data-cue]'))){custEditModal(el.dataset.cue);return;}
+  if((el=t.closest('[data-cuh]'))){if(confirmBox(L('إخفاء هذا الزبون من اللائحة؟ طلباته بتضل موجودة.','Hide this customer from the list? Their orders stay intact.')))hideCustomer(el.dataset.cuh,true);return;}
+  if((el=t.closest('[data-cuuh]'))){hideCustomer(el.dataset.cuuh,false);return;}
   // pages
   if(t.closest('#pgNew')){pageModal();return;}
   if((el=t.closest('[data-pge]'))){pageModal(el.dataset.pge);return;}
@@ -2677,7 +2728,13 @@ document.addEventListener('change',function(e){
     fr.readAsText(f,'utf-8');
     return;}
   if(t.matches('[data-ost]')){
-    var id=Number(t.dataset.ost), st=t.value, o={status:st}; if(st==='paid') o.paid_at=new Date().toISOString();
+    var id=Number(t.dataset.ost), st=t.value;
+    if(st==='cancelled'){
+      var prevO=ORDERS.filter(function(z){return z.id===id})[0], prevSt=prevO?prevO.status:'';
+      cancelOrder(id).then(function(ok){ if(!ok) t.value=prevSt; else renderOrders(); });
+      return;
+    }
+    var o={status:st}; if(st==='paid') o.paid_at=new Date().toISOString();
     sb.from('store_orders').update(o).eq('id',id).then(function(r){ if(r.error){alert(errTxt(r.error));LOADERS.orders();return;} var x=ORDERS.filter(function(z){return z.id===id})[0]; if(x) x.status=st; paintNav(); toast(L('تم تحديث الحالة','Status updated')); });return;}
   if(t.id==='rvOn'||t.id==='rvAuto'){ var o2={reviews_enabled:$('#rvOn').checked,reviews_auto:$('#rvAuto').checked}; sb.from('stores').update(o2).eq('id',ST.id).then(function(r){if(r.error)alert(errTxt(r.error));else{Object.assign(ST,o2);toast(L('تم الحفظ ✓','Saved ✓'));}});return;}
   if(t.id==='nlOn'){ var o3={newsletter_on:t.checked}; sb.from('stores').update(o3).eq('id',ST.id).then(function(r){if(r.error)alert(errTxt(r.error));else{Object.assign(ST,o3);toast(L('تم الحفظ ✓','Saved ✓'));}});return;}
