@@ -480,6 +480,8 @@ svg.i{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.6;stro
    كرت المنتج
    ============================================================ */
 .card{position:relative;min-width:0;display:flex;flex-direction:column;cursor:pointer;text-align:start}
+.cardlink{color:inherit;text-decoration:none}
+.cardlink:hover{color:inherit;text-decoration:none}
 .ph{position:relative;overflow:hidden;aspect-ratio:var(--card-ar);background:var(--surface)}
 .ph img{position:absolute;inset:0;width:100%;height:100%;object-fit:var(--img-fit);transition:opacity .45s ease,transform .8s var(--ease,ease)}
 .ph .im2{opacity:0}
@@ -1741,7 +1743,7 @@ function cardElectro(p){
     '<div class="eact"><div class="eq"><button type="button" data-eq="-1" aria-label="-">−</button><span>1</span><button type="button" data-eq="1" aria-label="+">+</button></div><button class="eadd" type="button" data-eadd="'+esc(p.id)+'">'+IC.bag+'<span>'+esc(T.add)+'</span></button></div>';
   var cats=catChain(primaryCat(p)).map(function(c){return esc(tx(c,'name'))}).join(', ');
   return '<article class="card ec'+(so?' sold':'')+'" data-id="'+esc(p.id)+'" tabindex="0" role="link"><div class="ph">'+im+im2+bd+(so?'<span class="bd so">'+esc(T.sold)+'</span>':'')+tools+'</div>'+act+
-    '<div class="cb">'+(cats?'<span class="pc">'+cats+'</span>':'')+'<h3>'+esc(n)+'</h3>'+((p.rating_count)?stars(p.rating_avg,p.rating_count):stars(0,1,true))+
+    '<div class="cb">'+(cats?'<span class="pc">'+cats+'</span>':'')+'<h3><a class="cardlink" href="?p='+esc(p.id)+'">'+esc(n)+'</a></h3>'+((p.rating_count)?stars(p.rating_avg,p.rating_count):stars(0,1,true))+
     '<div class="pr'+(sale?' sl':'')+'">'+(varPrice(p)?'<small class="fr">'+esc(T.fromL)+'</small>':'')+'<b>'+money(p.price)+'</b>'+(sale?'<s>'+money(p.compare_price)+'</s>':'')+'</div></div></article>';
 }
 function cardHTML(p){
@@ -1758,7 +1760,7 @@ function cardHTML(p){
   return '<article class="card'+(so?' sold':'')+'" data-id="'+esc(p.id)+'" tabindex="0" role="link">'+
     '<div class="ph">'+im+im2+bd+(so?'<span class="bd so">'+esc(T.sold)+'</span>':'')+
     '<button class="wl" type="button" data-wl="'+esc(p.id)+'" aria-pressed="'+(wish.indexOf(p.id)>=0)+'" aria-label="'+esc(T.wishT)+'">'+IC.heart+'</button>'+qsz+(S.theme==='pulse'?'':qa)+'</div>'+
-    '<div class="cb">'+(catById[p.category_id]?'<span class="pc">'+esc(tx(catById[p.category_id],'name'))+'</span>':'')+(p.brand?'<span class="br">'+esc(p.brand)+'</span>':'')+'<h3>'+esc(n)+'</h3>'+((S.theme==='electro'&&!p.rating_count)?stars(0,1,true):stars(p.rating_avg,p.rating_count))+sws+specs+
+    '<div class="cb">'+(catById[p.category_id]?'<span class="pc">'+esc(tx(catById[p.category_id],'name'))+'</span>':'')+(p.brand?'<span class="br">'+esc(p.brand)+'</span>':'')+'<h3><a class="cardlink" href="?p='+esc(p.id)+'">'+esc(n)+'</a></h3>'+((S.theme==='electro'&&!p.rating_count)?stars(0,1,true):stars(p.rating_avg,p.rating_count))+sws+specs+
     '<div class="pr'+(sale?' sl':'')+'">'+(varPrice(p)?'<small class="fr">'+esc(T.fromL)+'</small>':'')+'<b>'+money(p.price)+'</b>'+(sale?'<s>'+money(p.compare_price)+'</s>':'')+'</div>'+(S.theme==='pulse'?qa:'')+'</div></article>';
 }
 
@@ -2446,6 +2448,7 @@ document.addEventListener('click',function(e){
   if((el=t.closest('[data-page]'))){var pg=PAGES.filter(function(x){return x.id===el.dataset.page})[0]; if(pg) openModal('<div class="pg"><h3>'+esc(pg.title)+'</h3><div class="desc rich">'+renderRich(pg.body)+'</div></div>');return;}
   if(t.closest('[data-closem]')){closeModal();return;}
   if(t.closest('.eact')) return;
+  if((el=t.closest('a.cardlink'))){e.preventDefault();var cc=el.closest('.card');if(cc)openProduct(cc.dataset.id);return;}
   if((el=t.closest('.card'))){openProduct(el.dataset.id);return;}
   if((el=t.closest('.lt[data-id]'))){closeDrawer();openProduct(el.dataset.id);return;}
   if(t.closest('#ovC>.bk')){closeDrawer();}
