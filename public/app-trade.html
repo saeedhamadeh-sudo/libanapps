@@ -8053,19 +8053,46 @@ function bcPriceText(it, cfg){
   return '$' + usd.toFixed(2);
 }
 // ملصق واحد بقياس مم — نفس الكود للمعاينة وللطباعة
+// قياس عرض النص (بالمم) لخط معيّن — لنحسب كم سطر بياخد الاسم
+let _bcCanvas = null;
+function bcTextWidthMm(text, fsMm, weight){
+  try{
+    _bcCanvas = _bcCanvas || document.createElement('canvas');
+    const ctx = _bcCanvas.getContext('2d'); ctx.font = (weight||800)+' 100px Arial, Tahoma, sans-serif';
+    return ctx.measureText(String(text||'')).width / 100 * fsMm;
+  }catch(e){ return String(text||'').length * fsMm * 0.55; }
+}
+// اسم المنتج كامل: سطر أو سطرين أو أكثر حسب حجم الملصق — والخط بيصغر إذا لزم
+function bcFitName(name, bw, availH, baseFs){
+  name = String(name||'').trim(); if(!name) return null;
+  const minFs = 1.7, lhK = 1.18;
+  for(let fs = baseFs; fs >= minFs - 1e-9; fs -= 0.1){
+    const maxLines = Math.max(1, Math.floor(availH / (fs*lhK)));
+    const lines = Math.max(1, Math.ceil(bcTextWidthMm(name, fs) * 1.08 / bw));
+    if(lines <= maxLines) return { fs, lines, h: lines*fs*lhK };
+  }
+  const fs = minFs, maxLines = Math.max(1, Math.floor(availH/(fs*lhK)));
+  return { fs, lines:maxLines, h:maxLines*fs*lhK, clipped:true };
+}
+// ملصق واحد بقياس مم — نفس الكود للمعاينة وللطباعة
 function bcLabelHtml(it, cfg){
   const pad = Math.max(1, Math.min(2, cfg.h*0.05));
-  const lh = Math.max(2.4, Math.min(4, cfg.h*0.13));               // ارتفاع سطر النص بالمم
-  const lines = (cfg.showName?1:0) + (cfg.showDigits?1:0) + (cfg.showPrice && bcPriceText(it,cfg)?1:0);
+  const lh = Math.max(2.4, Math.min(4, cfg.h*0.13));               // ارتفاع سطر الرقم/السعر بالمم
+  const priceTxt = cfg.showPrice ? bcPriceText(it,cfg) : '';
+  const fixedLines = (cfg.showDigits?1:0) + (priceTxt?1:0);
   const bw = cfg.w - pad*2;
-  const bh = Math.max(5, cfg.h - pad*2 - lines*lh - 0.6);
-  const fs = (lh*0.78).toFixed(2);
-  const txt = (s, bold)=>`<div style="height:${lh}mm; line-height:${lh}mm; font-size:${fs}mm; ${bold?'font-weight:800;':'font-weight:600;'} white-space:nowrap; overflow:hidden; text-overflow:ellipsis; text-align:center;">${escapeHtml(s)}</div>`;
+  const inner = cfg.h - pad*2 - fixedLines*lh - 0.6;
+  const minBar = Math.max(6, cfg.h*0.35);                          // الباركود لازم يضل مقروء
+  const fs = (lh*0.78);
+  const nm = cfg.showName ? bcFitName(it.name, bw, Math.max(lh, inner - minBar), fs) : null;
+  const bh = Math.max(5, inner - (nm? nm.h : 0));
+  const line = (s)=>`<div style="height:${lh}mm; line-height:${lh}mm; font-size:${fs.toFixed(2)}mm; font-weight:800; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; text-align:center;">${escapeHtml(s)}</div>`;
+  const nameHtml = nm? `<div class="bc-name" style="height:${nm.h.toFixed(2)}mm; line-height:${(nm.fs*1.18).toFixed(2)}mm; font-size:${nm.fs.toFixed(2)}mm; font-weight:800; text-align:center; overflow:hidden; word-break:break-word; overflow-wrap:anywhere; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:${nm.lines};">${escapeHtml(it.name||'')}</div>` : '';
   return `<div class="bc-label" style="box-sizing:border-box; width:${cfg.w}mm; height:${cfg.h}mm; padding:${pad}mm; overflow:hidden; background:#fff; color:#000; font-family:Arial,Tahoma,sans-serif; direction:rtl;">
-    ${cfg.showName? txt(it.name||'', true) : ''}
+    ${nameHtml}
     <div style="width:${bw}mm; height:${bh}mm; margin:0.3mm auto 0;">${barcodeSvg(it.barcode, bw, bh)}</div>
-    ${cfg.showDigits? `<div style="height:${lh}mm; line-height:${lh}mm; font-size:${fs}mm; text-align:center; direction:ltr; letter-spacing:0.3mm; font-family:monospace;">${escapeHtml(it.barcode||'')}</div>` : ''}
-    ${cfg.showPrice && bcPriceText(it,cfg)? txt(bcPriceText(it,cfg), true) : ''}
+    ${cfg.showDigits? `<div style="height:${lh}mm; line-height:${lh}mm; font-size:${fs.toFixed(2)}mm; text-align:center; direction:ltr; letter-spacing:0.3mm; font-family:monospace;">${escapeHtml(it.barcode||'')}</div>` : ''}
+    ${priceTxt? line(priceTxt) : ''}
   </div>`;
 }
 function bcPrintLabels(list, cfgOverride){
