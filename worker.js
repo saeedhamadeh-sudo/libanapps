@@ -98,6 +98,16 @@ async function sbGet(env, path) {
   if (!r.ok) throw new Error('db read failed');
   return r.json();
 }
+// نسخة محدودة بمهلة زمنية من sbGet — تُستعمل بمسارات صفحة المتجر الحيّة (SSR) حيث ما بنقدر
+// نخلّي الزائر ينتظر اتصال بطيء أو عالق بقاعدة البيانات بلا حد أقصى؛ منفشل بسرعة ومنكمّل بدونها.
+async function sbGetTO(env, path, ms) {
+  const ac = new AbortController(), id = setTimeout(() => ac.abort(), ms || 3000);
+  try {
+    const r = await fetch(`${env.SUPABASE_URL}/rest/v1/${path}`, { headers: sbHeaders(env), signal: ac.signal });
+    if (!r.ok) throw new Error('db read failed');
+    return await r.json();
+  } finally { clearTimeout(id); }
+}
 async function sbPatch(env, path, body) {
   return fetch(`${env.SUPABASE_URL}/rest/v1/${path}`, {
     method: 'PATCH',
@@ -2224,14 +2234,14 @@ async function storeHead(env, url, slug, primaryHost, data) {
   // بيانات المتجر والمنتجات غالباً وصلتنا أصلاً من storePublicData (مخبّأة) — منستعملها مباشرة
   // بدل ما نعمل طلبين إضافيين لقاعدة البيانات بكل زيارة. منرجع لطلب حيّ بس لو هالبيانات مش متوفرة.
   let st = data && data.ok && data.store;
-  if (!st) st = (await sbGet(env, `stores?slug=eq.${encodeURIComponent(slug)}&select=id,name,tagline,seo_title,seo_desc,logo_url,og_image,currency_code&limit=1`))[0];
+  if (!st) st = (await sbGetTO(env, `stores?slug=eq.${encodeURIComponent(slug)}&select=id,name,tagline,seo_title,seo_desc,logo_url,og_image,currency_code&limit=1`, 2500))[0];
   if (!st) return null;
   const origin = url.origin, cOrigin = primaryHost ? 'https://' + primaryHost : origin, canonBase = cOrigin + (url.pathname.replace(/\/+$/, '') || '/');
   let title = st.seo_title || st.name || 'Store', desc = st.seo_desc || st.tagline || '', image = st.og_image || st.logo_url || '', canon = canonBase, ld = '';
   const pid = url.searchParams.get('p');
   if (pid && /^[0-9a-f-]{36}$/i.test(pid)) {
     const fromList = data && Array.isArray(data.products) && data.products.filter(x => x.id === pid)[0];
-    const pr = fromList || (await sbGet(env, `store_products?id=eq.${pid}&store_id=eq.${st.id}&is_active=eq.true&select=name_ar,name_en,desc_ar,desc_en,price,image_url,brand,sku&limit=1`))[0];
+    const pr = fromList || (await sbGetTO(env, `store_products?id=eq.${pid}&store_id=eq.${st.id}&is_active=eq.true&select=name_ar,name_en,desc_ar,desc_en,price,image_url,brand,sku&limit=1`, 2500))[0];
     if (pr) {
       const nm = pr.name_en || pr.name_ar;
       title = nm + ' | ' + (st.name || '');

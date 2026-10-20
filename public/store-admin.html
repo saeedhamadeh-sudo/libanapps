@@ -809,7 +809,23 @@ function catModal(id,presetParent){
 /* ============================================================
    المنتجات
    ============================================================ */
-var pQ='', pCat='all', pe=null, pSel={};
+var pQ='', pCat='all', pe=null, pSel={}, pSort='';
+function prodStockNum(p){
+  if(p.sizes&&p.sizes.length){ var on=p.sizes.filter(function(s){return s.on!==false}); if(on.every(function(s){return s.s!=null})) return on.reduce(function(a,s){return a+Number(s.s||0)},0); return Infinity; }
+  return p.stock==null?Infinity:Number(p.stock);
+}
+function sortProds(list){
+  var arr=list.slice();
+  if(pSort==='new') arr.sort(function(a,b){return new Date(b.created_at)-new Date(a.created_at)});
+  else if(pSort==='old') arr.sort(function(a,b){return new Date(a.created_at)-new Date(b.created_at)});
+  else if(pSort==='stock_asc') arr.sort(function(a,b){return prodStockNum(a)-prodStockNum(b)});
+  else if(pSort==='stock_desc') arr.sort(function(a,b){return prodStockNum(b)-prodStockNum(a)});
+  else if(pSort==='brand') arr.sort(function(a,b){return String(a.brand||'').localeCompare(String(b.brand||''))});
+  else if(pSort==='price_asc') arr.sort(function(a,b){return Number(a.price||0)-Number(b.price||0)});
+  else if(pSort==='price_desc') arr.sort(function(a,b){return Number(b.price||0)-Number(a.price||0)});
+  else if(pSort==='name') arr.sort(function(a,b){return pName(a).localeCompare(pName(b))});
+  return arr;
+}
 LOADERS.products=async function(){ try{await Promise.all([ensureCats(),ensureProds(true),ensureBrands()]);}catch(e){return pageErr(e);} pe=null; pSel={}; renderProds(); };
 function prodStock(p){
   if(p.sizes&&p.sizes.length){var on=p.sizes.filter(function(s){return s.on!==false}), off=p.sizes.length-on.length;
@@ -821,12 +837,24 @@ function renderProds(){
   var q=pQ.trim().toLowerCase();
   var list=PRODS.filter(function(p){ if(pCat!=='all'&&!pcatsA(p).some(function(c){return catDescIds(pCat).indexOf(c)>=0})) return false;
     if(q&&(p.name_ar+' '+p.name_en+' '+(p.brand||'')+' '+(p.sku||'')).toLowerCase().indexOf(q)<0) return false; return true;});
+  list=sortProds(list);
   var listIds={}; list.forEach(function(p){listIds[p.id]=1;});
   Object.keys(pSel).forEach(function(id){ if(!listIds[id]) delete pSel[id]; });
   var selCount=Object.keys(pSel).length, allOn=list.length&&list.every(function(p){return pSel[p.id]});
   viewEl().innerHTML='<div class="card"><div class="tools"><input type="search" id="pQ" placeholder="'+L('بحث بالاسم أو الماركة أو الرمز…','Search name, brand or SKU…')+'" value="'+esc(pQ)+'">'+
     '<select id="pCatF"><option value="all">'+L('كل التصنيفات','All categories')+'</option>'+catOpts(pCat)+'</select>'+
-    (pCat!=='all'&&!q?'<span class="chip info">'+L('رتّب المنتجات بالأسهم ▲▼','Reorder with ▲▼')+'</span>':'')+'<span class="muted">'+list.length+' '+L('منتج','products')+'</span>'+(PRODS.length?'<button class="btn dg sm" id="prodDelAll">'+L('حذف الكل','Delete all')+'</button>':'')+'<button class="btn sp" id="pNew">+ '+L('منتج جديد','New product')+'</button></div>'+
+    '<select id="pSortF">'+
+      '<option value=""'+(pSort===''?' selected':'')+'>'+L('ترتيب مخصص (الأسهم)','Custom order (arrows)')+'</option>'+
+      '<option value="new"'+(pSort==='new'?' selected':'')+'>'+L('الأحدث أولاً','Newest first')+'</option>'+
+      '<option value="old"'+(pSort==='old'?' selected':'')+'>'+L('الأقدم أولاً','Oldest first')+'</option>'+
+      '<option value="stock_asc"'+(pSort==='stock_asc'?' selected':'')+'>'+L('الكمية: الأقل أولاً','Stock: low to high')+'</option>'+
+      '<option value="stock_desc"'+(pSort==='stock_desc'?' selected':'')+'>'+L('الكمية: الأكثر أولاً','Stock: high to low')+'</option>'+
+      '<option value="brand"'+(pSort==='brand'?' selected':'')+'>'+L('الماركة (أ-ي)','Brand (A-Z)')+'</option>'+
+      '<option value="price_asc"'+(pSort==='price_asc'?' selected':'')+'>'+L('السعر: الأقل أولاً','Price: low to high')+'</option>'+
+      '<option value="price_desc"'+(pSort==='price_desc'?' selected':'')+'>'+L('السعر: الأعلى أولاً','Price: high to low')+'</option>'+
+      '<option value="name"'+(pSort==='name'?' selected':'')+'>'+L('الاسم (أ-ي)','Name (A-Z)')+'</option>'+
+    '</select>'+
+    (pSort===''&&pCat!=='all'&&!q?'<span class="chip info">'+L('رتّب المنتجات بالأسهم ▲▼','Reorder with ▲▼')+'</span>':'')+'<span class="muted">'+list.length+' '+L('منتج','products')+'</span>'+(PRODS.length?'<button class="btn dg sm" id="prodDelAll">'+L('حذف الكل','Delete all')+'</button>':'')+'<button class="btn sp" id="pNew">+ '+L('منتج جديد','New product')+'</button></div>'+
     (selCount?'<div class="tools" style="background:var(--chip,#f4f4f5);border-radius:8px;margin-top:8px;flex-wrap:wrap">'+
       '<b>'+selCount+' '+L('منتج محدد','selected')+'</b>'+
       '<select id="pBulkCat"><option value="">'+L('اختر تصنيف…','Choose category…')+'</option>'+catOpts('')+'</select>'+
@@ -835,7 +863,7 @@ function renderProds(){
       '</div>':'')+
     (list.length?'<div class="wrapx"><table class="tbl"><thead><tr><th><input type="checkbox" id="pSelAll"'+(allOn?' checked':'')+'></th><th>'+L('المنتج','Product')+'</th><th>'+L('السعر','Price')+'</th><th>'+L('المخزون','Stock')+'</th><th>'+L('الحالة','Status')+'</th><th></th></tr></thead><tbody>'+
     list.map(function(p,pi){
-      var sale=Number(p.compare_price)>Number(p.price), mv=(pCat!=='all'&&!q);
+      var sale=Number(p.compare_price)>Number(p.price), mv=(pSort===''&&pCat!=='all'&&!q);
       return '<tr><td><input type="checkbox" class="pSelChk" data-id="'+p.id+'"'+(pSel[p.id]?' checked':'')+'></td><td><div class="pcell">'+(p.image_url?'<img class="thumb" alt="" src="'+esc(thumbOf(p.image_url))+'">':'<div class="thumb"></div>')+'<div><b>'+esc(pName(p))+'</b><span class="muted">'+esc([p.brand,p.sku].filter(Boolean).join(' · '))+'</span></div></div></td>'+
         '<td><b>'+esc(fm(p.price))+'</b>'+(sale?'<div class="muted" style="text-decoration:line-through">'+esc(fm(p.compare_price))+'</div>':'')+'</td><td>'+esc(prodStock(p))+'</td>'+
         '<td>'+(p.is_active?'<span class="tag">'+L('ظاهر','Live')+'</span>':'<span class="tag off">'+L('مخفي','Hidden')+'</span>')+(p.is_new?' <span class="tag new">'+L('جديد','New')+'</span>':'')+(p.is_hot?' <span class="tag hot">Hot</span>':'')+(sale?' <span class="tag low">Sale</span>':'')+'</td>'+
@@ -843,6 +871,7 @@ function renderProds(){
       :emptyBox('products',L('ما في منتجات','No products yet'),L('أضف أول منتج لمتجرك','Add your first product')))+'</div>';
   $('#pQ').oninput=function(){pQ=this.value;var p=this.selectionStart;renderProds();var n=$('#pQ');n.focus();n.setSelectionRange(p,p);};
   $('#pCatF').onchange=function(){pCat=this.value;renderProds();};
+  $('#pSortF').onchange=function(){pSort=this.value;renderProds();};
   if($('#pSelAll')) $('#pSelAll').onchange=function(){var ck=this.checked; list.forEach(function(p){ if(ck) pSel[p.id]=1; else delete pSel[p.id]; }); renderProds();};
   $$('.pSelChk').forEach(function(ch){ ch.onchange=function(){ if(this.checked) pSel[this.dataset.id]=1; else delete pSel[this.dataset.id]; renderProds(); }; });
   if($('#pSelClear')) $('#pSelClear').onclick=function(){ pSel={}; renderProds(); };
