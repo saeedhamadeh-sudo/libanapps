@@ -655,7 +655,8 @@ function img(u){
   return m ? ('/img/'+m[1]) : u;
 }
 var L='ar', T=window.I18N.ar;
-var R=null, CATS=[], ITEMS=[], BANNERS=[], PROMOS=[];
+var R=null, CATS=[], ITEMS=[], BANNERS=[], PROMOS=[], BRANCHES=[];
+var BRANCH=null, BRANCH_ID=null;
 var cart={}, filter='all', query='', oType='dine_in', pay='cash', geo={lat:null,lng:null};
 
 /* ---------- helpers ---------- */
@@ -707,6 +708,78 @@ function demoData(){
   BANNERS=[];PROMOS=[];
 }
 
+/* ---------- branch helpers ---------- */
+function branchIsOpen(branch){
+  if(!branch) return true; // لو ما في فروع، المطعم مفتوح دائماً
+  if(branch.force_closed) return false;
+  var wh=branch.work_hours;
+  if(!wh) return true;
+  var DAYS=['sun','mon','tue','wed','thu','fri','sat'];
+  var now=new Date();
+  // استخدم timezone المطعم لو موجود
+  var tz=branch.timezone||'Asia/Beirut';
+  var localStr=now.toLocaleString('en-US',{timeZone:tz,hour12:false,
+    weekday:'short',hour:'2-digit',minute:'2-digit'});
+  // parse: "Mon, 14:30" أو "Mon 14:30"
+  var parts=localStr.replace(',','').split(/\s+/);
+  var dayMap={Sun:'sun',Mon:'mon',Tue:'tue',Wed:'wed',Thu:'thu',Fri:'fri',Sat:'sat'};
+  var dayKey=dayMap[parts[0]]||DAYS[now.getDay()];
+  var timeParts=(parts[1]||'00:00').split(':');
+  var curMin=parseInt(timeParts[0]||0)*60+parseInt(timeParts[1]||0);
+  var slots=wh[dayKey]||[];
+  if(!slots.length) return false; // مغلق هالنهار
+  return slots.some(function(s){
+    var o=s.open||'00:00', c=s.close||'23:59';
+    var om=parseInt(o.split(':')[0])*60+parseInt(o.split(':')[1]);
+    var cm=parseInt(c.split(':')[0])*60+parseInt(c.split(':')[1]);
+    return curMin>=om && curMin<cm;
+  });
+}
+
+function showClosedOverlay(branch){
+  var msg=branch&&branch.force_closed
+    ? (L==='ar'?(branch.force_closed_msg_ar||'المطعم مغلق مؤقتاً'):(branch.force_closed_msg_en||'Restaurant temporarily closed'))
+    : (L==='ar'?'المطعم مغلق الآن':'Restaurant is closed now');
+  var el=$('#closedOverlay');
+  if(!el){
+    var d=document.createElement('div');
+    d.id='closedOverlay';
+    d.style.cssText='position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.85);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:32px;gap:16px';
+    d.innerHTML='<div style="font-size:56px">🔒</div>'+
+      '<h2 id="closedMsg" style="color:#fff;font-size:22px;margin:0"></h2>'+
+      '<p id="closedSub" style="color:rgba(255,255,255,.65);margin:0;font-size:14px"></p>';
+    document.body.appendChild(d);
+  }
+  $('#closedMsg').textContent=msg;
+  $('#closedSub').textContent=L==='ar'?'شكراً لاهتمامك، تفضّل بالزيارة ضمن أوقات العمل':'Thank you for your interest, please visit during working hours';
+  $('#closedOverlay').style.display='flex';
+}
+
+/* ---------- branch popup ---------- */
+function showBranchPicker(branches){
+  return new Promise(function(resolve){
+    var d=document.createElement('div');
+    d.id='branchPicker';
+    d.style.cssText='position:fixed;inset:0;z-index:190;background:rgba(0,0,0,.7);display:flex;align-items:flex-end;justify-content:center';
+    var sheet='<div style="background:var(--card);border-radius:22px 22px 0 0;padding:24px 20px 36px;width:100%;max-width:480px;max-height:70vh;overflow-y:auto">'+
+      '<h3 style="margin:0 0 16px;font-size:17px">'+
+        (L==='ar'?'اختر الفرع':'Select Branch')+'</h3>'+
+      branches.map(function(b){
+        return '<button data-bpick="'+b.id+'" style="display:block;width:100%;text-align:right;padding:14px 16px;background:var(--bg-2);border:0;border-radius:12px;margin-bottom:8px;cursor:pointer;color:var(--text)">'+
+          '<b style="font-size:15px">'+esc(L==='ar'?b.name_ar:b.name_en)+'</b>'+
+          (b.address_ar?'<br><span style="color:var(--muted);font-size:12px">'+esc(L==='ar'?b.address_ar:b.address_en)+'</span>':'')+'</button>';
+      }).join('')+'</div>';
+    d.innerHTML=sheet;
+    document.body.appendChild(d);
+    d.addEventListener('click',function(e){
+      var btn=e.target.closest('[data-bpick]');
+      if(!btn) return;
+      document.body.removeChild(d);
+      resolve(btn.dataset.bpick);
+    });
+  });
+}
+
 /* ---------- load ---------- */
 async function load(){
   if(DEMO){ demoData(); return true; }
@@ -717,9 +790,34 @@ async function load(){
     sb.from('categories').select('*').eq('restaurant_id',R.id).eq('is_active',true).order('sort'),
     sb.from('items').select('*').eq('restaurant_id',R.id).order('sort'),
     sb.from('banners').select('*').eq('restaurant_id',R.id).eq('is_active',true).order('sort'),
-    sb.from('promos').select('*').eq('restaurant_id',R.id).eq('is_active',true)
+    sb.from('promos').select('*').eq('restaurant_id',R.id).eq('is_active',true),
+    sb.from('restaurant_branches').select('*').eq('restaurant_id',R.id).eq('is_active',true).order('sort')
   ]);
   CATS=res[0].data||[]; ITEMS=res[1].data||[]; BANNERS=res[2].data||[]; PROMOS=res[3].data||[];
+  BRANCHES=res[4].data||[];
+
+  // branch selection
+  if(BRANCHES.length>0){
+    // check URL param first
+    var urlParams=new URLSearchParams(location.search);
+    var urlBranch=urlParams.get('branch');
+    if(urlBranch){
+      BRANCH=BRANCHES.find(function(b){return b.id===urlBranch||b.slug===urlBranch})||null;
+    }
+    if(!BRANCH){
+      var stored=null;
+      try{ stored=localStorage.getItem('la_branch_'+R.id); }catch(e){}
+      if(stored) BRANCH=BRANCHES.find(function(b){return b.id===stored})||null;
+    }
+    if(!BRANCH && BRANCHES.length===1){ BRANCH=BRANCHES[0]; }
+    if(!BRANCH && BRANCHES.length>1){
+      BRANCH_ID=await showBranchPicker(BRANCHES);
+      BRANCH=BRANCHES.find(function(b){return b.id===BRANCH_ID})||null;
+      try{ localStorage.setItem('la_branch_'+R.id,BRANCH.id); }catch(e){}
+    }
+    if(BRANCH) BRANCH_ID=BRANCH.id;
+  }
+
   return true;
 }
 
@@ -820,20 +918,33 @@ function next(){
 }
 
 /* ---------- menu ---------- */
+// الأقسام المرئية في chips = الأقسام الرئيسية فقط (parent_id فاضي)
+function rootCats(){ return CATS.filter(function(c){return !c.parent_id;}); }
+// كل معرّفات قسم وأقسامه الفرعية (للفلترة)
+function catFamily(catId){
+  var ids=[catId];
+  CATS.filter(function(c){return c.parent_id===catId;}).forEach(function(s){
+    ids=ids.concat(catFamily(s.id));
+  });
+  return ids;
+}
+
 function paintChips(){
   var h='<button class="chip" data-c="all" aria-pressed="'+(filter==='all')+'">'+T.all+'</button>';
-  CATS.forEach(function(c){
-    h+='<button class="chip" data-c="'+c.id+'" aria-pressed="'+(filter===c.id)+'">'+esc(tx(c,'name'))+'</button>';
+  rootCats().forEach(function(c){
+    var inFamily=filter!=='all'&&catFamily(c.id).indexOf(filter)>=0;
+    h+='<button class="chip" data-c="'+c.id+'" aria-pressed="'+(filter===c.id||inFamily)+'">'+esc(tx(c,'name'))+'</button>';
   });
   $('#chips').innerHTML=h;
 }
+
 function itemHtml(it){
   var q=cart[it.id]?cart[it.id].qty:0;
   var imgHtml=it.image_url?'<img src="'+esc(img(it.image_url))+'" alt="" loading="lazy">':'<span>'+esc(tx(R,'name'))+'</span>';
   var ctrl=q?'<div class="step"><button data-m="'+it.id+'">−</button><b>'+q+'</b><button data-a="'+it.id+'">+</button></div>'
            :'<button class="plus" data-a="'+it.id+'" aria-label="'+T.add+'">+</button>';
   var mp=mainPrice(it.price_usd), lb=subPrice(it.price_usd);
-  return '<div class="card'+(it.is_available?'':' off')+'"><div class="thumb">'+img+'</div><div>'+
+  return '<div class="card'+(it.is_available?'':' off')+'"><div class="thumb">'+imgHtml+'</div><div>'+
     '<h3>'+esc(tx(it,'name'))+(it.is_featured?'<span class="badge">'+T.featured+'</span>':'')+
     (it.is_available?'':'<span class="badge">'+T.unavailable+'</span>')+
     '<span class="add-ok" id="aok-'+it.id+'"></span></h3>'+
@@ -841,22 +952,42 @@ function itemHtml(it){
     '<div class="prow"><span class="price">'+mp.n+' <i>'+mp.c+'</i></span>'+
     (lb?'<span class="plbp">'+lb+'</span>':'')+ctrl+'</div></div></div>';
 }
+
+// عرض قسم وأقسامه الفرعية بشكل هرمي
+function renderCatTree(cat,list,depth){
+  var allIds=catFamily(cat.id);
+  var catItems=list.filter(function(i){return i.category_id===cat.id;});
+  var children=CATS.filter(function(c){return c.parent_id===cat.id;});
+  // لو ما في منتجات لا هون ولا بالأبناء، تجاهل
+  var hasAny=catItems.length>0||children.some(function(c){
+    return catFamily(c.id).some(function(id){return list.some(function(i){return i.category_id===id;});});
+  });
+  if(!hasAny) return '';
+  var headStyle=depth>0?'font-size:15px;padding-top:12px;padding-right:'+(depth*12)+'px':'';
+  var h='<div class="sec" style="'+headStyle+'"><h2>'+esc(tx(cat,'name'))+'</h2><i></i></div>';
+  if(catItems.length) h+='<div class="grid">'+catItems.map(itemHtml).join('')+'</div>';
+  children.forEach(function(child){h+=renderCatTree(child,list,depth+1);});
+  return h;
+}
+
 function paintMenu(){
   var q=query.trim().toLowerCase();
+  // لو في فرع، فلّتر المنتجات غير المتوفرة
+  var overrides={}; // بيجي من item_branch_override لاحقاً
   var list=ITEMS.filter(function(it){
-    if(filter!=='all'&&it.category_id!==filter) return false;
+    if(!it.is_available) return false;
+    var famIds=filter!=='all'?catFamily(filter):null;
+    if(famIds&&famIds.indexOf(it.category_id)<0) return false;
     if(q&&(tx(it,'name')+' '+tx(it,'desc')).toLowerCase().indexOf(q)<0) return false;
     return true;
   });
   if(!list.length){ $('#menuBody').innerHTML='<p class="empty">'+T.noResults+'</p>'; return; }
-  var groups=filter==='all'?CATS:CATS.filter(function(c){return c.id===filter});
-  var h='';
-  groups.forEach(function(c){
-    var sub=list.filter(function(i){return i.category_id===c.id});
-    if(!sub.length) return;
-    h+='<div class="sec"><h2>'+esc(tx(c,'name'))+'</h2><i></i></div><div class="grid">'+
-       sub.map(itemHtml).join('')+'</div>';
+  var topCats=filter==='all'?rootCats():CATS.filter(function(c){
+    // إذا الفلتر على قسم رئيسي أو فرعي، اعرض الجذر
+    return catFamily(c.id).indexOf(filter)>=0 && !c.parent_id;
   });
+  var h='';
+  topCats.forEach(function(c){ h+=renderCatTree(c,list,0); });
   $('#menuBody').innerHTML=h||'<p class="empty">'+T.noResults+'</p>';
 }
 $('#chips').addEventListener('click',function(e){
@@ -1316,6 +1447,10 @@ function showPromo(){
   setLang(saved||R.default_lang||'ar');
   setType(R.dinein_enabled?'dine_in':'delivery');
   paintSlider();
+  // فحص الإغلاق — لو في فرع مُختار أو فرع وحيد
+  if(BRANCH && !branchIsOpen(BRANCH)){
+    showClosedOverlay(BRANCH);
+  }
   setTimeout(showPromo,1200);
 })();
 })();

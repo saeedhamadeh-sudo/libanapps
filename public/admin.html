@@ -368,8 +368,14 @@ body.login-page .credit .credit-tel{color:#E08A2B}
       <div class="g3">
         <div><label>عربي</label><input type="text" id="cAr"></div>
         <div><label>إنكليزي</label><input type="text" id="cEn"></div>
-        <div style="display:flex;align-items:flex-end"><button class="btn" id="addCat" style="width:100%">إضافة</button></div>
+        <div><label>قسم أب (اختياري)</label><select id="cParent"><option value="">— بدون أب (رئيسي) —</option></select></div>
       </div>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button class="btn" id="addCat">إضافة</button>
+        <button class="btn alt hidden" id="cancelEditCat">إلغاء</button>
+        <input type="hidden" id="cEditId">
+      </div>
+      <div class="msg" id="cMsg" style="margin-top:6px"></div>
       <div id="cList" style="margin-top:12px"></div>
     </div>
   </section>
@@ -942,21 +948,41 @@ $('#brList').addEventListener('click',async function(e){
 async function loadCats(){
   var r=await sb.from('categories').select('*').eq('restaurant_id',R.id).order('sort');
   CATS=r.data||[];
-  $('#fCat').innerHTML=CATS.map(function(c){
-    return '<option value="'+c.id+'">'+esc(c.name_ar)+'</option>'}).join('');
-  $('#cList').innerHTML=(CATS.length?('<div class="sortnote">'+
-      (SORTLOCK?'🔒 الترتيب مقفول — افتحه من تبويب المنتجات':'اسحب القسم لتغيير ترتيبه بالمنيو')+
-    '</div>'):'')+
-    (CATS.length?CATS.map(function(c,i){
+
+  // fill القسم الأب select
+  var roots=CATS.filter(function(c){return !c.parent_id});
+  $('#cParent').innerHTML='<option value="">— بدون أب (رئيسي) —</option>'+
+    roots.map(function(c){return '<option value="'+c.id+'">'+esc(c.name_ar)+'</option>'}).join('');
+
+  // fill product form category select (flat with indent)
+  $('#fCat').innerHTML=buildCatOptions(CATS,'');
+
+  // build tree display
+  function catRowHtml(c,depth){
     var n=ITEMS.filter(function(x){return x.category_id===c.id}).length;
-    return '<div class="row"'+(SORTLOCK?'':' draggable="true"')+' data-cid="'+c.id+'">'+
-      (SORTLOCK?'':'<span class="grip">⋮⋮</span>')+
-      '<div class="t"><b>'+esc(c.name_ar)+'</b><span>'+esc(c.name_en)+' · '+n+' منتج</span></div>'+
-      (SORTLOCK?'':'<button class="btn alt sm" data-up="'+c.id+'"'+(i===0?' disabled':'')+'>▲</button> ')+
+    var subs=CATS.filter(function(x){return x.parent_id===c.id});
+    var indent=depth>0?('<span style="display:inline-block;width:'+(depth*16)+'px"></span>'):'';
+    var idx=CATS.indexOf(c);
+    var html='<div class="row" data-cid="'+c.id+'" style="padding-right:'+(depth>0?'4px':'8px')+'">'+
+      indent+
+      '<div class="t"><b>'+esc(c.name_ar)+'</b><span>'+esc(c.name_en)+' · '+n+' منتج'+(subs.length?' · '+subs.length+' قسم فرعي':'')+' </span></div>'+
       '<button class="btn alt sm" data-ren="'+c.id+'">تعديل</button> '+
       '<button class="btn dg sm" data-delcat="'+c.id+'">حذف</button></div>';
-  }).join(''):'<p class="muted">ما في أقسام بعد</p>');
+    subs.forEach(function(s){html+=catRowHtml(s,depth+1);});
+    return html;
+  }
+  var roots2=CATS.filter(function(c){return !c.parent_id});
+  var treeHtml=roots2.map(function(c){return catRowHtml(c,0);}).join('');
+  $('#cList').innerHTML=(CATS.length?('<div class="sortnote">الأقسام الفرعية تظهر منسدلة تحت قسمها الأب في المنيو</div>'):'')
+    +(treeHtml||'<p class="muted">ما في أقسام بعد</p>');
   relang();
+}
+function buildCatOptions(cats,parentId,depth){
+  depth=depth||0;
+  return cats.filter(function(c){return (c.parent_id||'')===parentId;}).map(function(c){
+    var prefix=depth>0?Array(depth+1).join('— '):'';
+    return '<option value="'+c.id+'">'+prefix+esc(c.name_ar)+'</option>'+buildCatOptions(cats,c.id,depth+1);
+  }).join('');
 }
 async function saveCatOrder(){
   for(var i=0;i<CATS.length;i++){
@@ -1000,28 +1026,51 @@ async function saveCatOrder(){
 })();
 
 $('#addCat').addEventListener('click',async function(){
-  var ar=$('#cAr').value.trim(); if(!ar) return;
-  await sb.from('categories').insert({restaurant_id:R.id,name_ar:ar,
-    name_en:$('#cEn').value.trim()||ar,sort:CATS.length+1});
-  $('#cAr').value='';$('#cEn').value='';
+  var ar=$('#cAr').value.trim(); if(!ar){ $('#cMsg').textContent='الاسم مطلوب'; return; }
+  var editId=$('#cEditId').value;
+  var parentVal=$('#cParent').value||null;
+  if(editId){
+    await sb.from('categories').update({
+      name_ar:ar, name_en:$('#cEn').value.trim()||ar, parent_id:parentVal
+    }).eq('id',editId);
+    $('#cEditId').value='';
+    $('#addCat').textContent='إضافة';
+    $('#cancelEditCat').classList.add('hidden');
+  } else {
+    await sb.from('categories').insert({
+      restaurant_id:R.id, name_ar:ar,
+      name_en:$('#cEn').value.trim()||ar,
+      parent_id:parentVal,
+      sort:CATS.length+1
+    });
+  }
+  $('#cAr').value=''; $('#cEn').value=''; $('#cParent').value=''; $('#cMsg').textContent='';
   await loadCats();
+});
+$('#cancelEditCat').addEventListener('click',function(){
+  $('#cEditId').value=''; $('#cAr').value=''; $('#cEn').value=''; $('#cParent').value='';
+  $('#addCat').textContent='إضافة'; $('#cancelEditCat').classList.add('hidden'); $('#cMsg').textContent='';
 });
 $('#cList').addEventListener('click',async function(e){
   var b=e.target.closest('button'); if(!b) return;
   if(b.dataset.delcat){
     var cc=CATS.find(function(x){return x.id===b.dataset.delcat});
+    var subs=CATS.filter(function(x){return x.parent_id===b.dataset.delcat}).length;
     var cn=ITEMS.filter(function(x){return x.category_id===b.dataset.delcat}).length;
-    if(!confirm('حذف قسم "'+(cc?cc.name_ar:'')+'"؟\n\nرح ينحذف معه '+cn+' منتج.')) return;
+    var msg='حذف قسم "'+(cc?cc.name_ar:'')+'"؟\n\nرح ينحذف معه '+cn+' منتج';
+    if(subs>0) msg+=' و'+subs+' قسم فرعي';
+    if(!confirm(msg+'.')) return;
     await sb.from('categories').delete().eq('id',b.dataset.delcat);
   }else if(b.dataset.ren){
     var c=CATS.find(function(x){return x.id===b.dataset.ren});
-    var ar=prompt('الاسم بالعربي:',c.name_ar); if(ar===null) return;
-    var en=prompt('الاسم بالإنكليزي:',c.name_en); if(en===null) return;
-    await sb.from('categories').update({name_ar:ar.trim(),name_en:en.trim()}).eq('id',c.id);
-  }else if(b.dataset.up){
-    var i=CATS.findIndex(function(x){return x.id===b.dataset.up});
-    await sb.from('categories').update({sort:CATS[i-1].sort}).eq('id',CATS[i].id);
-    await sb.from('categories').update({sort:CATS[i].sort}).eq('id',CATS[i-1].id);
+    $('#cAr').value=c.name_ar; $('#cEn').value=c.name_en;
+    $('#cParent').value=c.parent_id||'';
+    $('#cEditId').value=c.id;
+    $('#addCat').textContent='حفظ التعديل';
+    $('#cancelEditCat').classList.remove('hidden');
+    $('#cMsg').textContent='';
+    document.querySelector('[data-p="cats"]').scrollIntoView({behavior:'smooth'});
+    return;
   }
   await loadCats(); await loadItems();
 });
