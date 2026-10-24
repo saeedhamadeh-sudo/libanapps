@@ -42,6 +42,9 @@ create table if not exists public.restaurant_branches (
 );
 create index if not exists branches_rest_idx on public.restaurant_branches (restaurant_id, sort);
 
+-- image_url (اختيارية، تُرفع إلى Storage)
+alter table public.restaurant_branches add column if not exists image_url text default '';
+
 -- ============================================================
 -- 3) توفر الأصناف بالفروع (نخزّن الاستثناءات فقط)
 -- الافتراض: كل صنف متوفر بكل الفروع

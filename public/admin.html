@@ -573,7 +573,11 @@ body.login-page .credit .credit-tel{color:#E08A2B}
       <div id="brHours" style="display:grid;gap:6px">
         <!-- يتولد تلقائياً -->
       </div>
-      <div style="margin-top:12px">
+      <div style="margin:12px 0 6px"><label>صورة الفرع (اختيارية)</label>
+        <input type="file" id="brImg" accept="image/*" style="margin-top:4px">
+        <div id="brImgPreview" style="margin-top:8px"></div>
+      </div>
+      <div style="margin-top:8px">
         <div class="sw"><input type="checkbox" id="brActive" checked><label for="brActive" style="margin:0">الفرع نشط</label></div>
       </div>
       <div class="acts">
@@ -820,8 +824,10 @@ function collectHours(){
 function branchRow(b){
   var activeLabel=b.is_active?'<span style="color:var(--ok-color,#1a7a4a);font-size:12px">● نشط</span>':'<span style="color:#999;font-size:12px">○ غير نشط</span>';
   var closedBadge=b.force_closed?'<span style="color:#c00;font-size:12px;font-weight:700"> — مغلق طارئ</span>':'';
-  return '<div class="row" data-bid="'+b.id+'">'+
-    '<div class="t"><b>'+esc(b.name_ar)+'</b>'+closedBadge+'<span>'+esc(b.name_en)+' · '+esc(b.phone||'')+'</span></div>'+
+  var thumb=b.image_url?'<img src="'+esc(b.image_url)+'" style="width:38px;height:38px;border-radius:8px;object-fit:cover;margin-left:10px;flex-shrink:0">':'';
+  return '<div class="row" data-bid="'+b.id+'" style="display:flex;align-items:center;gap:0">'+
+    thumb+
+    '<div class="t" style="flex:1"><b>'+esc(b.name_ar)+'</b>'+closedBadge+'<span>'+esc(b.name_en)+' · '+esc(b.phone||'')+'</span></div>'+
     activeLabel+
     '<button class="btn alt sm" data-brfc="'+b.id+'" title="'+(b.force_closed?'إلغاء الإغلاق الطارئ':'إغلاق طارئ')+'">⚡ '+(b.force_closed?'فتح':'إغلاق')+'</button>'+
     '<button class="btn alt sm" data-bren="'+b.id+'">تعديل</button> '+
@@ -844,8 +850,24 @@ function clearBranchForm(){
   $('#brAddrAr').value=''; $('#brAddrEn').value='';
   $('#brActive').checked=true;
   $('#delBranch').classList.add('hidden');
+  $('#brImg').value='';
+  $('#brImgPreview').innerHTML='';
   buildHoursUI(DEFAULT_HOURS);
   $('#brMsg').textContent='';
+}
+
+$('#brImg').addEventListener('change',function(){
+  var f=this.files[0]; if(!f) return;
+  var url=URL.createObjectURL(f);
+  $('#brImgPreview').innerHTML='<img src="'+url+'" style="max-width:120px;max-height:80px;border-radius:8px;object-fit:cover">';
+});
+
+async function uploadBranchImg(file, branchId){
+  var ext=file.name.split('.').pop();
+  var path='branches/'+branchId+'.'+ext;
+  var r=await sb.storage.from('restaurant-images').upload(path,file,{upsert:true});
+  if(r.error) return null;
+  return sb.storage.from('restaurant-images').getPublicUrl(path).data.publicUrl;
 }
 
 $('#clearBranch').addEventListener('click',clearBranchForm);
@@ -867,15 +889,22 @@ $('#saveBranch').addEventListener('click',async function(){
     sort:BRANCHES.length+1
   };
   var id=$('#brId').value;
-  var err;
+  var err, savedId=id;
   if(id){
     var u=await sb.from('restaurant_branches').update(payload).eq('id',id);
     err=u.error;
   } else {
-    var ins=await sb.from('restaurant_branches').insert(payload);
+    var ins=await sb.from('restaurant_branches').insert(payload).select('id').single();
     err=ins.error;
+    if(!err) savedId=ins.data.id;
   }
   if(err){ $('#brMsg').textContent='خطأ: '+err.message; return; }
+  // رفع الصورة إذا في
+  var imgFile=$('#brImg').files[0];
+  if(imgFile && savedId){
+    var imgUrl=await uploadBranchImg(imgFile,savedId);
+    if(imgUrl) await sb.from('restaurant_branches').update({image_url:imgUrl}).eq('id',savedId);
+  }
   $('#brMsg').textContent='تم الحفظ ✓';
   clearBranchForm();
   await loadBranches();
@@ -902,6 +931,10 @@ $('#brList').addEventListener('click',async function(e){
     $('#brAddrAr').value=b.address_ar||''; $('#brAddrEn').value=b.address_en||'';
     $('#brActive').checked=b.is_active!==false;
     $('#delBranch').classList.remove('hidden');
+    $('#brImg').value='';
+    $('#brImgPreview').innerHTML=b.image_url
+      ?'<img src="'+esc(b.image_url)+'" style="max-width:120px;max-height:80px;border-radius:8px;object-fit:cover"> <span style="font-size:12px;color:#888">الصورة الحالية</span>'
+      :'';
     buildHoursUI(b.work_hours||DEFAULT_HOURS);
     $('#brMsg').textContent='';
     document.querySelector('[data-p="branches"]').scrollIntoView({behavior:'smooth'});

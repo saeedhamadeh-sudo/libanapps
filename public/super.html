@@ -1410,6 +1410,7 @@ function paintRests(){
             'href="/admin?r='+encodeURIComponent(r.slug)+'">افتح لوحته</a> '+
           '<button class="btn alt sm" data-editslug="'+r.id+'">تعديل الرابط</button> '+
           '<button class="btn alt sm" data-link="'+r.id+'">ربط بزبون</button> '+
+          '<button class="btn alt sm" data-branches="'+r.id+'" data-rname="'+esc(r.name_ar)+'">الفروع</button> '+
           '<button class="btn alt sm" data-toggle="'+r.id+'" data-on="'+(r.is_active!==false)+'">'+
             (r.is_active===false?'تشغيل':'إيقاف')+'</button> '+
           '<button class="btn dg sm" data-delrest="'+r.id+'">حذف</button>'+
@@ -1464,6 +1465,93 @@ $('#restTbl').addEventListener('click',async function(e){
   }
   await loadRestTable(); await loadRests(); await loadSubs();
 });
+
+/* ---------- فروع المطاعم (super view) ---------- */
+(function(){
+  // إنشاء الـ modal
+  var modal=document.createElement('div');
+  modal.id='brModal';
+  modal.style.cssText='display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;overflow-y:auto;padding:20px';
+  modal.innerHTML=
+    '<div style="max-width:680px;margin:40px auto;background:var(--card-bg,#fff);border-radius:16px;padding:20px">'+
+    '<div style="display:flex;align-items:center;margin-bottom:16px">'+
+      '<h3 id="brModalTitle" style="flex:1;font-size:16px"></h3>'+
+      '<button id="brModalClose" style="background:none;border:none;font-size:20px;cursor:pointer;color:inherit">✕</button>'+
+    '</div>'+
+    '<div id="brModalBody"></div>'+
+    '</div>';
+  document.body.appendChild(modal);
+  document.getElementById('brModalClose').addEventListener('click',function(){ modal.style.display='none'; });
+  modal.addEventListener('click',function(e){ if(e.target===modal) modal.style.display='none'; });
+
+  // فتح modal الفروع
+  async function openBranchesModal(restId, restName){
+    document.getElementById('brModalTitle').textContent='فروع: '+restName;
+    document.getElementById('brModalBody').innerHTML='<p style="color:#888;text-align:center;padding:20px">جاري التحميل…</p>';
+    modal.style.display='block';
+    var r=await sb.from('restaurant_branches').select('*').eq('restaurant_id',restId).order('sort');
+    var branches=r.data||[];
+    if(!branches.length){
+      document.getElementById('brModalBody').innerHTML='<p style="color:#888;padding:10px">لا يوجد فروع لهذا المطعم.</p>';
+      return;
+    }
+    var html='<table style="width:100%;border-collapse:collapse;font-size:13px">'+
+      '<thead><tr style="border-bottom:1px solid #eee">'+
+        '<th style="text-align:right;padding:6px">الفرع</th>'+
+        '<th style="text-align:right;padding:6px">الهاتف</th>'+
+        '<th style="text-align:right;padding:6px">الحالة</th>'+
+        '<th style="text-align:right;padding:6px">ساعات</th>'+
+        '<th></th>'+
+      '</tr></thead><tbody>';
+    branches.forEach(function(b){
+      var status=b.force_closed
+        ?'<span style="color:#c00;font-weight:700">مغلق طارئ</span>'
+        :(b.is_active?'<span style="color:green">نشط</span>':'<span style="color:#999">غير نشط</span>');
+      var days=Object.entries(b.work_hours||{}).filter(function(e){return e[1]&&e[1].length;}).map(function(e){return e[0];}).join(', ');
+      html+='<tr style="border-bottom:1px solid #f0f0f0">'+
+        '<td style="padding:8px"><b>'+esc(b.name_ar)+'</b>'+(b.image_url?'<br><img src="'+esc(b.image_url)+'" style="max-width:60px;border-radius:6px;margin-top:4px">':'')+'</td>'+
+        '<td style="padding:8px;direction:ltr">'+esc(b.phone||'—')+'</td>'+
+        '<td style="padding:8px">'+status+'</td>'+
+        '<td style="padding:8px;font-size:11px;color:#888">'+esc(days||'—')+'</td>'+
+        '<td style="padding:8px;white-space:nowrap">'+
+          '<button class="btn alt sm" data-sbfc="'+b.id+'" data-cur="'+(b.force_closed?'1':'0')+'">'+
+            (b.force_closed?'إلغاء الإغلاق':'إغلاق طارئ')+'</button> '+
+          '<button class="btn alt sm" data-sbtoggle="'+b.id+'" data-on="'+(b.is_active?'1':'0')+'">'+
+            (b.is_active?'إيقاف':'تشغيل')+'</button> '+
+          '<button class="btn dg sm" data-sbdel="'+b.id+'">حذف</button>'+
+        '</td></tr>';
+    });
+    html+='</tbody></table>'+
+      '<p style="font-size:12px;color:#999;margin-top:10px">'+branches.length+' فرع — التعديل التفصيلي من لوحة المطعم</p>';
+    var body=document.getElementById('brModalBody');
+    body.innerHTML=html;
+    // events داخل الـ modal
+    body.addEventListener('click',async function(e){
+      var btn=e.target.closest('button'); if(!btn) return;
+      if(btn.dataset.sbfc){
+        var newVal=btn.dataset.cur==='1'?false:true;
+        var msg='';
+        if(newVal) msg=prompt('سبب الإغلاق (اختياري):','')||'';
+        await sb.from('restaurant_branches').update({force_closed:newVal,force_closed_msg_ar:msg}).eq('id',btn.dataset.sbfc);
+        openBranchesModal(restId,restName);
+      } else if(btn.dataset.sbtoggle){
+        var next=btn.dataset.on==='1'?false:true;
+        await sb.from('restaurant_branches').update({is_active:next}).eq('id',btn.dataset.sbtoggle);
+        openBranchesModal(restId,restName);
+      } else if(btn.dataset.sbdel){
+        if(!confirm('حذف هذا الفرع نهائياً؟')) return;
+        await sb.from('restaurant_branches').delete().eq('id',btn.dataset.sbdel);
+        openBranchesModal(restId,restName);
+      }
+    });
+  }
+
+  // ربط زر الفروع
+  document.getElementById('restTbl').addEventListener('click',function(e){
+    var btn=e.target.closest('[data-branches]'); if(!btn) return;
+    openBranchesModal(btn.dataset.branches, btn.dataset.rname);
+  });
+})();
 
 /* ---------- محاسبة الصناعيين (ALUM) ---------- */
 var ALUM=[];
