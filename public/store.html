@@ -804,6 +804,12 @@ footer.ft{margin-top:clamp(50px,8vw,120px);background:var(--surface);border-top:
 .wa-fab:hover{transform:scale(1.08)}
 .wa-fab svg{width:30px;height:30px;fill:#fff;stroke:none}
 @media(max-width:700px){.wa-fab{width:48px;height:48px}.wa-fab svg{width:26px;height:26px}}
+.cart-fab{position:fixed;inset-inline-start:16px;bottom:calc(16px + env(safe-area-inset-bottom));z-index:60;width:54px;height:54px;border-radius:50%;background:var(--brand,var(--text));color:var(--bg);display:grid;place-items:center;box-shadow:0 10px 26px rgba(0,0,0,.28);transition:transform .2s;border:none;cursor:pointer}
+.cart-fab:hover{transform:scale(1.08)}
+.cart-fab svg{width:26px;height:26px;fill:none;stroke:currentColor}
+.cart-fab .cnt{position:absolute;top:-4px;inset-inline-end:-4px;min-width:20px;height:20px;padding:0 5px;border-radius:99px;background:#e5484d;color:#fff;font-size:12px;font-weight:800;display:grid;place-items:center;line-height:1}
+.cart-fab .cnt.hidden{display:none}
+@media(max-width:700px){.cart-fab{width:48px;height:48px}.cart-fab svg{width:22px;height:22px}}
 .toast{position:fixed;left:50%;bottom:calc(26px + env(safe-area-inset-bottom));transform:translate(-50%,30px);background:var(--text);color:var(--bg);
   padding:12px 22px;border-radius:99px;font-weight:600;font-size:14px;opacity:0;pointer-events:none;transition:.28s;z-index:130;max-width:90vw;text-align:center}
 .toast.on{opacity:1;transform:translate(-50%,0)}
@@ -1146,6 +1152,7 @@ footer.ft{margin-top:clamp(50px,8vw,120px);background:var(--surface);border-top:
 
   <footer class="ft" id="foot"></footer>
   <a class="wa-fab hidden" id="waFab" target="_blank" rel="noopener" aria-label="WhatsApp"></a>
+  <button type="button" class="cart-fab hidden" id="cartFab" data-cartopen aria-label="Cart"><svg viewBox="0 0 24 24"><path d="M5 8h14l-1 12H6L5 8z"/><path d="M9 8V6.5a3 3 0 0 1 6 0V8"/></svg><span class="cnt hidden" id="ccnt3">0</span></button>
 </div>
 
 <div class="pvw" id="pvw" role="dialog" aria-modal="true"></div>
@@ -1296,7 +1303,7 @@ var $=function(s,r){return (r||document).querySelector(s)};
 var $$=function(s,r){return Array.prototype.slice.call((r||document).querySelectorAll(s))};
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
 function safeUrl(u){u=String(u||'').trim();return /^(https?:\/\/|\/(?!\/))/i.test(u)?u:''}
-function img(u){ if(!u) return ''; var m=String(u).match(/\/storage\/v1\/object\/public\/(.+)$/); return m?('/img/'+m[1]):u }
+function img(u){ if(!u) return ''; if(/\.svg(\?|#|$)/i.test(u)) return u; var m=String(u).match(/\/storage\/v1\/object\/public\/(.+)$/); return m?('/img/'+m[1]):u }
 /* صور بمقاسات متعددة: بنطلب من الـ worker نسخة مصغّرة (?w=) بدل الصورة الأصلية الكبيرة */
 function imgw(u,w){ var r=img(u); return (r&&r.indexOf('/img/')===0)?r+'?w='+w:r }
 function imgs(u,ws,sizes){ var r=img(u); if(!r||r.indexOf('/img/')!==0) return ' src="'+esc(r)+'"';
@@ -1611,6 +1618,8 @@ var fitT; window.addEventListener('resize',function(){clearTimeout(fitT);fitT=se
 function syncCounts(){
   var n=0; cart.forEach(function(l){n+=l.q});
   var c=$('#ccnt'); if(c){c.textContent=n;c.classList.toggle('hidden',!n);}
+  var c3=$('#ccnt3'); if(c3){c3.textContent=n;c3.classList.toggle('hidden',!n);}
+  var cf=$('#cartFab'); if(cf) cf.classList.toggle('hidden',!n);
   var w=$('#wcnt'); if(w){w.textContent=wish.length;w.classList.toggle('hidden',!wish.length);}
   $$('[data-wl]').forEach(function(b){b.setAttribute('aria-pressed',String(wish.indexOf(b.dataset.wl)>=0))});
 }
@@ -1951,7 +1960,10 @@ function openProduct(id,push){
   var av=(p.colors||[]).filter(function(c){return c.on!==false}); if(av.length===1) pvSel.color=av[0].n;
   var avs=(p.sizes||[]).filter(sizeAvail); if(avs.length===1&&!hasColors(p)) pvSel.size=avs[0].n;
   loadDesc(p); renderPV(); var w=$('#pvw'); w.classList.add('on'); w.scrollTop=0; if(!was) lock(true);
-  if(push!==false){history.pushState({p:id},'','#/p/'+id);pvPushed=true;}
+  if(push!==false){
+    if(was&&pvPushed) history.replaceState({p:id},'','#/p/'+id);
+    else { history.pushState({p:id},'','#/p/'+id); pvPushed=true; }
+  }
   loadReviews(p);
 }
 function closePV(fromPop){
