@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>لوحة الفرع — LibanApps</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0f0f0f;color:#f0f0f0;min-height:100vh}
+a{color:inherit;text-decoration:none}
+.top{background:#1a1a1a;border-bottom:1px solid #2a2a2a;padding:14px 18px;display:flex;align-items:center;gap:12px}
+.top h1{font-size:16px;font-weight:700;flex:1}
+.top .badge{background:#333;color:#aaa;border-radius:999px;padding:3px 10px;font-size:12px}
+.top .badge.open{background:#0d3320;color:#4ade80}
+.top .badge.closed{background:#3a0808;color:#f87171}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:10px;border:0;cursor:pointer;font-size:13px;font-weight:600;transition:opacity .15s}
+.btn:hover{opacity:.85}
+.btn.green{background:#166534;color:#bbf7d0}
+.btn.red{background:#7f1d1d;color:#fecaca}
+.btn.gray{background:#2a2a2a;color:#aaa}
+.btn.orange{background:#7c2d12;color:#fed7aa}
+.empty{text-align:center;padding:60px 20px;color:#666}
+.orders{display:grid;gap:12px;padding:16px;max-width:640px;margin:0 auto}
+.card{background:#1a1a1a;border-radius:14px;padding:16px;border:1px solid #2a2a2a}
+.card.pending{border-color:#444}
+.card.accepted{border-color:#166534}
+.card.rejected{border-color:#7f1d1d;opacity:.7}
+.card-top{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.card-top .num{font-size:13px;font-weight:700;color:#888}
+.card-top .time{font-size:12px;color:#666;margin-right:auto}
+.card-top .status{font-size:11px;font-weight:700;padding:3px 8px;border-radius:999px}
+.status.pending{background:#2a2007;color:#fbbf24}
+.status.accepted{background:#0d3320;color:#4ade80}
+.status.rejected{background:#3a0808;color:#f87171}
+.customer{font-size:14px;font-weight:600;margin-bottom:4px}
+.customer span{font-size:12px;color:#888;font-weight:400;margin-right:8px}
+.items-list{margin:8px 0;padding:8px 10px;background:#111;border-radius:8px;font-size:13px;line-height:2}
+.total-row{display:flex;justify-content:space-between;font-size:13px;color:#aaa;margin-top:6px}
+.total-row b{color:#f0f0f0}
+.acts{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+.note{font-size:12px;color:#888;margin-top:6px;font-style:italic}
+.reject-form{display:none;margin-top:10px;background:#1f0d0d;border-radius:10px;padding:12px}
+.reject-form textarea{width:100%;background:#111;color:#f0f0f0;border:1px solid #333;border-radius:8px;padding:8px;font-size:13px;min-height:70px;resize:vertical;font-family:inherit}
+.reject-form label{display:block;font-size:12px;color:#f87171;margin-bottom:6px}
+.fc-bar{background:#3a0808;border-bottom:1px solid #7f1d1d;padding:10px 18px;display:flex;align-items:center;gap:10px;font-size:13px}
+.fc-bar b{flex:1}
+.loader{text-align:center;padding:40px;color:#555}
+.sound-btn{padding:6px 12px;border-radius:8px;background:#222;border:1px solid #333;color:#888;cursor:pointer;font-size:12px}
+</style>
+</head>
+<body>
+
+<div class="top">
+  <h1 id="branchName">لوحة الفرع</h1>
+  <span class="badge" id="openBadge">…</span>
+  <button class="btn orange" id="fcBtn" style="display:none">⚡ إغلاق طارئ</button>
+  <button class="sound-btn" id="soundBtn" title="تنبيه صوتي للطلبات الجديدة">🔔</button>
+</div>
+<div class="fc-bar hidden" id="fcBar">
+  <b>⚠️ الفرع مغلق طارئاً</b>
+  <button class="btn green" id="fcOpenBtn">إعادة الفتح</button>
+</div>
+
+<div id="mainContent">
+  <div class="loader" id="loader">جاري التحميل…</div>
+  <div class="orders" id="ordersList"></div>
+</div>
+
+<script>
+/* === config === */
+var SUPA_URL='https://moriwmhlgugmjzddwfgv.supabase.co';
+var SUPA_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1vcml3bWhsZ3VnbWp6ZGR3Zmd2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MTA1MTQ0NjAsImV4cCI6MjAyNjA5MDQ2MH0.FnHoFbrjMuESmYJOUyKcpCT_1i-PZcMlQ6GnZMjdEUI';
+
+/* === URL params === */
+var params=new URLSearchParams(location.search);
+var BRANCH_ID=params.get('branch')||'';
+var TOKEN=params.get('token')||''; // مستقبلاً للحماية
+
+if(!BRANCH_ID){
+  document.body.innerHTML='<div class="empty">رابط غير صالح — يلزم ?branch=<branch_id></div>';
+  throw new Error('no branch');
+}
+
+/* === Supabase fetch === */
+function sbFetch(path, opts){
+  return fetch(SUPA_URL+'/rest/v1'+path, Object.assign({
+    headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,
+             'Content-Type':'application/json','Prefer':'return=representation'}
+  }, opts||{})).then(function(r){return r.json();});
+}
+
+/* === state === */
+var BRANCH=null, ORDERS=[], RESTAURANT=null;
+var SOUND_ON=true;
+var lastOrderTime=null;
+
+/* === helpers === */
+function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function fmtTime(ts){
+  var d=new Date(ts);
+  return d.toLocaleTimeString('ar-LB',{hour:'2-digit',minute:'2-digit'})+
+         ' — '+d.toLocaleDateString('ar-LB',{day:'2-digit',month:'2-digit'});
+}
+function money(n){ n=Number(n)||0; return n%1===0?n.toFixed(0):n.toFixed(2); }
+
+/* === audio === */
+var audioCtx=null;
+function beep(){
+  try{
+    if(!audioCtx) audioCtx=new(window.AudioContext||window.webkitAudioContext)();
+    var osc=audioCtx.createOscillator();
+    var gain=audioCtx.createGain();
+    osc.connect(gain); gain.connect(audioCtx.destination);
+    osc.frequency.value=880; gain.gain.value=0.3;
+    osc.start(); osc.stop(audioCtx.currentTime+0.18);
+    setTimeout(function(){
+      var o2=audioCtx.createOscillator();
+      var g2=audioCtx.createGain();
+      o2.connect(g2); g2.connect(audioCtx.destination);
+      o2.frequency.value=1100; g2.gain.value=0.3;
+      o2.start(); o2.stop(audioCtx.currentTime+0.18);
+    },220);
+  }catch(e){}
+}
+
+/* === load branch info === */
+async function loadBranch(){
+  var r=await sbFetch('/restaurant_branches?id=eq.'+BRANCH_ID+'&select=*');
+  if(!r||!r.length){ document.body.innerHTML='<div class="empty">الفرع غير موجود</div>'; return false; }
+  BRANCH=r[0];
+  document.getElementById('branchName').textContent=BRANCH.name_ar||'الفرع';
+  var fcBtn=document.getElementById('fcBtn');
+  fcBtn.style.display='inline-flex';
+  updateFcUI();
+  // load restaurant
+  var r2=await sbFetch('/restaurants?id=eq.'+BRANCH.restaurant_id+'&select=*');
+  if(r2&&r2.length) RESTAURANT=r2[0];
+  return true;
+}
+
+function updateFcUI(){
+  var badge=document.getElementById('openBadge');
+  var fcBar=document.getElementById('fcBar');
+  var fcBtn=document.getElementById('fcBtn');
+  if(BRANCH.force_closed){
+    badge.textContent='مغلق طارئاً'; badge.className='badge closed';
+    fcBar.classList.remove('hidden');
+    fcBtn.textContent='⚡ إلغاء الإغلاق';
+  } else {
+    badge.textContent='نشط'; badge.className='badge open';
+    fcBar.classList.add('hidden');
+    fcBtn.textContent='⚡ إغلاق طارئ';
+  }
+}
+
+/* === toggle force close === */
+document.getElementById('fcBtn').addEventListener('click',async function(){
+  var newVal=!BRANCH.force_closed;
+  var msg='';
+  if(newVal){
+    msg=prompt('سبب الإغلاق (اختياري):','');
+    if(msg===null) return;
+  }
+  await sbFetch('/restaurant_branches?id=eq.'+BRANCH_ID,{
+    method:'PATCH',
+    body:JSON.stringify({force_closed:newVal,force_closed_msg_ar:msg||''})
+  });
+  BRANCH.force_closed=newVal; BRANCH.force_closed_msg_ar=msg||'';
+  updateFcUI();
+});
+document.getElementById('fcOpenBtn').addEventListener('click',async function(){
+  await sbFetch('/restaurant_branches?id=eq.'+BRANCH_ID,{
+    method:'PATCH', body:JSON.stringify({force_closed:false,force_closed_msg_ar:''})
+  });
+  BRANCH.force_closed=false; updateFcUI();
+});
+
+/* === sound toggle === */
+document.getElementById('soundBtn').addEventListener('click',function(){
+  SOUND_ON=!SOUND_ON;
+  this.textContent=SOUND_ON?'🔔':'🔕';
+  if(SOUND_ON) beep(); // test
+});
+
+/* === load orders === */
+async function loadOrders(){
+  var r=await sbFetch(
+    '/orders?branch_id=eq.'+BRANCH_ID+
+    '&order=created_at.desc&limit=50&select=*'
+  );
+  if(!Array.isArray(r)) return;
+  // فحص طلبات جديدة pending
+  var newPending=r.filter(function(o){
+    return o.branch_status==='pending'&&
+           (!lastOrderTime||new Date(o.created_at)>new Date(lastOrderTime));
+  });
+  if(newPending.length && lastOrderTime && SOUND_ON) beep();
+  if(r.length) lastOrderTime=r[0].created_at;
+  ORDERS=r;
+  render();
+}
+
+/* === render === */
+function statusLabel(s){
+  var m={pending:'قيد الانتظار',accepted:'مقبول',rejected:'مرفوض'};
+  return '<span class="status '+s+'">'+(m[s]||s)+'</span>';
+}
+
+function orderCard(o){
+  var items=[];
+  try{ items=typeof o.items==='string'?JSON.parse(o.items):o.items||[]; }catch(e){}
+  var total=Number(o.total_usd)||0;
+  var fee=Number(o.delivery_fee_usd)||0;
+  var customerWa=(o.customer_phone||'').replace(/\D/g,'');
+  if(customerWa&&!/^961/.test(customerWa)) customerWa='961'+customerWa;
+
+  var actBtns='';
+  if(o.branch_status==='pending'){
+    actBtns='<button class="btn green" data-accept="'+o.id+'">✓ قبول</button>'+
+            '<button class="btn red" data-reject="'+o.id+'">✗ رفض</button>';
+  } else if(o.branch_status==='accepted'){
+    if(customerWa){
+      actBtns='<a class="btn gray" href="https://wa.me/'+customerWa+'?text='+
+        encodeURIComponent('مرحبا، طلبك رقم #'+o.id.slice(-6)+' يتم تجهيزه الآن 🍽️')+
+        '" target="_blank">💬 واتساب</a>';
+    }
+  }
+
+  return '<div class="card '+o.branch_status+'" id="ord-'+o.id+'">'+
+    '<div class="card-top">'+
+      '<span class="num">#'+o.id.slice(-6)+'</span>'+
+      statusLabel(o.branch_status||'pending')+
+      '<span class="time">'+fmtTime(o.created_at)+'</span>'+
+    '</div>'+
+    '<div class="customer">'+esc(o.customer_name||'—')+
+      (o.customer_phone?'<span>📞 '+esc(o.customer_phone)+'</span>':'')+
+    '</div>'+
+    (o.order_type==='delivery'&&o.customer_address?'<div class="note">📍 '+esc(o.customer_address)+'</div>':'')+
+    '<div class="items-list">'+
+      items.map(function(i){
+        return '× '+esc(i.qty||1)+' '+esc(i.name_ar||i.name||'منتج')+
+               '<span style="float:left;color:#888">'+money(i.price_usd*(i.qty||1))+' $</span>';
+      }).join('<br>')+
+    '</div>'+
+    '<div class="total-row"><span>المجموع</span><b>'+money(total)+' $'+(fee?' + '+money(fee)+' $ توصيل':'')+'</b></div>'+
+    (o.customer_note?'<div class="note">📝 '+esc(o.customer_note)+'</div>':'')+
+    (o.branch_status==='rejected'&&o.rejection_reason?'<div class="note" style="color:#f87171">سبب الرفض: '+esc(o.rejection_reason)+'</div>':'')+
+    '<div class="acts">'+actBtns+'</div>'+
+    // فورم سبب الرفض (مخفي)
+    (o.branch_status==='pending'?
+    '<div class="reject-form" id="rf-'+o.id+'">'+
+      '<label>سبب الرفض (يُرسل للزبون عبر WhatsApp)</label>'+
+      '<textarea id="rr-'+o.id+'" placeholder="مثال: المطعم مشغول، يرجى إعادة الطلب خلال ساعة…"></textarea>'+
+      '<div style="display:flex;gap:8px;margin-top:8px">'+
+        '<button class="btn red" data-confirm-reject="'+o.id+'">تأكيد الرفض وإرسال WhatsApp</button>'+
+        '<button class="btn gray" data-cancel-reject="'+o.id+'">إلغاء</button>'+
+      '</div>'+
+    '</div>':'')+'</div>';
+}
+
+function render(){
+  var list=document.getElementById('ordersList');
+  var pending=ORDERS.filter(function(o){return o.branch_status==='pending';});
+  var others=ORDERS.filter(function(o){return o.branch_status!=='pending';});
+  if(!ORDERS.length){
+    list.innerHTML='<p class="empty">ما في طلبات بعد</p>';
+    return;
+  }
+  list.innerHTML=(pending.length?'<p style="color:#fbbf24;font-size:13px;margin-bottom:4px">🔔 '+pending.length+' طلب بانتظار موافقتك</p>':'')+
+    ORDERS.map(orderCard).join('');
+}
+
+/* === order actions === */
+document.getElementById('ordersList').addEventListener('click',async function(e){
+  var b=e.target.closest('button,a');
+  if(!b) return;
+
+  // accept
+  if(b.dataset.accept){
+    var id=b.dataset.accept;
+    await sbFetch('/orders?id=eq.'+id,{
+      method:'PATCH',
+      body:JSON.stringify({branch_status:'accepted',branch_updated_at:new Date().toISOString()})
+    });
+    await loadOrders();
+    return;
+  }
+
+  // show reject form
+  if(b.dataset.reject){
+    var rf=document.getElementById('rf-'+b.dataset.reject);
+    if(rf){ rf.style.display=rf.style.display==='block'?'none':'block'; }
+    return;
+  }
+
+  // cancel reject
+  if(b.dataset.cancelReject){
+    var rf2=document.getElementById('rf-'+b.dataset.cancelReject);
+    if(rf2) rf2.style.display='none';
+    return;
+  }
+
+  // confirm reject → PATCH + WhatsApp
+  if(b.dataset.confirmReject){
+    var id=b.dataset.confirmReject;
+    var reason=(document.getElementById('rr-'+id)||{}).value||'';
+    await sbFetch('/orders?id=eq.'+id,{
+      method:'PATCH',
+      body:JSON.stringify({
+        branch_status:'rejected',
+        rejection_reason:reason,
+        branch_updated_at:new Date().toISOString()
+      })
+    });
+    // إرسال WhatsApp للزبون
+    var ord=ORDERS.find(function(o){return o.id===id;});
+    if(ord&&ord.customer_phone){
+      var wa=(ord.customer_phone||'').replace(/\D/g,'');
+      if(wa&&!/^961/.test(wa)) wa='961'+wa;
+      var restName=(RESTAURANT&&(RESTAURANT.name_ar||RESTAURANT.name_en))||'المطعم';
+      var msg='مرحبا '+esc(ord.customer_name||'')+' 👋\n\n';
+      msg+='نأسف، تم رفض طلبك من '+restName+'.\n';
+      if(reason) msg+='السبب: '+reason+'\n';
+      msg+='\nشكراً لتفهمك 🙏';
+      window.open('https://wa.me/'+wa+'?text='+encodeURIComponent(msg),'_blank');
+    }
+    await loadOrders();
+    return;
+  }
+});
+
+/* === polling === */
+async function init(){
+  var ok=await loadBranch();
+  if(!ok) return;
+  document.getElementById('loader').style.display='none';
+  await loadOrders();
+  setInterval(loadOrders,15000); // كل 15 ثانية
+}
+init();
+</script>
+</body>
+</html>
