@@ -305,7 +305,6 @@ body.login-page .credit .credit-tel{color:#E08A2B}
     <button class="tab" data-t="items" aria-pressed="true">المنتجات</button>
     <button class="tab" data-t="cats" aria-pressed="false">الأقسام</button>
     <button class="tab" data-t="orders" aria-pressed="false">الطلبات</button>
-    <button class="tab" data-t="delivery" aria-pressed="false">🏍️ التوصيل</button>
     <button class="tab" data-t="promo" aria-pressed="false">صور وعروض</button>
     <button class="tab" data-t="coupons" aria-pressed="false">قسائم الخصم</button>
     <button class="tab" data-t="set" aria-pressed="false">الإعدادات</button>
@@ -608,6 +607,15 @@ body.login-page .credit .credit-tel{color:#E08A2B}
       <div style="margin-top:8px">
         <div class="sw"><input type="checkbox" id="brActive" checked><label for="brActive" style="margin:0">الفرع نشط</label></div>
       </div>
+      <div style="margin-top:14px;border-top:1px solid var(--border-color,#eee);padding-top:12px">
+        <b style="font-size:14px">🏍️ إعدادات التوصيل لهذا الفرع</b>
+        <div class="sw" style="margin-top:8px"><input type="checkbox" id="brDelivery"><label for="brDelivery" style="margin:0">استقبال طلبات توصيل من هذا الفرع</label></div>
+        <div class="g2" style="margin-top:8px" id="brDeliveryFields">
+          <div><label>رسوم التوصيل ($)</label><input type="number" id="brFee" min="0" step="0.5" placeholder="0" style="width:100%"></div>
+          <div><label>الحد الأدنى للطلب ($)</label><input type="number" id="brMin" min="0" step="0.5" placeholder="0" style="width:100%"></div>
+        </div>
+        <div style="margin-top:6px"><label>ملاحظة التوصيل (اختيارية — تظهر للزبون)</label><input type="text" id="brDeliveryNote" placeholder="مثال: التوصيل خلال 45 دقيقة"></div>
+      </div>
       <div class="acts">
         <button class="btn" id="saveBranch">حفظ الفرع</button>
         <button class="btn alt" id="clearBranch">تفريغ</button>
@@ -855,10 +863,11 @@ function collectHours(){
 function branchRow(b){
   var activeLabel=b.is_active?'<span style="color:var(--ok-color,#1a7a4a);font-size:12px">● نشط</span>':'<span style="color:#999;font-size:12px">○ غير نشط</span>';
   var closedBadge=b.force_closed?'<span style="color:#c00;font-size:12px;font-weight:700"> — مغلق طارئ</span>':'';
+  var dlvBadge=b.delivery_enabled?'<span style="font-size:11px;color:#555;margin-right:4px">🏍️ توصيل'+(b.delivery_fee_usd?'('+b.delivery_fee_usd+'$)':'مجاني')+'</span>':'';
   var thumb=b.image_url?'<img src="'+esc(b.image_url)+'" style="width:38px;height:38px;border-radius:8px;object-fit:cover;margin-left:10px;flex-shrink:0">':'';
   return '<div class="row" data-bid="'+b.id+'" style="display:flex;align-items:center;gap:0">'+
     thumb+
-    '<div class="t" style="flex:1"><b>'+esc(b.name_ar)+'</b>'+closedBadge+'<span>'+esc(b.name_en)+' · '+esc(b.phone||'')+'</span></div>'+
+    '<div class="t" style="flex:1"><b>'+esc(b.name_ar)+'</b>'+closedBadge+'<span>'+esc(b.name_en)+' · '+esc(b.phone||'')+'</span>'+dlvBadge+'</div>'+
     activeLabel+
     '<button class="btn alt sm" data-brfc="'+b.id+'" title="'+(b.force_closed?'إلغاء الإغلاق الطارئ':'إغلاق طارئ')+'">⚡ '+(b.force_closed?'فتح':'إغلاق')+'</button>'+
     '<button class="btn alt sm" data-bren="'+b.id+'">تعديل</button> '+
@@ -880,6 +889,9 @@ function clearBranchForm(){
   $('#brPhone').value=''; $('#brWa').value='';
   $('#brAddrAr').value=''; $('#brAddrEn').value='';
   $('#brActive').checked=true;
+  $('#brDelivery').checked=false;
+  $('#brFee').value=''; $('#brMin').value='';
+  $('#brDeliveryNote').value='';
   $('#delBranch').classList.add('hidden');
   $('#brImg').value='';
   $('#brImgPreview').innerHTML='';
@@ -917,6 +929,10 @@ $('#saveBranch').addEventListener('click',async function(){
     address_en:$('#brAddrEn').value.trim(),
     work_hours:hours,
     is_active:$('#brActive').checked,
+    delivery_enabled:$('#brDelivery').checked,
+    delivery_fee_usd:Number($('#brFee').value)||0,
+    min_order_usd:Number($('#brMin').value)||0,
+    delivery_note_ar:$('#brDeliveryNote').value.trim(),
     sort:BRANCHES.length+1
   };
   var id=$('#brId').value;
@@ -961,6 +977,10 @@ $('#brList').addEventListener('click',async function(e){
     $('#brPhone').value=b.phone||''; $('#brWa').value=b.whatsapp||'';
     $('#brAddrAr').value=b.address_ar||''; $('#brAddrEn').value=b.address_en||'';
     $('#brActive').checked=b.is_active!==false;
+    $('#brDelivery').checked=!!b.delivery_enabled;
+    $('#brFee').value=b.delivery_fee_usd||'';
+    $('#brMin').value=b.min_order_usd||'';
+    $('#brDeliveryNote').value=b.delivery_note_ar||'';
     $('#delBranch').classList.remove('hidden');
     $('#brImg').value='';
     $('#brImgPreview').innerHTML=b.image_url

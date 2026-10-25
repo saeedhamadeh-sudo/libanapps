@@ -864,7 +864,9 @@ function paintHeader(){
   $('#paySeg').children[1].classList.toggle('hidden', !R.whish_enabled);
   if(!R.dinein_enabled){ oType='delivery'; }
   $('#typeSeg').children[0].classList.toggle('hidden',!R.dinein_enabled);
-  $('#typeSeg').children[1].classList.toggle('hidden',!R.delivery_enabled);
+  // إعداد التوصيل: من الفرع إذا كان محدداً، وإلا من المطعم
+  var dlvEnabled = BRANCH ? !!BRANCH.delivery_enabled : !!R.delivery_enabled;
+  $('#typeSeg').children[1].classList.toggle('hidden',!dlvEnabled);
 }
 
 /* ---------- روابط التواصل ---------- */
@@ -1035,7 +1037,8 @@ function loadCart(){
 function totals(){
   var sub=0,n=0;
   Object.keys(cart).forEach(function(k){ sub+=cart[k].item.price_usd*cart[k].qty; n+=cart[k].qty; });
-  var del=(oType==='delivery'&&sub>0)?Number(R.delivery_fee_usd||0):0;
+  var dlvFee=BRANCH&&BRANCH.delivery_enabled ? Number(BRANCH.delivery_fee_usd||0) : Number(R.delivery_fee_usd||0);
+  var del=(oType==='delivery'&&sub>0)?dlvFee:0;
   return {sub:sub,del:del,total:sub+del,count:n};
 }
 function paintCart(){
@@ -1355,8 +1358,9 @@ $('#confirmBtn').addEventListener('click',async function(){
   if(phone.replace(/\D/g,'').length<7){ return fail(T.invalidPhone); }
   if(oType==='delivery'&&R.require_location&&!geo.lat){ return fail(T.needLocation); }
   var t=totals();
-  if(oType==='delivery'&&t.sub<Number(R.min_order_usd||0)){
-    return fail(T.minOrder+': '+mainTxt(R.min_order_usd));
+  var minOrder=BRANCH&&BRANCH.delivery_enabled ? Number(BRANCH.min_order_usd||0) : Number(R.min_order_usd||0);
+  if(oType==='delivery'&&t.sub<minOrder){
+    return fail(T.minOrder+': '+mainTxt(minOrder));
   }
   function fail(m){ err.textContent=m; err.classList.remove('hidden'); }
 
