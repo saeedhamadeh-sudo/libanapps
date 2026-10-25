@@ -305,6 +305,7 @@ body.login-page .credit .credit-tel{color:#E08A2B}
     <button class="tab" data-t="items" aria-pressed="true">المنتجات</button>
     <button class="tab" data-t="cats" aria-pressed="false">الأقسام</button>
     <button class="tab" data-t="orders" aria-pressed="false">الطلبات</button>
+    <button class="tab" data-t="delivery" aria-pressed="false">🏍️ التوصيل</button>
     <button class="tab" data-t="promo" aria-pressed="false">صور وعروض</button>
     <button class="tab" data-t="coupons" aria-pressed="false">قسائم الخصم</button>
     <button class="tab" data-t="set" aria-pressed="false">الإعدادات</button>
@@ -384,11 +385,47 @@ body.login-page .credit .credit-tel{color:#E08A2B}
   <!-- ORDERS -->
   <section data-p="orders" class="hidden">
     <div class="panel">
-      <h3>آخر الطلبات</h3>
-      <div class="acts" style="margin:0 0 10px"><button class="btn alt sm" id="refOrders">تحديث</button></div>
+      <h3>الطلبات الجديدة <span id="oPendBadge" class="chip p" style="display:none;font-size:13px"></span></h3>
+      <div id="oPending"><p class="muted">ما في طلبات جديدة</p></div>
+    </div>
+    <div class="panel">
+      <h3>كل الطلبات</h3>
+      <div class="acts" style="margin:0 0 10px">
+        <select id="oFilter" style="width:auto;padding:6px 10px;font-size:13px">
+          <option value="">الكل</option>
+          <option value="pending">قيد الانتظار</option>
+          <option value="accepted">مقبولة</option>
+          <option value="rejected">مرفوضة</option>
+          <option value="delivery">توصيل فقط</option>
+          <option value="dinein">بالمطعم فقط</option>
+        </select>
+        <button class="btn alt sm" id="refOrders">تحديث</button>
+      </div>
       <div id="oList"></div>
     </div>
   </section>
+
+  <!-- modal رفض الطلب -->
+  <div class="modal hidden" id="rejectModal">
+    <div class="box" style="max-width:420px">
+      <h3 style="margin-top:0">رفض الطلب</h3>
+      <p class="muted" style="margin-top:0">حدد سبب الرفض — سيُرسل للزبون على واتساب</p>
+      <input type="hidden" id="rejectOrderId">
+      <input type="hidden" id="rejectPhone">
+      <input type="hidden" id="rejectName">
+      <div style="display:grid;gap:8px;margin-bottom:12px">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="radio" name="rejectR" value="الطلب مغلق الآن ونعتذر"> الطلب مغلق الآن</label>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="radio" name="rejectR" value="أحد المنتجات المطلوبة غير متوفر"> منتج غير متوفر</label>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="radio" name="rejectR" value="التوصيل لمنطقتك غير متاح حالياً"> خارج نطاق التوصيل</label>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="radio" name="rejectR" value="custom"> سبب آخر</label>
+      </div>
+      <input type="text" id="rejectCustom" placeholder="اكتب السبب هنا…" style="display:none;width:100%;margin-bottom:10px">
+      <div class="acts">
+        <button class="btn dg" id="rejectSend">رفض وإرسال للزبون</button>
+        <button class="btn alt" id="rejectClose">إلغاء</button>
+      </div>
+    </div>
+  </div>
 
   <section data-p="delivery" class="hidden"><div id="dlvRoot"></div></section>
 
@@ -1503,25 +1540,110 @@ $('#iList').addEventListener('click',async function(e){
 });
 
 /* ---------- orders ---------- */
+var ALL_ORDERS=[];
+function orderStatusLabel(s){
+  return {pending:'<span class="chip w">جديد ⏳</span>',accepted:'<span class="chip p">مقبول ✓</span>',
+    rejected:'<span class="chip" style="background:rgba(220,38,38,.15);color:#ef4444">مرفوض ✗</span>',
+    cancelled:'<span class="chip" style="background:rgba(220,38,38,.15);color:#ef4444">ملغى</span>'}[s]||'<span class="chip w">'+esc(s)+'</span>';
+}
+function waNum(p){ var d=String(p||'').replace(/\D/g,''); if(d.indexOf('00')===0) d=d.slice(2);
+  if(d.indexOf('961')===0) return d; if(d.charAt(0)==='0') d=d.slice(1); return d.length<=8?'961'+d:d; }
+function orderRow(o, pending){
+  var d=new Date(o.created_at);
+  var pay=o.payment_method==='whish'
+    ?'<span class="chip '+(o.status==='paid'?'p':'w')+'">'+(o.status==='paid'?'مدفوع Whish':'بانتظار الدفع')+'</span>'
+    :'<span class="chip w">نقداً</span>';
+  var typeLabel=o.order_type==='delivery'?'🏍️ توصيل':'🍽️ بالمطعم';
+  var acts='';
+  if(pending){
+    acts='<button class="btn sm" style="background:#16a34a;color:#fff" data-accept="'+o.id+'">قبول ✓</button>'+
+         '<button class="btn dg sm" data-reject="'+o.id+'" data-phone="'+esc(o.customer_phone||'')+'" data-name="'+esc(o.customer_name||'')+'">رفض</button>';
+  }
+  return '<div class="row" style="'+(pending?'border:2px solid var(--accent);':'')+'">'+
+    '<div class="t"><b>'+esc(o.order_no)+' · '+esc(o.customer_name)+'</b>'+
+    '<span>'+typeLabel+' · '+o.total_usd+' $ · '+d.toLocaleDateString('en-GB')+' '+d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})+'</span>'+
+    (o.customer_phone?'<span style="direction:ltr;font-size:12px">📞 '+esc(o.customer_phone)+'</span>':'')+
+    (o.notes?'<span style="color:var(--muted);font-size:12px">📝 '+esc(o.notes)+'</span>':'')+
+    '</div>'+pay+orderStatusLabel(o.status)+acts+
+    '<a class="btn alt sm" style="text-decoration:none" target="_blank" href="/i/'+encodeURIComponent(o.token)+'">الفاتورة</a></div>';
+}
+function applyOrderFilter(){
+  var flt=$('#oFilter').value;
+  var rows=ALL_ORDERS.filter(function(o){ return o.status!=='pending'; });
+  if(flt==='accepted') rows=rows.filter(function(o){return o.status==='accepted'});
+  else if(flt==='rejected') rows=rows.filter(function(o){return o.status==='rejected'||o.status==='cancelled'});
+  else if(flt==='pending') rows=ALL_ORDERS.filter(function(o){return o.status==='pending'});
+  else if(flt==='delivery') rows=ALL_ORDERS.filter(function(o){return o.order_type==='delivery'});
+  else if(flt==='dinein') rows=ALL_ORDERS.filter(function(o){return o.order_type!=='delivery'});
+  $('#oList').innerHTML=rows.length?rows.map(function(o){return orderRow(o,false)}).join(''):'<p class="muted">ما في طلبات</p>';
+}
 async function loadOrders(){
   var r=await sb.from('orders').select('*').eq('restaurant_id',R.id)
-        .order('created_at',{ascending:false}).limit(40);
-  var rows=r.data||[];
-  $('#oList').innerHTML=rows.length?rows.map(function(o){
-    var d=new Date(o.created_at);
-    var pay=o.payment_method==='whish'
-      ?'<span class="chip '+(o.status==='paid'?'p':'w')+'">'+(o.status==='paid'?'مدفوع Whish':'بانتظار الدفع')+'</span>'
-      :'<span class="chip w">نقداً</span>';
-    return '<div class="row"><div class="t"><b>'+esc(o.order_no)+' · '+esc(o.customer_name)+'</b>'+
-      '<span>'+(o.order_type==='delivery'?'توصيل':'بالمطعم')+' · '+o.total_usd+' $ · '+
-      d.toLocaleDateString('en-GB')+' '+d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})+
-      '</span></div>'+pay+
-      '<a class="btn alt sm" style="text-decoration:none" target="_blank" href="/i/'+
-      encodeURIComponent(o.token)+'">الفاتورة</a></div>';
-  }).join(''):'<p class="muted">ما في طلبات بعد</p>';
+        .order('created_at',{ascending:false}).limit(80);
+  ALL_ORDERS=r.data||[];
+  // الطلبات الجديدة المعلقة
+  var pending=ALL_ORDERS.filter(function(o){return o.status==='pending'});
+  var badge=$('#oPendBadge');
+  if(pending.length){ badge.textContent=pending.length+' جديد'; badge.style.display=''; }
+  else badge.style.display='none';
+  $('#oPending').innerHTML=pending.length
+    ? pending.map(function(o){return orderRow(o,true)}).join('')
+    : '<p class="muted">ما في طلبات جديدة</p>';
+  applyOrderFilter();
   relang();
 }
 $('#refOrders').addEventListener('click',loadOrders);
+$('#oFilter').addEventListener('change',applyOrderFilter);
+
+// قبول طلب
+$('#oPending').addEventListener('click',async function(e){
+  var acc=e.target.closest('[data-accept]');
+  if(acc){
+    var id=Number(acc.dataset.accept);
+    await sb.from('orders').update({status:'accepted'}).eq('id',id);
+    loadOrders();
+    return;
+  }
+  var rej=e.target.closest('[data-reject]');
+  if(rej){
+    $('#rejectOrderId').value=rej.dataset.reject;
+    $('#rejectPhone').value=rej.dataset.phone||'';
+    $('#rejectName').value=rej.dataset.name||'';
+    document.querySelectorAll('[name="rejectR"]').forEach(function(r){r.checked=false});
+    $('#rejectCustom').style.display='none';
+    $('#rejectModal').classList.remove('hidden');
+  }
+});
+
+// إظهار/إخفاء حقل سبب مخصص
+document.querySelectorAll('[name="rejectR"]').forEach(function(r){
+  r.addEventListener('change',function(){
+    $('#rejectCustom').style.display=this.value==='custom'?'':'none';
+  });
+});
+
+$('#rejectClose').addEventListener('click',function(){
+  $('#rejectModal').classList.add('hidden');
+});
+
+$('#rejectSend').addEventListener('click',async function(){
+  var id=Number($('#rejectOrderId').value);
+  var phone=$('#rejectPhone').value;
+  var name=$('#rejectName').value;
+  var sel=document.querySelector('[name="rejectR"]:checked');
+  if(!sel){ alert('حدد سبب الرفض'); return; }
+  var reason=sel.value==='custom'?$('#rejectCustom').value.trim():sel.value;
+  if(!reason){ alert('اكتب السبب'); return; }
+  // حدّث حالة الطلب
+  await sb.from('orders').update({status:'rejected',reject_reason:reason}).eq('id',id);
+  // افتح واتساب إذا في رقم
+  if(phone){
+    var txt='مرحباً '+name+'،\nنعتذر منك، طلبك رقم #'+id+' لم يتم قبوله.\nالسبب: '+reason+'\nشكراً لتفهمك 🙏';
+    window.open('https://wa.me/'+waNum(phone)+'?text='+encodeURIComponent(txt),'_blank');
+  }
+  $('#rejectModal').classList.add('hidden');
+  loadOrders();
+});
 
 /* ---------- banners & promos ---------- */
 $('#addBanner').addEventListener('click',async function(){

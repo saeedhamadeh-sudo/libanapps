@@ -86,8 +86,9 @@ function shell(){
     '<div class="g3">'+
       '<div><label>الاسم</label><input type="text" id="dlvDName"></div>'+
       '<div><label>الهاتف</label><input type="tel" id="dlvDPhone" placeholder="03xxxxxx"></div>'+
-      '<div style="display:flex;align-items:flex-end"><button class="btn" id="dlvAddDrv" style="width:100%">إضافة موظف</button></div>'+
+      '<div><label>الفرع (اختياري)</label><select id="dlvDBranch"><option value="">— كل الفروع —</option></select></div>'+
     '</div>'+
+    '<div style="display:flex;align-items:flex-end;margin-top:8px"><button class="btn" id="dlvAddDrv" style="width:auto;min-width:160px">إضافة موظف</button></div>'+
     '<div class="muted" style="font-size:12.5px;margin-top:6px">لكل موظف رابط خاص — يفتحه على هاتفه ويستلم الطلبات منه. لا يحتاج إلى بريد إلكتروني ولا كلمة سر.</div>'+
     '<div id="dlvDrivers" style="margin-top:10px"></div>'+
   '</div>'+
@@ -146,7 +147,15 @@ async function load(){
     if(!s.error) F.settings=s.data; }
   var dv=await A.sb.from('tracker_devices').select('*').eq('restaurant_id',A.R.id).order('created_at');
   F.devices=dv.data||[];
+  var br=await A.sb.from('restaurant_branches').select('id,name_ar').eq('restaurant_id',A.R.id).eq('is_active',true).order('sort');
+  F.branches=br.data||[];
   paint();
+  // عبّي قائمة الفروع في نموذج إضافة السائق
+  var sel=$('#dlvDBranch');
+  if(sel){
+    sel.innerHTML='<option value="">— كل الفروع —</option>'+
+      F.branches.map(function(b){return '<option value="'+esc(b.id)+'">'+esc(b.name_ar)+'</option>'}).join('');
+  }
 }
 function drvById(id){ return (F.drivers||[]).filter(function(d){return d.id===id})[0]; }
 
@@ -191,7 +200,8 @@ function paint(){
         '. Open it on your phone and tap “Start shift”:\n'+link
       : 'مرحبا '+d.name+'، هذا رابط صفحة التوصيل الخاصة بك لدى '+A.R.name_ar+
         '. افتحه على هاتفك واضغط «بدء الدوام»:\n'+link;
-    return '<div class="row"><div class="t"><b>'+dot+' '+esc(d.name)+(d.phone?' · <span style="direction:ltr;display:inline">'+esc(d.phone)+'</span>':'')+'</b>'+
+    var brName=d.branch_id?(F.branches||[]).filter(function(b){return b.id===d.branch_id}).map(function(b){return b.name_ar})[0]||'':'';
+    return '<div class="row"><div class="t"><b>'+dot+' '+esc(d.name)+(d.phone?' · <span style="direction:ltr;display:inline">'+esc(d.phone)+'</span>':'')+(brName?' · <span style="color:var(--muted);font-size:12px">🏢 '+esc(brName)+'</span>':'')+'</b>'+
       '<span>'+(!d.allowed&&d.is_active?'<b style="color:#FF7A7E">اشتراك هذا الموظف منتهٍ</b> · ':'')+(d.on_duty?'في الدوام':'خارج الدوام')+' · '+src+
         (d.device?' · '+esc(KIND[d.device.kind])+': '+esc(d.device.label||d.device.identifier)+(d.device.battery!=null?' 🔋'+Math.round(d.device.battery)+'%':''):'')+
         ' · معه '+d.active+' · اليوم '+d.done_today+'</span></div>'+
@@ -263,14 +273,18 @@ function paintMap(){
 /* ---------- الأوامر ---------- */
 async function addDriver(){
   var n=$('#dlvDName').value.trim(), ph=$('#dlvDPhone').value.trim();
+  var brId=$('#dlvDBranch')&&$('#dlvDBranch').value||null;
   if(n.length<2) return toast('اكتب اسم الموظف',false);
   if(B && B.used>=B.capacity){
     if(confirm('وصلت للحد: '+B.used+' من '+B.capacity+' موظف.\nكل موظف إضافي '+money(B.seat_price)+' سنويًا. هل تريد إضافة مقعد موظف الآن؟')) buy('seat_new',null,1);
     return;
   }
-  var r=await A.sb.from('drivers').insert({restaurant_id:A.R.id,name:n,phone:ph});
+  var payload={restaurant_id:A.R.id,name:n,phone:ph};
+  if(brId) payload.branch_id=brId;
+  var r=await A.sb.from('drivers').insert(payload);
   if(r.error) return toast(/driver limit/.test(r.error.message)?'وصلت إلى الحد — اشترِ مقعد موظف إضافي':'لم يُحفظ: '+r.error.message,false);
-  $('#dlvDName').value=''; $('#dlvDPhone').value=''; toast('تمت إضافة الموظف ✓'); load();
+  $('#dlvDName').value=''; $('#dlvDPhone').value=''; if($('#dlvDBranch')) $('#dlvDBranch').value='';
+  toast('تمت إضافة الموظف ✓'); load();
 }
 function rndId(){ var a=new Uint8Array(7); crypto.getRandomValues(a);
   return 'la'+Array.prototype.map.call(a,function(b){return ('0'+b.toString(16)).slice(-2)}).join(''); }
