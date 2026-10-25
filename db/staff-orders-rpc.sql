@@ -25,7 +25,6 @@ begin
     'order_type',    o.order_type,
     'total_usd',     o.total_usd,
     'status',        o.status,
-    'notes',         o.notes,
     'created_at',    o.created_at
   ) order by o.created_at desc),'[]'::jsonb)
   into rows
