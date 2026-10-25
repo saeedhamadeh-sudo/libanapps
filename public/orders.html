@@ -30,6 +30,8 @@ header h1{font-size:17px;font-weight:700;flex:1}
 #restName{color:var(--accent);font-size:13px}
 .reload-btn{background:var(--brand);color:#fff;border:none;border-radius:10px;
   padding:8px 14px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap}
+.clear-btn{background:transparent;border:1px solid var(--red);color:var(--red);
+  border-radius:10px;padding:8px 14px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap}
 .section-title{padding:12px 16px 6px;font-size:12px;font-weight:700;
   color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
 .order-card{margin:8px 12px;background:var(--card);border:1px solid var(--line);
@@ -95,6 +97,7 @@ header h1{font-size:17px;font-weight:700;flex:1}
     <div id="restName">جاري التحميل…</div>
   </div>
   <button class="reload-btn" id="reloadBtn">🔄 تحديث</button>
+  <button class="clear-btn" id="clearBtn">🗑️ مسح القديمة</button>
 </header>
 
 <div id="root"><div class="loader">⏳ جاري التحميل…</div></div>
@@ -286,6 +289,17 @@ function waNum(p){
 }
 
 $('#reloadBtn').addEventListener('click',load);
+
+$('#clearBtn').addEventListener('click',async function(){
+  var old=ORDERS.filter(function(o){return o.status!=='pending'});
+  if(!old.length){ alert('ما في طلبات قديمة للمسح'); return; }
+  if(!confirm('بتحذف '+old.length+' طلب نهائياً. متأكد؟')) return;
+  this.disabled=true; this.textContent='جاري…';
+  var r=await sb.rpc('staff_clear_orders',{p_slug:slug});
+  if(r.error){ alert('خطأ: '+r.error.message); }
+  await load();
+  this.disabled=false; this.textContent='🗑️ مسح القديمة';
+});
 
 // auto-refresh every 30s
 setInterval(load, 30000);

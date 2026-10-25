@@ -1,7 +1,7 @@
 -- ============================================================
 --  Staff Orders RPCs — for the /orders.html staff page
 --  Accessible with anon key, scoped to restaurant by slug
---  Allows: list pending+recent orders, accept, reject
+--  Allows: list pending+recent orders, accept, reject, clear old
 -- ============================================================
 
 -- RPC: staff_get_orders(p_slug text)
@@ -81,7 +81,28 @@ begin
   return '{"ok":true}'::jsonb;
 end $$;
 
+-- RPC: staff_clear_orders(p_slug text)
+-- Permanently deletes accepted/rejected orders for a restaurant (keeps pending)
+drop function if exists public.staff_clear_orders(text);
+create or replace function public.staff_clear_orders(p_slug text)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  rid uuid;
+  deleted_count integer;
+begin
+  select id into rid from public.restaurants where slug=p_slug;
+  if rid is null then return '{"ok":false,"error":"not found"}'::jsonb; end if;
+
+  delete from public.orders
+    where restaurant_id=rid
+      and status in ('accepted','rejected','cancelled');
+  get diagnostics deleted_count = row_count;
+
+  return jsonb_build_object('ok',true,'deleted',deleted_count);
+end $$;
+
 -- Grant execute to anon role so the staff page (using anon key) can call them
-grant execute on function public.staff_get_orders(text)        to anon;
+grant execute on function public.staff_get_orders(text)           to anon;
 grant execute on function public.staff_accept_order(text, bigint) to anon;
 grant execute on function public.staff_reject_order(text, bigint, text) to anon;
+grant execute on function public.staff_clear_orders(text)         to anon;
