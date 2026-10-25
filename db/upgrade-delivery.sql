@@ -76,7 +76,7 @@ alter table public.drivers enable row level security;
 drop policy if exists "drivers_read"  on public.drivers;
 drop policy if exists "drivers_write" on public.drivers;
 create policy "drivers_read" on public.drivers
-  for select using (public.is_member(restaurant_id) or true);
+  for select using (true);
 create policy "drivers_write" on public.drivers
   for all using (public.is_member(restaurant_id))
   with check (public.is_member(restaurant_id));
