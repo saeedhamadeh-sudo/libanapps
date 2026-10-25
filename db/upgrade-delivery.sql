@@ -164,6 +164,11 @@ end $$;
 -- ============================================================
 -- 7) دالة admin_dispatch — تعيين / سحب / إلغاء توصيل
 -- ============================================================
+drop function if exists public.admin_dispatch(bigint,text,uuid);
+drop function if exists public.admin_dispatch(uuid,text,uuid);
+drop function if exists public.admin_fleet(uuid);
+drop function if exists public.admin_delivery_settings(uuid,text,boolean);
+drop function if exists public.delivery_state(uuid);
 create or replace function public.admin_dispatch(
   p_order  bigint,
   p_action text,
