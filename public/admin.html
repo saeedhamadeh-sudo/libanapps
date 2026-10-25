@@ -210,9 +210,12 @@ button{cursor:pointer;border:0;background:0}
 /* shift main content away from sidebar */
 #app{padding-right:calc(175px + 22px)!important}
 @media(max-width:640px){
-  .sidebar{width:140px;padding-top:56px}
-  #app{padding-right:calc(140px + 22px)!important}
-  #sidebarToggle{right:140px}
+  /* sidebar hidden by default on mobile — user opens it */
+  .sidebar{width:140px;padding-top:56px;transform:translateX(100%)}
+  #app{padding-right:12px!important}
+  #sidebarToggle{right:0}
+  .sidebar.open{transform:translateX(0)}
+  #sidebarToggle.open{right:140px}
 }
 .panel{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
   padding:16px;margin-bottom:14px}
@@ -245,6 +248,11 @@ input[type=checkbox]{width:auto}
 .msg.e{color:#FF7A7E}.msg.s{color:#4ADE80}
 .muted{color:var(--muted);font-size:12.5px}
 .hidden{display:none!important}
+/* modal */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:200;
+  display:flex;align-items:center;justify-content:center;padding:16px}
+.modal-box{background:var(--card);border:1px solid var(--line);border-radius:16px;
+  padding:20px;max-width:440px;width:100%;box-shadow:0 8px 32px rgba(0,0,0,.4)}
 .credit{text-align:center}
 .credit .credit-tel{color:var(--accent);font-weight:700;font-size:12.5px;margin-top:4px;letter-spacing:.5px;display:inline-block;text-decoration:none}
 .credit>div b{color:var(--text)}
@@ -409,7 +417,10 @@ body.login-page .credit .credit-tel{color:#E08A2B}
   <!-- ORDERS -->
   <section data-p="orders" class="hidden">
     <div class="panel">
-      <h3>الطلبات الجديدة <span id="oPendBadge" class="chip p" style="display:none;font-size:13px"></span></h3>
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:8px">
+        <h3 style="margin:0">الطلبات الجديدة <span id="oPendBadge" class="chip p" style="display:none;font-size:13px"></span></h3>
+        <a id="staffOrdersLink" class="btn alt sm" style="text-decoration:none;font-size:13px" target="_blank" href="#">🔗 رابط الموظف</a>
+      </div>
       <div id="oPending"><p class="muted">ما في طلبات جديدة</p></div>
     </div>
     <div class="panel">
@@ -430,8 +441,8 @@ body.login-page .credit .credit-tel{color:#E08A2B}
   </section>
 
   <!-- modal رفض الطلب -->
-  <div class="modal hidden" id="rejectModal">
-    <div class="box" style="max-width:420px">
+  <div class="modal-overlay hidden" id="rejectModal">
+    <div class="modal-box" style="max-width:420px">
       <h3 style="margin-top:0">رفض الطلب</h3>
       <p class="muted" style="margin-top:0">حدد سبب الرفض — سيُرسل للزبون على واتساب</p>
       <input type="hidden" id="rejectOrderId">
@@ -794,6 +805,7 @@ async function boot(){
   document.documentElement.dataset.theme=R.theme||'flame';
   $('#rName').textContent=R.name_ar;
   $('#viewLink').href='/'+R.slug;
+  $('#staffOrdersLink').href='/orders.html?r='+R.slug;
   await licBadge(); siteHelp();
   paintLock();
   await loadCats(); await loadItems(); fillSettings(); loadSub(); loadPay(); loadBanners(); loadPromos();
@@ -828,18 +840,23 @@ $$('.tab').forEach(function(t){
 (function(){
   var sb=$('#sidebar'), btn=$('#sidebarToggle');
   var app=$('#app');
-  var collapsed=false;
-  btn.addEventListener('click',function(){
-    collapsed=!collapsed;
-    sb.classList.toggle('collapsed',collapsed);
-    btn.classList.toggle('collapsed',collapsed);
-    btn.textContent=collapsed?'▶':'◀';
-    app.style.paddingRight=collapsed?'12px':'calc(175px + 12px)';
-  });
-  // adjust on mobile
-  if(window.innerWidth<=640){
-    btn.style.right='140px';
+  var isMobile=window.innerWidth<=640;
+  var visible=!isMobile; // desktop: visible by default; mobile: hidden by default
+  function applyState(){
+    if(isMobile){
+      sb.classList.toggle('open',visible);
+      btn.classList.toggle('open',visible);
+      btn.textContent=visible?'◀':'▶';
+      // no padding change on mobile — content stays full width
+    } else {
+      sb.classList.toggle('collapsed',!visible);
+      btn.classList.toggle('collapsed',!visible);
+      btn.textContent=visible?'◀':'▶';
+      app.style.paddingRight=visible?'calc(175px + 12px)':'12px';
+    }
   }
+  applyState();
+  btn.addEventListener('click',function(){ visible=!visible; applyState(); });
 })();
 
 /* ---------- image upload ---------- */
@@ -1598,7 +1615,7 @@ function orderRow(o, pending){
   var typeLabel=o.order_type==='delivery'?'🏍️ توصيل':'🍽️ بالمطعم';
   var acts='';
   if(pending){
-    acts='<button class="btn sm" style="background:#16a34a;color:#fff" data-accept="'+o.id+'">قبول ✓</button>'+
+    acts='<button class="btn sm" style="background:#16a34a;color:#fff" data-accept="'+o.id+'" data-type="'+esc(o.order_type||'')+'">قبول ✓</button>'+
          '<button class="btn dg sm" data-reject="'+o.id+'" data-phone="'+esc(o.customer_phone||'')+'" data-name="'+esc(o.customer_name||'')+'">رفض</button>';
   }
   return '<div class="row" style="'+(pending?'border:2px solid var(--accent);':'')+'">'+
@@ -1642,7 +1659,9 @@ $('#oPending').addEventListener('click',async function(e){
   var acc=e.target.closest('[data-accept]');
   if(acc){
     var id=Number(acc.dataset.accept);
-    await sb.from('orders').update({status:'accepted'}).eq('id',id);
+    var upd={status:'accepted'};
+    if(acc.dataset.type==='delivery') upd.dispatch='waiting';
+    await sb.from('orders').update(upd).eq('id',id);
     loadOrders();
     return;
   }

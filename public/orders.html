@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>طلبات المطعم</title>
+<script>
+window.LIBANAPPS = {
+  SUPABASE_URL: 'https://moriwmhlgugmjzddwfgv.supabase.co',
+  SUPABASE_ANON_KEY: 'sb_publishable_ypfm_aulpcqBpeFpyD_7iw_mA4DNlR5',
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.0/dist/umd/supabase.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --brand:#E4141B;--brand-ink:#fff;
+  --bg:#0f1117;--card:#1a1d27;--line:#2a2d3a;
+  --text:#e8eaf0;--muted:#7a7d8e;
+  --accent:#f5b942;
+  --green:#22c55e;--red:#ef4444;
+}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  background:var(--bg);color:var(--text);min-height:100vh;
+  font-size:15px;line-height:1.5}
+header{background:var(--card);border-bottom:1px solid var(--line);
+  padding:14px 16px;display:flex;align-items:center;gap:10px;
+  position:sticky;top:0;z-index:10}
+header h1{font-size:17px;font-weight:700;flex:1}
+#restName{color:var(--accent);font-size:13px}
+.reload-btn{background:var(--brand);color:#fff;border:none;border-radius:10px;
+  padding:8px 14px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap}
+.section-title{padding:12px 16px 6px;font-size:12px;font-weight:700;
+  color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+.order-card{margin:8px 12px;background:var(--card);border:1px solid var(--line);
+  border-radius:14px;padding:14px;transition:border-color .2s}
+.order-card.pending{border-color:var(--accent)}
+.order-card .order-head{display:flex;align-items:flex-start;gap:8px;margin-bottom:8px}
+.order-card .order-no{font-weight:800;font-size:16px}
+.order-card .order-meta{font-size:13px;color:var(--muted);margin-top:2px}
+.order-card .badge{display:inline-block;padding:3px 9px;border-radius:20px;
+  font-size:11px;font-weight:700;margin-left:auto;white-space:nowrap}
+.badge.delivery{background:rgba(99,102,241,.2);color:#a5b4fc}
+.badge.dinein{background:rgba(34,197,94,.15);color:#4ade80}
+.order-card .customer{font-size:14px;margin-bottom:6px}
+.order-card .customer b{font-weight:700}
+.order-card .phone{font-size:13px;color:var(--muted);direction:ltr;display:inline-block}
+.order-card .notes{font-size:13px;color:var(--accent);margin-top:4px}
+.order-card .total{font-size:16px;font-weight:800;color:var(--green);margin-top:8px}
+.acts{display:flex;gap:8px;margin-top:12px}
+.btn-accept{flex:1;background:var(--green);color:#fff;border:none;border-radius:11px;
+  padding:12px;font-size:15px;font-weight:800;cursor:pointer}
+.btn-reject{flex:1;background:transparent;border:2px solid var(--red);color:var(--red);
+  border-radius:11px;padding:12px;font-size:15px;font-weight:800;cursor:pointer}
+.btn-accept:disabled,.btn-reject:disabled{opacity:.5;cursor:default}
+.empty{text-align:center;padding:40px 16px;color:var(--muted);font-size:15px}
+.status-chip{display:inline-block;padding:3px 10px;border-radius:20px;
+  font-size:12px;font-weight:700}
+.status-chip.accepted{background:rgba(34,197,94,.15);color:#4ade80}
+.status-chip.rejected{background:rgba(239,68,68,.15);color:#f87171}
+.status-chip.pending{background:rgba(245,185,66,.15);color:#f5b942}
+/* reject modal */
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:100;
+  display:flex;align-items:flex-end;justify-content:center;padding:0}
+.overlay.hidden{display:none!important}
+.modal{background:var(--card);border:1px solid var(--line);border-radius:20px 20px 0 0;
+  padding:20px 16px 32px;width:100%;max-width:480px}
+.modal h3{font-size:17px;font-weight:800;margin-bottom:6px}
+.modal p{font-size:13px;color:var(--muted);margin-bottom:14px}
+.reason-list{display:grid;gap:10px;margin-bottom:14px}
+.reason-label{display:flex;align-items:center;gap:10px;cursor:pointer;
+  background:var(--bg);border:1px solid var(--line);border-radius:11px;
+  padding:12px 14px;font-size:14px;transition:border-color .15s}
+.reason-label:has(input:checked){border-color:var(--red)}
+.reason-label input{accent-color:var(--red)}
+#customReason{width:100%;background:var(--bg);border:1px solid var(--line);
+  border-radius:11px;padding:10px 12px;color:var(--text);font-size:14px;
+  margin-bottom:12px;outline:none;display:none}
+#customReason:focus{border-color:var(--accent)}
+.modal-acts{display:flex;gap:8px}
+.btn-send{flex:1;background:var(--red);color:#fff;border:none;border-radius:11px;
+  padding:13px;font-size:15px;font-weight:800;cursor:pointer}
+.btn-cancel{background:transparent;border:1px solid var(--line);color:var(--text);
+  border-radius:11px;padding:13px 18px;font-size:15px;font-weight:700;cursor:pointer}
+.loader{text-align:center;padding:60px 16px;color:var(--muted);font-size:15px}
+.past-section{margin-top:4px}
+.order-card.past{opacity:.75}
+</style>
+</head>
+<body>
+
+<header>
+  <div style="flex:1">
+    <h1>🧾 الطلبات</h1>
+    <div id="restName">جاري التحميل…</div>
+  </div>
+  <button class="reload-btn" id="reloadBtn">🔄 تحديث</button>
+</header>
+
+<div id="root"><div class="loader">⏳ جاري التحميل…</div></div>
+
+<!-- reject modal -->
+<div class="overlay hidden" id="rejectOverlay">
+  <div class="modal">
+    <h3>رفض الطلب</h3>
+    <p>حدد سبب الرفض — سيُرسل للزبون على واتساب</p>
+    <input type="hidden" id="rOrderId">
+    <input type="hidden" id="rPhone">
+    <input type="hidden" id="rName">
+    <div class="reason-list">
+      <label class="reason-label"><input type="radio" name="rR" value="الطلب مغلق الآن ونعتذر"> الطلب مغلق الآن</label>
+      <label class="reason-label"><input type="radio" name="rR" value="أحد المنتجات المطلوبة غير متوفر"> منتج غير متوفر</label>
+      <label class="reason-label"><input type="radio" name="rR" value="التوصيل لمنطقتك غير متاح حالياً"> خارج نطاق التوصيل</label>
+      <label class="reason-label"><input type="radio" name="rR" value="custom"> سبب آخر…</label>
+    </div>
+    <input type="text" id="customReason" placeholder="اكتب السبب هنا…">
+    <div class="modal-acts">
+      <button class="btn-send" id="sendReject">رفض وإرسال للزبون</button>
+      <button class="btn-cancel" id="cancelReject">إلغاء</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+'use strict';
+var $=function(s){return document.querySelector(s)};
+var esc=function(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){
+  return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})};
+
+var CFG=window.LIBANAPPS||{};
+var sb=window.supabase.createClient(CFG.SUPABASE_URL,CFG.SUPABASE_ANON_KEY);
+
+// get restaurant slug from ?r=slug
+var params=new URLSearchParams(location.search);
+var slug=params.get('r')||'';
+var REST=null;
+var ORDERS=[];
+
+if(!slug){
+  $('#root').innerHTML='<div class="empty">❌ رابط غير صحيح — يرجى استخدام الرابط من لوحة الإدارة</div>';
+}
+
+async function init(){
+  if(!slug) return;
+  // get restaurant name via public RPC
+  var r=await sb.from('restaurants').select('id,name_ar,slug').eq('slug',slug).maybeSingle();
+  if(r.data){
+    REST=r.data;
+    $('#restName').textContent=REST.name_ar||REST.slug;
+    document.title='طلبات '+(REST.name_ar||REST.slug);
+  } else {
+    // fallback: just show slug, proceed anyway
+    $('#restName').textContent=slug;
+    document.title='طلبات '+slug;
+  }
+  await load();
+}
+
+async function load(){
+  // Use security-definer RPC (accessible with anon key)
+  var r=await sb.rpc('staff_get_orders',{p_slug:slug});
+  if(r.error){ $('#root').innerHTML='<div class="empty">❌ خطأ: '+esc(r.error.message)+'</div>'; return; }
+  ORDERS=r.data||[];
+  render();
+}
+
+function render(){
+  var pending=ORDERS.filter(function(o){return o.status==='pending'});
+  var recent=ORDERS.filter(function(o){return o.status!=='pending'});
+  var html='';
+
+  if(pending.length===0 && recent.length===0){
+    html='<div class="empty">📭 ما في طلبات</div>';
+  } else {
+    if(pending.length){
+      html+='<div class="section-title">⏳ طلبات جديدة ('+pending.length+')</div>';
+      html+=pending.map(function(o){return orderCard(o,true)}).join('');
+    }
+    if(recent.length){
+      html+='<div class="section-title past-section">📋 الطلبات الأخيرة</div>';
+      html+=recent.map(function(o){return orderCard(o,false)}).join('');
+    }
+  }
+  $('#root').innerHTML=html;
+
+  // wire accept/reject buttons
+  $('#root').addEventListener('click',function(e){
+    var acc=e.target.closest('[data-acc]');
+    if(acc){ doAccept(acc.dataset.acc, acc.dataset.type); return; }
+    var rej=e.target.closest('[data-rej]');
+    if(rej){ openReject(rej.dataset.rej, rej.dataset.phone||'', rej.dataset.name||''); }
+  });
+}
+
+function orderCard(o, pending){
+  var d=new Date(o.created_at);
+  var time=d.toLocaleDateString('en-GB')+' '+d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
+  var typeLabel=o.order_type==='delivery'?'🏍️ توصيل':'🍽️ بالمطعم';
+  var typeCls=o.order_type==='delivery'?'delivery':'dinein';
+  var statusHtml='';
+  if(!pending){
+    var sc=o.status==='accepted'?'accepted':o.status==='rejected'?'rejected':'pending';
+    var sl=o.status==='accepted'?'مقبول ✓':o.status==='rejected'?'مرفوض ✗':'قيد الانتظار';
+    statusHtml='<span class="status-chip '+sc+'">'+sl+'</span>';
+  }
+  var actsHtml='';
+  if(pending){
+    actsHtml='<div class="acts">'+
+      '<button class="btn-accept" data-acc="'+o.id+'" data-type="'+esc(o.order_type||'')+'">✓ قبول</button>'+
+      '<button class="btn-reject" data-rej="'+o.id+'" data-phone="'+esc(o.customer_phone||'')+'" data-name="'+esc(o.customer_name||'')+'">✗ رفض</button>'+
+    '</div>';
+  }
+  return '<div class="order-card'+(pending?' pending':' past')+'">'+
+    '<div class="order-head">'+
+    '<div><div class="order-no">#'+esc(o.order_no)+'</div><div class="order-meta">'+esc(time)+'</div></div>'+
+    '<span class="badge '+typeCls+'">'+esc(typeLabel)+'</span>'+
+    (statusHtml?'<span style="margin-right:auto">'+statusHtml+'</span>':'')+
+    '</div>'+
+    '<div class="customer"><b>'+esc(o.customer_name||'—')+'</b>'+
+    (o.customer_phone?'<br><span class="phone">📞 '+esc(o.customer_phone)+'</span>':'')+
+    '</div>'+
+    (o.notes?'<div class="notes">📝 '+esc(o.notes)+'</div>':'')+
+    '<div class="total">'+esc(o.total_usd)+' $</div>'+
+    actsHtml+
+  '</div>';
+}
+
+async function doAccept(id, type){
+  var btn=document.querySelector('[data-acc="'+id+'"]');
+  if(btn){ btn.disabled=true; btn.textContent='…'; }
+  await sb.rpc('staff_accept_order',{p_slug:slug, p_order_id:Number(id)});
+  await load();
+}
+
+function openReject(id, phone, name){
+  document.querySelectorAll('[name="rR"]').forEach(function(r){r.checked=false});
+  $('#customReason').style.display='none';
+  $('#customReason').value='';
+  $('#rOrderId').value=id;
+  $('#rPhone').value=phone;
+  $('#rName').value=name;
+  $('#rejectOverlay').classList.remove('hidden');
+}
+
+document.querySelectorAll('[name="rR"]').forEach(function(r){
+  r.addEventListener('change',function(){
+    $('#customReason').style.display=this.value==='custom'?'':'none';
+  });
+});
+
+$('#cancelReject').addEventListener('click',function(){
+  $('#rejectOverlay').classList.add('hidden');
+});
+
+$('#rejectOverlay').addEventListener('click',function(e){
+  if(e.target===this) this.classList.add('hidden');
+});
+
+$('#sendReject').addEventListener('click',async function(){
+  var id=Number($('#rOrderId').value);
+  var phone=$('#rPhone').value;
+  var name=$('#rName').value;
+  var sel=document.querySelector('[name="rR"]:checked');
+  if(!sel){ alert('حدد سبب الرفض'); return; }
+  var reason=sel.value==='custom'?$('#customReason').value.trim():sel.value;
+  if(!reason){ alert('اكتب السبب'); return; }
+  this.disabled=true; this.textContent='جاري…';
+  await sb.rpc('staff_reject_order',{p_slug:slug, p_order_id:id, p_reason:reason});
+  if(phone){
+    var orderNo=ORDERS.find(function(o){return o.id===id});
+    var no=orderNo?orderNo.order_no:id;
+    var txt='مرحباً '+name+'،\nنعتذر منك، طلبك رقم #'+no+' لم يتم قبوله.\nالسبب: '+reason+'\nشكراً لتفهمك 🙏';
+    window.open('https://wa.me/'+waNum(phone)+'?text='+encodeURIComponent(txt),'_blank');
+  }
+  $('#rejectOverlay').classList.add('hidden');
+  await load();
+  this.disabled=false; this.textContent='رفض وإرسال للزبون';
+});
+
+function waNum(p){
+  var d=String(p||'').replace(/\D/g,'');
+  if(d.indexOf('00')===0) d=d.slice(2);
+  if(d.indexOf('961')===0) return d;
+  if(d.charAt(0)==='0') d=d.slice(1);
+  return d.length<=8?'961'+d:d;
+}
+
+$('#reloadBtn').addEventListener('click',load);
+
+// auto-refresh every 30s
+setInterval(load, 30000);
+
+init();
+})();
+</script>
+</body>
+</html>
