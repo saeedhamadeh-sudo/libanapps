@@ -751,6 +751,7 @@ $$('.tab').forEach(function(t){
     $$('[data-p]').forEach(function(p){p.classList.toggle('hidden',p.dataset.p!==t.dataset.t)});
     if(t.dataset.t==='orders') loadOrders();
     if(t.dataset.t==='branches') loadBranches();
+    if(window.DLV){ if(t.dataset.t==='delivery') window.DLV.open(); else window.DLV.close(); }
   });
 });
 
@@ -1747,7 +1748,10 @@ $('#langBtn').addEventListener('click',function(){
 });
 try{ var savedL=localStorage.getItem('la_admin_lang'); }catch(e){ var savedL=null; }
 
-boot().then(function(){ if(savedL==='en') applyAdminLang('en'); });
+boot().then(function(){
+  if(savedL==='en') applyAdminLang('en');
+  if(window.DLV) window.DLV.boot();
+});
 })();
 </script>
 </body>
