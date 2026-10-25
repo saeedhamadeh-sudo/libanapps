@@ -930,7 +930,7 @@ function buildHoursUI(hours){
     }
     var togBtn=document.createElement('button');
     togBtn.className='btn alt sm'; togBtn.style.marginRight='auto';
-    togBtn.textContent=slots.length===0?'فتح':'غلق';
+    togBtn.textContent=slots.length===0?t('فتح'):t('غلق');
     togBtn.onclick=function(){
       var cur=collectHours();
       if(cur[d].length===0) cur[d]=[{open:'09:00',close:'22:00'}];
@@ -957,17 +957,17 @@ function collectHours(){
 }
 
 function branchRow(b){
-  var activeLabel=b.is_active?'<span style="color:var(--ok-color,#1a7a4a);font-size:12px">● نشط</span>':'<span style="color:#999;font-size:12px">○ غير نشط</span>';
-  var closedBadge=b.force_closed?'<span style="color:#c00;font-size:12px;font-weight:700"> — مغلق طارئ</span>':'';
-  var dlvBadge=b.delivery_enabled?'<span style="font-size:11px;color:#555;margin-right:4px">🏍️ توصيل'+(b.delivery_fee_usd?'('+b.delivery_fee_usd+'$)':'مجاني')+'</span>':'';
+  var activeLabel=b.is_active?'<span style="color:var(--ok-color,#1a7a4a);font-size:12px">● '+t('نشط')+'</span>':'<span style="color:#999;font-size:12px">○ '+t('غير نشط')+'</span>';
+  var closedBadge=b.force_closed?'<span style="color:#c00;font-size:12px;font-weight:700"> — '+t('مغلق طارئ')+'</span>':'';
+  var dlvBadge=b.delivery_enabled?'<span style="font-size:11px;color:#555;margin-right:4px">🏍️ '+t('توصيل')+(b.delivery_fee_usd?'('+b.delivery_fee_usd+'$)':t('مجاني'))+'</span>':'';
   var thumb=b.image_url?'<img src="'+esc(b.image_url)+'" style="width:38px;height:38px;border-radius:8px;object-fit:cover;margin-left:10px;flex-shrink:0">':'';
   return '<div class="row" data-bid="'+b.id+'" style="display:flex;align-items:center;gap:0">'+
     thumb+
     '<div class="t" style="flex:1"><b>'+esc(b.name_ar)+'</b>'+closedBadge+'<span>'+esc(b.name_en)+' · '+esc(b.phone||'')+'</span>'+dlvBadge+'</div>'+
     activeLabel+
-    '<button class="btn alt sm" data-brfc="'+b.id+'" title="'+(b.force_closed?'إلغاء الإغلاق الطارئ':'إغلاق طارئ')+'">⚡ '+(b.force_closed?'فتح':'إغلاق')+'</button>'+
-    '<button class="btn alt sm" data-bren="'+b.id+'">تعديل</button> '+
-    '<button class="btn dg sm" data-brdel="'+b.id+'">حذف</button></div>';
+    '<button class="btn alt sm" data-brfc="'+b.id+'" title="'+(b.force_closed?t('إلغاء الإغلاق الطارئ'):t('إغلاق طارئ'))+'">⚡ '+(b.force_closed?t('فتح'):t('إغلاق'))+'</button>'+
+    '<button class="btn alt sm" data-bren="'+b.id+'">'+t('تعديل')+'</button> '+
+    '<button class="btn dg sm" data-brdel="'+b.id+'">'+t('حذف')+'</button></div>';
 }
 
 async function loadBranches(){
@@ -975,7 +975,7 @@ async function loadBranches(){
   BRANCHES=r.data||[];
   $('#brList').innerHTML=BRANCHES.length
     ? BRANCHES.map(branchRow).join('')
-    : '<p class="muted">ما في فروع بعد — أضف أول فرع من الأعلى</p>';
+    : '<p class="muted">'+t('ما في فروع بعد — أضف أول فرع من الأعلى')+'</p>';
 }
 
 function clearBranchForm(){
@@ -1145,16 +1145,16 @@ async function loadCats(){
     var idx=CATS.indexOf(c);
     var html='<div class="row" data-cid="'+c.id+'" style="padding-right:'+(depth>0?'4px':'8px')+'">'+
       indent+
-      '<div class="t"><b>'+esc(c.name_ar)+'</b><span>'+esc(c.name_en)+' · '+n+' منتج'+(subs.length?' · '+subs.length+' قسم فرعي':'')+' </span></div>'+
-      '<button class="btn alt sm" data-ren="'+c.id+'">تعديل</button> '+
-      '<button class="btn dg sm" data-delcat="'+c.id+'">حذف</button></div>';
+      '<div class="t"><b>'+esc(c.name_ar)+'</b><span>'+esc(c.name_en)+' · '+n+' '+t('منتج')+(subs.length?' · '+subs.length+' '+t('قسم فرعي'):'')+' </span></div>'+
+      '<button class="btn alt sm" data-ren="'+c.id+'">'+t('تعديل')+'</button> '+
+      '<button class="btn dg sm" data-delcat="'+c.id+'">'+t('حذف')+'</button></div>';
     subs.forEach(function(s){html+=catRowHtml(s,depth+1);});
     return html;
   }
   var roots2=CATS.filter(function(c){return !c.parent_id});
   var treeHtml=roots2.map(function(c){return catRowHtml(c,0);}).join('');
-  $('#cList').innerHTML=(CATS.length?('<div class="sortnote">الأقسام الفرعية تظهر منسدلة تحت قسمها الأب في المنيو</div>'):'')
-    +(treeHtml||'<p class="muted">ما في أقسام بعد</p>');
+  $('#cList').innerHTML=(CATS.length?('<div class="sortnote">'+t('الأقسام الفرعية تظهر منسدلة تحت قسمها الأب في المنيو')+'</div>'):'')
+    +(treeHtml||'<p class="muted">'+t('ما في أقسام بعد')+'</p>');
   relang();
 }
 function buildCatOptions(cats,parentId,depth){
@@ -1352,10 +1352,10 @@ function paintItems(){
   var q=$('#iq').value.trim().toLowerCase();
   var canSort=!q && !PRICEMODE && !SORTLOCK;
   var html;
-  if(canSort) html='<div class="sortnote">اسحب داخل القسم لتغيير الترتيب · النقل بين الأقسام من زر «تعديل»</div>';
-  else if(SORTLOCK) html='<div class="sortnote">🔒 الترتيب مقفول — افتحه من الزر فوق لتقدر تسحب</div>';
-  else if(PRICEMODE) html='<div class="sortnote">وضع تعديل الأسعار</div>';
-  else html='<div class="sortnote">فضّي خانة البحث لتقدر ترتّب بالسحب</div>';
+  if(canSort) html='<div class="sortnote">'+t('اسحب داخل القسم لتغيير الترتيب · النقل بين الأقسام من زر «تعديل»')+'</div>';
+  else if(SORTLOCK) html='<div class="sortnote">'+t('🔒 الترتيب مقفول — افتحه من الزر فوق لتقدر تسحب')+'</div>';
+  else if(PRICEMODE) html='<div class="sortnote">'+t('وضع تعديل الأسعار')+'</div>';
+  else html='<div class="sortnote">'+t('فضّي خانة البحث لتقدر ترتّب بالسحب')+'</div>';
 
   var groups = CATS.map(function(c){ return {cat:c, list:itemsOf(c.id)}; });
   var orphan = ITEMS.filter(function(i){
@@ -1375,7 +1375,7 @@ function paintItems(){
         return '<div class="row" data-id="'+i.id+'">'+
           (i.image_url?'<img src="'+esc(i.image_url)+'" alt="">':'<div class="ph"></div>')+
           '<div class="t"><b>'+esc(i.name_ar)+'</b>'+
-          (i.is_available?'':'<span>غير متوفر</span>')+'</div>'+
+          (i.is_available?'':'<span>'+t('غير متوفر')+'</span>')+'</div>'+
           '<div class="prow-edit">'+
             '<input type="number" class="pinput" data-pid="'+i.id+'" value="'+shown+'" '+
               'step="'+(isLbp()?1000:0.25)+'" min="0" data-orig="'+shown+'">'+
@@ -1388,13 +1388,13 @@ function paintItems(){
         (i.image_url?'<img src="'+esc(i.image_url)+'" alt="">':'<div class="ph"></div>')+
         '<div class="t"><b>'+esc(i.name_ar)+'</b><span>'+
         (isLbp()? shown.toLocaleString('en-US')+' ل.ل.' : shown+' $')+
-        (i.is_available?'':' · غير متوفر')+(i.is_featured?' · الأكثر طلباً':'')+'</span></div>'+
+        (i.is_available?'':' · '+t('غير متوفر'))+(i.is_featured?' · '+t('الأكثر طلباً'):'')+'</span></div>'+
         (canSort?'<button class="btn alt sm" data-up="'+i.id+'"'+(idx===0?' disabled':'')+'>▲</button> ':'')+
-        '<button class="btn alt sm" data-ed="'+i.id+'">تعديل</button> '+
-        '<button class="btn dg sm" data-del="'+i.id+'">حذف</button></div>';
+        '<button class="btn alt sm" data-ed="'+i.id+'">'+t('تعديل')+'</button> '+
+        '<button class="btn dg sm" data-del="'+i.id+'">'+t('حذف')+'</button></div>';
     }).join('');
   });
-  $('#iList').innerHTML = any ? html : html+'<p class="muted">ما في منتجات</p>';
+  $('#iList').innerHTML = any ? html : html+'<p class="muted">'+t('ما في منتجات')+'</p>';
   relang();
 }
 
@@ -1601,22 +1601,22 @@ $('#iList').addEventListener('click',async function(e){
 /* ---------- orders ---------- */
 var ALL_ORDERS=[];
 function orderStatusLabel(s){
-  return {pending:'<span class="chip w">جديد ⏳</span>',accepted:'<span class="chip p">مقبول ✓</span>',
-    rejected:'<span class="chip" style="background:rgba(220,38,38,.15);color:#ef4444">مرفوض ✗</span>',
-    cancelled:'<span class="chip" style="background:rgba(220,38,38,.15);color:#ef4444">ملغى</span>'}[s]||'<span class="chip w">'+esc(s)+'</span>';
+  return {pending:'<span class="chip w">'+t('جديد ⏳')+'</span>',accepted:'<span class="chip p">'+t('مقبول ✓')+'</span>',
+    rejected:'<span class="chip" style="background:rgba(220,38,38,.15);color:#ef4444">'+t('مرفوض ✗')+'</span>',
+    cancelled:'<span class="chip" style="background:rgba(220,38,38,.15);color:#ef4444">'+t('ملغى')+'</span>'}[s]||'<span class="chip w">'+esc(s)+'</span>';
 }
 function waNum(p){ var d=String(p||'').replace(/\D/g,''); if(d.indexOf('00')===0) d=d.slice(2);
   if(d.indexOf('961')===0) return d; if(d.charAt(0)==='0') d=d.slice(1); return d.length<=8?'961'+d:d; }
 function orderRow(o, pending){
   var d=new Date(o.created_at);
   var pay=o.payment_method==='whish'
-    ?'<span class="chip '+(o.status==='paid'?'p':'w')+'">'+(o.status==='paid'?'مدفوع Whish':'بانتظار الدفع')+'</span>'
-    :'<span class="chip w">نقداً</span>';
-  var typeLabel=o.order_type==='delivery'?'🏍️ توصيل':'🍽️ بالمطعم';
+    ?'<span class="chip '+(o.status==='paid'?'p':'w')+'">'+t(o.status==='paid'?'مدفوع Whish':'بانتظار الدفع')+'</span>'
+    :'<span class="chip w">'+t('نقداً')+'</span>';
+  var typeLabel=o.order_type==='delivery'?t('🏍️ توصيل'):t('🍽️ بالمطعم');
   var acts='';
   if(pending){
-    acts='<button class="btn sm" style="background:#16a34a;color:#fff" data-accept="'+o.id+'" data-type="'+esc(o.order_type||'')+'">قبول ✓</button>'+
-         '<button class="btn dg sm" data-reject="'+o.id+'" data-phone="'+esc(o.customer_phone||'')+'" data-name="'+esc(o.customer_name||'')+'">رفض</button>';
+    acts='<button class="btn sm" style="background:#16a34a;color:#fff" data-accept="'+o.id+'" data-type="'+esc(o.order_type||'')+'">'+t('قبول ✓')+'</button>'+
+         '<button class="btn dg sm" data-reject="'+o.id+'" data-phone="'+esc(o.customer_phone||'')+'" data-name="'+esc(o.customer_name||'')+'">'+t('رفض')+'</button>';
   }
   return '<div class="row" style="'+(pending?'border:2px solid var(--accent);':'')+'">'+
     '<div class="t"><b>'+esc(o.order_no)+' · '+esc(o.customer_name)+'</b>'+
@@ -1624,7 +1624,7 @@ function orderRow(o, pending){
     (o.customer_phone?'<span style="direction:ltr;font-size:12px">📞 '+esc(o.customer_phone)+'</span>':'')+
     (o.notes?'<span style="color:var(--muted);font-size:12px">📝 '+esc(o.notes)+'</span>':'')+
     '</div>'+pay+orderStatusLabel(o.status)+acts+
-    '<a class="btn alt sm" style="text-decoration:none" target="_blank" href="/i/'+encodeURIComponent(o.token)+'">الفاتورة</a></div>';
+    '<a class="btn alt sm" style="text-decoration:none" target="_blank" href="/i/'+encodeURIComponent(o.token)+'">'+t('الفاتورة')+'</a></div>';
 }
 function applyOrderFilter(){
   var flt=$('#oFilter').value;
@@ -1634,7 +1634,7 @@ function applyOrderFilter(){
   else if(flt==='pending') rows=ALL_ORDERS.filter(function(o){return o.status==='pending'});
   else if(flt==='delivery') rows=ALL_ORDERS.filter(function(o){return o.order_type==='delivery'});
   else if(flt==='dinein') rows=ALL_ORDERS.filter(function(o){return o.order_type!=='delivery'});
-  $('#oList').innerHTML=rows.length?rows.map(function(o){return orderRow(o,false)}).join(''):'<p class="muted">ما في طلبات</p>';
+  $('#oList').innerHTML=rows.length?rows.map(function(o){return orderRow(o,false)}).join(''):'<p class="muted">'+t('ما في طلبات')+'</p>';
 }
 async function loadOrders(){
   var r=await sb.from('orders').select('*').eq('restaurant_id',R.id)
@@ -1647,7 +1647,7 @@ async function loadOrders(){
   else badge.style.display='none';
   $('#oPending').innerHTML=pending.length
     ? pending.map(function(o){return orderRow(o,true)}).join('')
-    : '<p class="muted">ما في طلبات جديدة</p>';
+    : '<p class="muted">'+t('ما في طلبات جديدة')+'</p>';
   applyOrderFilter();
   relang();
 }
@@ -1852,26 +1852,26 @@ $('#savePay').addEventListener('click',async function(){
 async function loadSub(){
   var r=await sb.rpc('restaurant_subscription',{rid:R.id});
   var d=r.data;
-  if(!d){ $('#subBox').innerHTML='<p class="muted">ما قدرنا نجيب بيانات الاشتراك</p>'; return; }
+  if(!d){ $('#subBox').innerHTML='<p class="muted">'+t('ما قدرنا نجيب بيانات الاشتراك')+'</p>'; return; }
   var days=d.days_left||0;
   var col = (!d.active||days<=0) ? '#FF7A7E' : (days<=15 ? 'var(--accent)' : '#4ADE80');
-  var txt = (!d.active||days<=0) ? 'اشتراكك منتهي' : ('باقي '+days+' يوم');
+  var txt = (!d.active||days<=0) ? t('اشتراكك منتهي') : (t('باقي')+' '+days+' '+t('يوم'));
   var exp = d.expires_at ? new Date(d.expires_at).toLocaleDateString('en-GB') : '—';
   $('#subBox').innerHTML =
     '<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">'+
       '<div style="font-family:var(--font-display);font-size:34px;color:'+col+'">'+txt+'</div>'+
-      '<div class="muted">ينتهي بتاريخ '+exp+'</div>'+
+      '<div class="muted">'+t('ينتهي بتاريخ')+' '+exp+'</div>'+
       (d.can_renew
         ? '<a class="btn y" style="margin-inline-start:auto;text-decoration:none" '+
-          'href="/account?renew='+encodeURIComponent(d.subscription_id)+'" target="_blank">تجديد الاشتراك</a>'
+          'href="/account?renew='+encodeURIComponent(d.subscription_id)+'" target="_blank">'+t('تجديد الاشتراك')+'</a>'
         : '<a class="btn y" style="margin-inline-start:auto;text-decoration:none" '+
-          'href="/account" target="_blank">تجديد الاشتراك</a>')+
+          'href="/account" target="_blank">'+t('تجديد الاشتراك')+'</a>')+
     '</div>'+
     (days<=15 && d.active
-      ? '<p class="hint" style="color:var(--accent)">قرّب اشتراكك يخلص — جدّده قبل ما يتوقف المنيو.</p>'
+      ? '<p class="hint" style="color:var(--accent)">'+t('قرّب اشتراكك يخلص — جدّده قبل ما يتوقف المنيو.')+'</p>'
       : '') +
     (!d.active
-      ? '<p class="hint" style="color:#FF7A7E">المنيو بيوقف عن زبائنك بعد ٣ أيام من الانتهاء.</p>'
+      ? '<p class="hint" style="color:#FF7A7E">'+t('المنيو بيوقف عن زبائنك بعد ٣ أيام من الانتهاء.')+'</p>'
       : '');
 }
 
@@ -1907,10 +1907,55 @@ $('#prQr').addEventListener('click',function(){
   w.document.close(); setTimeout(function(){w.print()},900);
 });
 
-var ADMIN_EN = {"لوحة المطعم": "Restaurant dashboard", "البريد الإلكتروني": "Email", "كلمة المرور": "Password", "دخول": "Sign in", "عرض المنيو": "View menu", "خروج": "Sign out", "المنتجات": "Products", "الأقسام": "Categories", "الطلبات": "Orders", "صور وعروض": "Media & offers", "الإعدادات": "Settings", "الدفع": "Payment", "رمز QR": "QR code", "إضافة منتج": "Add product", "الاسم بالعربي": "Name (Arabic)", "الاسم بالإنكليزي": "Name (English)", "الوصف بالعربي": "Description (Arabic)", "الوصف بالإنكليزي": "Description (English)", "السعر ($)": "Price ($)", "القسم": "Category", "الترتيب": "Order", "الصورة": "Image", "متوفر": "Available", "الأكثر طلباً": "Popular", "حفظ": "Save", "تفريغ": "Clear", "حذف": "Delete", "إضافة": "Add", "الاسم عربي": "Name (Arabic)", "الاسم إنكليزي": "Name (English)", "آخر الطلبات": "Recent orders", "تحديث": "Refresh", "صور السلايدر": "Slider images", "تعليق عربي": "Caption (Arabic)", "تعليق إنكليزي": "Caption (English)", "إضافة صورة": "Add image", "عرض منبثق": "Popup offer", "العنوان عربي": "Title (Arabic)", "العنوان إنكليزي": "Title (English)", "النص عربي": "Body (Arabic)", "النص إنكليزي": "Body (English)", "ينتهي بتاريخ": "Ends on", "صورة": "Image", "نشر العرض": "Publish offer", "معلومات المطعم": "Restaurant info", "الشعار الفرعي عربي": "Tagline (Arabic)", "الشعار الفرعي إنكليزي": "Tagline (English)", "الهاتف": "Phone", "واتساب الطلبات (961…)": "Orders WhatsApp (961…)", "العنوان عربي ": "Address (Arabic)", "شعار المطعم": "Restaurant logo", "الأسعار والتوصيل": "Prices & delivery", "العملة الأساسية للمنيو": "Menu base currency", "دولار — السعر بالدولار والليرة جنبه": "USD — price in dollars, LBP beside it", "ليرة — السعر بالليرة والدولار جنبه": "LBP — price in lira, USD beside it", "الدفع عبر Whish بيضل بالدولار دائماً": "Whish payments are always in USD", "سعر صرف الدولار": "USD exchange rate", "التقريب لأقرب": "Round to nearest", "رسوم التوصيل ($)": "Delivery fee ($)", "الحد الأدنى للتوصيل ($)": "Minimum delivery order ($)", "ملاحظة أسفل المنيو (عربي)": "Note under the menu (Arabic)", "إظهار العملة التانية جنب السعر": "Show the second currency beside the price", "استقبال طلبات داخل المطعم": "Accept dine-in orders", "استقبال طلبات توصيل": "Accept delivery orders", "طلب تحديد الموقع للتوصيل": "Require location for delivery", "الشكل": "Appearance", "الثيم": "Theme", "Flame — أسود وأحمر": "Flame — black & red", "Clean — أبيض هادئ": "Clean — soft white", "Wood — بني دافئ": "Wood — warm brown", "Neon — ألوان صارخة": "Neon — bright colours", "اللغة الافتراضية": "Default menu language", "عربي": "Arabic", "إنكليزي": "English", "الدفع عبر Whish": "Pay with Whish", "بتاخد الـChannel والـSecret من حسابك عند Whish. منخزّنهم مشفّرين وما بيرجعوا يظهروا — إذا نسيتهم بتدخّلهم من جديد.": "Get your Channel and Secret from your Whish merchant account. They are stored encrypted and never shown again — re-enter them if forgotten.", "تفعيل الدفع عبر Whish": "Enable Whish payments", "عملة التحصيل": "Collection currency", "دولار": "USD", "ليرة": "LBP", "عمولة Whish على": "Whish fee paid by", "المطعم": "Restaurant", "الزبون": "Customer", "توليد": "Generate", "تنزيل PNG": "Download PNG", "طباعة ملصق": "Print poster", "بحث…": "Search…", "اتركه فاضي إذا ما بدك تغيّره": "Leave empty to keep the current one"};
+var ADMIN_EN = {"لوحة المطعم": "Restaurant dashboard", "البريد الإلكتروني": "Email", "كلمة المرور": "Password", "دخول": "Sign in", "عرض المنيو": "View menu", "خروج": "Sign out", "المنتجات": "Products", "الأقسام": "Categories", "الطلبات": "Orders", "صور وعروض": "Media & offers", "الإعدادات": "Settings", "الدفع": "Payment", "رمز QR": "QR code", "إضافة منتج": "Add product", "الاسم بالعربي": "Name (Arabic)", "الاسم بالإنكليزي": "Name (English)", "الوصف بالعربي": "Description (Arabic)", "الوصف بالإنكليزي": "Description (English)", "السعر ($)": "Price ($)", "القسم": "Category", "الترتيب": "Order", "الصورة": "Image", "متوفر": "Available", "الأكثر طلباً": "Popular", "حفظ": "Save", "تفريغ": "Clear", "حذف": "Delete", "إضافة": "Add", "الاسم عربي": "Name (Arabic)", "الاسم إنكليزي": "Name (English)", "آخر الطلبات": "Recent orders", "تحديث": "Refresh", "صور السلايدر": "Slider images", "تعليق عربي": "Caption (Arabic)", "تعليق إنكليزي": "Caption (English)", "إضافة صورة": "Add image", "عرض منبثق": "Popup offer", "العنوان عربي": "Title (Arabic)", "العنوان إنكليزي": "Title (English)", "النص عربي": "Body (Arabic)", "النص إنكليزي": "Body (English)", "ينتهي بتاريخ": "Ends on", "صورة": "Image", "نشر العرض": "Publish offer", "معلومات المطعم": "Restaurant info", "الشعار الفرعي عربي": "Tagline (Arabic)", "الشعار الفرعي إنكليزي": "Tagline (English)", "الهاتف": "Phone", "واتساب الطلبات (961…)": "Orders WhatsApp (961…)", "العنوان عربي ": "Address (Arabic)", "شعار المطعم": "Restaurant logo", "الأسعار والتوصيل": "Prices & delivery", "العملة الأساسية للمنيو": "Menu base currency", "دولار — السعر بالدولار والليرة جنبه": "USD — price in dollars, LBP beside it", "ليرة — السعر بالليرة والدولار جنبه": "LBP — price in lira, USD beside it", "الدفع عبر Whish بيضل بالدولار دائماً": "Whish payments are always in USD", "سعر صرف الدولار": "USD exchange rate", "التقريب لأقرب": "Round to nearest", "رسوم التوصيل ($)": "Delivery fee ($)", "الحد الأدنى للتوصيل ($)": "Minimum delivery order ($)", "ملاحظة أسفل المنيو (عربي)": "Note under the menu (Arabic)", "إظهار العملة التانية جنب السعر": "Show the second currency beside the price", "استقبال طلبات داخل المطعم": "Accept dine-in orders", "استقبال طلبات توصيل": "Accept delivery orders", "طلب تحديد الموقع للتوصيل": "Require location for delivery", "الشكل": "Appearance", "الثيم": "Theme", "Flame — أسود وأحمر": "Flame — black & red", "Clean — أبيض هادئ": "Clean — soft white", "Wood — بني دافئ": "Wood — warm brown", "Neon — ألوان صارخة": "Neon — bright colours", "اللغة الافتراضية": "Default menu language", "عربي": "Arabic", "إنكليزي": "English", "الدفع عبر Whish": "Pay with Whish", "بتاخد الـChannel والـSecret من حسابك عند Whish. منخزّنهم مشفّرين وما بيرجعوا يظهروا — إذا نسيتهم بتدخّلهم من جديد.": "Get your Channel and Secret from your Whish merchant account. They are stored encrypted and never shown again — re-enter them if forgotten.", "تفعيل الدفع عبر Whish": "Enable Whish payments", "عملة التحصيل": "Collection currency", "دولار": "USD", "ليرة": "LBP", "عمولة Whish على": "Whish fee paid by", "المطعم": "Restaurant", "الزبون": "Customer", "توليد": "Generate", "تنزيل PNG": "Download PNG", "طباعة ملصق": "Print poster", "بحث…": "Search…", "اتركه فاضي إذا ما بدك تغيّره": "Leave empty to keep the current one",
+  // dynamic JS strings
+  "جديد ⏳": "New ⏳", "مقبول ✓": "Accepted ✓", "مرفوض ✗": "Rejected ✗", "ملغى": "Cancelled",
+  "جديد": "new", "توصيل": "Delivery", "بالمطعم": "Dine-in",
+  "🏍️ توصيل": "🏍️ Delivery", "🍽️ بالمطعم": "🍽️ Dine-in",
+  "نقداً": "Cash", "مدفوع Whish": "Paid (Whish)", "بانتظار الدفع": "Awaiting payment",
+  "قبول ✓": "Accept ✓", "رفض": "Reject",
+  "الفاتورة": "Invoice",
+  "ما في طلبات جديدة": "No new orders", "ما في طلبات": "No orders",
+  "إضافة فرع": "Add branch", "تعديل الفرع": "Edit branch", "حفظ الفرع": "Save branch", "تفريغ": "Clear", "حذف الفرع": "Delete branch",
+  "إضافة منتج": "Add product", "تعديل منتج": "Edit product",
+  "إضافة": "Add", "حفظ التعديل": "Save edit", "إلغاء": "Cancel",
+  "ما في أقسام بعد": "No categories yet", "ما في منتجات": "No products",
+  "الأقسام الفرعية تظهر منسدلة تحت قسمها الأب في المنيو": "Subcategories are shown nested under their parent in the menu",
+  "منتج": "product", "قسم فرعي": "subcategory",
+  "تعديل": "Edit",
+  "مغلق": "Closed", "فتح": "Open", "غلق": "Close",
+  "🔒 الترتيب مقفول": "🔒 Order locked", "🔓 الترتيب مفتوح": "🔓 Order unlocked",
+  "تعديل الأسعار": "Edit prices", "رجوع للقائمة": "Back to list", "حفظ الأسعار": "Save prices",
+  "اشتراكك منتهي": "Subscription expired", "باقي": "Days left:",
+  "يوم": "day(s)", "ينتهي بتاريخ": "Expires on",
+  "تجديد الاشتراك": "Renew subscription",
+  "قرّب اشتراكك يخلص — جدّده قبل ما يتوقف المنيو.": "Your subscription is almost over — renew before the menu goes offline.",
+  "المنيو بيوقف عن زبائنك بعد ٣ أيام من الانتهاء.": "The menu will stop for your customers 3 days after expiry.",
+  "امسح الكود لعرض القائمة": "Scan the code to view the menu",
+  "ما قدرنا نجيب بيانات الاشتراك": "Could not load subscription data",
+  "جاري التحميل…": "Loading…", "عم نحمّل…": "Loading…",
+  "الفرع نشط": "Branch active",
+  "استقبال طلبات توصيل من هذا الفرع": "Accept delivery orders for this branch",
+  "ساعات العمل": "Working hours", "اتركها فاضية للراحة": "Leave empty for day off",
+  "ترقيم تلقائي": "Auto-number",
+  "ما في طلبات قديمة للمسح": "No old orders to clear",
+  "نشط": "Active", "غير نشط": "Inactive",
+  "مغلق طارئ": "Emergency closed", "إلغاء الإغلاق الطارئ": "Cancel emergency close", "إغلاق طارئ": "Emergency close",
+  "مجاني": "Free",
+  "ما في فروع بعد — أضف أول فرع من الأعلى": "No branches yet — add the first branch above",
+  "اسحب داخل القسم لتغيير الترتيب · النقل بين الأقسام من زر «تعديل»": "Drag within a category to reorder · Move between categories via Edit",
+  "🔒 الترتيب مقفول — افتحه من الزر فوق لتقدر تسحب": "🔒 Order locked — unlock with the button above to drag",
+  "وضع تعديل الأسعار": "Price editing mode",
+  "فضّي خانة البحث لتقدر ترتّب بالسحب": "Clear the search to enable drag sorting",
+  "غير متوفر": "Unavailable",
+  "بدون قسم": "Uncategorized",
+  "الكل": "All", "قيد الانتظار": "Pending", "مقبولة": "Accepted", "مرفوضة": "Rejected", "توصيل فقط": "Delivery only", "بالمطعم فقط": "Dine-in only"
+};
 
 // ترجمة اللوحة — بتبدّل النصوص الظاهرة فقط، وبيانات المطعم بتضل متل ما هي
 var ADMIN_LANG='ar';
+// t(ar) — بتستخدم بـ JS الـ dynamic لترجمة أي نص عربي لإنكليزي
+function t(ar){ return (ADMIN_LANG==='en' && ADMIN_EN[ar]) ? ADMIN_EN[ar] : ar; }
 var ORIG = (typeof WeakMap!=='undefined') ? new WeakMap() : null;
 
 function applyAdminLang(l){
