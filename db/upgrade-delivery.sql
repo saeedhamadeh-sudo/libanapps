@@ -91,7 +91,16 @@ create policy "tdev_write" on public.tracker_devices
   with check (public.is_member(restaurant_id));
 
 -- ============================================================
--- 6) دالة admin_fleet — ترجع كل بيانات لوحة التوصيل
+-- 6) دوال التوصيل — DROP أولاً لتفادي تعارض الأنواع
+-- ============================================================
+drop function if exists public.admin_fleet(uuid);
+drop function if exists public.admin_dispatch(bigint,text,uuid);
+drop function if exists public.admin_dispatch(uuid,text,uuid);
+drop function if exists public.admin_delivery_settings(uuid,text,boolean);
+drop function if exists public.delivery_state(uuid);
+
+-- ============================================================
+-- 6a) دالة admin_fleet — ترجع كل بيانات لوحة التوصيل
 -- ============================================================
 create or replace function public.admin_fleet(rid uuid)
 returns jsonb language plpgsql security definer set search_path = public as $$
@@ -164,11 +173,6 @@ end $$;
 -- ============================================================
 -- 7) دالة admin_dispatch — تعيين / سحب / إلغاء توصيل
 -- ============================================================
-drop function if exists public.admin_dispatch(bigint,text,uuid);
-drop function if exists public.admin_dispatch(uuid,text,uuid);
-drop function if exists public.admin_fleet(uuid);
-drop function if exists public.admin_delivery_settings(uuid,text,boolean);
-drop function if exists public.delivery_state(uuid);
 create or replace function public.admin_dispatch(
   p_order  bigint,
   p_action text,
