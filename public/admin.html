@@ -188,11 +188,32 @@ button{cursor:pointer;border:0;background:0}
 .lic.ok{background:rgba(74,222,128,.14);color:#4ADE80}
 .lic.warn{background:rgba(255,212,0,.16);color:var(--accent)}
 .lic.bad{background:rgba(228,20,27,.16);color:#FF7A7E}
-.tabs{display:flex;gap:6px;overflow-x:auto;padding-bottom:12px;scrollbar-width:none}
-.tabs::-webkit-scrollbar{display:none}
-.tab{white-space:nowrap;background:var(--bg-2);border:1px solid var(--line);padding:8px 14px;
-  border-radius:10px;font-size:14px;font-weight:600}
+/* ── Right-side vertical sidebar ── */
+.sidebar{position:fixed;top:0;right:0;height:100vh;width:175px;
+  background:var(--card);border-left:1px solid var(--line);
+  display:flex;flex-direction:column;padding:56px 8px 16px;
+  gap:4px;overflow-y:auto;overflow-x:hidden;scrollbar-width:none;
+  z-index:120;transition:transform .25s ease}
+.sidebar::-webkit-scrollbar{display:none}
+.sidebar.collapsed{transform:translateX(100%)}
+#sidebarToggle{position:fixed;top:50%;right:175px;transform:translateY(-50%);
+  z-index:121;background:var(--brand);color:var(--brand-ink);
+  border:none;border-radius:8px 0 0 8px;width:22px;height:52px;
+  cursor:pointer;font-size:11px;display:flex;align-items:center;justify-content:center;
+  transition:right .25s ease}
+#sidebarToggle.collapsed{right:0}
+.tabs{display:contents}
+.tab{white-space:normal;text-align:right;background:var(--bg-2);border:1px solid var(--line);
+  padding:9px 11px;border-radius:10px;font-size:13px;font-weight:600;width:100%;
+  cursor:pointer;transition:background .15s}
 .tab[aria-pressed="true"]{background:var(--brand);color:var(--brand-ink);border-color:transparent}
+/* shift main content away from sidebar */
+#app{padding-right:calc(175px + 22px)!important}
+@media(max-width:640px){
+  .sidebar{width:140px;padding-top:56px}
+  #app{padding-right:calc(140px + 22px)!important}
+  #sidebarToggle{right:140px}
+}
 .panel{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
   padding:16px;margin-bottom:14px}
 .panel h3{font-size:19px;color:var(--accent);margin-bottom:8px}
@@ -301,19 +322,22 @@ body.login-page .credit .credit-tel{color:#E08A2B}
     <button class="btn alt sm" id="outBtn">خروج</button>
   </div>
 
-  <div class="tabs">
-    <button class="tab" data-t="items" aria-pressed="true">المنتجات</button>
-    <button class="tab" data-t="cats" aria-pressed="false">الأقسام</button>
-    <button class="tab" data-t="orders" aria-pressed="false">الطلبات</button>
-    <button class="tab" data-t="delivery" aria-pressed="false">🏍️ التوصيل</button>
-    <button class="tab" data-t="promo" aria-pressed="false">صور وعروض</button>
-    <button class="tab" data-t="coupons" aria-pressed="false">قسائم الخصم</button>
-    <button class="tab" data-t="set" aria-pressed="false">الإعدادات</button>
-    <button class="tab" data-t="pay" aria-pressed="false">الدفع</button>
-    <button class="tab" data-t="qr" aria-pressed="false">رمز QR</button>
-    <button class="tab" data-t="branches" aria-pressed="false">الفروع</button>
-    <button class="tab" data-t="sub" aria-pressed="false">الاشتراك</button>
-  </div>
+  <nav class="sidebar" id="sidebar">
+    <div class="tabs">
+      <button class="tab" data-t="items" aria-pressed="true">📦 المنتجات</button>
+      <button class="tab" data-t="cats" aria-pressed="false">🗂️ الأقسام</button>
+      <button class="tab" data-t="orders" aria-pressed="false">🧾 الطلبات</button>
+      <button class="tab" data-t="delivery" aria-pressed="false">🏍️ التوصيل</button>
+      <button class="tab" data-t="promo" aria-pressed="false">🖼️ صور وعروض</button>
+      <button class="tab" data-t="coupons" aria-pressed="false">🎟️ قسائم الخصم</button>
+      <button class="tab" data-t="set" aria-pressed="false">⚙️ الإعدادات</button>
+      <button class="tab" data-t="pay" aria-pressed="false">💳 الدفع</button>
+      <button class="tab" data-t="qr" aria-pressed="false">📱 رمز QR</button>
+      <button class="tab" data-t="branches" aria-pressed="false">🏪 الفروع</button>
+      <button class="tab" data-t="sub" aria-pressed="false">⭐ الاشتراك</button>
+    </div>
+  </nav>
+  <button id="sidebarToggle" title="إخفاء/إظهار القائمة">◀</button>
 
   <!-- ITEMS -->
   <section data-p="items">
@@ -799,6 +823,24 @@ $$('.tab').forEach(function(t){
     if(window.DLV){ if(t.dataset.t==='delivery') window.DLV.open(); else window.DLV.close(); }
   });
 });
+
+/* ── Sidebar toggle ── */
+(function(){
+  var sb=$('#sidebar'), btn=$('#sidebarToggle');
+  var app=$('#app');
+  var collapsed=false;
+  btn.addEventListener('click',function(){
+    collapsed=!collapsed;
+    sb.classList.toggle('collapsed',collapsed);
+    btn.classList.toggle('collapsed',collapsed);
+    btn.textContent=collapsed?'▶':'◀';
+    app.style.paddingRight=collapsed?'12px':'calc(175px + 12px)';
+  });
+  // adjust on mobile
+  if(window.innerWidth<=640){
+    btn.style.right='140px';
+  }
+})();
 
 /* ---------- image upload ---------- */
 // الصور الشفافة (PNG/WebP/GIF) بتضل PNG — تحويلها لـJPEG بيخلي الخلفية سودا
