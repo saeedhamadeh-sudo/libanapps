@@ -1809,10 +1809,14 @@ const GROUP_ICON_SET = [
   ['🔋','بطاريات',['بطاريات','battery','batteries']],
   ['📱','هواتف وإكسسوارات',['موبايل','تلفون','هواتف','phone','mobile']],
   ['🎁','هدايا',['هدايا','gifts']],
+  // ↓ الأيقونات الأصلية (تظهر بكل أنواع المحلات) — ما قبلها خاص بالسوبرماركت
   ['📁','عام',[]], ['🛠','خدمات',['خدمات','تصليح','services']], ['🧰','عدّة',[]], ['🔩','قطع',[]], ['🧽','غسيل',['غسيل','wash']],
   ['🚿','',[]], ['⚙️','',[]], ['🔧','',[]], ['🧯','',[]], ['💡','',[]], ['🎧','',[]], ['🚗','سيارات',[]], ['🏍','',[]], ['🧪','',[]], ['📦','منتجات',[]], ['⭐','',[]]
 ];
 const GROUP_ICON_CHOICES = GROUP_ICON_SET.map(x=>x[0]);
+const GROUP_ICON_BASE_FROM = GROUP_ICON_SET.findIndex(x=>x[0]==='📁');
+// محل الدواليب وغيار الزيت: الأيقونات الأصلية فقط (بدون أيقونات السوبرماركت)
+function groupIconSetForShop(){ return isAutoShop() ? GROUP_ICON_SET.slice(GROUP_ICON_BASE_FROM) : GROUP_ICON_SET; }
 // اقتراح أيقونة من اسم المجموعة (قهوة → ☕، دخان → 🚬 ...)
 function guessGroupIcon(name){
   const n = normalizeSearchText(name); if(!n) return '';
@@ -1836,7 +1840,7 @@ function openGroupModal(group, onDone){
       </div>
     </div>
     <div class="field"><label>الأيقونة</label>
-      <div id="gm_icons" style="display:flex; flex-wrap:wrap; gap:6px;">${GROUP_ICON_SET.map(([ic,lbl])=>`<button type="button" class="btn btn-sm" data-gm-icon="${ic}" title="${escapeHtml(lbl)}" style="font-size:22px; padding:4px 6px; min-width:46px; display:flex; flex-direction:column; align-items:center; line-height:1.1; ${group && group.icon===ic?'border:2px solid var(--bronze-deep);':''}">${ic}${lbl? `<span style="font-size:9.5px; font-weight:600; color:var(--ink-soft); margin-top:2px;">${escapeHtml(lbl)}</span>`:''}</button>`).join('')}</div>
+      <div id="gm_icons" style="display:flex; flex-wrap:wrap; gap:6px;">${groupIconSetForShop().map(([ic,lbl])=>`<button type="button" class="btn btn-sm" data-gm-icon="${ic}" title="${escapeHtml(lbl)}" style="font-size:22px; padding:4px 6px; min-width:46px; display:flex; flex-direction:column; align-items:center; line-height:1.1; ${group && group.icon===ic?'border:2px solid var(--bronze-deep);':''}">${ic}${lbl? `<span style="font-size:9.5px; font-weight:600; color:var(--ink-soft); margin-top:2px;">${escapeHtml(lbl)}</span>`:''}</button>`).join('')}</div>
     </div>
     <div class="row">
       ${!isNew? `<button class="btn btn-danger" id="gm_delete">🗑 حذف المجموعة</button>` : ''}
@@ -1853,7 +1857,7 @@ function openGroupModal(group, onDone){
   }));
   // كتابة الاسم تختار الأيقونة المناسبة تلقائياً (ما لم يخترها المستخدم بنفسه)
   wrap.querySelector('#gm_name').addEventListener('input', e=>{
-    if(iconPicked) return;
+    if(iconPicked || isAutoShop()) return;
     icon = guessGroupIcon(e.target.value); markIcon(icon);
   });
   wrap.querySelector('#gm_cancel').addEventListener('click', ()=>wrap.remove());
@@ -8306,7 +8310,7 @@ function settingsView(){
     <button class="btn btn-primary" id="importCsvStockBtn">📄 Import CSV</button>
   </div>
 
-  <div class="card">
+  <div class="card" ${isAutoShop()?'style="display:none;"':''}>
     <h2><span class="dot"></span> 🤖 توزيع المنتجات على المجموعات تلقائياً</h2>
     <p style="font-size:12.5px; color:var(--ink-soft); line-height:1.7;">يقرأ اسم كل منتج ويضعه بمجموعته (قهوة، شاي، مشروبات، شيبس، كحول، دخان، شوكولا، سكاكر...) وينشئ المجموعات الناقصة مع أيقوناتها — تراجع الاقتراحات قبل التطبيق.</p>
     <button class="btn btn-primary" id="autoGroupBtn">🤖 توزيع تلقائي</button>
