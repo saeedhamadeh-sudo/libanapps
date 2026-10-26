@@ -713,7 +713,7 @@ function warehouseItemFromDb(row){
 // خانات إضافية للمنتج (محل إطارات وبطاريات وزيوت) — محفوظة بعمود extra (jsonb)
 const ITEM_EXTRA_KEYS = ['sku','subCategory','madeIn','uom','location','reorderPoint','costPrice','supplierId',
   'tireSize','dot','loadSpeed','rechargeDate','amperage','oilType','viscosity','compat','weight','dims','msds','status',
-  'vatRate','margin','mfgYear'];
+  'vatRate','margin','mfgYear','priceSec','costSec'];
 function pickItemExtra(src){
   const out = {};
   if(!src || typeof src!=='object') return out;
@@ -1101,6 +1101,15 @@ function primIsSec(){ const m = currencyMode(); return m==='SEC' || m==='SEC_USD
 function hasSecondCur(){ const m = currencyMode(); return m==='USD_SEC' || m==='SEC_USD'; }
 function curRate(){ return Number(DB.settings && (DB.settings.defaultExchangeRate || DB.settings.secondCurrencyRate)) || 90000; }
 function primSym(){ return primIsSec() ? secCurLabel() : '$'; }
+// أسعار المنتج المُدخلة بالعملة المحلية تُحفظ كما هي (priceSec / costSec) ولا تُقلب دولار نهائياً،
+// والسعر بالدولار يُشتق منها على سعر الصرف الحالي — فيظهر 100,000 كما أُدخل بلا كسور
+function syncNativePrices(){
+  const r = curRate(); if(!(r>0)) return;
+  (DB.warehouseItems||[]).forEach(it=>{
+    if(Number(it.priceSec)>0) it.price = Number(it.priceSec)/r;
+    if(Number(it.costSec)>0) it.costPrice = Number(it.costSec)/r;
+  });
+}
 // قيمة بالدولار → رقم بالعملة الأساسية (لخانات الإدخال)
 function toPrim(usd){ const n = Number(usd)||0; return primIsSec() ? Math.round(n*curRate()) : Math.round(n*100)/100; }
 // رقم مُدخل بالعملة الأساسية → دولار للحفظ
@@ -1923,7 +1932,7 @@ function itemCostWithVat(it){
 function repriceFromMargin(it){
   if(it.margin===undefined || it.margin===null || it.margin==='') return;
   const cv = itemCostWithVat(it); if(cv===null) return;
-  it.price = Math.round(cv*(1+Number(it.margin)/100)*100)/100;
+  it.price = Math.round(cv*(1+Number(it.margin)/100)*100)/100; it.priceSec = null;
 }
 const DEFAULT_UOMS = ['حبة','طقم','كرتون','لتر','غالون','علبة','متر'];
 
@@ -2603,9 +2612,9 @@ function openImportStockModal(){
       let it = r.existingId ? DB.warehouseItems.find(w=>w.id===r.existingId) : null;
       // التكلفة في الملف شاملة الضريبة: نخزّن التكلفة قبل الضريبة + نسبة TVA فتظهر «التكلفة شامل الضريبة» كما في الملف
       const vat = settingsVatRate();
-      const setCost = w=>{ if(r.cost!==null && r.cost!==undefined && r.cost>0){ w.vatRate = vat; w.costPrice = Math.round(r.cost/(1+vat/100)*10000)/10000; } };
+      const setCost = w=>{ if(r.cost!==null && r.cost!==undefined && r.cost>0){ w.vatRate = vat; w.costPrice = Math.round(r.cost/(1+vat/100)*10000)/10000; w.costSec = null; } };
       if(it){
-        if(r.retail!==null && r.retail!==undefined) it.price = r.retail;
+        if(r.retail!==null && r.retail!==undefined){ it.price = r.retail; it.priceSec = null; }
         setCost(it);
         if(r.sku && !it.sku) it.sku = r.sku;
         if(r.barcode && !it.barcode && !findItemByBarcode(r.barcode, it.id)) it.barcode = r.barcode;
@@ -2683,6 +2692,7 @@ function openImportCsvStockModal(){
         <input type="number" id="csv_rate" class="num" step="any" value="${rate0}">
       </div>
     </div>
+    <label style="display:flex; gap:6px; align-items:center; font-size:13px; margin-bottom:8px;"><input type="checkbox" id="csv_price_only"> تحديث الأسعار فقط للمنتجات الموجودة (بدون تغيير الكميات)</label>
     <input type="file" id="csv_file" accept=".csv,text/csv">
     <div style="font-size:11.5px; color:var(--ink-soft); margin-top:4px;">📌 الملف يُقرأ على جهازك فقط ولا يُرفع أو يُخزَّن.</div>
     <div id="csv_status" style="font-size:13px; margin:8px 0; min-height:18px;"></div>
@@ -2700,7 +2710,7 @@ function openImportCsvStockModal(){
   const status = (msg, color)=>{ $('#csv_status').innerHTML = msg; $('#csv_status').style.color = color||'var(--ink)'; };
   const isSec = ()=>$('#csv_cur').value==='SEC';
   const rate = ()=>Number($('#csv_rate').value)||0;
-  // تحويل السعر إلى دولار (الأسعار تُخزَّن في البرنامج بالدولار)
+  // تحويل السعر إلى دولار للمعاينة فقط — عند الحفظ بالعملة المحلية يُحفظ الرقم الأصلي كما هو
   const toUSD = n=>{ if(n===null || n===undefined) return null; if(!isSec()) return n; const r = rate(); return r>0 ? Math.round(n/r*1e6)/1e6 : null; };
   function drawPreview(){
     if(!parsed.length){ $('#csv_preview').innerHTML=''; $('#csv_go').disabled = true; return; }
@@ -2771,14 +2781,16 @@ function openImportCsvStockModal(){
     $('#csv_go').disabled = true; status('⏳ جارٍ الحفظ...');
     const now = Date.now(); const date = todayISO();
     const sm = stockMap();
+    const priceOnly = $('#csv_price_only').checked;
     let created = 0, updated = 0;
     chosen.forEach(r=>{
-      const buy = toUSD(r.buy), sell = toUSD(r.sell);
+      // بالعملة المحلية: نحفظ الرقم كما هو بالملف (priceSec/costSec) والدولار مشتق منه دون تدوير
+      const r0 = rate(); const buy = (isSec() && r.buy!==null)? r.buy/r0 : toUSD(r.buy), sell = (isSec() && r.sell!==null)? r.sell/r0 : toUSD(r.sell);
       let it = r.existingId ? DB.warehouseItems.find(w=>w.id===r.existingId) : null;
       let curQty = 0;
       if(it){
-        if(sell!==null) it.price = sell;
-        if(buy!==null){ it.costPrice = buy; it.vatRate = 0; }
+        if(sell!==null){ it.price = sell; it.priceSec = isSec()? r.sell : null; }
+        if(buy!==null){ it.costPrice = buy; it.costSec = isSec()? r.buy : null; it.vatRate = 0; }
         if(r.barcode && !it.barcode && !findItemByBarcode(r.barcode, it.id)) it.barcode = r.barcode;
         curQty = sm.get(it.id)||0;
         updated++;
@@ -2786,11 +2798,13 @@ function openImportCsvStockModal(){
         it = {id:uid(), createdAt:now, name:r.name, brand:'', type:'', barcode:'', price: sell||0, category:'', image:null,
               productionDate:'', expiryDate:'', expiryAlertDays:null, note:'', purchaseDate:date};
         if(isAutoShop()) it.status = r.qty>0? 'available' : 'unavailable';
-        if(buy!==null){ it.costPrice = buy; it.vatRate = 0; }
+        if(isSec() && sell!==null) it.priceSec = r.sell;
+        if(buy!==null){ it.costPrice = buy; it.vatRate = 0; if(isSec()) it.costSec = r.buy; }
         if(r.barcode && !findItemByBarcode(r.barcode)) it.barcode = r.barcode;
         DB.warehouseItems.push(it); created++;
       }
-      // الكمية في الملف = الرصيد الفعلي: نسجّل حركة بالفرق
+      // الكمية في الملف = الرصيد الفعلي: نسجّل حركة بالفرق (إلا إذا اختار تحديث الأسعار فقط لمنتج موجود)
+      if(priceOnly && r.existingId) return;
       const diff = Math.round((r.qty - curQty)*1000)/1000;
       if(diff>0) DB.stockIns.push({id:uid(), createdAt:now, itemId:it.id, qty:diff, date, number:nextStockInNumber(), note:'استيراد مخزون من CSV'});
       else if(diff<0) DB.stockOuts.push({id:uid(), createdAt:now, itemId:it.id, qty:-diff, date, number:nextStockOutNumber(), note:'استيراد مخزون من CSV (تسوية)'});
@@ -4133,6 +4147,7 @@ function routeRequiredPermission(routeKey){
 }
 function render(){
   try{ applyFavicon(); }catch(e){}
+  try{ syncNativePrices(); }catch(e){ console.error('syncNativePrices', e); }
   const lic = licenseStatus();
   if(!lic.active){
     root().innerHTML = licenseBlockedView();
@@ -7761,7 +7776,7 @@ function applyPurchaseLineToProduct(w, it){
   if(it.compatText) w.compat = String(it.compatText).split(/[،,]/).map(x=>x.trim()).filter(Boolean);
   if(it.vatRate!=='' && it.vatRate!==undefined) w.vatRate = Number(it.vatRate);
   if(it.margin!=='' && it.margin!==undefined && it.margin!==null) w.margin = Number(it.margin);
-  if(it.salePrice!=='' && it.salePrice!==undefined && Number(it.salePrice)>0) w.price = Number(it.salePrice);
+  if(it.salePrice!=='' && it.salePrice!==undefined && Number(it.salePrice)>0){ w.price = Number(it.salePrice); w.priceSec = null; }
   if(!w.status) w.status = 'available';
   if(!w.name || w.name==='منتج بدون اسم') w.name = String(it.desc||'').trim() || autoItemDisplayName({...w});
 }
@@ -8094,7 +8109,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-10-26 · 17:45 · v12';
+const APP_TRADE_BUILD = '2026-10-26 · 18:35 · v13';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 function settingsView(){
   const s = DB.settings;
@@ -10227,6 +10242,8 @@ function openWarehouseItemModal(item, presetBarcode, opts){
   $('#wm_save').addEventListener('click', async ()=>{
     const d = { name: val('#wm_name'), brand: val('#wm_brand'), barcode: val('#wm_barcode'), category: val('#wm_category') };
     d.price = fromPrim(val('#wm_price'));
+    d.priceSec = (primIsSec() && Number(val('#wm_price'))>0)? Number(val('#wm_price')) : null;
+    if(d.priceSec) d.price = d.priceSec/curRate();
     if(!auto){
       Object.assign(d, { productionDate: val('#wm_prod_date'), expiryDate: val('#wm_exp_date'), note: val('#wm_note') });
       const expAlertRaw = val('#wm_exp_alert');
@@ -10241,7 +10258,8 @@ function openWarehouseItemModal(item, presetBarcode, opts){
       if(yr && !(/^\d{4}$/.test(yr))){ toast('سنة الصنع يجب أن تكون 4 أرقام (مثال: 2024)'); return; }
       Object.assign(d, {
         sku: val('#wm_sku'), madeIn: val('#wm_madein'), uom: val('#wm_uom'),
-        costPrice: val('#wm_cost')===''? '' : fromPrim(val('#wm_cost')),
+        costPrice: val('#wm_cost')===''? '' : (primIsSec()? Number(val('#wm_cost'))/curRate() : fromPrim(val('#wm_cost'))),
+        costSec: (primIsSec() && Number(val('#wm_cost'))>0)? Number(val('#wm_cost')) : null,
         vatRate: val('#wm_vat')===''? '' : Number(val('#wm_vat')),
         margin: val('#wm_margin')===''? '' : Number(val('#wm_margin')),
         status: val('#wm_status')||'available'
@@ -10615,7 +10633,7 @@ function bindItemDocFormEvents(){
           const w = it.productId && DB.warehouseItems.find(x=>x.id===it.productId);
           if(!w) return;
           if(isAutoShop()) applyPurchaseLineToProduct(w, it);
-          if(Number(it.price)>0){ w.costPrice = Number(it.price); if(!(isAutoShop() && it.salePrice!=='' && it.salePrice!==undefined)) repriceFromMargin(w); }
+          if(Number(it.price)>0){ w.costPrice = Number(it.price); w.costSec = null; if(!(isAutoShop() && it.salePrice!=='' && it.salePrice!==undefined)) repriceFromMargin(w); }
           if(!w.supplierId) w.supplierId = _itemDocDraft.supplierId;
         });
         if(isAutoShop()){
