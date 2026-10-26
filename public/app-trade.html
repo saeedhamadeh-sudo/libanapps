@@ -272,7 +272,7 @@
   .pos-receipt-item:last-child{border-bottom:none;}
   .pos-receipt-item-img{width:40px; height:40px; border-radius:8px; object-fit:cover; flex-shrink:0; background:var(--bg-2);}
   .pos-receipt-item-body{flex:1; min-width:0;}
-  .pos-receipt-item-name{font-size:13.5px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .pos-receipt-item-name{font-size:13.5px; font-weight:700; line-height:1.35; white-space:normal; word-break:break-word; overflow-wrap:anywhere; unicode-bidi:plaintext; text-align:start;}
   .pos-receipt-item-price{font-size:12px; color:var(--ink-soft);}
   .pos-qty-stepper{display:flex; align-items:center; gap:6px; flex-shrink:0;}
   .pos-qty-stepper button{width:24px; height:24px; border-radius:7px; border:1px solid var(--line); background:var(--bg-2); font-weight:800; line-height:1;}
@@ -1715,7 +1715,52 @@ function makeSortable(container, itemSel, keyAttr, onChange){
     });
   });
 }
-const GROUP_ICON_CHOICES = ['📁','🛠','🧰','🔩','🧽','🚿','⚙️','🔧','🧴','🧯','💡','🎧','🚗','🏍','🧪','📦','⭐','🎁'];
+// أيقونات المجموعات: [الأيقونة، الاسم، كلمات للتعرّف التلقائي من اسم المجموعة]
+const GROUP_ICON_SET = [
+  ['☕','قهوة',['قهوه','بن','كافيه','نسكافيه','coffee','cafe','nescafe']],
+  ['🍵','شاي',['شاي','زهورات','tea']],
+  ['🥤','مشروبات',['مشروب','مشروبات','غازيه','بيبسي','كولا','soda','drink','drinks','pepsi','cola']],
+  ['🧃','عصير',['عصير','عصاير','juice']],
+  ['💧','مياه',['مي','مياه','ماء','water']],
+  ['⚡','مشروبات طاقة',['طاقه','energy']],
+  ['🍟','شيبس',['شيبس','تشيبس','chips','snack','snacks']],
+  ['🍷','كحول',['كحول','نبيذ','خمر','عرق','ويسكي','فودكا','alcohol','wine','whisky','vodka','liquor']],
+  ['🍺','بيرة',['بيره','بيرا','beer']],
+  ['🚬','دخان',['دخان','سجائر','سيكارة','سيكاره','تبغ','معسل','cigarette','cigarettes','tobacco','smoke']],
+  ['🍫','شوكولا',['شوكولا','شوكولاته','chocolate']],
+  ['🍬','سكاكر',['سكاكر','حلو','حلويات','علكه','candy','sweets','gum']],
+  ['🍪','بسكويت',['بسكويت','كعك','biscuit','cookies']],
+  ['🍦','بوظة',['بوظه','ايس كريم','ice cream']],
+  ['🥛','ألبان',['البان','حليب','لبن','لبنه','milk','dairy']],
+  ['🧀','أجبان',['جبنه','اجبان','cheese']],
+  ['🍞','خبز',['خبز','معجنات','bread','bakery']],
+  ['🥫','معلبات',['معلبات','كونسروة','canned']],
+  ['🍝','معكرونة وحبوب',['معكرونه','رز','حبوب','pasta','rice']],
+  ['🧂','بهارات',['بهارات','ملح','spices']],
+  ['🍎','فواكه',['فواكه','فاكهه','fruits']],
+  ['🥦','خضار',['خضار','خضرة','vegetables']],
+  ['🥩','لحوم',['لحوم','لحمه','دجاج','meat','chicken']],
+  ['🧊','مثلجات',['مثلجات','فريزر','frozen']],
+  ['🧻','محارم',['محارم','فاين','tissue','tissues']],
+  ['🧼','تنظيف',['تنظيف','منظفات','صابون','cleaning','soap']],
+  ['🧴','عناية شخصية',['عنايه','شامبو','care','shampoo']],
+  ['🍼','أطفال',['اطفال','بيبي','حفاضات','baby','diapers']],
+  ['🐾','حيوانات أليفة',['حيوانات','قطط','كلاب','pets']],
+  ['💊','صيدلية',['صيدليه','دواء','pharmacy']],
+  ['🔋','بطاريات',['بطاريات','battery','batteries']],
+  ['📱','هواتف وإكسسوارات',['موبايل','تلفون','هواتف','phone','mobile']],
+  ['🎁','هدايا',['هدايا','gifts']],
+  ['📁','عام',[]], ['🛠','خدمات',['خدمات','تصليح','services']], ['🧰','عدّة',[]], ['🔩','قطع',[]], ['🧽','غسيل',['غسيل','wash']],
+  ['🚿','',[]], ['⚙️','',[]], ['🔧','',[]], ['🧯','',[]], ['💡','',[]], ['🎧','',[]], ['🚗','سيارات',[]], ['🏍','',[]], ['🧪','',[]], ['📦','منتجات',[]], ['⭐','',[]]
+];
+const GROUP_ICON_CHOICES = GROUP_ICON_SET.map(x=>x[0]);
+// اقتراح أيقونة من اسم المجموعة (قهوة → ☕، دخان → 🚬 ...)
+function guessGroupIcon(name){
+  const n = normalizeSearchText(name); if(!n) return '';
+  const words = n.split(/[\s\/،,\-]+/);
+  const hit = GROUP_ICON_SET.find(x=>x[2].some(k=>{ const kk = normalizeSearchText(k); return words.includes(kk) || (kk.length>3 && n.includes(kk)); }));
+  return hit ? hit[0] : '';
+}
 function openGroupModal(group, onDone){
   if(!canManageGroups()){ toast('ليس لديك صلاحية إدارة المجموعات'); return; }
   const isNew = !group;
@@ -1732,7 +1777,7 @@ function openGroupModal(group, onDone){
       </div>
     </div>
     <div class="field"><label>الأيقونة</label>
-      <div id="gm_icons" style="display:flex; flex-wrap:wrap; gap:6px;">${GROUP_ICON_CHOICES.map(ic=>`<button type="button" class="btn btn-sm" data-gm-icon="${ic}" style="font-size:20px; padding:4px 8px; ${group && group.icon===ic?'border:2px solid var(--bronze-deep);':''}">${ic}</button>`).join('')}</div>
+      <div id="gm_icons" style="display:flex; flex-wrap:wrap; gap:6px;">${GROUP_ICON_SET.map(([ic,lbl])=>`<button type="button" class="btn btn-sm" data-gm-icon="${ic}" title="${escapeHtml(lbl)}" style="font-size:22px; padding:4px 6px; min-width:46px; display:flex; flex-direction:column; align-items:center; line-height:1.1; ${group && group.icon===ic?'border:2px solid var(--bronze-deep);':''}">${ic}${lbl? `<span style="font-size:9.5px; font-weight:600; color:var(--ink-soft); margin-top:2px;">${escapeHtml(lbl)}</span>`:''}</button>`).join('')}</div>
     </div>
     <div class="row">
       ${!isNew? `<button class="btn btn-danger" id="gm_delete">🗑 حذف المجموعة</button>` : ''}
@@ -1742,10 +1787,16 @@ function openGroupModal(group, onDone){
   </div>`;
   document.body.appendChild(wrap);
   let icon = group ? (group.icon||'') : '';
+  let iconPicked = !!(group && group.icon);
+  const markIcon = ic=>wrap.querySelectorAll('[data-gm-icon]').forEach(x=>x.style.border = x.getAttribute('data-gm-icon')===ic ? '2px solid var(--bronze-deep)' : '');
   wrap.querySelectorAll('[data-gm-icon]').forEach(b=>b.addEventListener('click', ()=>{
-    icon = b.getAttribute('data-gm-icon');
-    wrap.querySelectorAll('[data-gm-icon]').forEach(x=>x.style.border = x===b ? '2px solid var(--bronze-deep)' : '');
+    icon = b.getAttribute('data-gm-icon'); iconPicked = true; markIcon(icon);
   }));
+  // كتابة الاسم تختار الأيقونة المناسبة تلقائياً (ما لم يخترها المستخدم بنفسه)
+  wrap.querySelector('#gm_name').addEventListener('input', e=>{
+    if(iconPicked) return;
+    icon = guessGroupIcon(e.target.value); markIcon(icon);
+  });
   wrap.querySelector('#gm_cancel').addEventListener('click', ()=>wrap.remove());
   const del = wrap.querySelector('#gm_delete');
   if(del) del.addEventListener('click', async ()=>{
