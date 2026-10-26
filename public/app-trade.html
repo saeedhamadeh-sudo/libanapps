@@ -255,7 +255,10 @@
   .pos-tile{background:var(--white); border:1.5px solid var(--line); border-radius:14px; padding:10px; text-align:center; cursor:pointer;
     display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:130px; -webkit-tap-highlight-color:transparent; user-select:none;}
   .pos-tile:active{transform:scale(.96); background:var(--bg-2);}
-  .pos-tile-img{width:64px; height:64px; object-fit:cover; border-radius:10px; margin-bottom:6px;}
+  .pos-tile{position:relative;}
+  .pos-tile-img{width:100%; max-width:120px; height:90px; object-fit:contain; border-radius:10px; margin-bottom:6px; background:#fff;}
+  .pos-tile-img-btn{position:absolute; top:4px; inset-inline-end:4px; font-size:13px; line-height:1; padding:4px 5px; border-radius:8px; background:var(--bg-2); border:1px solid var(--line); opacity:.75;}
+  .pos-tile-img-btn:hover{opacity:1;}
   .pos-tile-img-placeholder{display:flex; align-items:center; justify-content:center; font-size:26px; background:var(--bg-2);}
   .pos-tile-name{font-size:13.5px; font-weight:700; line-height:1.3; word-break:break-word;}
   .pos-tile-price{font-size:13px; color:var(--credit); font-weight:800; margin-top:4px;}
@@ -295,7 +298,7 @@
   @media(max-width:520px){
     .pos-tile-grid{grid-template-columns:repeat(auto-fill, minmax(115px, 1fr));}
     .pos-tile{min-height:110px;}
-    .pos-tile-img{width:50px; height:50px;}
+    .pos-tile-img{height:70px;}
     #pos_scan_input{font-size:16px !important; padding:10px !important;}
   }
   .hub-card:hover{transform:translateY(-2px); box-shadow:0 6px 20px rgba(30,42,56,.14);}
@@ -3041,6 +3044,42 @@ async function setUserScanMethod(userId, method){
   DB.settings.userScanMethods = Object.assign({}, DB.settings.userScanMethods||{}, {[userId]: method});
   return save(KEYS.settings, DB.settings);
 }
+// تصغير الصورة تلقائياً (أي حجم) إلى JPEG خفيف ~ 400px — فلا تُرفض الصور الكبيرة ولا تثقل البرنامج
+function compressImageFile(file, maxSide=400, quality=0.8){
+  return new Promise((resolve, reject)=>{
+    const reader = new FileReader();
+    reader.onerror = ()=>reject(new Error('تعذّرت قراءة الصورة'));
+    reader.onload = ()=>{
+      const img = new Image();
+      img.onerror = ()=>reject(new Error('الملف ليس صورة صالحة'));
+      img.onload = ()=>{
+        const sc = Math.min(1, maxSide/Math.max(img.width, img.height));
+        const w = Math.max(1, Math.round(img.width*sc)), h = Math.max(1, Math.round(img.height*sc));
+        const c = document.createElement('canvas'); c.width = w; c.height = h;
+        const ctx = c.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0,0,w,h); ctx.drawImage(img, 0, 0, w, h);
+        resolve(c.toDataURL('image/jpeg', quality));
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+// اختيار صورة لمنتج مباشرة (من شاشة POS) — تُحفظ للمنتج وتظهر على مربعه
+function pickProductImage(item, onDone){
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = 'image/*';
+  inp.addEventListener('change', async ()=>{
+    const f = inp.files && inp.files[0]; if(!f) return;
+    try{
+      item.image = await compressImageFile(f);
+      invalidateWarehouseCaches();
+      const ok = await save(KEYS.warehouseItems, DB.warehouseItems);
+      toast(ok? 'تم حفظ صورة «'+item.name+'» ✅' : 'حدث خطأ أثناء حفظ الصورة');
+      if(onDone) onDone();
+    }catch(e){ toast('⚠️ '+(e && e.message || 'تعذّر حفظ الصورة')); }
+  });
+  inp.click();
+}
 function openBarcodeScannerModal(onScan, continuous){
   const method = userScanMethod();
   const wrap = document.createElement('div');
@@ -5307,9 +5346,11 @@ function posSearchResults(){ const q = _posSearchQ.trim(); return q ? smartSearc
 function posTilesHtml(list){
   if(!list.length) return `<div class="empty" style="grid-column:1/-1;"><div class="big">${_posSearchQ.trim()? 'لا نتائج لـ «'+escapeHtml(_posSearchQ.trim())+'»' : 'لا توجد منتجات — أضف منتجًا من المستودع أولاً'}</div></div>`;
   const shown = list.slice(0, POS_TILE_LIMIT);
+  const canEditImg = isPrivilegedUser(currentUser) || hasPermission('edit_products');
   return shown.map(it=>{ const st = fastStock(it.id);
     return `<button class="pos-tile" data-pos-tile="${it.id}">
-    ${it.image? `<img src="${it.image}" class="pos-tile-img" loading="lazy">` : `<div class="pos-tile-img pos-tile-img-placeholder">📦</div>`}
+    ${canEditImg? `<span class="pos-tile-img-btn" data-pos-tile-img="${it.id}" title="${it.image?'تغيير صورة المنتج':'إضافة صورة للمنتج'}">📷</span>` : ''}
+    ${it.image? `<img src="${it.image}" class="pos-tile-img" loading="lazy" alt="">` : `<div class="pos-tile-img pos-tile-img-placeholder">📦</div>`}
     <div class="pos-tile-name">${escapeHtml(it.name)}</div>
     <div class="pos-tile-price">${fmtPrim(it.price)}</div>
     ${isServiceItem(it)? `<div style="font-size:11px; margin-top:2px; color:var(--ink-soft);">🛠 خدمة</div>` : `<div style="font-size:11px; margin-top:2px; color:${st<=0?'var(--debit)':'var(--ink-soft)'};">المتوفر: <span class="num">${fmtQty(st)}</span></div>`}
@@ -5528,6 +5569,13 @@ function bindPosEvents(){
   });
 
   if(grid) grid.addEventListener('click', (e)=>{
+    const ib = e.target.closest('[data-pos-tile-img]');
+    if(ib){
+      e.stopPropagation();
+      const it0 = DB.warehouseItems.find(x=>x.id===ib.getAttribute('data-pos-tile-img'));
+      if(it0) pickProductImage(it0, ()=>refreshTiles());
+      return;
+    }
     const b = e.target.closest('[data-pos-tile]'); if(!b) return;
     const item = DB.warehouseItems.find(x=>x.id===b.getAttribute('data-pos-tile'));
     if(!item) return;
@@ -10183,12 +10231,8 @@ function openWarehouseItemModal(item, presetBarcode, opts){
     const imageFile = $('#wm_image').files[0];
     let image = item? item.image : null;
     if(imageFile){
-      if(imageFile.size > 500*1024){ toast('صورة المنتج كبيرة — يُفضّل أن تكون أصغر من 500KB'); return; }
-      image = await new Promise((resolve)=>{
-        const reader = new FileReader();
-        reader.onload = ()=>resolve(reader.result);
-        reader.readAsDataURL(imageFile);
-      });
+      try{ image = await compressImageFile(imageFile); }
+      catch(e){ toast('⚠️ '+(e && e.message || 'تعذّرت قراءة الصورة')); return; }
     }
     d.image = image;
     const dup = findItemByBarcode(d.barcode, item?item.id:null);
