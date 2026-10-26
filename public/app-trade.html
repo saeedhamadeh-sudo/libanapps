@@ -2517,6 +2517,178 @@ function openImportStockModal(){
   });
 }
 
+/* ============================= استيراد المخزون من ملف CSV (Import Stock CSV) ============================= */
+// الأعمدة: Ref. (تُتجاهل) | Barcode | Name | Qty | Buy Price | Sell Net | Sell Gross (تُتجاهل)
+function parseCsvText(text){
+  text = String(text||'').replace(/^﻿/, '');
+  const firstLine = (text.split(/\r?\n/).find(l=>l.trim()) || '');
+  const count = ch=>{ let n=0, q=false; for(const c of firstLine){ if(c==='"') q=!q; else if(c===ch && !q) n++; } return n; };
+  const delim = [',',';','\t'].map(d=>[d,count(d)]).sort((a,b)=>b[1]-a[1])[0][0];
+  const rows = []; let row = [], cell = '', q = false;
+  for(let i=0;i<text.length;i++){
+    const c = text[i];
+    if(q){
+      if(c==='"'){ if(text[i+1]==='"'){ cell+='"'; i++; } else q = false; }
+      else cell += c;
+    } else if(c==='"') q = true;
+    else if(c===delim){ row.push(cell); cell=''; }
+    else if(c==='\n' || c==='\r'){
+      if(c==='\r' && text[i+1]==='\n') i++;
+      row.push(cell); cell=''; if(row.some(x=>x.trim()!=='')) rows.push(row); row=[];
+    } else cell += c;
+  }
+  row.push(cell); if(row.some(x=>x.trim()!=='')) rows.push(row);
+  return rows;
+}
+function parseCsvNumber(v){
+  let s = String(v??'').trim().replace(/[\s$€£]/g,'').replace(/[٠-٩]/g, d=>String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)));
+  if(!s) return null;
+  const neg = /^\(.*\)$/.test(s) || /^-/.test(s) || /-$/.test(s);
+  s = s.replace(/[()\-]/g,'');
+  if(s.includes(',') && s.includes('.')){
+    if(s.lastIndexOf(',') > s.lastIndexOf('.')) s = s.replace(/\./g,'').replace(',', '.'); else s = s.replace(/,/g,'');
+  } else if(s.includes(',')){
+    s = /,\d{1,2}$/.test(s) && (s.match(/,/g)||[]).length===1 ? s.replace(',', '.') : s.replace(/,/g,'');
+  }
+  const n = Number(s.replace(/[^0-9.]/g,''));
+  return Number.isFinite(n) ? (neg? -n : n) : null;
+}
+function openImportCsvStockModal(){
+  const rate0 = Number(DB.settings.defaultExchangeRate)||90000;
+  const sec = secCurLabel();
+  const wrap = document.createElement('div');
+  wrap.className = 'modal-bg';
+  wrap.innerHTML = `<div class="modal modal-wide" style="max-width:900px;">
+    <h3>📄 استيراد المخزون من ملف CSV</h3>
+    <p style="font-size:12.5px; color:var(--ink-soft); line-height:1.7;">الأعمدة المعتمدة: <b>Barcode</b> (الباركود)، <b>Name</b> (اسم المنتج)، <b>Qty</b> (الكمية بالمخزون)، <b>Buy Price</b> (سعر الشراء)، <b>Sell Net</b> (سعر البيع). عمودا <b>Ref.</b> و<b>Sell Gross</b> يُتجاهلان. المنتج الموجود مسبقاً (نفس الباركود أو الاسم) يُحدَّث سعره وتُضبط كميته على كمية الملف.</p>
+    <div class="grid grid-2" style="margin-bottom:8px;">
+      <div class="field"><label>عملة الأسعار في الملف</label>
+        <select id="csv_cur"><option value="USD">دولار $</option><option value="SEC">${escapeHtml(sec)}</option></select>
+      </div>
+      <div class="field" id="csv_rate_wrap" style="display:none;"><label>سعر الصرف (1$ = ? ${escapeHtml(sec)})</label>
+        <input type="number" id="csv_rate" class="num" step="any" value="${rate0}">
+      </div>
+    </div>
+    <input type="file" id="csv_file" accept=".csv,text/csv">
+    <div style="font-size:11.5px; color:var(--ink-soft); margin-top:4px;">📌 الملف يُقرأ على جهازك فقط ولا يُرفع أو يُخزَّن.</div>
+    <div id="csv_status" style="font-size:13px; margin:8px 0; min-height:18px;"></div>
+    <div id="csv_preview"></div>
+    <div class="row modal-sticky-actions">
+      <button class="btn" id="csv_cancel">إلغاء</button>
+      <button class="btn btn-primary" id="csv_go" disabled>📥 IMPORT</button>
+    </div>
+  </div>`;
+  document.body.appendChild(wrap);
+  const $ = s=>wrap.querySelector(s);
+  let parsed = [];
+  const close = ()=>{ try{ $('#csv_file').value=''; }catch(e){} parsed = []; wrap.remove(); };
+  $('#csv_cancel').addEventListener('click', close);
+  const status = (msg, color)=>{ $('#csv_status').innerHTML = msg; $('#csv_status').style.color = color||'var(--ink)'; };
+  const isSec = ()=>$('#csv_cur').value==='SEC';
+  const rate = ()=>Number($('#csv_rate').value)||0;
+  // تحويل السعر إلى دولار (الأسعار تُخزَّن في البرنامج بالدولار)
+  const toUSD = n=>{ if(n===null || n===undefined) return null; if(!isSec()) return n; const r = rate(); return r>0 ? Math.round(n/r*10000)/10000 : null; };
+  function drawPreview(){
+    if(!parsed.length){ $('#csv_preview').innerHTML=''; $('#csv_go').disabled = true; return; }
+    const existing = parsed.filter(r=>r.existingId).length;
+    const curLbl = isSec()? sec : '$';
+    $('#csv_preview').innerHTML = `
+      <div style="font-size:12.5px; margin-bottom:6px;">${parsed.length} منتج${existing? ` • <span style="color:var(--bronze-deep);">${existing} موجود مسبقاً</span>`:''}${isSec()? ` • الأسعار تُحوَّل إلى $ على سعر صرف <b>${fmtQty(rate())}</b>`:''}</div>
+      <div class="table-scroll" style="max-height:50vh; overflow:auto;"><table style="font-size:12px;">
+        <thead><tr><th><input type="checkbox" id="csv_all" ${parsed.every(r=>r.on)?'checked':''}></th><th>الباركود</th><th>اسم المنتج</th><th>الكمية</th><th>سعر الشراء (${escapeHtml(curLbl)})</th><th>سعر البيع (${escapeHtml(curLbl)})</th>${isSec()?'<th>الشراء $</th><th>البيع $</th>':''}</tr></thead>
+        <tbody>${parsed.map((r,i)=>`<tr style="${r.existingId?'background:#fff7e6;':''}">
+          <td><input type="checkbox" data-csv-on="${i}" ${r.on?'checked':''}></td>
+          <td class="num" style="font-size:11px;">${escapeHtml(r.barcode||'—')}</td>
+          <td><span class="bidi">${escapeHtml(r.name)}</span>${r.existingId?' <span style="font-size:10.5px; color:var(--bronze-deep);">(موجود)</span>':''}</td>
+          <td class="num" style="${r.qty<0?'color:var(--debit); font-weight:800;':''}">${fmtQty(r.qty)}</td>
+          <td class="num">${r.buy!==null? fmtQty(r.buy) : '—'}</td>
+          <td class="num">${r.sell!==null? fmtQty(r.sell) : '—'}</td>
+          ${isSec()? `<td class="num">${r.buy!==null? fmtMoney(toUSD(r.buy)) : '—'}</td><td class="num">${r.sell!==null? fmtMoney(toUSD(r.sell)) : '—'}</td>`:''}
+        </tr>`).join('')}</tbody>
+      </table></div>`;
+    $('#csv_go').disabled = !parsed.some(r=>r.on);
+    $('#csv_all').addEventListener('change', e=>{ parsed.forEach(r=>r.on = e.target.checked); drawPreview(); });
+    wrap.querySelectorAll('[data-csv-on]').forEach(cb=>cb.addEventListener('change', ()=>{ parsed[Number(cb.getAttribute('data-csv-on'))].on = cb.checked; $('#csv_go').disabled = !parsed.some(r=>r.on); }));
+  }
+  $('#csv_cur').addEventListener('change', ()=>{ $('#csv_rate_wrap').style.display = isSec()? '' : 'none'; drawPreview(); });
+  $('#csv_rate').addEventListener('input', drawPreview);
+  $('#csv_file').addEventListener('change', async ()=>{
+    const f = $('#csv_file').files[0];
+    if(!f) return;
+    parsed = []; drawPreview();
+    try{
+      const rows = parseCsvText(await f.text());
+      if(rows.length < 2){ status('⚠️ الملف فارغ أو لا يحتوي على منتجات', 'var(--debit)'); return; }
+      const head = rows[0].map(h=>String(h).trim().toLowerCase().replace(/[.\s_]+/g,' ').trim());
+      const col = (...names)=>head.findIndex(h=>names.includes(h));
+      const iBar = col('barcode','bar code'), iName = col('name'), iQty = col('qty','quantity'), iBuy = col('buy price'), iSell = col('sell net');
+      const missing = [['Name',iName],['Qty',iQty],['Buy Price',iBuy],['Sell Net',iSell],['Barcode',iBar]].filter(x=>x[1]<0).map(x=>x[0]);
+      if(iName<0){ status('⚠️ لم نجد عمود Name في الملف. العناوين الموجودة: '+escapeHtml(rows[0].join(' | ')), 'var(--debit)'); return; }
+      const seenBar = new Set();
+      let dupInFile = 0;
+      rows.slice(1).forEach(r=>{
+        const name = String(r[iName]||'').trim();
+        if(!name) return;
+        let barcode = iBar>=0 ? String(r[iBar]||'').trim() : '';
+        // باركود بصيغة علمية من Excel (مثل 6.29E+12) لا يمكن استرجاعه بدقة — نتجاهله
+        if(/e\+/i.test(barcode)) barcode = '';
+        if(barcode && seenBar.has(barcode)){ dupInFile++; barcode = ''; }
+        if(barcode) seenBar.add(barcode);
+        const ex = (barcode && findItemByBarcode(barcode)) || DB.warehouseItems.find(w=>normalizeSearchText(w.name)===normalizeSearchText(name));
+        parsed.push({barcode, name, qty: iQty>=0? (parseCsvNumber(r[iQty])||0) : 0,
+          buy: iBuy>=0? parseCsvNumber(r[iBuy]) : null, sell: iSell>=0? parseCsvNumber(r[iSell]) : null,
+          on:true, existingId: ex? ex.id : null});
+      });
+      if(!parsed.length){ status('⚠️ لم نجد أي منتج في الملف', 'var(--debit)'); return; }
+      status('✅ تمت قراءة '+parsed.length+' منتج — راجع الجدول ثم اضغط IMPORT'
+        + (missing.length? `<br><span style="color:var(--debit);">⚠️ أعمدة غير موجودة في الملف: ${escapeHtml(missing.join('، '))}</span>` : '')
+        + (dupInFile? `<br><span style="color:var(--bronze-deep);">${dupInFile} باركود مكرر داخل الملف — أُفرغ في التكرارات</span>` : ''), 'var(--credit)');
+      drawPreview();
+    }catch(e){
+      console.error('import csv failed', e);
+      status('⚠️ تعذّرت قراءة الملف: '+escapeHtml(e && e.message || ''), 'var(--debit)');
+    }
+  });
+  $('#csv_go').addEventListener('click', async ()=>{
+    const chosen = parsed.filter(r=>r.on);
+    if(!chosen.length) return;
+    if(isSec() && !(rate()>0)){ toast('أدخل سعر صرف صحيح'); return; }
+    if(!confirm('سيتم استيراد '+chosen.length+' منتج إلى المستودع. متابعة؟')) return;
+    $('#csv_go').disabled = true; status('⏳ جارٍ الحفظ...');
+    const now = Date.now(); const date = todayISO();
+    const sm = stockMap();
+    let created = 0, updated = 0;
+    chosen.forEach(r=>{
+      const buy = toUSD(r.buy), sell = toUSD(r.sell);
+      let it = r.existingId ? DB.warehouseItems.find(w=>w.id===r.existingId) : null;
+      let curQty = 0;
+      if(it){
+        if(sell!==null) it.price = sell;
+        if(buy!==null){ it.costPrice = buy; it.vatRate = 0; }
+        if(r.barcode && !it.barcode && !findItemByBarcode(r.barcode, it.id)) it.barcode = r.barcode;
+        curQty = sm.get(it.id)||0;
+        updated++;
+      } else {
+        it = {id:uid(), createdAt:now, name:r.name, brand:'', type:'', barcode:'', price: sell||0, category:'', image:null,
+              productionDate:'', expiryDate:'', expiryAlertDays:null, note:'', purchaseDate:date};
+        if(isAutoShop()) it.status = r.qty>0? 'available' : 'unavailable';
+        if(buy!==null){ it.costPrice = buy; it.vatRate = 0; }
+        if(r.barcode && !findItemByBarcode(r.barcode)) it.barcode = r.barcode;
+        DB.warehouseItems.push(it); created++;
+      }
+      // الكمية في الملف = الرصيد الفعلي: نسجّل حركة بالفرق
+      const diff = Math.round((r.qty - curQty)*1000)/1000;
+      if(diff>0) DB.stockIns.push({id:uid(), createdAt:now, itemId:it.id, qty:diff, date, number:nextStockInNumber(), note:'استيراد مخزون من CSV'});
+      else if(diff<0) DB.stockOuts.push({id:uid(), createdAt:now, itemId:it.id, qty:-diff, date, number:nextStockOutNumber(), note:'استيراد مخزون من CSV (تسوية)'});
+    });
+    const res = await Promise.all([save(KEYS.warehouseItems, DB.warehouseItems), save(KEYS.stockIns, DB.stockIns), save(KEYS.stockOuts, DB.stockOuts)]);
+    if(!res.every(Boolean)){ status('⚠️ حدث خطأ أثناء الحفظ — راجع رسالة الخطأ', 'var(--debit)'); $('#csv_go').disabled = false; return; }
+    close();
+    toast(`تم الاستيراد: ${created} منتج جديد${updated? ' و'+updated+' منتج موجود تحدّث':''} ✅`);
+    go('#/warehouse');
+  });
+}
+
 /* ============================= البحث الذكي في المستودع ============================= */
 function normalizeSearchText(s){
   return String(s??'').toLowerCase()
@@ -7773,6 +7945,12 @@ function settingsView(){
   </div>
 
   <div class="card">
+    <h2><span class="dot"></span> 📄 استيراد المخزون من ملف CSV</h2>
+    <p style="font-size:12.5px; color:var(--ink-soft); line-height:1.7;">ملف CSV بالأعمدة: Barcode / Name / Qty / Buy Price / Sell Net — تختار الملف وعملة الأسعار، تراجع المنتجات ثم تضغط IMPORT.</p>
+    <button class="btn btn-primary" id="importCsvStockBtn">📄 Import CSV</button>
+  </div>
+
+  <div class="card">
     <h2><span class="dot"></span> نسخة احتياطية</h2>
     <div style="font-size:13px; color:var(--ink-soft); margin-bottom:12px; line-height:1.7;">
       يُحدَّد اسم ملف النسخة الاحتياطية تلقائيًا بتاريخ ووقت اللحظة (مثلاً hmadeh-backup-2026-08-26_14-32.json) لتسهيل الاسترجاع.
@@ -8580,6 +8758,8 @@ function bindEvents(){
   });
   const importOldStockBtn = document.getElementById('importOldStockBtn');
   if(importOldStockBtn) importOldStockBtn.addEventListener('click', openImportStockModal);
+  const importCsvStockBtn = document.getElementById('importCsvStockBtn');
+  if(importCsvStockBtn) importCsvStockBtn.addEventListener('click', openImportCsvStockModal);
   const saveBizBtn = document.getElementById('saveBizBtn');
   if(saveBizBtn) saveBizBtn.addEventListener('click', async ()=>{
     const bizSel = document.getElementById('s_biz_type');
