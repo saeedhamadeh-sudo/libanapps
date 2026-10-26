@@ -514,7 +514,14 @@ const DOC_BOX_KEYS = { receipts:'receipts', paymentVouchers:'paymentVouchers', w
 function isDocMirrorMove(m){ return !!(m && m.refSaleId && String(m.note||'').indexOf(DOC_MIRROR_TAG)===0); }
 function docMethodIsCash(method){ const t = String(method||'').trim(); return !t || /نقد|كاش|cash/i.test(t); }
 // المبلغ الموقّع (+ داخل / − خارج) والعملة لسند معيّن — أو null إذا ما بيأثر عالصندوق
-function docBoxEffect(kind, d){
+// العملة الأساسية لبناني: السند (المحفوظ داخلياً بالدولار) بيدخل/بينقص من الصندوق **باللبناني** على سعر الصرف
+function docBoxEffect(kind, d, rate){
+  const e = docBoxEffectBase(kind, d);
+  if(!e || e.currency!=='USD' || !primIsSec()) return e;
+  const r = Number(rate) || curRate();
+  return Object.assign(e, { currency:'LBP', amt: Math.round(e.amt * r), rate: r });
+}
+function docBoxEffectBase(kind, d){
   if(!d || d.deleted) return null;
   const amt = Math.abs(Number(d.amount)||0); if(!amt) return null;
   if(kind==='receipts'){
@@ -555,13 +562,20 @@ function syncDocsToBox(key, arr){
     const myShift = currentUserShift();
     arr.forEach(d=>{
       if(!d || !d.id) return;
-      const eff = docBoxEffect(key, d);
       const m = byRef[d.id];
+      // الحركة القديمة بتحافظ على سعر صرفها؛ والحركات القديمة بالدولار لصناديق مقفلة بتضل متل ما هي
+      const mShift = m && (DB.cashierShifts||[]).find(x=>x.id===m.shiftId);
+      const legacyClosed = m && !m.rate && m.currency==='USD' && !(mShift && mShift.status==='open');
+      // سعر الصرف المستعمل أول مرة (ما بينحفظ بالسحابة، فمنستنتجو من المبلغين) — حتى تغيير سعر الصرف لاحقاً ما يغيّر الصندوق
+      const usd0 = Math.abs(Number(d.amount)||0);
+      const mRate = m && (m.rate || (m.currency==='LBP' && !m.deleted && usd0>0 && Math.abs(Number(m.amount)||0)>usd0*100 ? Math.abs(Number(m.amount))/usd0 : 0));
+      const eff = legacyClosed ? docBoxEffectBase(key, d) : docBoxEffect(key, d, mRate || undefined);
       if(!m){
         // سند جديد هلق (مش سندات قديمة) → على صندوقي المفتوح
         if(!eff || !myShift || !(d.createdAt >= myShift.openedAt) || now - (d.createdAt||0) > 5*60*1000) return;
         const mv = {id:uid(), createdAt:now, type: eff.sign>0?'deposit':'withdraw', currency:eff.currency, amount:eff.amt,
           note:DOC_MIRROR_TAG+eff.label+' — '+currentUser.username, refSaleId:d.id, date:d.date||todayISO(), shiftId:myShift.id, deleted:false};
+        if(eff.rate) mv.rate = eff.rate;
         DB.cashMovements.push(mv); movesChanged = true;
         if(_shiftAdd(myShift.id, eff.currency, eff.sign*eff.amt)) shiftsChanged = true;
         return;
@@ -573,6 +587,7 @@ function syncDocsToBox(key, arr){
       if(oldSigned && _shiftAdd(m.shiftId, m.currency, -oldSigned)) shiftsChanged = true;
       if(eff){
         m.type = eff.sign>0?'deposit':'withdraw'; m.currency = eff.currency; m.amount = eff.amt; m.deleted = false;
+        if(eff.rate) m.rate = eff.rate;
         m.date = d.date || m.date; m.note = DOC_MIRROR_TAG+eff.label+' — '+(String(m.note).split(' — ').pop()||currentUser.username);
         if(_shiftAdd(m.shiftId, eff.currency, newSigned)) shiftsChanged = true;
       } else m.deleted = true;
@@ -8705,7 +8720,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-10-26 · 22:00 · v19';
+const APP_TRADE_BUILD = '2026-10-26 · 23:40 · v20';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 function settingsView(){
   const s = DB.settings;
@@ -11385,7 +11400,7 @@ function bindItemDocFormEvents(){
       DB.paymentVouchers.push({id:uid(), createdAt:Date.now(), supplierId:_itemDocDraft.supplierId, number:nextVoucherNumber(), date:_itemDocDraft.date,
         amount:amt, method:'نقدًا', details:'دفعة من فاتورة مشتريات #'+(savedP? savedP.number : _itemDocDraft.number)});
       if(!(await save(KEYS.paymentVouchers, DB.paymentVouchers))) ok = false;
-      else stockMsg += ' — وصدر سند صرف بـ $'+amt.toFixed(2);
+      else stockMsg += ' — وصدر سند صرف بـ '+fmtPrim(amt);
     }
     if(ok && isPurchase){
       const savedDoc = DB.purchaseInvoices.find(x=>x.id===savedId);
