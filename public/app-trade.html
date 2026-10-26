@@ -256,6 +256,9 @@
     display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:130px; -webkit-tap-highlight-color:transparent; user-select:none;}
   .pos-tile:active{transform:scale(.96); background:var(--bg-2);}
   .pos-tile{position:relative;}
+  .wh-thumb{width:40px; height:40px; object-fit:cover; border-radius:8px; border:1px solid var(--line); background:#fff; vertical-align:middle; margin-inline-end:8px; flex:none;}
+  .wh-thumb-ph{display:inline-flex; align-items:center; justify-content:center; font-size:18px; background:var(--bg-2);}
+  .wh-name-cell{display:flex; align-items:center;}
   .pos-tile-img{width:100%; max-width:120px; height:90px; object-fit:contain; border-radius:10px; margin-bottom:6px; background:#fff;}
   .pos-tile-img-btn{position:absolute; top:4px; inset-inline-end:4px; font-size:13px; line-height:1; padding:4px 5px; border-radius:8px; background:var(--bg-2); border:1px solid var(--line); opacity:.75;}
   .pos-tile-img-btn:hover{opacity:1;}
@@ -844,7 +847,9 @@ function settingsToDb(s){
       journalCurrency: s.journalCurrency||'both',
       currencyMode: s.currencyMode||null,
       userScanMethods: (s.userScanMethods && typeof s.userScanMethods==='object')? s.userScanMethods : {},
-      barcodeLabel: s.barcodeLabel||null}})
+      barcodeLabel: s.barcodeLabel||null,
+      whishEnabled: s.whishEnabled!==false,
+      whishQr: s.whishQr||null}})
   };
 }
 function applySettingsFromDb(row, base){
@@ -888,7 +893,9 @@ function applySettingsFromDb(row, base){
     groupsLocked: (row.product_lists && row.product_lists._ui && row.product_lists._ui.groupsLocked!=null) ? !!row.product_lists._ui.groupsLocked : base.groupsLocked,
     journalCurrency: (row.product_lists && row.product_lists._ui && row.product_lists._ui.journalCurrency) ? row.product_lists._ui.journalCurrency : base.journalCurrency,
     userScanMethods: (row.product_lists && row.product_lists._ui && row.product_lists._ui.userScanMethods && typeof row.product_lists._ui.userScanMethods==='object') ? row.product_lists._ui.userScanMethods : (base.userScanMethods||{}),
-    barcodeLabel: (row.product_lists && row.product_lists._ui && row.product_lists._ui.barcodeLabel) ? row.product_lists._ui.barcodeLabel : base.barcodeLabel
+    barcodeLabel: (row.product_lists && row.product_lists._ui && row.product_lists._ui.barcodeLabel) ? row.product_lists._ui.barcodeLabel : base.barcodeLabel,
+    whishEnabled: (row.product_lists && row.product_lists._ui && row.product_lists._ui.whishEnabled!=null) ? !!row.product_lists._ui.whishEnabled : base.whishEnabled,
+    whishQr: (row.product_lists && row.product_lists._ui && row.product_lists._ui.whishQr) ? row.product_lists._ui.whishQr : base.whishQr
   };
 }
 async function syncSettingsToSupabase(settings){
@@ -1374,6 +1381,16 @@ function posSaleReceipt(inv){
   const re = new RegExp('بيع نقطة بيع #'+String(inv.number).replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'(?![\\w\\d])');
   return DB.receipts.find(r=>!r.deleted && re.test(r.details||'') && !isPosRefundReceipt(r)) || null;
 }
+// قبض Whish: إيصال قبض عادي بطريقة «Whish» — ما بيدخل الصندوق النقدي، إلو صندوق لحالو باليومية
+function shiftWhishTotals(shift){
+  const out = {usd:0, lbp:0}; if(!shift) return out;
+  DB.receipts.forEach(r=>{ if(r.deleted || r.shiftId!==shift.id || !isWhishMethod(r.method)) return;
+    if(/\$/.test(r.method||'')) out.usd += Number(r.amount)||0; else out.lbp += Number(r.amount)||0; });
+  return out;
+}
+function isWhishMethod(m){ return /whish/i.test(String(m||'')); }
+function posIsWhish(inv){ const r = inv && posSaleReceipt(inv); return !!(r && isWhishMethod(r.method)); }
+function whishEnabled(){ return DB.settings.whishEnabled!==false; }
 function posSaleCurrency(inv){ const r = posSaleReceipt(inv); return (r && !/\$/.test(r.method||'')) ? 'LBP' : 'USD'; }
 function invItemReturnedQty(it){ return Number(it.returnedQty)||0; }
 function invHasReturnable(inv){ return (inv.items||[]).some(it=>it.productId && (Number(it.qty)||0) - invItemReturnedQty(it) > 0); }
@@ -3074,8 +3091,8 @@ async function setUserScanMethod(userId, method){
   DB.settings.userScanMethods = Object.assign({}, DB.settings.userScanMethods||{}, {[userId]: method});
   return save(KEYS.settings, DB.settings);
 }
-// تصغير الصورة تلقائياً (أي حجم) إلى JPEG خفيف ~ 400px — فلا تُرفض الصور الكبيرة ولا تثقل البرنامج
-function compressImageFile(file, maxSide=400, quality=0.8){
+// تصغير الصورة تلقائياً (أي حجم) إلى JPEG خفيف ~ 320px (حوالي 15-25KB) — فلا تُرفض الصور الكبيرة ولا تثقل البرنامج
+function compressImageFile(file, maxSide=320, quality=0.72){
   return new Promise((resolve, reject)=>{
     const reader = new FileReader();
     reader.onerror = ()=>reject(new Error('تعذّرت قراءة الصورة'));
@@ -3093,6 +3110,30 @@ function compressImageFile(file, maxSide=400, quality=0.8){
     };
     reader.readAsDataURL(file);
   });
+}
+// صورة مصغّرة لقوائم المنتجات
+function whThumb(it){ return it && it.image ? `<img src="${it.image}" class="wh-thumb" loading="lazy" alt="">` : `<span class="wh-thumb wh-thumb-ph">📦</span>`; }
+// الصور القديمة الكبيرة (قبل التصغير التلقائي) تُصغَّر مرة وحدة بالخلفية وتُحفظ — فيصير تحميل المستودع وشاشة POS أخف
+let _shrinkImagesRunning = false;
+async function shrinkOldProductImages(){
+  if(_shrinkImagesRunning) return; _shrinkImagesRunning = true;
+  try{
+    const big = (DB.warehouseItems||[]).filter(it=>typeof it.image==='string' && it.image.startsWith('data:image') && it.image.length > 60000);
+    if(!big.length) return;
+    let changed = 0;
+    for(const it of big){
+      try{
+        const blob = await (await fetch(it.image)).blob();
+        const small = await compressImageFile(blob);
+        if(small && small.length < it.image.length){ it.image = small; changed++; }
+      }catch(e){ console.warn('shrink image failed', it.id, e); }
+    }
+    if(changed){
+      invalidateWarehouseCaches();
+      const ok = await save(KEYS.warehouseItems, DB.warehouseItems);
+      if(!ok) console.error('shrinkOldProductImages: save failed');
+    }
+  } finally { _shrinkImagesRunning = false; }
 }
 // اختيار صورة لمنتج مباشرة (من شاشة POS) — تُحفظ للمنتج وتظهر على مربعه
 function pickProductImage(item, onDone){
@@ -4148,6 +4189,7 @@ function routeRequiredPermission(routeKey){
 function render(){
   try{ applyFavicon(); }catch(e){}
   try{ syncNativePrices(); }catch(e){ console.error('syncNativePrices', e); }
+  if(!_shrinkImagesRunning && (DB.warehouseItems||[]).some(it=>typeof it.image==='string' && it.image.length>60000)) setTimeout(()=>shrinkOldProductImages(), 1500);
   const lic = licenseStatus();
   if(!lic.active){
     root().innerHTML = licenseBlockedView();
@@ -5489,7 +5531,7 @@ function posView(){
           <button class="btn btn-sm" id="pos_pick_customer_btn">تغيير</button>
         </div>
         <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px; font-size:11.5px; color:var(--ink-soft); border-top:1px dashed var(--line); padding-top:8px;">
-          <span>🧑‍💼 صندوقك: ${currencyMode()==='USD'? '$'+myShift.cashUSD.toFixed(2)+(Math.abs(myShift.cashLBP)>0.5? ' + '+fmtNum(myShift.cashLBP)+' '+secCurLabel() : '') : currencyMode()==='SEC'? fmtNum(myShift.cashLBP)+' '+secCurLabel()+(Math.abs(myShift.cashUSD)>0.004? ' + $'+myShift.cashUSD.toFixed(2) : '') : currencyMode()==='SEC_USD'? fmtNum(myShift.cashLBP)+' '+secCurLabel()+' + $'+myShift.cashUSD.toFixed(2) : '$'+myShift.cashUSD.toFixed(2)+' + '+fmtNum(myShift.cashLBP)+' '+secCurLabel()}</span>
+          <span>🧑‍💼 صندوقك: ${currencyMode()==='USD'? '$'+myShift.cashUSD.toFixed(2)+(Math.abs(myShift.cashLBP)>0.5? ' + '+fmtNum(myShift.cashLBP)+' '+secCurLabel() : '') : currencyMode()==='SEC'? fmtNum(myShift.cashLBP)+' '+secCurLabel()+(Math.abs(myShift.cashUSD)>0.004? ' + $'+myShift.cashUSD.toFixed(2) : '') : currencyMode()==='SEC_USD'? fmtNum(myShift.cashLBP)+' '+secCurLabel()+' + $'+myShift.cashUSD.toFixed(2) : '$'+myShift.cashUSD.toFixed(2)+' + '+fmtNum(myShift.cashLBP)+' '+secCurLabel()}</span>${(()=>{ const w = shiftWhishTotals(myShift); return (w.usd||w.lbp)? `<span style="color:#a3174a;">📱 Whish: ${[w.usd? '$'+w.usd.toFixed(2) : '', w.lbp? fmtNum(w.lbp)+' '+secCurLabel() : ''].filter(Boolean).join(' + ')}</span>` : ''; })()}
           <button class="btn btn-sm" id="pos_close_shift_btn">🔒 إقفال صندوقي</button>
         </div>
       </div>
@@ -5515,6 +5557,7 @@ function posView(){
           <button class="btn btn-primary" id="pos_credit_btn" style="flex:2;" ${ticket.cart.length?'':'disabled'}>📒 على الحساب</button>`
           : `<button class="btn btn-primary" id="pos_pay_btn" style="flex:2;" ${ticket.cart.length?'':'disabled'}>${payCurrency==='SECOND'?'💴':'💵'} قبض</button>`}
         </div>
+        ${whishEnabled()? `<button class="btn" id="pos_whish_btn" style="width:100%; margin-top:8px; font-weight:800; background:#fdeef3; border-color:#e7a3bb; color:#a3174a;" ${ticket.cart.length?'':'disabled'}>📱 قبض Whish</button>` : ''}
         ${named? `<div style="font-size:11px; color:var(--ink-soft); margin-top:6px; text-align:center;">«على الحساب» تُسجَّل ديناً على الزبون بدون إيصال — «كاش» تُصدر إيصال قبض</div>` : ''}
         <button class="btn btn-sm" id="pos_return_btn" style="width:100%; margin-top:8px;">↩ فاتورة استرجاع</button>
       </div>
@@ -5663,6 +5706,8 @@ function bindPosEvents(){
   if(clearBtn) clearBtn.addEventListener('click', ()=>{ if(confirm('تفريغ السلة؟')){ ticket.cart=[]; render(); } });
   const payBtn = document.getElementById('pos_pay_btn');
   if(payBtn) payBtn.addEventListener('click', ()=>openPosPaymentModal(DB.settings.posPaymentCurrency==='SECOND'?'LBP':'USD'));
+  const whishBtn = document.getElementById('pos_whish_btn');
+  if(whishBtn) whishBtn.addEventListener('click', ()=>openPosWhishModal());
   const creditBtn = document.getElementById('pos_credit_btn');
   if(creditBtn) creditBtn.addEventListener('click', ()=>{ if(ticket.cart.length) openPosCreditModal(ticket); });
 
@@ -6051,6 +6096,35 @@ function openPosCreditModal(ticket){
     completePosSale('CREDIT', null, null, {paid: c==='USD' ? Math.round(raw*100)/100 : Math.round(raw), paidCurrency: c});
   });
 }
+function openPosWhishModal(){
+  const ticket = posActiveTicket();
+  if(!ticket.cart.length) return;
+  const rate = DB.settings.defaultExchangeRate || 90000;
+  const totalUSD = posTotalUSD(ticket);
+  const currency = DB.settings.posPaymentCurrency==='SECOND' ? 'LBP' : 'USD';
+  const due = currency==='USD'? Math.round(totalUSD*100)/100 : Math.round(totalUSD*rate);
+  const qr = DB.settings.whishQr;
+  const wrap = document.createElement('div');
+  wrap.className='modal-bg';
+  wrap.innerHTML = `<div class="modal" style="max-width:420px; text-align:center;">
+    <h3>📱 قبض Whish</h3>
+    ${qr? `<img src="${qr}" alt="Whish QR" style="width:min(300px,80vw); height:auto; border-radius:12px; border:1px solid var(--line); background:#fff; padding:8px;">
+      <div style="font-size:12.5px; color:var(--ink-soft); margin:6px 0 10px;">خلّي الزبون يعمل scan للـ QR ويدفع</div>`
+      : `<div style="color:var(--debit); font-size:13px; margin:8px 0 12px;">⚠️ ما في QR مضاف — حمّلو من الإعدادات ← قبض Whish</div>`}
+    <div style="font-size:15px;">المطلوب: <b class="num" style="font-size:22px;">${currency==='USD'? '$'+due.toFixed(2) : fmtNum(due)+' '+secCurLabel()}</b></div>
+    ${hasSecondCur()? `<div style="font-size:12.5px; color:var(--ink-soft);">(${currency==='USD'? fmtNum(Math.round(totalUSD*rate))+' '+secCurLabel() : '$'+totalUSD.toFixed(2)})</div>` : ''}
+    <div class="row" style="margin-top:16px;">
+      <button class="btn" id="pw_cancel">إلغاء</button>
+      <button class="btn btn-primary" id="pw_ok">✅ تم الدفع عبر Whish</button>
+    </div>
+  </div>`;
+  document.body.appendChild(wrap);
+  wrap.querySelector('#pw_cancel').addEventListener('click', ()=>wrap.remove());
+  wrap.querySelector('#pw_ok').addEventListener('click', ()=>{
+    wrap.remove();
+    completePosSale(currency, due, due, {whish:true});
+  });
+}
 function openPosPaymentModal(currency){
   const ticket = posActiveTicket();
   if(!ticket.cart.length) return;
@@ -6143,9 +6217,23 @@ async function completePosSale(currency, received, due, opts){
     go('#/pos'); render();
     return;
   }
+  const whish = !!opts.whish;
+  if(whish) inv.payMethod = 'whish';
   const receipt = {id:uid(), createdAt:now, customerId, number:nextReceiptNumber(), date, shiftId:myShift.id,
-    amount: currency==='USD'? totalUSD : totalUSD*rate, method: currency==='USD'?'نقد $ (POS)':'نقد '+secCurLabel()+' (POS)', details:'بيع نقطة بيع #'+inv.number+' — الكاشير: '+currentUser.username};
+    amount: currency==='USD'? totalUSD : totalUSD*rate,
+    method: whish ? (currency==='USD'? 'Whish $ (POS)' : 'Whish '+secCurLabel()+' (POS)') : (currency==='USD'?'نقد $ (POS)':'نقد '+secCurLabel()+' (POS)'),
+    details:'بيع نقطة بيع #'+inv.number+' — الكاشير: '+currentUser.username};
   DB.receipts.push(receipt);
+  if(whish){
+    // Whish ما بيدخل الدرج النقدي: لا حركة صندوق ولا زيادة على صندوق الموظف — بيظهر بعامود «قبض Whish» باليومية
+    const okW = await Promise.all([ save(KEYS.invoices, DB.invoices), save(KEYS.stockOuts, DB.stockOuts), save(KEYS.receipts, DB.receipts) ]);
+    if(!okW.every(Boolean)){ toast('⚠️ حدث خطأ أثناء حفظ عملية Whish — راجع رسالة الخطأ'); return; }
+    await printPosReceipt(inv, currency, totalUSD, rate, ticket.customerLabel, received, 0);
+    _posTickets = _posTickets.filter(t=>t.id!==ticket.id);
+    toast('تم القبض عبر Whish ✅');
+    go('#/pos'); render();
+    return;
+  }
   const movement = {id:uid(), createdAt:now, type:'sale', currency, amount: currency==='USD'?totalUSD:totalUSD*rate, note:'بيع POS #'+inv.number+' — '+currentUser.username, refSaleId:inv.id, date, shiftId:myShift.id};
   DB.cashMovements.push(movement);
   if(currency==='USD') myShift.cashUSD = (myShift.cashUSD||0) + totalUSD;
@@ -6348,6 +6436,7 @@ function posPaymentLinesHtml(currency, received, changeDue, small, inv){
   if(currency==='CREDIT') return `<div style="display:flex; justify-content:space-between; font-size:${fs}; font-weight:800;"><span>طريقة الدفع</span><span>على الحساب (دين)</span></div>`
     + (paidAcc>0? `<div style="display:flex; justify-content:space-between; font-size:${fs};"><span>المدفوع</span><span class="num">${fmtMoney(paidAcc)}</span></div><div style="display:flex; justify-content:space-between; font-size:${fs}; font-weight:800;"><span>الباقي على الحساب</span><span class="num">${fmtMoney(Math.max(0,totAcc-paidAcc))}</span></div>` : '')
     + (received!=null? `<div style="display:flex; justify-content:space-between; font-size:${fs};"><span>رصيد الحساب بعد الفاتورة</span><span class="num">${fmtMoney(received)}</span></div>` : '');
+  if(inv && inv.payMethod==='whish') return `<div style="display:flex; justify-content:space-between; font-size:${fs}; font-weight:800;"><span>طريقة الدفع</span><span>Whish ${currency==='USD'?'$':secCurLabel()}</span></div>`;
   return `<div style="display:flex; justify-content:space-between; font-size:${fs};"><span>طريقة الدفع</span><span>${currency==='USD'?'نقد دولار':'نقد '+secCurLabel()}</span></div>
     ${(received!=null && changeDue!=null)? `
     <div style="display:flex; justify-content:space-between; font-size:${fs};"><span>المقبوض</span><span class="num">${fmt(received)}</span></div>
@@ -6664,7 +6753,7 @@ function journalEntriesForRange(from, to){
       const isLBP = posSaleCurrency(i)==='LBP';
       if(isLBP){ lbp = total * (i.exchangeRate || DB.settings.defaultExchangeRate || 90000); usd = 0; }
     }
-    rows.push({cat: debt? 'custDebt' : 'cashSale', date:i.date, createdAt:i.createdAt||0, type:onAcc? 'بيع POS على الحساب (دين)' : (i.docType||'فاتورة'), party:cust?cust.name:'—', usd, lbp, debt,
+    rows.push({cat: debt? 'custDebt' : (isPos && posIsWhish(i) ? 'whish' : 'cashSale'), date:i.date, createdAt:i.createdAt||0, type:onAcc? 'بيع POS على الحساب (دين)' : (isPos && posIsWhish(i) ? 'بيع POS — قبض Whish 📱' : (i.docType||'فاتورة')), party:cust?cust.name:'—', usd, lbp, debt,
       nav: isPos? null : `#/invoice/${i.id}`, reprintPosId: isPos? i.id : null, cashierUsername: i.cashierUsername||''});
   });
   DB.purchaseInvoices.filter(i=>!i.deleted && i.date>=from && i.date<=to).forEach(i=>{
@@ -6735,6 +6824,7 @@ const JOURNAL_CATS = [
   {key:'cashSale', label:'مبيعات نقدية', cash:true, inflow:true},
   {key:'custRcpt', label:'إيصالات الزبائن', cash:true, inflow:true},
   {key:'deposit',  label:'إضافة للصندوق', cash:true, inflow:true},
+  {key:'whish',    label:'قبض Whish', cash:true, inflow:true, wallet:true},
   {key:'paySup',   label:'دفعات موردين', cash:true},
   {key:'payWk',    label:'دفعات عمال', cash:true},
   {key:'out',      label:'سحب ومرتجعات', cash:true},
@@ -6789,12 +6879,12 @@ function journalTableHtml(rows){
     });
   });
   const fmt = (n, sub)=> !n ? '—' : (n<0?'-':'') + (sub==='usd' ? '$'+Math.abs(n).toFixed(2) : fmtNum(Math.abs(Math.round(n))));
-  const color = c=> c.inflow ? 'var(--credit)' : (c.cash ? 'var(--debit)' : 'var(--bronze-deep, #8a5a1a)');
+  const color = c=> c.wallet ? '#a3174a' : c.inflow ? 'var(--credit)' : (c.cash ? 'var(--debit)' : 'var(--bronze-deep, #8a5a1a)');
   const totals = cols.map(col=> rows.reduce((s,r)=> s + pick(cellVals(r,col.c), col.sub, col.c), 0));
   // صافي الصندوق = افتتاح + مقبوضات − (دفعات موردين + عمال + سحب ومرتجعات)
-  const net = sub=> rows.reduce((s,r)=>{ const c = CATS.find(x=>x.key===r.cat); if(!c || !c.cash) return s;
+  const net = sub=> rows.reduce((s,r)=>{ const c = CATS.find(x=>x.key===r.cat); if(!c || !c.cash || c.wallet) return s;
       const v = pick(cellVals(r,c), sub, c); return s + (c.inflow ? v : -v); }, 0);
-  const sumKind = (sub, inflow)=> rows.reduce((s,r)=>{ const c = CATS.find(x=>x.key===r.cat); if(!c || !c.cash || !!c.inflow!==inflow) return s; return s + pick(cellVals(r,c), sub, c); }, 0);
+  const sumKind = (sub, inflow)=> rows.reduce((s,r)=>{ const c = CATS.find(x=>x.key===r.cat); if(!c || !c.cash || c.wallet || !!c.inflow!==inflow) return s; return s + pick(cellVals(r,c), sub, c); }, 0);
   const netSubs = mode==='both' ? ['usd','lbp'] : [mode==='USD' ? 'usd' : 'lbp'];
   const rowAttrs = r=>`${r.nav?`data-nav="${r.nav}"`:''} ${r.reprintPosId?`data-reprint-pos="${r.reprintPosId}"`:''} style="${(r.nav||r.reprintPosId)?'cursor:pointer;':''}"`;
   const mvHtml = r=>`<b>${escapeHtml(r.type)}</b>${r.reprintPosId?' 🖨':''}<div style="font-size:11.5px; color:var(--ink-soft);">${escapeHtml(r.party)} · <span class="num">${fmtDate(r.date)}</span>${(isPrivilegedUser(currentUser) && r.cashierUsername)? ' · '+escapeHtml(r.cashierUsername) : ''}</div>`;
@@ -6830,6 +6920,11 @@ function journalTableHtml(rows){
         <div style="font-size:12px; color:var(--ink-soft);">⬆ كل ما خرج من الصندوق (دفعات ومصاريف)</div>
         <div style="font-size:16px; font-weight:800; color:var(--debit); display:flex; gap:14px; flex-wrap:wrap;">${netSubs.map(sub=>`<span class="num" dir="ltr">${sub==='usd'? fmt(sumKind(sub,false),'usd') : fmt(sumKind(sub,false),'lbp')+' '+L}</span>`).join('')}</div>
       </div>
+      ${rows.some(r=>r.cat==='whish')? (()=>{ const wc = CATS.find(x=>x.key==='whish'); const ws = sub=> rows.reduce((s2,r)=> r.cat==='whish' ? s2 + pick(cellVals(r,wc), sub, wc) : s2, 0);
+        return `<div style="flex:1; min-width:180px; background:#fdeef3; border:1px solid #e7a3bb; border-radius:8px; padding:10px 12px;">
+        <div style="font-size:12px; color:#a3174a;">📱 صندوق Whish (ما بيدخل الصندوق النقدي)</div>
+        <div style="font-size:16px; font-weight:800; color:#a3174a; display:flex; gap:14px; flex-wrap:wrap;">${netSubs.map(sub=>`<span class="num" dir="ltr">${sub==='usd'? fmt(ws(sub),'usd') : (ws(sub)? fmt(ws(sub),'lbp') : '0')+' '+L}</span>`).join('')}</div>
+      </div>`; })() : ''}
       <div style="flex:1; min-width:220px; background:var(--bg-2); border:2px solid var(--line); border-radius:8px; padding:10px 12px;">
         <div style="font-size:12px; color:var(--ink-soft);">💵 صافي الصندوق (الداخل − الخارج)</div>
         <div style="font-size:18px; font-weight:800; display:flex; gap:18px; flex-wrap:wrap;">${netSubs.map(sub=>`<span class="num" dir="ltr" style="color:${net(sub)<0?'var(--debit)':'var(--credit)'}">${sub==='usd' ? fmt(net(sub),'usd') : (net(sub)? fmt(net(sub),'lbp') : '0')+' '+L}</span>`).join('')}</div>
@@ -7189,7 +7284,7 @@ function warehouseItemTable(items, isSearch){
       const avail = normItemStatus(it.status)==='available';
       const cv = itemCostWithVat(it);
       return `<tr data-nav="#/warehouse-item/${it.id}" style="${avail?'':'opacity:.65;'}">
-        <td><b>${escapeHtml(it.name)}</b>${spec? `<div style="font-size:11.5px; color:var(--ink-soft);">${escapeHtml(spec)}</div>`:''}</td>
+        <td><div class="wh-name-cell">${whThumb(it)}<div><b>${escapeHtml(it.name)}</b>${spec? `<div style="font-size:11.5px; color:var(--ink-soft);">${escapeHtml(spec)}</div>`:''}</div></div></td>
         <td>${escapeHtml(it.brand||'—')}</td>
         <td><span style="font-size:12px; font-weight:700; padding:2px 8px; border-radius:999px; background:${avail?'#e6f4ea':'#fbe9e7'}; color:${avail?'var(--credit)':'var(--debit)'};">${itemStatusLabel(it.status)}</span></td>
         <td class="num">${escapeHtml(it.mfgYear||'—')}</td>
@@ -7207,7 +7302,7 @@ function warehouseItemTable(items, isSearch){
     const expDays = daysUntilExpiry(it);
     const expiring = expDays!==null && expDays<=itemExpiryAlertDays(it);
     return `<tr data-nav="#/warehouse-item/${it.id}">
-      <td><b>${escapeHtml(it.name)}</b></td>
+      <td><div class="wh-name-cell">${whThumb(it)}<b>${escapeHtml(it.name)}</b></div></td>
       <td>${escapeHtml(it.brand||'—')}</td>
       <td>${escapeHtml(it.type||'—')}</td>
       <td class="${stockCls}">${isServiceItem(it)? '🛠 خدمة' : fmtQty(stock)}</td>
@@ -7247,10 +7342,13 @@ function warehouseItemView(item){
   return `
   <div class="card">
     <div class="cust-head">
-      <div>
+      <div style="display:flex; gap:12px; align-items:center;">
+        ${item.image? `<img src="${item.image}" alt="" style="width:84px; height:84px; object-fit:contain; border-radius:12px; border:1px solid var(--line); background:#fff; flex:none;">` : ''}
+        <div>
         <div class="cust-name"><span class="bidi">${escapeHtml(item.name)}</span></div>
         <div class="cust-meta">${metaParts.join(' &nbsp;•&nbsp; ')}</div>
         ${expiring? `<div class="cust-meta" style="color:var(--debit); font-weight:700; margin-top:4px;">⚠️ بقي ${expDays<0?'منتهي':expDays+' يوم'} على انتهاء الصلاحية</div>` : ''}
+        </div>
       </div>
       <div class="action-row">
         <button class="btn btn-debit" data-nav="#/stockout/new?item=${item.id}">📤 أمر سحب</button>
@@ -8109,7 +8207,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-10-26 · 18:35 · v13';
+const APP_TRADE_BUILD = '2026-10-26 · 19:10 · v14';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 function settingsView(){
   const s = DB.settings;
@@ -8281,6 +8379,19 @@ function settingsView(){
     <div class="row" style="gap:8px; flex-wrap:wrap;">
       <button class="btn btn-primary" id="saveBcSettingsBtn">💾 حفظ إعدادات الباركود</button>
       <button class="btn" id="testBcPrintBtn">🖨 طباعة ملصق تجريبي</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><span class="dot"></span> 📱 قبض Whish</h2>
+    <label style="display:flex; gap:8px; align-items:center; font-size:13.5px; margin-bottom:10px;"><input type="checkbox" id="s_whish_enabled" style="width:auto;" ${s.whishEnabled!==false?'checked':''}> إظهار زر «قبض Whish» بشاشة POS</label>
+    <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap;">
+      <div>${s.whishQr? `<img src="${s.whishQr}" alt="Whish QR" style="width:150px; height:150px; object-fit:contain; border:1px solid var(--line); border-radius:8px; padding:6px; background:#fff;">` : `<div style="color:var(--ink-soft); font-size:13px;">لا يوجد QR مضاف بعد</div>`}</div>
+      <div>
+        <label style="font-size:13px;">صورة QR تبع حساب Whish (بتظهر للزبون لما تكبس «قبض Whish»)</label>
+        <input type="file" id="whishQrInput" accept="image/*" style="max-width:240px; display:block; margin-top:6px;">
+        ${s.whishQr? `<button class="btn btn-sm btn-danger" id="removeWhishQrBtn" style="margin-top:8px;">🗑 حذف QR</button>` : ''}
+      </div>
     </div>
   </div>
 
@@ -9227,6 +9338,31 @@ function bindEvents(){
     };
     reader.onerror = ()=> toast('حدث خطأ أثناء قراءة الصورة');
     reader.readAsDataURL(file);
+  });
+  const whishEn = document.getElementById('s_whish_enabled');
+  if(whishEn) whishEn.addEventListener('change', async ()=>{
+    DB.settings.whishEnabled = whishEn.checked;
+    const ok = await save(KEYS.settings, DB.settings);
+    toast(ok? (whishEn.checked? 'زر Whish ظاهر بشاشة POS' : 'تم إخفاء زر Whish') : 'حدث خطأ أثناء الحفظ');
+  });
+  const whishQrInput = document.getElementById('whishQrInput');
+  if(whishQrInput) whishQrInput.addEventListener('change', async ()=>{
+    const f = whishQrInput.files[0]; if(!f) return;
+    try{
+      // QR بيحتاج وضوح: 600px وجودة عالية (بيضل خفيف)
+      DB.settings.whishQr = await compressImageFile(f, 600, 0.92);
+      const ok = await save(KEYS.settings, DB.settings);
+      toast(ok? 'تم حفظ QR تبع Whish ✅' : 'حدث خطأ أثناء الحفظ');
+      render();
+    }catch(e){ toast('⚠️ '+(e && e.message || 'تعذّرت قراءة الصورة')); }
+  });
+  const removeWhishQrBtn = document.getElementById('removeWhishQrBtn');
+  if(removeWhishQrBtn) removeWhishQrBtn.addEventListener('click', async ()=>{
+    if(!confirm('حذف صورة QR تبع Whish؟')) return;
+    DB.settings.whishQr = null;
+    const ok = await save(KEYS.settings, DB.settings);
+    toast(ok? 'تم حذف QR' : 'حدث خطأ أثناء الحفظ');
+    render();
   });
   const removeLogoBtn = document.getElementById('removeLogoBtn');
   if(removeLogoBtn) removeLogoBtn.addEventListener('click', async ()=>{
