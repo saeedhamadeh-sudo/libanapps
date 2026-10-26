@@ -1103,6 +1103,19 @@ function fmtSecAmt(usd){ return fmtNum(Math.round((Number(usd)||0)*curRate()))+'
 // عرض مبلغ (محفوظ بالدولار) بالعملة الأساسية
 function fmtPrim(usd){ return primIsSec() ? fmtSecAmt(usd) : fmtMoney(usd); }
 // العملة الثانية (للعرض الثانوي بين قوسين) — فارغ إذا الوضع عملة واحدة
+// تبديل العملة الأساسية بكبسة (من شاشة POS): دولار ⇄ ليرة — يحافظ على وجود عملة ثانية أو عدمه
+async function togglePrimaryCurrency(){
+  const m = currencyMode();
+  const next = m==='USD_SEC' ? 'SEC_USD' : m==='SEC_USD' ? 'USD_SEC' : m==='USD' ? 'SEC' : 'USD';
+  if(next!=='USD' && !(curRate()>0)){ toast('حدّد سعر الصرف من الإعدادات أولاً'); return; }
+  DB.settings.currencyMode = next;
+  DB.settings.secondCurrencyEnabled = next!=='USD';
+  DB.settings.posPaymentCurrency = (next==='SEC' || next==='SEC_USD') ? 'SECOND' : 'USD';
+  if(!DB.settings.secondCurrencyRate) DB.settings.secondCurrencyRate = curRate();
+  const ok = await save(KEYS.settings, DB.settings);
+  toast(ok ? 'العملة الأساسية الآن: '+(primIsSec()? secCurLabel() : 'دولار $') : 'حدث خطأ أثناء حفظ العملة');
+  render();
+}
 function fmtSecondary(usd){ const m = currencyMode(); return m==='USD_SEC' ? fmtSecAmt(usd) : m==='SEC_USD' ? fmtMoney(usd) : ''; }
 const COUNTRY_CURRENCIES = [
   {country:'لبنان', code:'LBP'}, {country:'السعودية', code:'SAR'}, {country:'الإمارات', code:'AED'},
@@ -5372,6 +5385,7 @@ function posView(){
           <input type="text" id="pos_scan_input" inputmode="none" autocomplete="off" value="${escapeHtml(_posSearchQ)}" style="flex:1; font-size:16px; padding:11px 14px; border-radius:10px; border:1px solid var(--line);" placeholder="🔍 بحث: اسم، ماركة، مقاس، باركود، رمز..." autofocus>
           ${_posSearchQ? `<button type="button" class="btn" id="pos_search_clear" title="مسح البحث">✕</button>` : ''}
           <button type="button" class="btn" id="pos_free_item_btn" title="بند حر أو خدمة صيانة">🛠 خدمة / بند حر</button>
+          ${isPrivilegedUser(currentUser)? `<button type="button" class="btn" id="pos_cur_toggle" title="تبديل العملة الأساسية (دولار / ${escapeHtml(secCurLabel())})" style="font-weight:800; white-space:nowrap;">💱 ${escapeHtml(primSym())}</button>` : ''}
           <button type="button" class="btn" id="pos_keyboard_btn" title="اكتب يدوياً">⌨️</button>
           <button type="button" class="btn" id="pos_camera_scan_btn">📷</button>
         </div>
@@ -5484,6 +5498,8 @@ function bindPosEvents(){
   if(clrBtn) clrBtn.addEventListener('click', ()=>{ _posSearchQ=''; render(); });
   const camBtn = document.getElementById('pos_camera_scan_btn');
   if(camBtn) camBtn.addEventListener('click', ()=>{ openBarcodeScannerModal((code)=>handleCode(code), true); });
+  const curTgl = document.getElementById('pos_cur_toggle');
+  if(curTgl) curTgl.addEventListener('click', togglePrimaryCurrency);
   const kbBtn = document.getElementById('pos_keyboard_btn');
   if(kbBtn) kbBtn.addEventListener('click', ()=>{
     if(input){ input.removeAttribute('inputmode'); input.focus(); }
