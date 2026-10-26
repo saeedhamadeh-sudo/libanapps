@@ -5534,7 +5534,8 @@ function posCategoryTabsHtml(){
 `;
 }
 function posView(){ return posLayoutMode()==='old' ? posViewOld() : posViewPro(); }
-function posLayoutMode(){ return DB.settings.posLayout==='old' ? 'old' : 'pro'; }
+// محل الدواليب وغيار الزيت بيضل على الشكل القديم دايماً — الشكل الجديد للسوبرماركت
+function posLayoutMode(){ return (isAutoShop() || DB.settings.posLayout==='old') ? 'old' : 'pro'; }
 function posViewOld(){
   const myShift = currentUserShift();
   if(!myShift){
@@ -6865,6 +6866,81 @@ function posReceiptHtml(inv, currency, totalUSD, rate, customerLabel, received, 
     <div style="text-align:center; font-size:11px; margin-top:10px;">شكراً لزيارتكم 🙏</div>
     <div style="height:50px;"></div>`;
 }
+// تطبيق LibanApps للكمبيوتر (Electron) بيعرض طابعات الجهاز وبيطبع بصمت. الطابعة المختارة محفوظة على هالكمبيوتر بس
+function desktopCanPrint(){ return !!(window.libanappsDesktop && typeof window.libanappsDesktop.silentPrint==='function'); }
+function localPosPrinter(){ try{ return localStorage.getItem('la_pos_printer_device')||''; }catch(e){ return ''; } }
+function setLocalPosPrinter(name){ try{ if(name) localStorage.setItem('la_pos_printer_device', name); else localStorage.removeItem('la_pos_printer_device'); }catch(e){} }
+// تقريب أسعار المنتجات بالعملة المحلية (مثلاً 89,600 → 90,000 و 19,996 → 20,000) — مع معاينة قبل التطبيق
+function openRoundPricesModal(){
+  if(!(primIsSec() || hasSecondCur())){ toast('التقريب للعملة المحلية — فعّل العملة الثانية من إعدادات العملة أولاً'); return; }
+  const r = curRate(); const L = secCurLabel();
+  const wrap = document.createElement('div');
+  wrap.className = 'modal-bg';
+  wrap.innerHTML = `<div class="modal modal-wide" style="max-width:720px;">
+    <h3>🔢 تقريب أسعار المنتجات (${escapeHtml(L)})</h3>
+    <div class="grid grid-2">
+      <div class="field"><label>التقريب لأقرب</label>
+        <select id="rp_step"><option value="1000" selected>1,000</option><option value="5000">5,000</option><option value="10000">10,000</option><option value="500">500</option><option value="100">100</option></select>
+      </div>
+      <div class="field"><label>شو منقرّب؟</label>
+        <label style="display:flex; gap:6px; align-items:center; font-size:13px;"><input type="checkbox" id="rp_sell" checked style="width:auto;"> سعر البيع</label>
+        <label style="display:flex; gap:6px; align-items:center; font-size:13px;"><input type="checkbox" id="rp_cost" checked style="width:auto;"> سعر التكلفة</label>
+      </div>
+    </div>
+    <div id="rp_list"></div>
+    <div class="row modal-sticky-actions">
+      <button class="btn" id="rp_cancel">إلغاء</button>
+      <button class="btn btn-primary" id="rp_go">✅ تطبيق التقريب</button>
+    </div>
+  </div>`;
+  document.body.appendChild(wrap);
+  const $ = q=>wrap.querySelector(q);
+  let changes = [];
+  const loc = usd=> Math.round((Number(usd)||0)*r);
+  const rnd = (v, st)=> Math.round(v/st)*st;
+  function build(){
+    const st = Number($('#rp_step').value)||1000, doSell = $('#rp_sell').checked, doCost = $('#rp_cost').checked;
+    changes = [];
+    DB.warehouseItems.forEach(it=>{
+      const c = {it, on:true};
+      if(doSell && Number(it.price)>0){ const v = Number(it.priceSec)>0 ? Number(it.priceSec) : loc(it.price); const n = rnd(v, st); if(n>0 && n!==v){ c.sellFrom = v; c.sellTo = n; } }
+      if(doCost && Number(it.costPrice)>0){ const v = Number(it.costSec)>0 ? Number(it.costSec) : loc(it.costPrice); const n = rnd(v, st); if(n>0 && n!==v){ c.costFrom = v; c.costTo = n; } }
+      if(c.sellTo!==undefined || c.costTo!==undefined) changes.push(c);
+    });
+    $('#rp_list').innerHTML = changes.length ? `
+      <div style="font-size:12.5px; margin-bottom:6px;">${changes.length} منتج سعره بحاجة تقريب — شيل الصح عن يلي ما بدك تغيّرو</div>
+      <div class="table-scroll" style="max-height:48vh; overflow:auto;"><table style="font-size:12.5px;">
+        <thead><tr><th><input type="checkbox" id="rp_all" checked></th><th>المنتج</th><th>سعر البيع</th><th>التكلفة</th></tr></thead>
+        <tbody>${changes.map((c,i)=>`<tr><td><input type="checkbox" data-rp="${i}" checked></td><td><span class="bidi">${escapeHtml(c.it.name)}</span></td>
+          <td class="num">${c.sellTo!==undefined? `<s style="opacity:.55;">${fmtNum(c.sellFrom)}</s> → <b>${fmtNum(c.sellTo)}</b>` : '—'}</td>
+          <td class="num">${c.costTo!==undefined? `<s style="opacity:.55;">${fmtNum(c.costFrom)}</s> → <b>${fmtNum(c.costTo)}</b>` : '—'}</td></tr>`).join('')}</tbody>
+      </table></div>` : `<div class="empty" style="padding:18px 0;"><div class="big" style="font-size:14px;">✅ كل الأسعار مقرّبة — ما في شي يتغيّر</div></div>`;
+    $('#rp_go').disabled = !changes.length;
+    const all = $('#rp_all');
+    if(all) all.addEventListener('change', ()=>{ changes.forEach(c=>c.on = all.checked); wrap.querySelectorAll('[data-rp]').forEach(cb=>cb.checked = all.checked); });
+    wrap.querySelectorAll('[data-rp]').forEach(cb=>cb.addEventListener('change', ()=>{ changes[Number(cb.getAttribute('data-rp'))].on = cb.checked; }));
+  }
+  ['#rp_step','#rp_sell','#rp_cost'].forEach(q=>$(q).addEventListener('change', build));
+  build();
+  $('#rp_cancel').addEventListener('click', ()=>wrap.remove());
+  $('#rp_go').addEventListener('click', async ()=>{
+    const chosen = changes.filter(c=>c.on);
+    if(!chosen.length) return;
+    if(!confirm('تقريب أسعار '+chosen.length+' منتج؟')) return;
+    $('#rp_go').disabled = true;
+    // السعر المقرّب بينحفظ بالعملة المحلية كما هو (ما بيرجع يطلع كسور مع سعر الصرف)
+    chosen.forEach(c=>{
+      if(c.sellTo!==undefined){ c.it.priceSec = c.sellTo; c.it.price = c.sellTo/r; }
+      if(c.costTo!==undefined){ c.it.costSec = c.costTo; c.it.costPrice = c.costTo/r; }
+    });
+    invalidateWarehouseCaches();
+    const ok = await save(KEYS.warehouseItems, DB.warehouseItems);
+    if(!ok){ toast('⚠️ حدث خطأ أثناء الحفظ — راجع رسالة الخطأ'); $('#rp_go').disabled = false; return; }
+    wrap.remove();
+    toast('تم تقريب أسعار '+chosen.length+' منتج ✅');
+    render();
+  });
+}
 function posPrintMode(){ const m = DB.settings && DB.settings.posPrintMode; return (m==='none' || m==='rawbt' || m==='dialog') ? m : 'auto'; }
 // RawBT على أندرويد: منبعت الفاتورة كصورة ESC/POS مباشرة للتطبيق — بلا نافذة طباعة
 async function printReceiptRawBT(inv, currency, totalUSD, rate, customerLabel, received, changeDue){
@@ -6887,14 +6963,11 @@ async function printPosReceipt(inv, currency, totalUSD, rate, customerLabel, rec
   if(mode==='rawbt' && format==='thermal80'){
     if(await printReceiptRawBT(inv, currency, totalUSD, rate, customerLabel, received, changeDue)) return;
   }
-  // تطبيق الكمبيوتر (Electron) إذا بيدعم الطباعة الصامتة
-  if(mode!=='dialog' && window.libanappsDesktop && typeof window.libanappsDesktop.silentPrint==='function'){
-    try{ /* بيطبع الصفحة الحالية على الطابعة الافتراضية بدون نافذة */ window.__silentPrintPending = true; }catch(e){}
-  }
+  const silent = mode!=='dialog' && desktopCanPrint();
   // البلوتوث (BLE) ما عاد نجرّب الطباعة المباشرة فيه — أثبتت الاختبارات إنو ما بيوصل
   // للطابعات يلي بتشتغل Classic/SPP (زي RPP300-B). الاعتماد صار على نافذة الطباعة
   // العادية + تطبيق RawBT (Classic Bluetooth) لهالحالة.
-  if(mode!=='dialog' && format==='thermal80' && DB.settings.posPrinterVendorId && DB.settings.posPrinterType!=='bluetooth'){
+  if(!silent && mode!=='dialog' && format==='thermal80' && DB.settings.posPrinterVendorId && DB.settings.posPrinterType!=='bluetooth'){
     const ok = await printReceiptRaw(inv, currency, totalUSD, rate, customerLabel, received, changeDue);
     if(ok) return;
     // فشلت الطباعة المباشرة عبر USB — نرجع لنافذة الطباعة العادية
@@ -6932,9 +7005,15 @@ async function printPosReceipt(inv, currency, totalUSD, rate, customerLabel, rec
   };
   window.addEventListener('afterprint', cleanup, {once:true});
   wrap.style.display = 'block';
-  if(window.__silentPrintPending){
-    window.__silentPrintPending = false;
-    setTimeout(async ()=>{ try{ await window.libanappsDesktop.silentPrint(); }catch(e){ console.error('silent print failed', e); window.print(); } setTimeout(cleanup, 1500); }, 60);
+  if(silent){
+    // تطبيق الكمبيوتر: طباعة صامتة على الطابعة المختارة بالإعدادات — بلا أي نافذة
+    setTimeout(async ()=>{
+      try{
+        const r = await window.libanappsDesktop.silentPrint({ deviceName: localPosPrinter(), format });
+        if(r && r.ok===false) throw new Error(r.error || 'فشلت الطباعة');
+      }catch(e){ console.error('silent print failed', e); toast('⚠️ فشلت الطباعة على «'+(localPosPrinter()||'الطابعة الافتراضية')+'»: '+(e && e.message || '')); }
+      cleanup();
+    }, 80);
     return;
   }
   setTimeout(()=>{ window.print(); setTimeout(cleanup, 1500); }, 60);
@@ -8599,7 +8678,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-10-26 · 19:45 · v15';
+const APP_TRADE_BUILD = '2026-10-26 · 20:30 · v16';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 function settingsView(){
   const s = DB.settings;
@@ -8697,6 +8776,7 @@ function settingsView(){
     </div>
     <div style="font-size:11.5px; color:var(--ink-soft); margin-top:8px; line-height:1.6;">ملاحظة: المبالغ محفوظة داخلياً بالدولار — عند تغيير سعر الصرف تتغيّر قيمتها بالعملة المحلية تلقائياً. فواتير البيع والشراء تُعرض بسعر الصرف المسجّل على كل فاتورة.</div>
     <button class="btn btn-primary" id="saveCur2Btn" style="margin-top:10px;">💾 حفظ إعدادات العملة</button>
+    <button class="btn" id="roundPricesBtn" style="margin-top:10px;">🔢 تقريب أسعار المنتجات (89,600 → 90,000)</button>
   </div>
 
   <div class="card">
@@ -8734,15 +8814,24 @@ function settingsView(){
       </select>
       <div style="font-size:11.5px; color:var(--ink-soft); margin-top:4px;">الفاتورة تُظهر نفس خانات فاتورة المبيعات في الحالتين.</div>
     </div>
+    <div class="field" style="max-width:520px;"><label>🖨 طابعة الفواتير (من طابعات هالكمبيوتر)</label>
+      ${desktopCanPrint()? `<div style="display:flex; gap:8px; flex-wrap:wrap;">
+          <select id="s_pos_device_printer" style="flex:1; min-width:220px;"><option value="">⏳ جارٍ جلب الطابعات...</option></select>
+          <button type="button" class="btn btn-sm" id="s_pos_test_print">🧪 طباعة تجربة</button>
+        </div>
+        <div style="font-size:11.5px; color:var(--ink-soft); margin-top:4px;">بتطبع الفاتورة لحالها على هالطابعة بعد كل قبض — بلا أي نافذة. الاختيار محفوظ على هالكمبيوتر.</div>`
+      : `<div style="font-size:12.5px; background:var(--bg-2); border:1px solid var(--line); border-radius:8px; padding:8px 10px; line-height:1.8;">اختيار الطابعة من طابعات الكمبيوتر والطباعة بلا نافذة بيشتغلوا من <b>تطبيق LibanApps للكمبيوتر (Windows)</b> — المتصفح ما بيسمح لأي موقع يشوف طابعات الجهاز. افتح البرنامج من التطبيق وبتلاقي هون لائحة الطابعات.</div>`}
+    </div>
     <div class="field" style="max-width:520px;"><label>طريقة الطباعة بعد القبض</label>
       <select id="s_pos_print_mode">
-        <option value="auto" ${posPrintMode()==='auto'?'selected':''}>🖨 تلقائي — مباشرة على الطابعة المربوطة (USB) بدون نافذة</option>
+        <option value="auto" ${posPrintMode()==='auto'?'selected':''}>🖨 تلقائي — مباشرة على الطابعة المختارة بدون نافذة</option>
         <option value="rawbt" ${posPrintMode()==='rawbt'?'selected':''}>📱 أندرويد — مباشرة عبر تطبيق RawBT بدون نافذة</option>
         <option value="none" ${posPrintMode()==='none'?'selected':''}>🚫 بدون طباعة بعد القبض (بتطبع وقت ما بدك من «طباعة آخر فاتورة»)</option>
         <option value="dialog" ${posPrintMode()==='dialog'?'selected':''}>🪟 نافذة الطباعة العادية</option>
       </select>
       <div style="font-size:11.5px; color:var(--ink-soft); margin-top:6px; line-height:1.8;">
         المتصفح ما بيسمح لأي موقع يطبع بدون نافذة إلا بإحدى هالطرق:<br>
+        • <b>تطبيق LibanApps للكمبيوتر:</b> اختار الطابعة فوق — بتطبع لحالها.<br>
         • <b>كمبيوتر + طابعة USB:</b> اربط الطابعة تحت (🔌 USB) واختار «تلقائي» — بتطبع لحالها.<br>
         • <b>أندرويد:</b> ثبّت RawBT واقرن الطابعة فيه، واختار «RawBT».<br>
         • <b>Windows بأي طابعة:</b> اعمل اختصار لـ Chrome وزيد عليه <span class="num" dir="ltr">--kiosk-printing</span> وافتح البرنامج منو — بيطبع على الطابعة الافتراضية بدون نافذة.
@@ -8790,10 +8879,11 @@ function settingsView(){
 
   <div class="card">
     <h2><span class="dot"></span> 🖥 شكل شاشة POS</h2>
+    ${isAutoShop()? `<div style="font-size:13px; color:var(--ink-soft);">محل الدواليب وغيار الزيت بيستعمل الشكل القديم لشاشة POS.</div>` : `
     <select id="s_pos_layout" style="max-width:360px;">
       <option value="pro" ${s.posLayout!=='old'?'selected':''}>الشكل الجديد (أدوات + لوحة أرقام + قائمة سفلية)</option>
       <option value="old" ${s.posLayout==='old'?'selected':''}>الشكل القديم</option>
-    </select>
+    </select>`}
   </div>
 
   <div class="card">
@@ -8851,6 +8941,7 @@ function settingsView(){
     <h2><span class="dot"></span> 📄 استيراد المخزون من ملف CSV</h2>
     <p style="font-size:12.5px; color:var(--ink-soft); line-height:1.7;">ملف CSV بالأعمدة: Barcode / Name / Qty / Buy Price / Sell Net — تختار الملف وعملة الأسعار، تراجع المنتجات ثم تضغط IMPORT.</p>
     <button class="btn btn-primary" id="importCsvStockBtn">📄 Import CSV</button>
+    <button class="btn" id="roundPricesBtn2">🔢 تقريب الأسعار</button>
   </div>
 
   <div class="card" ${isAutoShop()?'style="display:none;"':''}>
@@ -9628,6 +9719,24 @@ function bindEvents(){
     _expiryAlertShownThisSession = false;
   });
 
+  const devPrinterSel = document.getElementById('s_pos_device_printer');
+  if(devPrinterSel && desktopCanPrint()){
+    (async ()=>{
+      try{
+        const list = await window.libanappsDesktop.getPrinters();
+        const cur = localPosPrinter();
+        devPrinterSel.innerHTML = `<option value="">الطابعة الافتراضية للكمبيوتر${(list.find(p=>p.isDefault)||{}).name? ' ('+escapeHtml(list.find(p=>p.isDefault).displayName||list.find(p=>p.isDefault).name)+')':''}</option>`
+          + list.map(p=>`<option value="${escapeHtml(p.name)}" ${p.name===cur?'selected':''}>${escapeHtml(p.displayName||p.name)}${p.isDefault?' ⭐':''}</option>`).join('');
+      }catch(e){ devPrinterSel.innerHTML = '<option value="">⚠️ تعذّر جلب الطابعات</option>'; console.error(e); }
+    })();
+    devPrinterSel.addEventListener('change', ()=>{ setLocalPosPrinter(devPrinterSel.value); toast('تم اختيار الطابعة: '+(devPrinterSel.value||'الافتراضية')); });
+  }
+  const testPrintBtn = document.getElementById('s_pos_test_print');
+  if(testPrintBtn) testPrintBtn.addEventListener('click', ()=>{
+    const fake = {id:'test', number:'TEST', date:todayISO(), customerId:null, docType:'بيع نقطة بيع (POS)', exchangeRate:DB.settings.defaultExchangeRate||90000,
+      items:[{id:'t1', desc:'طباعة تجربة', qty:1, price:1, total:1}], discount:0, createdAt:Date.now(), cashierUsername:currentUser? currentUser.username : ''};
+    printPosReceipt(fake, 'USD', 1, fake.exchangeRate, 'تجربة', 1, 0);
+  });
   const savePosSettingsBtn = document.getElementById('saveposSettingsBtn');
   if(savePosSettingsBtn) savePosSettingsBtn.addEventListener('click', async ()=>{
     DB.settings.posAutoOpenDrawer = document.getElementById('s_pos_autodrawer').checked;
@@ -9635,6 +9744,8 @@ function bindEvents(){
     if(pf) DB.settings.posPrintFormat = pf.value==='a4' ? 'a4' : 'thermal80';
     const pm = document.getElementById('s_pos_print_mode');
     if(pm) DB.settings.posPrintMode = pm.value;
+    const dp = document.getElementById('s_pos_device_printer');
+    if(dp) setLocalPosPrinter(dp.value);
     const ok = await save(KEYS.settings, DB.settings);
     toast(ok? 'تم حفظ إعدادات POS':'حدث خطأ أثناء الحفظ');
     render();
@@ -9688,6 +9799,8 @@ function bindEvents(){
   if(importOldStockBtn) importOldStockBtn.addEventListener('click', openImportStockModal);
   const importCsvStockBtn = document.getElementById('importCsvStockBtn');
   if(importCsvStockBtn) importCsvStockBtn.addEventListener('click', openImportCsvStockModal);
+  const roundPricesBtn2 = document.getElementById('roundPricesBtn2');
+  if(roundPricesBtn2) roundPricesBtn2.addEventListener('click', openRoundPricesModal);
   const autoGroupBtn = document.getElementById('autoGroupBtn');
   if(autoGroupBtn) autoGroupBtn.addEventListener('click', openAutoGroupModal);
   const saveBizBtn = document.getElementById('saveBizBtn');
@@ -9755,6 +9868,8 @@ function bindEvents(){
     reader.onerror = ()=> toast('حدث خطأ أثناء قراءة الصورة');
     reader.readAsDataURL(file);
   });
+  const roundPricesBtn = document.getElementById('roundPricesBtn');
+  if(roundPricesBtn) roundPricesBtn.addEventListener('click', openRoundPricesModal);
   const posLayoutSel = document.getElementById('s_pos_layout');
   if(posLayoutSel) posLayoutSel.addEventListener('change', async ()=>{
     DB.settings.posLayout = posLayoutSel.value==='old' ? 'old' : 'pro';
