@@ -10,4 +10,4 @@ if not exist "%CHROME%" (
   pause
   exit /b 1
 )
-start "" "%CHROME%" --kiosk-printing --user-data-dir="%PROFILE%" --new-window "%URL%"
+start "" "%CHROME%" --kiosk-printing --start-fullscreen --user-data-dir="%PROFILE%" --new-window "%URL%"

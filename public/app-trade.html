@@ -347,6 +347,7 @@
   .pc-bar{grid-column:1/-1; grid-row:2; display:flex; gap:8px; overflow-x:auto; padding-bottom:2px;}
   .pc-bar .pc-tool{flex:1 0 92px; min-height:58px;}
   .pc-mobile-sum{display:none;}
+  :fullscreen .pc-wrap{height:calc(100vh - 70px);}
   @media(max-width:1100px){
     .pc-wrap{grid-template-columns:78px 320px minmax(0,1fr);}
   }
@@ -917,7 +918,8 @@ function settingsToDb(s){
       whishEnabled: s.whishEnabled!==false,
       whishQr: s.whishQr||null,
       posLayout: s.posLayout==='old' ? 'old' : 'pro',
-      posPrintMode: s.posPrintMode||'auto'}})
+      posPrintMode: s.posPrintMode||'auto',
+      posFullscreen: s.posFullscreen!==false}})
   };
 }
 function applySettingsFromDb(row, base){
@@ -965,7 +967,8 @@ function applySettingsFromDb(row, base){
     whishEnabled: (row.product_lists && row.product_lists._ui && row.product_lists._ui.whishEnabled!=null) ? !!row.product_lists._ui.whishEnabled : base.whishEnabled,
     whishQr: (row.product_lists && row.product_lists._ui && row.product_lists._ui.whishQr) ? row.product_lists._ui.whishQr : base.whishQr,
     posLayout: (row.product_lists && row.product_lists._ui && row.product_lists._ui.posLayout) ? row.product_lists._ui.posLayout : base.posLayout,
-    posPrintMode: (row.product_lists && row.product_lists._ui && row.product_lists._ui.posPrintMode) ? row.product_lists._ui.posPrintMode : base.posPrintMode
+    posPrintMode: (row.product_lists && row.product_lists._ui && row.product_lists._ui.posPrintMode) ? row.product_lists._ui.posPrintMode : base.posPrintMode,
+    posFullscreen: (row.product_lists && row.product_lists._ui && row.product_lists._ui.posFullscreen!=null) ? !!row.product_lists._ui.posFullscreen : base.posFullscreen
   };
 }
 async function syncSettingsToSupabase(settings){
@@ -3388,6 +3391,26 @@ function nextBudgetEntryNumber(){
 /* ============================= ROUTER / RENDER ============================= */
 function go(hash){ _hubEditMode = false; _hubDraftOrder = null; location.hash = hash; }
 window.addEventListener('hashchange', render);
+/* شاشة POS بملء الشاشة (متل F11): المتصفح بيسمح فيها بس مع كبسة، فمنفعّلها مع الكبسة يلي بتفتح POS
+   أو أول لمسة جوّا POS — ومنطلع منها لما نترك POS */
+let _posFsByUs = false;
+function posFullscreenWanted(){ return !DB.settings || DB.settings.posFullscreen!==false; }
+function isPosRoute(h){ return /^#\/pos(\b|$|\?)/.test(h||location.hash); }
+document.addEventListener('pointerdown', (e)=>{
+  if(!posFullscreenWanted() || document.fullscreenElement) return;
+  const navToPos = e.target && e.target.closest && e.target.closest('[data-nav="#/pos"]');
+  if(!navToPos && !isPosRoute()) return;
+  const el = document.documentElement;
+  const req = el.requestFullscreen || el.webkitRequestFullscreen;
+  if(!req) return;
+  try{ const pr = req.call(el); _posFsByUs = true; if(pr && pr.catch) pr.catch(()=>{ _posFsByUs = false; }); }catch(err){ _posFsByUs = false; }
+}, true);
+window.addEventListener('hashchange', ()=>{
+  if(!isPosRoute() && _posFsByUs && document.fullscreenElement){
+    _posFsByUs = false;
+    try{ (document.exitFullscreen || document.webkitExitFullscreen).call(document); }catch(e){}
+  }
+});
 
 function currentRoute(){
   const h = (location.hash.slice(1) || '/').split('?')[0];
@@ -8684,7 +8707,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-10-26 · 20:55 · v17';
+const APP_TRADE_BUILD = '2026-10-26 · 21:10 · v18';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 function settingsView(){
   const s = DB.settings;
@@ -8886,6 +8909,7 @@ function settingsView(){
 
   <div class="card">
     <h2><span class="dot"></span> 🖥 شكل شاشة POS</h2>
+    <label style="display:flex; gap:8px; align-items:center; font-size:13.5px; margin-bottom:10px;"><input type="checkbox" id="s_pos_fullscreen" style="width:auto;" ${s.posFullscreen!==false?'checked':''}> شاشة POS بملء الشاشة (متل F11) — بتطلع منها بـ Esc</label>
     ${isAutoShop()? `<div style="font-size:13px; color:var(--ink-soft);">محل الدواليب وغيار الزيت بيستعمل الشكل القديم لشاشة POS.</div>` : `
     <select id="s_pos_layout" style="max-width:360px;">
       <option value="pro" ${s.posLayout!=='old'?'selected':''}>الشكل الجديد (أدوات + لوحة أرقام + قائمة سفلية)</option>
@@ -9877,6 +9901,12 @@ function bindEvents(){
   });
   const roundPricesBtn = document.getElementById('roundPricesBtn');
   if(roundPricesBtn) roundPricesBtn.addEventListener('click', openRoundPricesModal);
+  const posFsCb = document.getElementById('s_pos_fullscreen');
+  if(posFsCb) posFsCb.addEventListener('change', async ()=>{
+    DB.settings.posFullscreen = posFsCb.checked;
+    const ok = await save(KEYS.settings, DB.settings);
+    toast(ok? 'تم الحفظ' : 'حدث خطأ أثناء الحفظ');
+  });
   const posLayoutSel = document.getElementById('s_pos_layout');
   if(posLayoutSel) posLayoutSel.addEventListener('change', async ()=>{
     DB.settings.posLayout = posLayoutSel.value==='old' ? 'old' : 'pro';
