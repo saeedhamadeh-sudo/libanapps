@@ -839,6 +839,7 @@ function settingsToDb(s){
       groupsLocked: !!s.groupsLocked,
       journalCurrency: s.journalCurrency||'both',
       currencyMode: s.currencyMode||null,
+      userScanMethods: (s.userScanMethods && typeof s.userScanMethods==='object')? s.userScanMethods : {},
       barcodeLabel: s.barcodeLabel||null}})
   };
 }
@@ -882,6 +883,7 @@ function applySettingsFromDb(row, base){
     currencyMode: (row.product_lists && row.product_lists._ui && row.product_lists._ui.currencyMode) ? row.product_lists._ui.currencyMode : base.currencyMode,
     groupsLocked: (row.product_lists && row.product_lists._ui && row.product_lists._ui.groupsLocked!=null) ? !!row.product_lists._ui.groupsLocked : base.groupsLocked,
     journalCurrency: (row.product_lists && row.product_lists._ui && row.product_lists._ui.journalCurrency) ? row.product_lists._ui.journalCurrency : base.journalCurrency,
+    userScanMethods: (row.product_lists && row.product_lists._ui && row.product_lists._ui.userScanMethods && typeof row.product_lists._ui.userScanMethods==='object') ? row.product_lists._ui.userScanMethods : (base.userScanMethods||{}),
     barcodeLabel: (row.product_lists && row.product_lists._ui && row.product_lists._ui.barcodeLabel) ? row.product_lists._ui.barcodeLabel : base.barcodeLabel
   };
 }
@@ -3029,8 +3031,18 @@ function autoItemDisplayName(d){
   return bits.join(' ') || 'منتج بدون اسم';
 }
 
+// طريقة مسح الباركود لكل مستخدم (كاميرا / قارئ خارجي) — وإلا الإعداد العام
+function userScanMethod(u){
+  u = u || currentUser;
+  const m = u && DB.settings.userScanMethods && DB.settings.userScanMethods[u.id];
+  return (m==='camera' || m==='reader') ? m : (DB.settings.barcodeScanMethod || 'camera');
+}
+async function setUserScanMethod(userId, method){
+  DB.settings.userScanMethods = Object.assign({}, DB.settings.userScanMethods||{}, {[userId]: method});
+  return save(KEYS.settings, DB.settings);
+}
 function openBarcodeScannerModal(onScan, continuous){
-  const method = DB.settings.barcodeScanMethod || 'camera';
+  const method = userScanMethod();
   const wrap = document.createElement('div');
   wrap.className = 'modal-bg';
   if(method === 'reader'){
@@ -5387,7 +5399,8 @@ function posView(){
           <button type="button" class="btn" id="pos_free_item_btn" title="بند حر أو خدمة صيانة">🛠 خدمة / بند حر</button>
           ${isPrivilegedUser(currentUser)? `<button type="button" class="btn" id="pos_cur_toggle" title="تبديل العملة الأساسية (دولار / ${escapeHtml(secCurLabel())})" style="font-weight:800; white-space:nowrap;">💱 ${escapeHtml(primSym())}</button>` : ''}
           <button type="button" class="btn" id="pos_keyboard_btn" title="اكتب يدوياً">⌨️</button>
-          <button type="button" class="btn" id="pos_camera_scan_btn">📷</button>
+          <button type="button" class="btn" id="pos_scan_mode_btn" title="طريقة قراءة الباركود لحسابك — اضغط للتبديل" style="white-space:nowrap;">${userScanMethod()==='reader'? '🔫 قارئ' : '📷 كاميرا'}</button>
+          ${userScanMethod()==='camera'? `<button type="button" class="btn" id="pos_camera_scan_btn" title="مسح بالكاميرا">📷</button>` : ''}
         </div>
         <div id="pos_scan_msg" style="min-height:16px; font-size:12.5px; color:var(--credit);"></div>
         <div class="pos-tile-grid" id="pos_tile_grid">${posTilesHtml(tileItems)}</div>
@@ -5498,6 +5511,15 @@ function bindPosEvents(){
   if(clrBtn) clrBtn.addEventListener('click', ()=>{ _posSearchQ=''; render(); });
   const camBtn = document.getElementById('pos_camera_scan_btn');
   if(camBtn) camBtn.addEventListener('click', ()=>{ openBarcodeScannerModal((code)=>handleCode(code), true); });
+  const scanModeBtn = document.getElementById('pos_scan_mode_btn');
+  if(scanModeBtn) scanModeBtn.addEventListener('click', async ()=>{
+    if(!currentUser) return;
+    const next = userScanMethod()==='reader' ? 'camera' : 'reader';
+    const ok = await setUserScanMethod(currentUser.id, next);
+    toast(ok ? (next==='reader'? 'قراءة الباركود: جهاز القراءة — امسح مباشرة وخانة البحث مفعّلة' : 'قراءة الباركود: الكاميرا') : 'حدث خطأ أثناء الحفظ');
+    render();
+    setTimeout(()=>{ const i2 = document.getElementById('pos_scan_input'); if(i2){ i2.setAttribute('inputmode','none'); i2.focus(); } }, 30);
+  });
   const curTgl = document.getElementById('pos_cur_toggle');
   if(curTgl) curTgl.addEventListener('click', togglePrimaryCurrency);
   const kbBtn = document.getElementById('pos_keyboard_btn');
@@ -8102,12 +8124,19 @@ function settingsView(){
     <h2><span class="dot"></span> إعدادات المستودع والباركود</h2>
     <div class="grid grid-2">
       <div class="field"><label>تنبيه انتهاء الصلاحية الافتراضي (أيام قبل الانتهاء)</label><input type="number" id="s_expdays" class="num" value="${s.expiryAlertDays||20}"></div>
-      <div class="field"><label>طريقة مسح الباركود الافتراضية</label>
+      <div class="field"><label>طريقة مسح الباركود الافتراضية (لمن لم يحدّد)</label>
         <select id="s_scanmethod">
           <option value="camera" ${(s.barcodeScanMethod||'camera')==='camera'?'selected':''}>كاميرا الجهاز</option>
           <option value="reader" ${s.barcodeScanMethod==='reader'?'selected':''}>قارئ باركود خارجي (USB / بلوتوث)</option>
         </select>
       </div>
+    </div>
+    <div class="field" style="margin-top:6px;"><label>طريقة قراءة الباركود لكل مستخدم</label>
+      <div style="display:flex; flex-direction:column; gap:6px; max-width:460px;">
+        ${(s.users||[]).filter(u=>u.role!=='superuser' || u.id===(currentUser&&currentUser.id)).filter(u=>isPrivilegedUser(currentUser) || u.id===(currentUser&&currentUser.id)).map(u=>`<div style="display:flex; align-items:center; gap:8px;"><span style="flex:1; font-weight:600;">👤 ${escapeHtml(u.username)}</span>
+          <select data-user-scan="${escapeHtml(u.id)}" style="width:auto;"><option value="camera" ${userScanMethod(u)==='camera'?'selected':''}>📷 الكاميرا</option><option value="reader" ${userScanMethod(u)==='reader'?'selected':''}>🔫 جهاز القراءة</option></select></div>`).join('')}
+      </div>
+      <div style="font-size:11.5px; color:var(--ink-soft); margin-top:4px;">كل مستخدم يقدر يبدّل طريقته بنفسه من زر «📷 كاميرا / 🔫 قارئ» بشاشة نقطة البيع.</div>
     </div>
     <button class="btn btn-primary" id="saveWarehouseSettingsBtn">💾 حفظ إعدادات المستودع</button>
   </div>
@@ -8977,6 +9006,9 @@ function bindEvents(){
     const days = Number(document.getElementById('s_expdays').value);
     DB.settings.expiryAlertDays = Number.isFinite(days) && days>0 ? days : 20;
     DB.settings.barcodeScanMethod = document.getElementById('s_scanmethod').value || 'camera';
+    const usm = Object.assign({}, DB.settings.userScanMethods||{});
+    document.querySelectorAll('[data-user-scan]').forEach(sel=>{ usm[sel.getAttribute('data-user-scan')] = sel.value; });
+    DB.settings.userScanMethods = usm;
     const ok = await save(KEYS.settings, DB.settings);
     toast(ok? 'تم حفظ إعدادات المستودع':'حدث خطأ أثناء الحفظ');
     _expiryAlertShownThisSession = false;
