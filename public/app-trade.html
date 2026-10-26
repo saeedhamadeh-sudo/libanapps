@@ -5544,8 +5544,6 @@ function posCategoryTabsHtml(){
           ${_posCatSorting? '' : `<div class="pos-cat-tab${_posActiveCategory===null?' active':''}" data-pos-category="">🗂 الكل</div>`}
           ${categories.map(c=>`<div class="pos-cat-tab${_posActiveCategory===c?' active':''}" data-pos-category="${escapeHtml(c)}" data-cat-key="${escapeHtml(c)}" ${_posCatSorting?'style="cursor:grab;"':''}>
             ${_posCatSorting? '⠿ ' : ''}${catImages[c]? `<img src="${catImages[c]}" style="height:18px; width:18px; object-fit:cover; border-radius:5px;">` : (groupIcon(c)? groupIcon(c)+' ' : '')}${escapeHtml(c)}
-            ${(isPrivilegedUser(currentUser) && !_posCatSorting)? `<span data-pos-cat-image="${escapeHtml(c)}" title="صورة القسم" style="opacity:.6; margin-inline-start:2px;">🖼</span>`:''}
-            ${(groupByName(c) && canManageGroups() && !_posCatSorting)? `<span data-pos-grp-edit="${escapeHtml(groupByName(c).id)}" title="تعديل المجموعة" style="opacity:.6; margin-inline-start:2px;">✎</span>`:''}
           </div>`).join('')}
           ${(noCatCount && !_posCatSorting)? `<div class="pos-cat-tab${_posActiveCategory==='__none__'?' active':''}" data-pos-category="__none__">بدون قسم (${noCatCount})</div>` : ''}
           ${canManageGroups()? (_posCatSorting
@@ -8707,7 +8705,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-10-26 · 21:10 · v18';
+const APP_TRADE_BUILD = '2026-10-26 · 22:00 · v19';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 function settingsView(){
   const s = DB.settings;
@@ -8906,6 +8904,18 @@ function settingsView(){
       <button class="btn" id="testBcPrintBtn">🖨 طباعة ملصق تجريبي</button>
     </div>
   </div>
+
+  ${(isPrivilegedUser(currentUser) || canManageGroups())? `<div class="card">
+    <h2><span class="dot"></span> 🗂 مجموعات شاشة POS</h2>
+    <div style="font-size:12.5px; color:var(--ink-soft); margin-bottom:8px;">تعديل المجموعة وصورتها صار من هون بدل الكبسات الصغيرة بشاشة POS.</div>
+    ${posCategories().length? `<div style="display:flex; flex-direction:column; gap:6px; max-width:560px;">${posCategories().map(c=>{ const g = groupByName(c); const img = (DB.settings.categoryImages||{})[c];
+      return `<div style="display:flex; align-items:center; gap:8px; border:1px solid var(--line); border-radius:10px; padding:6px 10px;">
+        ${img? `<img src="${img}" alt="" style="width:28px; height:28px; object-fit:cover; border-radius:6px;">` : `<span style="width:28px; text-align:center;">${groupIcon(c)||'🗂'}</span>`}
+        <b style="flex:1;">${escapeHtml(c)}</b>
+        ${isPrivilegedUser(currentUser)? `<button type="button" class="btn btn-sm" data-set-cat-image="${escapeHtml(c)}">🖼 الصورة</button>` : ''}
+        ${(g && canManageGroups())? `<button type="button" class="btn btn-sm" data-set-grp-edit="${escapeHtml(g.id)}">✎ تعديل</button>` : ''}
+      </div>`; }).join('')}</div>` : `<div style="font-size:13px; color:var(--ink-soft);">ما في مجموعات بعد</div>`}
+  </div>` : ''}
 
   <div class="card">
     <h2><span class="dot"></span> 🖥 شكل شاشة POS</h2>
@@ -9901,6 +9911,8 @@ function bindEvents(){
   });
   const roundPricesBtn = document.getElementById('roundPricesBtn');
   if(roundPricesBtn) roundPricesBtn.addEventListener('click', openRoundPricesModal);
+  document.querySelectorAll('[data-set-cat-image]').forEach(b=>b.addEventListener('click', ()=>openCategoryImageModal(b.getAttribute('data-set-cat-image'))));
+  document.querySelectorAll('[data-set-grp-edit]').forEach(b=>b.addEventListener('click', ()=>openGroupModal(customGroups().find(g=>g.id===b.getAttribute('data-set-grp-edit')))));
   const posFsCb = document.getElementById('s_pos_fullscreen');
   if(posFsCb) posFsCb.addEventListener('change', async ()=>{
     DB.settings.posFullscreen = posFsCb.checked;
