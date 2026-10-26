@@ -1105,9 +1105,14 @@ function primSym(){ return primIsSec() ? secCurLabel() : '$'; }
 function toPrim(usd){ const n = Number(usd)||0; return primIsSec() ? Math.round(n*curRate()) : Math.round(n*100)/100; }
 // رقم مُدخل بالعملة الأساسية → دولار للحفظ
 function fromPrim(v){ const n = Number(v)||0; return primIsSec() ? Math.round(n/curRate()*1e6)/1e6 : n; }
+// تدوير مبلغ (بالدولار) حسب العملة الأساسية: سنتات للدولار، دقة أعلى للعملة المحلية حتى ترجع أرقامها كما أُدخلت
+function roundAmt(usd){ const n = Number(usd)||0; return primIsSec() ? Math.round(n*1e6)/1e6 : Math.round(n*100)/100; }
+// خانات الإدخال: قيمة محفوظة بالدولار → ما يظهر بالخانة بالعملة الأساسية (وبالعكس عند القراءة). rate = سعر صرف المستند إن وُجد
+function inPrim(usd, rate){ if(usd===''||usd===null||usd===undefined) return ''; return primIsSec() ? Math.round((Number(usd)||0)*(Number(rate)||curRate())) : usd; }
+function outPrim(v, rate){ if(v===''||v===null||v===undefined) return ''; const n = Number(v)||0; return primIsSec() ? Math.round(n/(Number(rate)||curRate())*1e6)/1e6 : n; }
 function fmtSecAmt(usd){ return fmtNum(Math.round((Number(usd)||0)*curRate()))+' '+secCurLabel(); }
 // عرض مبلغ (محفوظ بالدولار) بالعملة الأساسية
-function fmtPrim(usd){ return primIsSec() ? fmtSecAmt(usd) : fmtMoney(usd); }
+function fmtPrim(usd){ return primIsSec() ? fmtSecAmt(usd) : fmtUSD(usd); }
 // العملة الثانية (للعرض الثانوي بين قوسين) — فارغ إذا الوضع عملة واحدة
 // تبديل العملة الأساسية بكبسة (من شاشة POS): دولار ⇄ ليرة — يحافظ على وجود عملة ثانية أو عدمه
 async function togglePrimaryCurrency(){
@@ -1122,7 +1127,7 @@ async function togglePrimaryCurrency(){
   toast(ok ? 'العملة الأساسية الآن: '+(primIsSec()? secCurLabel() : 'دولار $') : 'حدث خطأ أثناء حفظ العملة');
   render();
 }
-function fmtSecondary(usd){ const m = currencyMode(); return m==='USD_SEC' ? fmtSecAmt(usd) : m==='SEC_USD' ? fmtMoney(usd) : ''; }
+function fmtSecondary(usd){ const m = currencyMode(); return m==='USD_SEC' ? fmtSecAmt(usd) : m==='SEC_USD' ? fmtUSD(usd) : ''; }
 const COUNTRY_CURRENCIES = [
   {country:'لبنان', code:'LBP'}, {country:'السعودية', code:'SAR'}, {country:'الإمارات', code:'AED'},
   {country:'قطر', code:'QAR'}, {country:'الكويت', code:'KWD'}, {country:'البحرين', code:'BHD'},
@@ -1150,8 +1155,9 @@ function fmtNum(n){
   n = Math.round(Number(n)||0);
   return n.toLocaleString('en-US');
 }
-function fmtUSD(n){ return fmtMoney(n); }
-function fmtMoney(n){
+// كل المبالغ محفوظة بالدولار داخلياً: fmtMoney تعرضها بالعملة الأساسية للبرنامج، وfmtUSD بالدولار دائماً
+function fmtMoney(n){ return fmtPrim(n); }
+function fmtUSD(n){
   n = Number(n)||0;
   const neg = n<0; n=Math.abs(n);
   const s = n.toLocaleString('en-US',{minimumFractionDigits:2, maximumFractionDigits:2});
@@ -1311,11 +1317,16 @@ function numberToArabicWords(num){
 }
 // المبلغ بالكلمات بالعملة الأساسية (إذا الأساسية ليرة: lbp = المبلغ بالليرة)
 function amountWordsPrim(usd, lbp){
-  if(!primIsSec()) return amountWords(usd);
+  if(!primIsSec()) return amountWordsUSD(usd);
   const code = (DB.settings.secondCurrencyCode||'LBP').toUpperCase();
   return 'فقط ' + numberToArabicWords(Math.round(Number(lbp)||0)) + ' ' + (code==='LBP'? 'ليرة لبنانية' : code) + ' لا غير';
 }
-function amountWords(usd){
+// المبلغ بالكلمات بالعملة الأساسية (rate: سعر صرف المستند إن وُجد)
+function amountWords(usd, rate){
+  if(!primIsSec()) return amountWordsUSD(usd);
+  return amountWordsPrim(usd, (Number(usd)||0)*(Number(rate)||curRate()));
+}
+function amountWordsUSD(usd){
   const whole = Math.floor(usd);
   const cents = Math.round((usd-whole)*100);
   let s = 'فقط ' + numberToArabicWords(whole) + ' دولار أمريكي';
@@ -1426,8 +1437,8 @@ function computeInvoiceTotal(inv){
   const net = Math.max(subtotal - discount, 0);
   // TVA على مستوى الفاتورة (فاتورة المشتريات): الأسعار المدخلة بدون ضريبة، والضريبة تُضاف على الصافي
   const vatRate = inv.vatEnabled ? (Number(inv.vatRate)||0) : 0;
-  const vatAmount = vatRate ? Math.round(net*vatRate)/100 : 0;
-  const totalUSD = Math.round((net + vatAmount)*100)/100;
+  const vatAmount = vatRate ? roundAmt(net*vatRate/100) : 0;
+  const totalUSD = roundAmt(net + vatAmount);
   const totalLBP = totalUSD * (Number(inv.exchangeRate)||DB.settings.defaultExchangeRate||90000);
   return {subtotal, discount, net, vatRate, vatAmount, totalUSD, totalLBP};
 }
@@ -2530,8 +2541,8 @@ function openImportStockModal(){
           <td>${escapeHtml(r.madeIn||'—')}</td>
           <td class="num">${escapeHtml(r.mfgYear||'—')}</td>
           <td class="num" style="${r.qty<0?'color:var(--debit); font-weight:800;':''}">${fmtQty(r.qty)}</td>
-          <td class="num">${r.cost!==null && r.cost!==undefined? fmtMoney(r.cost) : '—'}</td>
-          <td class="num">${r.retail!==null && r.retail!==undefined? fmtMoney(r.retail) : '—'}</td>
+          <td class="num">${r.cost!==null && r.cost!==undefined? fmtUSD(r.cost) : '—'}</td>
+          <td class="num">${r.retail!==null && r.retail!==undefined? fmtUSD(r.retail) : '—'}</td>
         </tr>`).join('')}</tbody>
       </table></div>`;
     $('#imp_go').disabled = !parsed.some(r=>r.on);
@@ -2702,7 +2713,7 @@ function openImportCsvStockModal(){
           <td class="num" style="${r.qty<0?'color:var(--debit); font-weight:800;':''}">${fmtQty(r.qty)}</td>
           <td class="num">${r.buy!==null? fmtQty(r.buy) : '—'}</td>
           <td class="num">${r.sell!==null? fmtQty(r.sell) : '—'}</td>
-          ${isSec()? `<td class="num">${r.buy!==null? fmtMoney(toUSD(r.buy)) : '—'}</td><td class="num">${r.sell!==null? fmtMoney(toUSD(r.sell)) : '—'}</td>`:''}
+          ${isSec()? `<td class="num">${r.buy!==null? fmtUSD(toUSD(r.buy)) : '—'}</td><td class="num">${r.sell!==null? fmtUSD(toUSD(r.sell)) : '—'}</td>`:''}
         </tr>`).join('')}</tbody>
       </table></div>`;
     $('#csv_go').disabled = !parsed.some(r=>r.on);
@@ -4918,17 +4929,17 @@ function workEntryFormView(e, workerId){
     <div style="font-size:12.5px; color:var(--ink-soft); margin:14px 0 8px; font-weight:700;">اختر أي مزيج تريده (يومية ثابتة و/أو ساعات إضافية):</div>
 
     <div class="grid grid-2">
-      <div class="field"><label>يومية ثابتة $</label><input type="number" id="w_daily" class="num" value="${d.dailyWage||0}"></div>
+      <div class="field"><label>يومية ثابتة ${primSym()}</label><input type="number" id="w_daily" class="num" value="${d.dailyWage? inPrim(d.dailyWage) : 0}"></div>
       <div></div>
     </div>
     <div class="grid grid-2">
       <div class="field"><label>ساعات إضافية (عدد)</label><input type="number" id="w_othours" class="num" value="${d.overtimeHours||0}"></div>
-      <div class="field"><label>سعر الساعة الإضافية $</label><input type="number" id="w_otrate" class="num" value="${d.overtimeRate||0}"></div>
+      <div class="field"><label>سعر الساعة الإضافية ${primSym()}</label><input type="number" id="w_otrate" class="num" value="${d.overtimeRate? inPrim(d.overtimeRate) : 0}"></div>
     </div>
     <div class="field"><label>تفاصيل (اختياري)</label><input type="text" id="w_details" value="${escapeHtml(d.details||'')}" placeholder="يومية عمل"></div>
 
     <div class="totals-box">
-      <div class="row big"><span>إجمالي اليومية $</span><span class="v" id="wTotal">${fmtMoney(total)}</span></div>
+      <div class="row big"><span>إجمالي اليومية ${primSym()}</span><span class="v" id="wTotal">${fmtMoney(total)}</span></div>
     </div>
 
     <div class="action-row" style="margin-top:16px">
@@ -4946,9 +4957,9 @@ function bindWorkEntryFormEvents(){
   };
   el.addEventListener('input', e=>_workEntryDraft.number=e.target.value);
   document.getElementById('w_date').addEventListener('input', e=>_workEntryDraft.date=e.target.value);
-  document.getElementById('w_daily').addEventListener('input', e=>{ _workEntryDraft.dailyWage=Number(e.target.value)||0; refresh(); });
+  document.getElementById('w_daily').addEventListener('input', e=>{ _workEntryDraft.dailyWage=Number(outPrim(e.target.value))||0; refresh(); });
   document.getElementById('w_othours').addEventListener('input', e=>{ _workEntryDraft.overtimeHours=Number(e.target.value)||0; refresh(); });
-  document.getElementById('w_otrate').addEventListener('input', e=>{ _workEntryDraft.overtimeRate=Number(e.target.value)||0; refresh(); });
+  document.getElementById('w_otrate').addEventListener('input', e=>{ _workEntryDraft.overtimeRate=Number(outPrim(e.target.value))||0; refresh(); });
   document.getElementById('w_details').addEventListener('input', e=>_workEntryDraft.details=e.target.value);
 
   const saveBtn = document.getElementById('saveWorkEntryBtn');
@@ -5002,7 +5013,7 @@ function workEntryPrintView(e){
     </tbody></table>
     <div class="doc-foot">
       <div class="words-box">${amountWords(total)}</div>
-      <div class="amount-box"><div class="line">الإجمالي $: ${fmtMoney(total)}</div></div>
+      <div class="amount-box"><div class="line">الإجمالي ${primSym()}: ${fmtMoney(total)}</div></div>
     </div>
     <div class="sig">التوقيع</div>
   </div>`;
@@ -5459,7 +5470,7 @@ function posView(){
           <button class="btn btn-sm" id="pos_pick_customer_btn">تغيير</button>
         </div>
         <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px; font-size:11.5px; color:var(--ink-soft); border-top:1px dashed var(--line); padding-top:8px;">
-          <span>🧑‍💼 صندوقك: ${currencyMode()==='USD'? '$'+myShift.cashUSD.toFixed(2) : currencyMode()==='SEC'? fmtNum(myShift.cashLBP)+' '+secCurLabel() : currencyMode()==='SEC_USD'? fmtNum(myShift.cashLBP)+' '+secCurLabel()+' + $'+myShift.cashUSD.toFixed(2) : '$'+myShift.cashUSD.toFixed(2)+' + '+fmtNum(myShift.cashLBP)+' '+secCurLabel()}</span>
+          <span>🧑‍💼 صندوقك: ${currencyMode()==='USD'? '$'+myShift.cashUSD.toFixed(2)+(Math.abs(myShift.cashLBP)>0.5? ' + '+fmtNum(myShift.cashLBP)+' '+secCurLabel() : '') : currencyMode()==='SEC'? fmtNum(myShift.cashLBP)+' '+secCurLabel()+(Math.abs(myShift.cashUSD)>0.004? ' + $'+myShift.cashUSD.toFixed(2) : '') : currencyMode()==='SEC_USD'? fmtNum(myShift.cashLBP)+' '+secCurLabel()+' + $'+myShift.cashUSD.toFixed(2) : '$'+myShift.cashUSD.toFixed(2)+' + '+fmtNum(myShift.cashLBP)+' '+secCurLabel()}</span>
           <button class="btn btn-sm" id="pos_close_shift_btn">🔒 إقفال صندوقي</button>
         </div>
       </div>
@@ -5866,7 +5877,7 @@ function openPosReturnModal(){
     const partly = (i.items||[]).some(it=>invItemReturnedQty(it)>0);
     const cu = DB.customers.find(c=>c.id===i.customerId);
     const acc = posIsOnAccount(i);
-    return `#${escapeHtml(i.number)} — ${fmtDate(i.date)} — $${tot.toFixed(2)}${acc? ' — على حساب '+escapeHtml(cu?cu.name:''):''}${partly?' (مسترجع جزئياً)':''}`;
+    return `#${escapeHtml(i.number)} — ${fmtDate(i.date)} — ${fmtMoney(tot)}${acc? ' — على حساب '+escapeHtml(cu?cu.name:''):''}${partly?' (مسترجع جزئياً)':''}`;
   };
   wrap.innerHTML = `<div class="modal">
     <h3>↩ فاتورة استرجاع</h3>
@@ -5984,7 +5995,7 @@ function openPosCreditModal(ticket){
   wrap.className = 'modal-bg';
   wrap.innerHTML = `<div class="modal" style="max-width:420px;">
     <h3>📒 على حساب ${escapeHtml(ticket.customerLabel)}</h3>
-    <div style="display:flex; justify-content:space-between; font-size:14px; margin-bottom:4px;"><span>قيمة الفاتورة</span><b class="num">$${totalUSD.toFixed(2)} <span style="font-weight:500; color:var(--ink-soft); font-size:12px;">(${fmtNum(totalUSD*rate)} ${secCurLabel()})</span></b></div>
+    <div style="display:flex; justify-content:space-between; font-size:14px; margin-bottom:4px;"><span>قيمة الفاتورة</span><b class="num">${fmtMoney(totalUSD)} <span style="font-weight:500; color:var(--ink-soft); font-size:12px;">(${fmtNum(totalUSD*rate)} ${secCurLabel()})</span></b></div>
     <div style="display:flex; justify-content:space-between; font-size:13px; color:var(--ink-soft); margin-bottom:10px;"><span>رصيد الحساب قبل الفاتورة</span><span class="num">${fmtMoney(bal)}</span></div>
     <div class="field"><label>هل دفع شيئاً من الفاتورة الآن؟ (اتركه 0 إذا كلها دين)</label>
       <div style="display:flex; gap:6px;">
@@ -6004,8 +6015,8 @@ function openPosCreditModal(ticket){
   const upd = ()=>{
     const p = paidUSD(), rest = Math.max(0, totalUSD - p);
     $('#pc_sum').innerHTML = p>0
-      ? `المدفوع الآن: <b class="num">$${p.toFixed(2)}</b> — يصدر به إيصال قبض ويدخل صندوقك<br>الباقي ديناً على الحساب: <b class="num" style="color:var(--debit);">$${rest.toFixed(2)}</b>${p>=totalUSD-0.005? '<br><span style="color:var(--credit);">المبلغ يغطي كامل الفاتورة — ستُسجَّل كبيع نقدي</span>' : ''}`
-      : `كامل الفاتورة ديناً على الحساب: <b class="num" style="color:var(--debit);">$${totalUSD.toFixed(2)}</b><br>رصيد الحساب بعدها: <b class="num">${fmtMoney(bal+totalUSD)}</b>`;
+      ? `المدفوع الآن: <b class="num">${fmtMoney(p)}</b> — يصدر به إيصال قبض ويدخل صندوقك<br>الباقي ديناً على الحساب: <b class="num" style="color:var(--debit);">$${rest.toFixed(2)}</b>${p>=totalUSD-0.005? '<br><span style="color:var(--credit);">المبلغ يغطي كامل الفاتورة — ستُسجَّل كبيع نقدي</span>' : ''}`
+      : `كامل الفاتورة ديناً على الحساب: <b class="num" style="color:var(--debit);">${fmtMoney(totalUSD)}</b><br>رصيد الحساب بعدها: <b class="num">${fmtMoney(bal+totalUSD)}</b>`;
   };
   $('#pc_paid').addEventListener('input', upd); $('#pc_cur').addEventListener('change', upd); upd();
   setTimeout(()=>{ $('#pc_paid').focus(); $('#pc_paid').select(); }, 30);
@@ -7653,7 +7664,7 @@ function itemDocFormView(kind, doc, partyId, isReturn){
     <div class="add-item-row"><button class="btn btn-sm btn-primary" id="addItemBtn">+ إضافة سطر</button></div>
 
     <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
-      <div class="field" style="max-width:220px"><label>حسم (اختياري) $</label><input type="number" id="f_discount" class="num" value="${d.discount||0}"></div>
+      <div class="field" style="max-width:220px"><label>حسم (اختياري) ${primSym()}</label><input type="number" id="f_discount" class="num" value="${d.discount? inPrim(d.discount, d.exchangeRate) : 0}"></div>
       ${kind==='purchase'? `<div class="field" style="background:var(--paper); border:1px solid var(--line); border-radius:8px; padding:8px 12px;">
         <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-weight:700; margin:0;">
           <input type="checkbox" id="f_vat_on" ${d.vatEnabled?'checked':''} style="width:auto;"> الفاتورة تشمل TVA
@@ -7662,8 +7673,8 @@ function itemDocFormView(kind, doc, partyId, isReturn){
         <div style="font-size:11.5px; color:var(--ink-soft); margin-top:4px;">الأسعار في البنود بدون ضريبة — تُضاف الـTVA على مجموع الفاتورة.</div>
       </div>` : ''}
       ${(kind==='purchase' && !d.isReturn && !d.id)? `<div class="field" style="max-width:260px; background:var(--paper); border:1px solid var(--line); border-radius:8px; padding:8px 12px;">
-        <label>💵 المدفوع للمورد الآن $ (اختياري)</label>
-        <input type="number" step="0.01" min="0" id="f_paid_now" class="num" value="${d.paidNow||''}" placeholder="0">
+        <label>💵 المدفوع للمورد الآن ${primSym()} (اختياري)</label>
+        <input type="number" step="0.01" min="0" id="f_paid_now" class="num" value="${d.paidNow? inPrim(d.paidNow, d.exchangeRate) : ''}" placeholder="0">
         <div style="font-size:11.5px; color:var(--ink-soft); margin-top:4px;">يصدر به سند صرف تلقائياً ويظهر بعامود «دفعات موردين» باليومية — والباقي دين للمورد.</div>
       </div>` : ''}
     </div>
@@ -7672,7 +7683,7 @@ function itemDocFormView(kind, doc, partyId, isReturn){
       <div class="row"><span>مجموع البنود</span><span class="v" id="totSubtotal">${fmtMoney(totals.subtotal)}</span></div>
       <div class="row"><span>الحسم</span><span class="v" id="totDiscount">${fmtMoney(totals.discount)}</span></div>
       ${kind==='purchase'? `<div class="row" id="totVatRow" style="${d.vatEnabled?'':'display:none;'}"><span id="totVatLabel">TVA ${purchaseDocVat(d)}%</span><span class="v" id="totVat">${fmtMoney(totals.vatAmount)}</span></div>` : ''}
-      <div class="row"><span>الإجمالي بالدولار</span><span class="v" id="totUSD">${fmtMoney(totals.totalUSD)}</span></div>
+      <div class="row"><span>الإجمالي بالدولار</span><span class="v" id="totUSD">${fmtUSD(totals.totalUSD)}</span></div>
       <div class="row big"><span>الإجمالي بالليرة اللبنانية</span><span class="v" id="totLBP">${fmtLBP(totals.totalLBP)}</span></div>
     </div>
 
@@ -7766,7 +7777,7 @@ function lineFromProduct(it, w){
 function lineCostVat(it){
   if(it.price===''||it.price===undefined||it.price===null) return null;
   const vat = (_itemDocDraft && _itemDocDraft.__kind==='purchase') ? purchaseDocVat(_itemDocDraft) : ((it.vatRate===''||it.vatRate===undefined||it.vatRate===null) ? settingsVatRate() : Number(it.vatRate));
-  return Math.round(Number(it.price)*(1+vat/100)*100)/100;
+  return roundAmt(Number(it.price)*(1+vat/100));
 }
 function purchaseLineFieldsHtml(it){
   const key = autoCategoryKey(it.cat);
@@ -7795,14 +7806,14 @@ function purchaseLineFieldsHtml(it){
 }
 function purchaseLinePricingHtml(it){
   const cv = lineCostVat(it);
-  const f = (field, label, opts={})=>`<div class="field"><label>${label}</label><input type="number" step="0.01" class="it-f num" data-f="${field}" value="${escapeHtml(it[field]??'')}"></div>`;
+  const f = (field, label, opts={})=>`<div class="field"><label>${label}</label><input type="number" step="0.01" class="it-f num" data-f="${field}" value="${escapeHtml(field==='salePrice'? inPrim(it[field]??'', _itemDocDraft && _itemDocDraft.exchangeRate) : (it[field]??''))}"></div>`;
   return `<div class="pline-pricing" style="background:var(--paper); border:1px dashed var(--line); border-radius:10px; padding:10px; margin-bottom:10px;">
     <div class="grid grid-2">
-      <div class="field"><label>التكلفة شامل الضريبة $ ${_itemDocDraft && _itemDocDraft.vatEnabled? '(TVA '+purchaseDocVat(_itemDocDraft)+'%)' : '(بدون TVA)'}</label><input type="text" class="it-costvat num" readonly style="opacity:.85; font-weight:800;" value="${cv===null?'':cv.toFixed(2)}"></div>
+      <div class="field"><label>التكلفة شامل الضريبة ${primSym()} ${_itemDocDraft && _itemDocDraft.vatEnabled? '(TVA '+purchaseDocVat(_itemDocDraft)+'%)' : '(بدون TVA)'}</label><input type="text" class="it-costvat num" readonly style="opacity:.85; font-weight:800;" value="${cv===null?'': (primIsSec()? inPrim(cv, _itemDocDraft && _itemDocDraft.exchangeRate) : cv.toFixed(2))}"></div>
       ${f('margin','هامش الربح %')}
     </div>
     <div class="grid grid-2">
-      ${f('salePrice','سعر البيع $ (تلقائي أو يدوي)')}
+      ${f('salePrice','سعر البيع '+primSym()+' (تلقائي أو يدوي)')}
     </div>
   </div>`;
 }
@@ -7813,7 +7824,8 @@ function purchaseLineDatalists(){
   return Object.keys(lists).map(k=>`<datalist id="plist_${k}">${lists[k].map(v=>`<option value="${escapeHtml(v)}">`).join('')}</datalist>`).join('');
 }
 function itemRow(it, idx){
-  const computedTotal = Math.round((Number(it.qty)||0) * (Number(it.price)||0) * 100)/100;
+  const _dr = (_itemDocDraft && Number(_itemDocDraft.exchangeRate)) || curRate();
+  const computedTotal = inPrim(roundAmt((Number(it.qty)||0) * (Number(it.price)||0)), _dr);
   if(isAutoShop()){
     const d = _itemDocDraft || {};
     const canCreate = d.__kind==='purchase' && !d.isReturn;
@@ -7837,8 +7849,8 @@ function itemRow(it, idx){
     ${isPurch && d.addToStock ? purchaseLineFieldsHtml(it) : ''}
     <div class="grid grid-3">
       <div class="field"><label>الكمية</label><input type="number" class="it-qty num" value="${it.qty}"></div>
-      <div class="field"><label>${isPurch? 'سعر التكلفة الإفرادي $' : 'السعر الإفرادي $'}</label><input type="number" class="it-price num" value="${it.price}"></div>
-      <div class="field"><label>السعر الإجمالي $ (تلقائي)</label><input type="number" class="it-total num" value="${computedTotal}" disabled style="opacity:.75;"></div>
+      <div class="field"><label>${isPurch? 'سعر التكلفة الإفرادي '+primSym() : 'السعر الإفرادي '+primSym()}</label><input type="number" class="it-price num" value="${inPrim(it.price, _dr)}"></div>
+      <div class="field"><label>السعر الإجمالي ${primSym()} (تلقائي)</label><input type="number" class="it-total num" value="${computedTotal}" disabled style="opacity:.75;"></div>
     </div>
     ${isPurch && d.addToStock ? purchaseLinePricingHtml(it) : ''}
   </div>`;
@@ -7852,8 +7864,8 @@ function itemRow(it, idx){
     <div class="field"><label>اسم المنتج (يدوي إذا لم يكن موجودًا في المستودع)</label><input type="text" class="it-desc" value="${escapeHtml(it.desc)}" placeholder="اسم المنتج"></div>
     <div class="grid grid-3">
       <div class="field"><label>الكمية</label><input type="number" class="it-qty num" value="${it.qty}"></div>
-      <div class="field"><label>السعر الإفرادي $</label><input type="number" class="it-price num" value="${it.price}"></div>
-      <div class="field"><label>السعر الإجمالي $ (تلقائي)</label><input type="number" class="it-total num" value="${computedTotal}" disabled style="opacity:.75;"></div>
+      <div class="field"><label>السعر الإفرادي ${primSym()}</label><input type="number" class="it-price num" value="${inPrim(it.price, _dr)}"></div>
+      <div class="field"><label>السعر الإجمالي ${primSym()} (تلقائي)</label><input type="number" class="it-total num" value="${computedTotal}" disabled style="opacity:.75;"></div>
     </div>
   </div>`;
 }
@@ -7900,7 +7912,7 @@ function paymentFormView(kind, rec, partyId){
       <div class="field"><label>التاريخ</label><input type="date" id="r_date" value="${d.date}"></div>
     </div>
     <div class="grid grid-2">
-      <div class="field"><label>المبلغ ($)</label><input type="number" id="r_amount" class="num" value="${d.amount}"></div>
+      <div class="field"><label>المبلغ (${primSym()})</label><input type="number" id="r_amount" class="num" value="${inPrim(d.amount)}"></div>
       <div class="field"><label>طريقة الدفع</label>
         <div class="type-toggle">
           <button type="button" class="btn btn-sm ${d.method==='نقدا'?'btn-primary':''}" data-method="نقدا">نقدًا</button>
@@ -7938,6 +7950,8 @@ function itemDocPrintView(kind, doc){
   const cfg = (kind==='purchase' && doc.isReturn) ? {...ITEMDOC_CFG[kind], title:'فاتورة مرتجع', docTypeDefault:'فاتورة مرتجع مشتريات', filenamePrefix:'PurchaseReturn'} : ITEMDOC_CFG[kind];
   const party = DB[cfg.partyArr].find(p=>p.id===doc[cfg.partyField]);
   const totals = computeInvoiceTotal(doc);
+  const _r = Number(doc.exchangeRate)||curRate();
+  const fmtMoney = v=> primIsSec() ? fmtLBP((Number(v)||0)*_r) : fmtUSD(v);
   const readOnly = !!currentCustomerSession;
   return `
   <div class="doc-actions no-print">
@@ -7966,13 +7980,14 @@ function itemDocPrintView(kind, doc){
     </tbody></table>
     </div>
     <div class="doc-foot">
-      <div class="words-box">${amountWords(totals.totalUSD)}</div>
+      <div class="words-box">${amountWords(totals.totalUSD, _r)}</div>
       <div class="amount-box">
         ${(totals.discount>0 || totals.vatAmount>0)? `<div class="line" style="font-size:13px; font-weight:600; color:var(--ink-soft);">مجموع البنود: ${fmtMoney(totals.subtotal)}</div>` : ''}
         ${totals.discount>0? `<div class="line" style="font-size:13px; font-weight:600; color:var(--debit);">الحسم: -${fmtMoney(totals.discount)}</div>` : ''}
         ${totals.vatAmount>0? `<div class="line" style="font-size:13px; font-weight:600; color:var(--ink-soft);">الصافي قبل الضريبة: ${fmtMoney(totals.net)}</div><div class="line" style="font-size:13px; font-weight:600; color:var(--ink-soft);">TVA ${totals.vatRate}%: ${fmtMoney(totals.vatAmount)}</div>` : ''}
-        <div class="line">المجموع $: ${fmtMoney(totals.totalUSD)}</div>
-        <div class="line lbp">المجموع ${secCurLabel()}: ${fmtLBP(totals.totalLBP)}</div>
+        ${primIsSec()
+          ? `<div class="line">المجموع ${secCurLabel()}: ${fmtLBP(totals.totalLBP)}</div>${hasSecondCur()? `<div class="line lbp">المجموع $: ${fmtUSD(totals.totalUSD)}</div>` : ''}`
+          : `<div class="line">المجموع $: ${fmtUSD(totals.totalUSD)}</div>${hasSecondCur()? `<div class="line lbp">المجموع ${secCurLabel()}: ${fmtLBP(totals.totalLBP)}</div>` : ''}`}
       </div>
     </div>
     ${kind==='purchase'? `<div class="no-print" style="font-size:12px; color:var(--ink-soft); margin-top:8px;">${doc.addToStock? (doc.isReturn? '📤 تم خصم البنود من المستودع' : '📥 أُضيفت البنود إلى المستودع') : 'ℹ️ هذه الفاتورة لم تُضف إلى المستودع'}</div>` : ''}
@@ -8009,7 +8024,7 @@ function paymentPrintView(kind, rec){
     <div class="doc-foot">
       <div class="words-box">${amountWords(Number(rec.amount)||0)}</div>
       <div class="amount-box">
-        <div class="line">المبلغ $: ${fmtMoney(rec.amount)}</div>
+        <div class="line">المبلغ ${primSym()}: ${fmtMoney(rec.amount)}</div>
       </div>
     </div>
     <div class="sig">التوقيع</div>
@@ -8135,9 +8150,9 @@ function settingsView(){
   </div>
 
   <div class="card">
-    <h2><span class="dot"></span> 💱 العملة</h2>
-    <p style="font-size:12.5px; color:var(--ink-soft);">اختر العملة الأساسية: تظهر بها الأسعار في نقطة البيع والمستودع وتُدخل بها الأسعار. العملة الثانية تظهر بجانبها وتُستعمل للقبض (حسب الإعداد).</p>
-    <div class="field" style="max-width:420px;"><label>العملات</label>
+    <h2><span class="dot"></span> 💱 العملة الأساسية للبرنامج وسعر الصرف</h2>
+    <p style="font-size:12.5px; color:var(--ink-soft); line-height:1.7;">العملة الأساسية تُستعمل بكل البرنامج: نقطة البيع، المستودع، الفواتير والمشتريات، الإيصالات وسندات الصرف، كشوفات الحساب، الميزانية والعمال، والطباعة — تظهر بها المبالغ وتُكتب بها الأسعار. سعر الصرف تحدده أنت أدناه.</p>
+    <div class="field" style="max-width:420px;"><label>العملة الأساسية</label>
       <select id="s_cur_mode">
         <option value="USD" ${currencyMode()==='USD'?'selected':''}>دولار $ فقط</option>
         <option value="SEC" ${currencyMode()==='SEC'?'selected':''}>${secCurLabel()==='ل.ل'?'لبناني ل.ل':secCurLabel()} فقط</option>
@@ -8151,8 +8166,8 @@ function settingsView(){
           ${COUNTRY_CURRENCIES.map(c=>`<option value="${c.code}" ${((s.secondCurrencyCode||'LBP')===c.code)?'selected':''}>${c.country} — ${c.code}</option>`).join('')}
         </select>
       </div>
-      <div class="field"><label>سعر الصرف مقابل 1$</label><input type="number" id="s_cur2_rate" class="num" value="${s.secondCurrencyRate||s.defaultExchangeRate||0}"></div>
-      <div class="field"><label>&nbsp;</label><button type="button" class="btn btn-sm" id="s_cur2_sync">🔄 مزامنة السعر من الإنترنت</button></div>
+      <div class="field"><label>سعر الصرف: 1$ = كم ${secCurLabel()}؟ (أنت تحدده)</label><input type="number" id="s_cur2_rate" class="num" value="${s.secondCurrencyRate||s.defaultExchangeRate||0}"></div>
+      <div class="field"><label>&nbsp;</label><button type="button" class="btn btn-sm" id="s_cur2_sync">🔄 جلب السعر من الإنترنت (اختياري)</button></div>
     </div>
     <div id="s_cur2_synced_note" style="font-size:11.5px; color:var(--ink-soft);">${s.secondCurrencyLastSync? 'آخر مزامنة: '+new Date(s.secondCurrencyLastSync).toLocaleString('en-GB',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}) : ''}</div>
     <div class="field" id="s_pos_pay_wrap" style="margin-top:10px; max-width:320px; ${hasSecondCur()?'':'display:none;'}"><label>عملة القبض في شاشة POS</label>
@@ -8168,6 +8183,7 @@ function settingsView(){
         <option value="LBP" ${s.journalCurrency==='LBP'?'selected':''}>${secCurLabel()} فقط (الدولار يُحوَّل بسعر الصرف)</option>
       </select>
     </div>
+    <div style="font-size:11.5px; color:var(--ink-soft); margin-top:8px; line-height:1.6;">ملاحظة: المبالغ محفوظة داخلياً بالدولار — عند تغيير سعر الصرف تتغيّر قيمتها بالعملة المحلية تلقائياً. فواتير البيع والشراء تُعرض بسعر الصرف المسجّل على كل فاتورة.</div>
     <button class="btn btn-primary" id="saveCur2Btn" style="margin-top:10px;">💾 حفظ إعدادات العملة</button>
   </div>
 
@@ -9050,7 +9066,7 @@ function bindEvents(){
         if(note) note.textContent = 'آخر مزامنة: '+new Date(DB.settings.secondCurrencyLastSync).toLocaleString('en-GB',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
       }
     }catch(e){ toast('لم نتمكن من الاتصال بخدمة أسعار الصرف — تأكد من الاتصال بالإنترنت'); console.error(e); }
-    cur2SyncBtn.disabled = false; cur2SyncBtn.textContent = '🔄 مزامنة السعر من الإنترنت';
+    cur2SyncBtn.disabled = false; cur2SyncBtn.textContent = '🔄 جلب السعر من الإنترنت (اختياري)';
   });
   const saveWarehouseSettingsBtn = document.getElementById('saveWarehouseSettingsBtn');
   if(saveWarehouseSettingsBtn) saveWarehouseSettingsBtn.addEventListener('click', async ()=>{
@@ -9677,7 +9693,7 @@ function openAddBudgetEntryModal(categoryId){
   wrap.className='modal-bg';
   wrap.innerHTML = `<div class="modal">
     <h3>+ سند صرف — ${escapeHtml(cat.name)}</h3>
-    <div class="field"><label>المبلغ $ *</label><input type="number" id="be_amount" class="num"></div>
+    <div class="field"><label>المبلغ ${primSym()} *</label><input type="number" id="be_amount" class="num"></div>
     <div class="field"><label>التاريخ</label><input type="date" id="be_date" value="${todayISO()}"></div>
     <div class="field"><label>ملاحظة</label><input type="text" id="be_note"></div>
     <div class="row">
@@ -9688,7 +9704,7 @@ function openAddBudgetEntryModal(categoryId){
   document.body.appendChild(wrap);
   wrap.querySelector('#be_cancel').addEventListener('click', ()=>wrap.remove());
   wrap.querySelector('#be_save').addEventListener('click', async ()=>{
-    const amount = Number(wrap.querySelector('#be_amount').value);
+    const amount = Number(outPrim(wrap.querySelector('#be_amount').value))||0;
     if(!(amount>0)){ toast('يجب إدخال مبلغ أكبر من صفر'); return; }
     const date = wrap.querySelector('#be_date').value || todayISO();
     const note = wrap.querySelector('#be_note').value.trim();
@@ -10359,21 +10375,23 @@ function recalcItemRow(tr){
   it.productId = tr.querySelector('.it-product').value;
   it.desc = tr.querySelector('.it-desc').value;
   it.qty = tr.querySelector('.it-qty').value;
-  it.price = Number(tr.querySelector('.it-price').value)||0;
+  it.price = Number(outPrim(tr.querySelector('.it-price').value, _itemDocDraft.exchangeRate))||0;
   it.total = autoTotalFromPrice(it);
 }
 function autoTotalFromPrice(it){
   const qty = Number(it.qty)||0;
-  return Math.round((Number(it.price)||0) * qty * 100)/100;
+  return roundAmt((Number(it.price)||0) * qty);
 }
 function refreshInvoiceTotals(){
   const totals = computeInvoiceTotal(_itemDocDraft);
+  const _r = Number(_itemDocDraft.exchangeRate)||curRate();
+  const fmtMoney = v=> primIsSec() ? fmtLBP((Number(v)||0)*_r) : fmtUSD(v);
   const s = document.getElementById('totSubtotal'); if(s) s.textContent = fmtMoney(totals.subtotal);
   const dd = document.getElementById('totDiscount'); if(dd) dd.textContent = fmtMoney(totals.discount);
   const vr = document.getElementById('totVatRow'); if(vr) vr.style.display = totals.vatRate ? '' : 'none';
   const vl = document.getElementById('totVatLabel'); if(vl) vl.textContent = 'TVA '+totals.vatRate+'%';
   const va = document.getElementById('totVat'); if(va) va.textContent = fmtMoney(totals.vatAmount);
-  const a = document.getElementById('totUSD'); if(a) a.textContent = fmtMoney(totals.totalUSD);
+  const a = document.getElementById('totUSD'); if(a) a.textContent = fmtUSD(totals.totalUSD);
   const b = document.getElementById('totLBP'); if(b) b.textContent = fmtLBP(totals.totalLBP);
 }
 function bindItemDocFormEvents(){
@@ -10385,9 +10403,10 @@ function bindItemDocFormEvents(){
   document.getElementById('f_date').addEventListener('input', e=>_itemDocDraft.date=e.target.value);
   document.getElementById('f_doctype').addEventListener('input', e=>_itemDocDraft.docType=e.target.value);
   document.getElementById('f_rate').addEventListener('input', e=>{ _itemDocDraft.exchangeRate=Number(e.target.value)||0; refreshInvoiceTotals(); });
-  document.getElementById('f_discount').addEventListener('input', e=>{ _itemDocDraft.discount=Number(e.target.value)||0; refreshInvoiceTotals(); });
+  document.getElementById('f_rate').addEventListener('change', ()=>{ if(primIsSec()) render(); });
+  document.getElementById('f_discount').addEventListener('input', e=>{ _itemDocDraft.discount=Number(outPrim(e.target.value, _itemDocDraft.exchangeRate))||0; refreshInvoiceTotals(); });
   const paidNowEl = document.getElementById('f_paid_now');
-  if(paidNowEl) paidNowEl.addEventListener('input', ()=>{ _itemDocDraft.paidNow = paidNowEl.value; });
+  if(paidNowEl) paidNowEl.addEventListener('input', ()=>{ _itemDocDraft.paidNow = outPrim(paidNowEl.value, _itemDocDraft.exchangeRate); });
   const vatOn = document.getElementById('f_vat_on'), vatRateEl = document.getElementById('f_vat_rate');
   if(vatOn) vatOn.addEventListener('change', ()=>{
     _itemDocDraft.vatEnabled = vatOn.checked;
@@ -10441,16 +10460,16 @@ function bindItemDocFormEvents(){
     const refreshPricing = (source)=>{
       const it = lineIt();
       const cv = lineCostVat(it);
-      const cvEl = tr.querySelector('.it-costvat'); if(cvEl) cvEl.value = cv===null? '' : cv.toFixed(2);
+      const cvEl = tr.querySelector('.it-costvat'); if(cvEl) cvEl.value = cv===null? '' : (primIsSec()? inPrim(cv, _itemDocDraft.exchangeRate) : cv.toFixed(2));
       if(source==='salePrice'){
         if(cv && it.salePrice!=='' && it.salePrice!==undefined){ it.margin = r2((Number(it.salePrice)/cv-1)*100); setF('margin', it.margin); }
       } else if(it.margin!=='' && it.margin!==undefined && it.margin!==null && cv!==null){
-        it.salePrice = r2(cv*(1+Number(it.margin)/100)).toFixed(2); setF('salePrice', it.salePrice);
+        it.salePrice = primIsSec()? roundAmt(cv*(1+Number(it.margin)/100)) : r2(cv*(1+Number(it.margin)/100)).toFixed(2); setF('salePrice', primIsSec()? inPrim(it.salePrice, _itemDocDraft.exchangeRate) : it.salePrice);
       }
     };
     tr.querySelectorAll('.it-f').forEach(inp=>inp.addEventListener('input', ()=>{
       const it = lineIt(); const field = inp.getAttribute('data-f');
-      it[field] = inp.value;
+      it[field] = (field==='salePrice' && primIsSec()) ? outPrim(inp.value, _itemDocDraft.exchangeRate) : inp.value;
       if(field==='barcode'){
         const hit = findItemByBarcode(inp.value);
         if(hit && hit.id!==it.productId && productSelect){
@@ -10530,7 +10549,7 @@ function bindItemDocFormEvents(){
         const it = _itemDocDraft.items[idx];
         if(inp.classList.contains('it-price') || inp.classList.contains('it-qty')){
           it.total = autoTotalFromPrice(it);
-          tr.querySelector('.it-total').value = it.total;
+          tr.querySelector('.it-total').value = inPrim(it.total, _itemDocDraft.exchangeRate);
         }
         refreshInvoiceTotals();
       });
@@ -10615,7 +10634,7 @@ function bindItemDocFormEvents(){
     if(ok && isPurchase && isNewDoc && !_itemDocDraft.isReturn && Number(_itemDocDraft.paidNow)>0){
       // دفعة للمورد مع الفاتورة → سند صرف (بيظهر بكشف المورد وباليومية بعامود دفعات الموردين)
       const savedP = DB.purchaseInvoices.find(x=>x.id===savedId);
-      const amt = Math.round(Number(_itemDocDraft.paidNow)*100)/100;
+      const amt = roundAmt(Number(_itemDocDraft.paidNow));
       DB.paymentVouchers.push({id:uid(), createdAt:Date.now(), supplierId:_itemDocDraft.supplierId, number:nextVoucherNumber(), date:_itemDocDraft.date,
         amount:amt, method:'نقدًا', details:'دفعة من فاتورة مشتريات #'+(savedP? savedP.number : _itemDocDraft.number)});
       if(!(await save(KEYS.paymentVouchers, DB.paymentVouchers))) ok = false;
@@ -10650,7 +10669,7 @@ function bindPaymentFormEvents(){
   const cfg = PAYMENT_CFG[_paymentDraft.__kind];
   el.addEventListener('input', e=>_paymentDraft.number=e.target.value);
   document.getElementById('r_date').addEventListener('input', e=>_paymentDraft.date=e.target.value);
-  document.getElementById('r_amount').addEventListener('input', e=>_paymentDraft.amount=e.target.value);
+  document.getElementById('r_amount').addEventListener('input', e=>_paymentDraft.amount=outPrim(e.target.value));
   document.getElementById('r_details').addEventListener('input', e=>_paymentDraft.details=e.target.value);
   document.querySelectorAll('[data-method]').forEach(btn=>{
     btn.addEventListener('click', ()=>{ _paymentDraft.method = btn.getAttribute('data-method'); render(); });
