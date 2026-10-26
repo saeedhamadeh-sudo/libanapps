@@ -2740,6 +2740,159 @@ function openImportCsvStockModal(){
   });
 }
 
+/* ============================= توزيع المنتجات على المجموعات تلقائياً (من اسم المنتج) ============================= */
+// كل قاعدة: الأيقونة، اسم المجموعة، مجموعة بديلة إذا ما في مجموعة خاصة، كلمات (ماركات وأسماء — عربي وإنكليزي)
+const AUTO_GROUP_RULES = [
+  {icon:'🚬', label:'دخان', kw:['دخان','سجائر','سيكاره','سيجاره','تبغ','معسل','ولاعه','ولاعات','cigarette','cigarettes','cigar','cigars','tobacco','marlboro','winston','camel','gauloises','gitanes','cedars','سيدرز','kent','viceroy','parliament','vogue','dunhill','rothmans','pall mall','chesterfield','mevius','mild seven','lucky strike','monte carlo','l&m','lm','west','nakhla','نخله','al fakher','الفاخر','mazaya','iqos','heets','terea','vape','juul','ocb','rizla','lighter','clipper','bic lighter','marlboro gold','davidoff classic','ارجيله','فحم','charcoal','coal']},
+  {icon:'🍷', label:'كحول', kw:['كحول','عرق','نبيذ','خمر','ويسكي','فودكا','بيره','بيرا','جين','alcohol','wine','vodka','whisky','whiskey','arak','rum','gin','tequila','liqueur','champagne','cognac','brandy','ksara','kefraya','massaya','ixsir','musar','chateau','johnnie walker','jack daniel','smirnoff','absolut','chivas','ballantine','red label','black label','bacardi','martini','baileys','jagermeister','grey goose','label 5','glenfiddich','hennessy','jameson','beer','almaza','الماظه','heineken','corona','carlsberg','tuborg','budweiser','stella','efes','amstel','peroni','guinness','beirut beer','touma','zahlawi','زحلاوي']},
+  {icon:'☕', label:'قهوة', kw:['قهوه','بن','نسكافيه','كافيه','اسبريسو','كابتشينو','coffee','cafe','café','nescafe','nescafé','espresso','cappuccino','najjar','نجار','lavazza','illy','jacobs','kenco','maxwell','starbucks','folgers','davidoff coffee','3in1','3 in 1','2in1','mocha','latte','nespresso','dolce gusto','coffee mate','coffeemate','abu auf','ابو عوف','brazilian','برازيلي']},
+  {icon:'🍵', label:'شاي', kw:['شاي','زهورات','بابونج','يانسون','ميرميه','زعتر بري','tea','lipton','ahmad tea','twinings','alwazah','الوزه','earl grey','green tea','camomile','chamomile','anise','herbal','mint tea','tetley','dilmah','infusion']},
+  {icon:'⚡', label:'مشروبات طاقة', fallback:'🥤', kw:['طاقه','energy','red bull','redbull','xxl','monster','power horse','bison','sting','dark blue','boom','fearless','rockstar','burn']},
+  {icon:'💧', label:'مياه', fallback:'🥤', kw:['مياه','ماء','مي صحه','water','sohat','صحه','tannourine','تنورين','rim water','ريم','sannine','صنين','pure life','aquafina','evian','perrier','san pellegrino','pellegrino','masafi','aqua','sparkling water','eau']},
+  {icon:'🧃', label:'عصير', fallback:'🥤', kw:['عصير','عصاير','نكتار','juice','nectar','tropicana','capri sun','caprisun','capri-sun','rani','lacnor','suntop','jucy','frutti','maccaw','ceres','del monte juice','bonjus','cappy','minute maid','oasis','pulpy','ice tea','iced tea','lipton ice','nestea']},
+  {icon:'🥤', label:'مشروبات', kw:['مشروب','مشروبات','غازيه','بيبسي','كولا','كوكا','سفن اب','ميرندا','فانتا','سبرايت','pepsi','cola','coca','coke','7up','7 up','seven up','mirinda','miranda','fanta','sprite','mountain dew','schweppes','soda','tonic','crush','barbican','moussy','vimto','fayrouz','drink','drinks','diet','zero','soft drink','can','كانز']},
+  {icon:'🍦', label:'بوظة', kw:['بوظه','ايس كريم','ice cream','icecream','magnum','cornetto','glace','gelato','sundae','popsicle','frozen yogurt']},
+  {icon:'🍫', label:'شوكولا', kw:['شوكولا','شوكولاته','شوكو','chocolate','choco','bount','mars','snickers','twix','kitkat','kit kat','galaxy','cadbury','dairy milk','toblerone','kinder','ferrero','rocher','raffaello','milka','lindt','nutella','m&m','maltesers','hershey','aero','picnic','lion','unica','يونيكا','gandour','غندور','safari','tango','cocorico','bueno','smarties','crunch','nestle crunch','daim','galaxy jewels','celebrations','quality street','merci','after eight','ritter','bonne nuit','wafer chocolate']},
+  {icon:'🍬', label:'سكاكر', kw:['سكاكر','بونبون','ملبس','علكه','راحه','حلوى','مصاص','candy','candies','gum','chewing','bubble gum','mentos','trident','clorets','orbit','extra gum','halls','tic tac','tictac','haribo','skittles','chupa chups','chupa','lollipop','jelly','gummy','gummies','marshmallow','toffee','eclair','fruittella','starburst','airheads','mint','mints','polo','vicks','hubba bubba','big babol','sour','licorice','berries','lolly']},
+  {icon:'🍪', label:'بسكويت', kw:['بسكويت','كيك','كعك','كرواسان','كرواسون','ويفر','معمول','biscuit','biscuits','cookie','cookies','oreo','digestive','wafer','wafers','tuc','ritz','crackers','cracker','prince','petit beurre','lu','cake','cakes','croissant','corwas','crwas','krwas','croisant','7days','7 days','molto','muffin','brownie','donut','madeleine','barni','tiger','mcvities','loacker','bisco','maamoul','swiss roll','twinkies','pringles cracker']},
+  {icon:'🍟', label:'شيبس', kw:['شيبس','تشيبس','بطاطا','فشار','بزورات','بزر','مكسرات','فستق','chips','chip','ships','crisps','lays','lay\'s','pringles','doritos','cheetos','ruffles','takis','fritos','bugles','popcorn','pop corn','master chips','mr chips','mr. chips','chipsy','smiles','wavy','sunbites','snack','snacks','nuts','peanuts','pistachio','cashew','almonds','seeds','al rifai','الرفاعي','crispy','puffs','corn puffs']},
+  {icon:'🍼', label:'أطفال', kw:['اطفال','بيبي','حفاضات','حفاض','رضاعه','baby','diaper','diapers','pampers','huggies','molfix','bebelac','aptamil','cerelac','similac','nan','johnson baby','sanosan','babyjoy','feeding bottle','pacifier']},
+  {icon:'🧻', label:'محارم وورقيات', kw:['محارم','فاين','ورق تواليت','مناشف','tissue','tissues','napkin','napkins','toilet paper','kleenex','fine','sanita','papia','softy','kitchen towel','towel','tawel','paper towel','wipes','wet wipes','paper roll','foil','aluminium foil','aluminum foil','cling film','plastic bags','garbage bags','bags','cups','plates','forks','spoons']},
+  {icon:'🧼', label:'تنظيف', kw:['تنظيف','منظف','منظفات','كلور','جافيل','مسحوق','غسيل','جلي','معطر','detergent','clorox','chlorine','bleach','javel','dettol','ariel','tide','persil','omo','downy','comfort','fairy','pril','vim','harpic','mr muscle','flash','dish','dishwashing','sponge','jif','air freshener','glade','air wick','febreze','softener','fabric','floor cleaner','glass cleaner','insecticide','raid','baygon','klinex','lysol','scotch brite','steel wool']},
+  {icon:'🧴', label:'عناية شخصية', kw:['شامبو','صابون','معجون اسنان','فرشايه','مزيل عرق','عطر','كريم','شفرات','فوط','shampoo','conditioner','soap','lux','dove','palmolive','head & shoulders','head and shoulders','pantene','nivea','colgate','signal','sensodyne','close up','toothpaste','toothbrush','deodorant','rexona','axe','gillette','razor','shaving','lotion','vaseline','johnson','always','pads','sanitary','cotton','perfume','body spray','hair gel','gel','sunsilk','garnier','loreal','l\'oreal','fa','lifebuoy','protex','camay','listerine','mouthwash','hand wash','sanitizer']},
+  {icon:'🐾', label:'حيوانات أليفة', kw:['قطط','كلاب','اكل قطط','اكل كلاب','cat food','dog food','whiskas','pedigree','friskies','felix','purina','royal canin','cat litter','litter']},
+  {icon:'🔋', label:'بطاريات', kw:['بطاريات','بطاريه','battery','batteries','duracell','energizer','panasonic battery','varta','aa','aaa']},
+  {icon:'💊', label:'صيدلية', kw:['دواء','بنادول','panadol','aspirin','vitamin','vitamins','plaster','bandage','strepsils','condom','durex','thermometer','mask','masks','gloves']},
+  {icon:'🧀', label:'أجبان', fallback:'🥛', kw:['جبنه','اجبان','قشقوان','حلوم','عكاوي','cheese','kashkaval','halloumi','akkawi','kiri','la vache qui rit','picon','puck','president','mozzarella','cheddar','feta','gouda','parmesan','cream cheese','processed cheese']},
+  {icon:'🥛', label:'ألبان', kw:['حليب','لبن','لبنه','لبنة','زبده','قشطه','البان','milk','laban','labneh','labne','yogurt','yoghurt','cream','butter','dairy','almarai','candia','nido','taanayel','khoury','lactel','activia','danone','lacnor milk','condensed','evaporated','rainbow milk','puck cream','whipping']},
+  {icon:'🍞', label:'خبز ومعجنات', kw:['خبز','مرقوق','صمون','توست','منقوشه','bread','toast','pita','bun','buns','baguette','tortilla','wooden bakery','bakery','kaak','arabic bread']},
+  {icon:'🥩', label:'لحوم ومرتديلا', kw:['لحمه','لحوم','دجاج','مرتديلا','نقانق','سجق','بسطرما','meat','beef','chicken','mortadella','salami','hotdog','hot dog','sausage','sausages','turkey','ham','siniora','nuggets','burger','kebbeh','kafta','pastrami']},
+  {icon:'🥫', label:'معلبات', kw:['تونه','سردين','فول','حمص','بازيلا','ذره','معجون بندوره','رب البندوره','مربى','عسل','كاتشب','مايونيز','صلصه','مخلل','زيتون','طحينه','tuna','sardine','sardines','corned beef','beans','foul','fava','hummus','chickpeas','peas','sweet corn','corn','tomato paste','ketchup','mayonnaise','mayo','sauce','heinz','del monte','plein soleil','cortas','قرطاس','chtaura','jam','honey','pickles','olives','tahini','canned','mushroom','mustard','vinegar','hot sauce','tabasco']},
+  {icon:'🍝', label:'مواد غذائية', kw:['معكرونه','سباغيتي','رز','ارز','برغل','عدس','طحين','سكر','ملح','بهارات','زيت','زيت زيتون','شوفان','نشاء','خميره','pasta','spaghetti','macaroni','penne','noodles','indomie','rice','burghul','bulgur','lentils','flour','sugar','salt','spices','pepper','oil','olive oil','corn oil','sunflower','vegetable oil','oats','cereal','corn flakes','cornflakes','kellogg','nesquik','panzani','barilla','basmati','yeast','starch','baking powder','vanilla','maggi','knorr','bouillon','stock','soup','ghee','سمنه','crystal','sesame']},
+  {icon:'🍎', label:'خضار وفواكه', kw:['تفاح','موز','برتقال','ليمون','خضار','فواكه','بندوره','خيار','بطاطا حلوه','apple','apples','banana','bananas','orange','oranges','lemon','lemons','fruits','fruit','vegetables','tomato','tomatoes','cucumber','potato','potatoes','onion','garlic','lettuce','grapes','strawberry']}
+];
+function _agMatchScore(name, kw){
+  const n = normalizeSearchText(name);
+  const tokens = n.split(/[^a-z0-9؀-ۿ&']+/).filter(Boolean);
+  const compact = n.replace(/[^a-z0-9؀-ۿ]/g,'');
+  const k = normalizeSearchText(kw);
+  if(!k) return 0;
+  if(/\s/.test(k)){ return (' '+n.replace(/[^a-z0-9؀-ۿ&']+/g,' ')+' ').includes(' '+k+' ') ? k.length+1 : 0; }
+  if(k.length<=3) return tokens.includes(k) ? k.length : 0;
+  if(tokens.some(t=>t===k)) return k.length+1;
+  if(tokens.some(t=>t.startsWith(k))) return k.length;
+  const kc = k.replace(/[^a-z0-9؀-ۿ]/g,'');
+  if(kc.length>=5 && compact.includes(kc)) return kc.length-1;
+  return 0;
+}
+// أفضل قاعدة لاسم المنتج: أطول كلمة مطابقة تربح (الأدق)، وعند التعادل القاعدة الأولى
+function guessProductRule(name){
+  let best = null, bestScore = 0;
+  AUTO_GROUP_RULES.forEach(r=>{
+    let sc = 0; r.kw.forEach(k=>{ const s = _agMatchScore(name, k); if(s>sc) sc = s; });
+    if(sc>bestScore){ bestScore = sc; best = r; }
+  });
+  return best;
+}
+// المجموعة المقابلة للقاعدة: مجموعة موجودة بنفس الاسم أو نفس النوع، وإلا البديلة، وإلا مجموعة جديدة باسم القاعدة
+function ruleTargetGroup(rule){
+  const prods = customGroups().filter(g=>g.type!=='services');
+  const findFor = r=>prods.find(g=>normalizeSearchText(g.name)===normalizeSearchText(r.label))
+    || prods.find(g=>g.icon===r.icon) || prods.find(g=>guessGroupIcon(g.name)===r.icon);
+  const own = findFor(rule);
+  if(own) return {name:own.name, icon:own.icon||rule.icon, isNew:false};
+  if(rule.fallback){
+    const fb = AUTO_GROUP_RULES.find(r=>r.icon===rule.fallback);
+    const g = fb && findFor(fb);
+    if(g) return {name:g.name, icon:g.icon||fb.icon, isNew:false};
+    if(fb) return {name:fb.label, icon:fb.icon, isNew:true};
+  }
+  return {name:rule.label, icon:rule.icon, isNew:true};
+}
+function openAutoGroupModal(){
+  if(!canManageGroups()){ toast('ليس لديك صلاحية إدارة المجموعات'); return; }
+  const items = DB.warehouseItems.filter(it=>!it.deleted);
+  if(!items.length){ toast('لا يوجد منتجات في المستودع'); return; }
+  const wrap = document.createElement('div');
+  wrap.className = 'modal-bg';
+  wrap.innerHTML = `<div class="modal modal-wide" style="max-width:900px;">
+    <h3>🤖 توزيع المنتجات على المجموعات تلقائياً</h3>
+    <p style="font-size:12.5px; color:var(--ink-soft); line-height:1.7;">البرنامج يقرأ اسم كل منتج (الماركة ونوعه — عربي أو إنكليزي) ويقترح المجموعة المناسبة: قهوة، شاي، مشروبات، شيبس، كحول، دخان، شوكولا، سكاكر... المجموعات غير الموجودة تُنشأ تلقائياً مع أيقونتها. راجع الاقتراحات وعدّل أي منتج قبل التطبيق.</p>
+    <label style="display:flex; align-items:center; gap:6px; font-size:13px; margin-bottom:8px; cursor:pointer;"><input type="checkbox" id="ag_all" style="width:auto;"> إعادة توزيع المنتجات التي لها مجموعة أيضاً (افتراضياً: فقط المنتجات بدون مجموعة)</label>
+    <div id="ag_summary" style="font-size:12.5px; margin-bottom:6px;"></div>
+    <div id="ag_list"></div>
+    <div class="row modal-sticky-actions">
+      <button class="btn" id="ag_cancel">إلغاء</button>
+      <button class="btn btn-primary" id="ag_go">✅ تطبيق</button>
+    </div>
+  </div>`;
+  document.body.appendChild(wrap);
+  const $ = s=>wrap.querySelector(s);
+  $('#ag_cancel').addEventListener('click', ()=>wrap.remove());
+  let rows = [];
+  const newGroups = new Map(); // اسم → أيقونة
+  function build(){
+    const includeGrouped = $('#ag_all').checked;
+    newGroups.clear();
+    rows = items.filter(it=>includeGrouped || !String(it.category||'').trim()).map(it=>{
+      const rule = guessProductRule(it.name);
+      const tg = rule ? ruleTargetGroup(rule) : null;
+      if(tg && tg.isNew) newGroups.set(tg.name, tg.icon);
+      return {it, target: tg? tg.name : '', on: !!tg && normalizeSearchText(tg.name)!==normalizeSearchText(it.category)};
+    });
+    draw();
+  }
+  const groupOptions = ()=>{
+    const names = [...chooserGroupLabels().filter(n=>!isServiceCategory(n)), ...[...newGroups.keys()].filter(n=>!chooserGroupLabels().some(x=>normalizeSearchText(x)===normalizeSearchText(n)))];
+    return names;
+  };
+  function draw(){
+    const opts = groupOptions();
+    const matched = rows.filter(r=>r.target).length;
+    const counts = {}; rows.forEach(r=>{ if(r.target && r.on) counts[r.target]=(counts[r.target]||0)+1; });
+    $('#ag_summary').innerHTML = rows.length
+      ? `${rows.length} منتج — تعرّف على <b>${matched}</b>${rows.length-matched? ` • <span style="color:var(--debit);">${rows.length-matched} بدون اقتراح (اختر لها يدوياً)</span>`:''}`
+        + (newGroups.size? `<br>مجموعات جديدة ستُنشأ: ${[...newGroups].map(([n,ic])=>ic+' '+escapeHtml(n)).join(' • ')}` : '')
+        + `<br>${Object.entries(counts).map(([k,n])=>`${groupIconFor(k)} ${escapeHtml(k)}: <b>${n}</b>`).join(' • ')}`
+      : 'كل المنتجات لها مجموعة — علّم الخيار فوق لإعادة توزيعها';
+    $('#ag_list').innerHTML = rows.length ? `<div class="table-scroll" style="max-height:52vh; overflow:auto;"><table style="font-size:12.5px;">
+      <thead><tr><th></th><th>اسم المنتج</th><th>المجموعة الحالية</th><th>المجموعة المقترحة</th></tr></thead>
+      <tbody>${rows.map((r,i)=>`<tr style="${!r.target?'background:#fff1f1;':''}">
+        <td><input type="checkbox" data-ag-on="${i}" ${r.on?'checked':''}></td>
+        <td><span class="bidi">${escapeHtml(r.it.name)}</span></td>
+        <td>${escapeHtml(r.it.category||'—')}</td>
+        <td><select data-ag-sel="${i}" style="font-size:12.5px; padding:3px;"><option value="">— بدون —</option>${opts.map(n=>`<option value="${escapeHtml(n)}" ${normalizeSearchText(n)===normalizeSearchText(r.target)?'selected':''}>${groupIconFor(n)} ${escapeHtml(n)}</option>`).join('')}</select></td>
+      </tr>`).join('')}</tbody></table></div>` : '';
+    wrap.querySelectorAll('[data-ag-on]').forEach(cb=>cb.addEventListener('change', ()=>{ rows[Number(cb.getAttribute('data-ag-on'))].on = cb.checked; }));
+    wrap.querySelectorAll('[data-ag-sel]').forEach(sel=>sel.addEventListener('change', ()=>{
+      const r = rows[Number(sel.getAttribute('data-ag-sel'))]; r.target = sel.value; r.on = !!sel.value; draw();
+    }));
+  }
+  const groupIconFor = n=>newGroups.get(n) || groupIcon(n) || '📁';
+  $('#ag_all').addEventListener('change', build);
+  $('#ag_go').addEventListener('click', async ()=>{
+    const chosen = rows.filter(r=>r.on && r.target);
+    if(!chosen.length){ toast('لا يوجد منتجات محددة'); return; }
+    if(!confirm('سيتم نقل '+chosen.length+' منتج إلى مجموعاتها. متابعة؟')) return;
+    $('#ag_go').disabled = true;
+    const used = new Set(chosen.map(r=>normalizeSearchText(r.target)));
+    const add = [];
+    newGroups.forEach((icon, name)=>{
+      if(used.has(normalizeSearchText(name)) && !groupByName(name) && !chooserGroupLabels().some(x=>normalizeSearchText(x)===normalizeSearchText(name)))
+        add.push({id:uid(), name, type:'products', icon});
+    });
+    if(add.length) DB.settings.customGroups = [...customGroups(), ...add];
+    chosen.forEach(r=>{ r.it.category = r.target; });
+    invalidateWarehouseCaches();
+    const res = await Promise.all([save(KEYS.warehouseItems, DB.warehouseItems), add.length? save(KEYS.settings, DB.settings) : Promise.resolve(true)]);
+    if(!res.every(Boolean)){ toast('حدث خطأ أثناء الحفظ'); $('#ag_go').disabled = false; return; }
+    wrap.remove();
+    toast(`تم توزيع ${chosen.length} منتج${add.length? ' وإنشاء '+add.length+' مجموعة جديدة':''} ✅`);
+    render();
+  });
+  build();
+}
+
 /* ============================= البحث الذكي في المستودع ============================= */
 function normalizeSearchText(s){
   return String(s??'').toLowerCase()
@@ -8002,6 +8155,12 @@ function settingsView(){
   </div>
 
   <div class="card">
+    <h2><span class="dot"></span> 🤖 توزيع المنتجات على المجموعات تلقائياً</h2>
+    <p style="font-size:12.5px; color:var(--ink-soft); line-height:1.7;">يقرأ اسم كل منتج ويضعه بمجموعته (قهوة، شاي، مشروبات، شيبس، كحول، دخان، شوكولا، سكاكر...) وينشئ المجموعات الناقصة مع أيقوناتها — تراجع الاقتراحات قبل التطبيق.</p>
+    <button class="btn btn-primary" id="autoGroupBtn">🤖 توزيع تلقائي</button>
+  </div>
+
+  <div class="card">
     <h2><span class="dot"></span> نسخة احتياطية</h2>
     <div style="font-size:13px; color:var(--ink-soft); margin-bottom:12px; line-height:1.7;">
       يُحدَّد اسم ملف النسخة الاحتياطية تلقائيًا بتاريخ ووقت اللحظة (مثلاً hmadeh-backup-2026-08-26_14-32.json) لتسهيل الاسترجاع.
@@ -8811,6 +8970,8 @@ function bindEvents(){
   if(importOldStockBtn) importOldStockBtn.addEventListener('click', openImportStockModal);
   const importCsvStockBtn = document.getElementById('importCsvStockBtn');
   if(importCsvStockBtn) importCsvStockBtn.addEventListener('click', openImportCsvStockModal);
+  const autoGroupBtn = document.getElementById('autoGroupBtn');
+  if(autoGroupBtn) autoGroupBtn.addEventListener('click', openAutoGroupModal);
   const saveBizBtn = document.getElementById('saveBizBtn');
   if(saveBizBtn) saveBizBtn.addEventListener('click', async ()=>{
     const bizSel = document.getElementById('s_biz_type');
