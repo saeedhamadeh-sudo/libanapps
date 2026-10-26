@@ -2042,6 +2042,59 @@ async function importImage(request, env) {
   return json(200, { ok: true, url: `${env.SUPABASE_URL}/storage/v1/object/public/items/${path}`, bytes: buf.byteLength });
 }
 
+// ---------- صور المنتجات لبرنامج التجارة: بحث بـ Open Food Facts (مفتوح المصدر) + جلب الصورة من أي رابط ----------
+// البحث: بالباركود أولاً (Food / Beauty / Products Facts) وبعدين بالاسم — بيرجّع روابط صور صغيرة
+async function appImgSearch(url) {
+  const barcode = String(url.searchParams.get('barcode') || '').replace(/\D/g, '');
+  const q = String(url.searchParams.get('q') || '').trim().slice(0, 80);
+  const out = []; const seen = new Set();
+  const add = (u, src, name) => { if (u && !seen.has(u) && out.length < 8) { seen.add(u); out.push({ url: u, src, name: name || '' }); } };
+  const UA = { 'User-Agent': 'LibanApps/1.0 (libanapps.com; product images)' };
+  const pick = p => p && (p.image_front_small_url || p.image_front_url || p.image_small_url || p.image_url);
+  const getJ = async (u) => { try { const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), 8000);
+    const r = await fetch(u, { headers: UA, signal: ctl.signal, cf: { cacheTtl: 86400, cacheEverything: true } }); clearTimeout(t);
+    return r.ok ? await r.json() : null; } catch (e) { return null; } };
+  if (barcode.length >= 8) {
+    for (const host of ['world.openfoodfacts.org', 'world.openbeautyfacts.org', 'world.openproductsfacts.org']) {
+      const j = await getJ(`https://${host}/api/v2/product/${barcode}.json?fields=product_name,image_front_small_url,image_front_url`);
+      if (j && j.status === 1 && pick(j.product)) { add(pick(j.product), 'barcode', j.product.product_name); break; }
+    }
+  }
+  if (q && out.length < 4) {
+    const j = await getJ(`https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(q)}&search_simple=1&action=process&json=1&page_size=8&fields=product_name,brands,image_front_small_url,image_front_url`);
+    ((j && j.products) || []).forEach(p => add(pick(p), 'name', [p.brands, p.product_name].filter(Boolean).join(' — ')));
+  }
+  return new Response(JSON.stringify({ ok: true, results: out }), { status: 200, headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'public, max-age=3600' } });
+}
+// جلب صورة من رابط خارجي (عشان المتصفح يقدر يصغّرها بلا مشاكل CORS) — صور نقطية بس، حد 6MB، بلا عناوين داخلية
+async function appImgFetch(url) {
+  let u; try { u = new URL(String(url.searchParams.get('u') || '')); } catch { return json(400, { error: 'bad url' }); }
+  if (!/^https?:$/.test(u.protocol) || isBlockedHost(u.hostname)) return json(400, { error: 'url not allowed' });
+  const ctl = new AbortController(); const to = setTimeout(() => ctl.abort(), 15000);
+  let r, cur = u;
+  try {
+    for (let hop = 0; ; hop++) {
+      r = await fetch(cur.toString(), { signal: ctl.signal, redirect: 'manual', headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'Accept': 'image/avif,image/webp,image/*,*/*;q=0.8', 'Referer': cur.origin + '/' } });
+      if (r.status < 300 || r.status >= 400) break;
+      const loc = r.headers.get('location'); if (!loc || hop >= 4) break;
+      let nx; try { nx = new URL(loc, cur); } catch { clearTimeout(to); return json(400, { error: 'url not allowed' }); }
+      if (!/^https?:$/.test(nx.protocol) || isBlockedHost(nx.hostname)) { clearTimeout(to); return json(400, { error: 'url not allowed' }); }
+      cur = nx;
+    }
+  } catch (e) { clearTimeout(to); return json(502, { error: 'تعذّر جلب الصورة' }); }
+  clearTimeout(to);
+  if (!r.ok) return json(502, { error: 'أعاد المصدر ' + r.status });
+  const buf = await r.arrayBuffer();
+  if (buf.byteLength > 6 * 1024 * 1024) return json(413, { error: 'الصورة كبيرة كتير' });
+  const b = new Uint8Array(buf.slice(0, 16)); const str = String.fromCharCode.apply(null, b);
+  const ct = (b[0] === 0xFF && b[1] === 0xD8) ? 'image/jpeg' : str.startsWith('\x89PNG') ? 'image/png' : str.startsWith('GIF8') ? 'image/gif'
+    : (str.startsWith('RIFF') && str.slice(8, 12) === 'WEBP') ? 'image/webp' : str.slice(4, 8) === 'ftyp' ? 'image/avif' : '';
+  if (!ct || buf.byteLength < 200) return json(415, { error: 'الرابط ليس صورة' });
+  return new Response(buf, { status: 200, headers: { 'Content-Type': ct, 'Cache-Control': 'public, max-age=86400', 'Access-Control-Allow-Origin': '*' } });
+}
+
 // ---------- الدومين الخاص (Cloudflare for SaaS — Custom Hostnames) ----------
 //  المتغيرات المطلوبة (Secrets): CF_API_TOKEN (صلاحية SSL and Certificates: Edit) + CF_ZONE_ID
 //  متغير عادي اختياري: STORE_CNAME_TARGET (الافتراضي stores.libanapps.com)
@@ -2769,6 +2822,8 @@ export default {
         }
         if (url.pathname === '/api/store/pay/verify') return await payVerify(request, env);
         if (url.pathname === '/api/store/pay/webhook') return await payWebhook(request, env);
+        if (url.pathname === '/api/app/img-search') return await appImgSearch(url);
+        if (url.pathname === '/api/app/img-fetch') return await appImgFetch(url);
         if (url.pathname === '/api/store/import-image') {
           if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
           return await importImage(request, env);

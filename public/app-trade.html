@@ -3223,6 +3223,100 @@ async function shrinkOldProductImages(){
     }
   } finally { _shrinkImagesRunning = false; }
 }
+// ===== جلب صور المنتجات من الانترنت: بحث بالباركود/الاسم (Open Food Facts) أو لصق رابط صورة — والصورة بتتصغّر لـ 320px =====
+async function fetchImageAsSmallDataUrl(srcUrl){
+  const r = await fetch('/api/app/img-fetch?u='+encodeURIComponent(srcUrl));
+  if(!r.ok){ let m=''; try{ m = (await r.json()).error; }catch(e){} throw new Error(m || ('خطأ '+r.status)); }
+  const blob = await r.blob();
+  return compressImageFile(blob);
+}
+function openProductImagesWebModal(){
+  const wrap = document.createElement('div');
+  wrap.className = 'modal-bg';
+  wrap.innerHTML = `<div class="modal modal-wide" style="max-width:900px;">
+    <h3>🌐 صور المنتجات من الانترنت</h3>
+    <div style="font-size:12.5px; color:var(--ink-soft); line-height:1.7;">منبحث بالباركود وبالاسم، واختار الصورة المناسبة لكل منتج (أو الصق رابط صورة من Google). الصور بتتصغّر تلقائياً (حوالي 20KB) حتى ما تثقّل البرنامج.</div>
+    <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin:8px 0;">
+      <label style="display:flex; gap:6px; align-items:center; font-size:13px;"><input type="checkbox" id="pw_all" style="width:auto;"> حتى المنتجات يلي إلها صورة</label>
+      <input type="text" id="pw_filter" placeholder="فلترة بالاسم..." style="flex:1; min-width:160px;">
+      <button class="btn btn-sm" id="pw_search">🔍 ابحث عن صور</button>
+    </div>
+    <div id="pw_status" style="font-size:12.5px; min-height:18px;"></div>
+    <div id="pw_list" style="max-height:55vh; overflow:auto;"></div>
+    <div class="row modal-sticky-actions">
+      <button class="btn" id="pw_cancel">إغلاق</button>
+      <button class="btn btn-primary" id="pw_save" disabled>💾 حفظ الصور المختارة</button>
+    </div>
+  </div>`;
+  document.body.appendChild(wrap);
+  const $ = q=>wrap.querySelector(q);
+  let rows = [];   // {it, cands:[{url,src,name}], sel:url|null, searched}
+  const status = (m, c)=>{ $('#pw_status').innerHTML = m; $('#pw_status').style.color = c||'var(--ink)'; };
+  function pickRows(){
+    const all = $('#pw_all').checked, f = normalizeSearchText($('#pw_filter').value||'');
+    rows = DB.warehouseItems.filter(it=>(all || !it.image) && (!f || normalizeSearchText(it.name).includes(f)))
+      .slice(0, 300).map(it=>{ const old = rows.find(r=>r.it.id===it.id); return old || {it, cands:[], sel:null, searched:false}; });
+  }
+  function draw(){
+    $('#pw_list').innerHTML = rows.length ? rows.map((r,i)=>`<div style="display:flex; gap:10px; align-items:center; border-bottom:1px dashed var(--line); padding:8px 2px; flex-wrap:wrap;">
+      <div style="width:190px; min-width:140px;">${whThumb(r.it)}<b class="bidi" style="font-size:13px;">${escapeHtml(r.it.name)}</b>${r.it.barcode? `<div class="num" style="font-size:11px; color:var(--ink-soft);">${escapeHtml(r.it.barcode)}</div>`:''}</div>
+      <div style="display:flex; gap:6px; flex-wrap:wrap; flex:1; align-items:center;">
+        ${r.cands.map(c=>`<img src="${escapeHtml(c.url)}" data-pw-pick="${i}" data-u="${escapeHtml(c.url)}" title="${escapeHtml(c.name||'')}" loading="lazy" style="width:64px; height:64px; object-fit:contain; background:#fff; border-radius:8px; cursor:pointer; border:3px solid ${r.sel===c.url?'var(--credit)':'var(--line)'};">`).join('')}
+        ${r.searched && !r.cands.length? `<span style="font-size:12px; color:var(--ink-soft);">ما لقينا صورة — الصق رابط:</span>`:''}
+        <input type="url" data-pw-url="${i}" placeholder="أو الصق رابط صورة" value="${r.sel && !r.cands.some(c=>c.url===r.sel)? escapeHtml(r.sel) : ''}" style="flex:1; min-width:150px; font-size:12px; padding:6px 8px;">
+        ${r.sel? `<button class="btn btn-sm" data-pw-clear="${i}" title="بدون صورة">✕</button>`:''}
+      </div>
+    </div>`).join('') : `<div class="empty" style="padding:18px 0;"><div class="big" style="font-size:14px;">✅ كل المنتجات إلها صور</div></div>`;
+    const n = rows.filter(r=>r.sel).length;
+    $('#pw_save').disabled = !n; $('#pw_save').textContent = '💾 حفظ الصور المختارة'+(n? ' ('+n+')':'');
+    wrap.querySelectorAll('[data-pw-pick]').forEach(im=>im.addEventListener('click', ()=>{ const r = rows[Number(im.getAttribute('data-pw-pick'))]; const u = im.getAttribute('data-u'); r.sel = r.sel===u? null : u; draw(); }));
+    wrap.querySelectorAll('[data-pw-url]').forEach(inp=>inp.addEventListener('change', ()=>{ const v = inp.value.trim(); rows[Number(inp.getAttribute('data-pw-url'))].sel = /^https?:\/\//i.test(v)? v : null; draw(); }));
+    wrap.querySelectorAll('[data-pw-clear]').forEach(b=>b.addEventListener('click', ()=>{ rows[Number(b.getAttribute('data-pw-clear'))].sel = null; draw(); }));
+    wrap.querySelectorAll('[data-pw-list-img]').forEach(()=>{});
+  }
+  ['#pw_all','#pw_filter'].forEach(q=>$(q).addEventListener('input', ()=>{ pickRows(); draw(); }));
+  pickRows(); draw();
+  $('#pw_cancel').addEventListener('click', ()=>wrap.remove());
+  $('#pw_search').addEventListener('click', async ()=>{
+    $('#pw_search').disabled = true;
+    const todo = rows.filter(r=>!r.searched); let done = 0, found = 0;
+    const one = async (r)=>{
+      try{
+        const qs = new URLSearchParams(); if(r.it.barcode) qs.set('barcode', r.it.barcode); qs.set('q', r.it.name);
+        const res = await fetch('/api/app/img-search?'+qs.toString());
+        const j = res.ok ? await res.json() : {results:[]};
+        r.cands = (j.results||[]).slice(0,6);
+        if(!r.sel && r.cands.length && r.cands[0].src==='barcode') r.sel = r.cands[0].url;   // مطابقة باركود = نفس المنتج
+        if(r.cands.length) found++;
+      }catch(e){ console.error('img search', e); }
+      r.searched = true; done++;
+      status('⏳ عم نبحث... '+done+' / '+todo.length);
+    };
+    for(let i=0; i<todo.length; i+=4){ await Promise.all(todo.slice(i,i+4).map(one)); draw(); }
+    status('✅ خلص البحث: لقينا صور لـ '+found+' من '+todo.length+' — كبسة على الصورة لتختارها (الخضرا هي المختارة)', 'var(--credit)');
+    $('#pw_search').disabled = false; draw();
+  });
+  $('#pw_save').addEventListener('click', async ()=>{
+    const chosen = rows.filter(r=>r.sel);
+    if(!chosen.length) return;
+    $('#pw_save').disabled = true;
+    let ok = 0; const fails = [];
+    for(let i=0; i<chosen.length; i+=3){
+      await Promise.all(chosen.slice(i,i+3).map(async r=>{
+        try{ r.it.image = await fetchImageAsSmallDataUrl(r.sel); ok++; }
+        catch(e){ fails.push(r.it.name+': '+(e && e.message || '')); }
+      }));
+      status('⏳ عم نحفظ الصور... '+Math.min(i+3, chosen.length)+' / '+chosen.length);
+    }
+    invalidateWarehouseCaches();
+    const saved = ok ? await save(KEYS.warehouseItems, DB.warehouseItems) : true;
+    if(!saved){ status('⚠️ حدث خطأ أثناء الحفظ — راجع رسالة الخطأ', 'var(--debit)'); $('#pw_save').disabled = false; return; }
+    rows.forEach(r=>{ if(r.it.image && r.sel) r.sel = null; });
+    pickRows(); draw();
+    status('✅ تم حفظ '+ok+' صورة'+(fails.length? `<br><span style="color:var(--debit);">⚠️ ما زبطت ${fails.length}: ${escapeHtml(fails.slice(0,5).join(' • '))}</span>`:''), 'var(--credit)');
+    toast('تم حفظ '+ok+' صورة ✅');
+  });
+}
 // اختيار صورة لمنتج مباشرة (من شاشة POS) — تُحفظ للمنتج وتظهر على مربعه
 function pickProductImage(item, onDone){
   const inp = document.createElement('input');
@@ -7696,6 +7790,7 @@ function warehouseHubView(){
     <div class="action-row" style="margin-top:10px;">
       <button class="btn" data-nav="#/warehouse-print">🖨 طباعة جرد المستودع</button>
       ${(()=>{ const n = lowStockNoticeItems().length; return `<button class="btn ${n?'btn-debit':''}" data-nav="#/low-stock">⚠️ اشعار نقص ستوك${n? ' ('+n+')' : ''}</button>`; })()}
+      ${(isPrivilegedUser(currentUser) || hasPermission('edit_products'))? `<button class="btn" id="whWebImagesBtn">🌐 صور من الانترنت</button><button class="btn" id="whRoundPricesBtn">🔢 تقريب الأسعار</button>` : ''}
     </div>
     ${auto? warehouseCatChipsHtml() : ''}
     <div id="whTableWrap" style="margin-top:14px;">
@@ -8720,7 +8815,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-10-26 · 23:40 · v20';
+const APP_TRADE_BUILD = '2026-10-26 · 23:59 · v21';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 function settingsView(){
   const s = DB.settings;
@@ -8998,6 +9093,7 @@ function settingsView(){
     <p style="font-size:12.5px; color:var(--ink-soft); line-height:1.7;">ملف CSV بالأعمدة: Barcode / Name / Qty / Buy Price / Sell Net — تختار الملف وعملة الأسعار، تراجع المنتجات ثم تضغط IMPORT.</p>
     <button class="btn btn-primary" id="importCsvStockBtn">📄 Import CSV</button>
     <button class="btn" id="roundPricesBtn2">🔢 تقريب الأسعار</button>
+    <button class="btn" id="webImagesBtn">🌐 صور من الانترنت</button>
   </div>
 
   <div class="card" ${isAutoShop()?'style="display:none;"':''}>
@@ -9582,6 +9678,10 @@ function bindEvents(){
   }
 
   /* Warehouse */
+  const whWebImagesBtn = document.getElementById('whWebImagesBtn');
+  if(whWebImagesBtn) whWebImagesBtn.addEventListener('click', openProductImagesWebModal);
+  const whRoundPricesBtn = document.getElementById('whRoundPricesBtn');
+  if(whRoundPricesBtn) whRoundPricesBtn.addEventListener('click', openRoundPricesModal);
   const addWhItemBtn = document.getElementById('addWhItemBtn');
   if(addWhItemBtn) addWhItemBtn.addEventListener('click', ()=>startAddWarehouseItem(null));
   const editWhItemBtn = document.getElementById('editWhItemBtn');
@@ -9857,6 +9957,8 @@ function bindEvents(){
   if(importCsvStockBtn) importCsvStockBtn.addEventListener('click', openImportCsvStockModal);
   const roundPricesBtn2 = document.getElementById('roundPricesBtn2');
   if(roundPricesBtn2) roundPricesBtn2.addEventListener('click', openRoundPricesModal);
+  const webImagesBtn = document.getElementById('webImagesBtn');
+  if(webImagesBtn) webImagesBtn.addEventListener('click', openProductImagesWebModal);
   const autoGroupBtn = document.getElementById('autoGroupBtn');
   if(autoGroupBtn) autoGroupBtn.addEventListener('click', openAutoGroupModal);
   const saveBizBtn = document.getElementById('saveBizBtn');
