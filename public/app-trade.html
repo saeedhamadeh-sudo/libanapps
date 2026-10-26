@@ -6941,7 +6941,7 @@ function openRoundPricesModal(){
     render();
   });
 }
-function posPrintMode(){ const m = DB.settings && DB.settings.posPrintMode; return (m==='none' || m==='rawbt' || m==='dialog') ? m : 'auto'; }
+function posPrintMode(){ const m = DB.settings && DB.settings.posPrintMode; return (m==='none' || m==='rawbt' || m==='dialog' || m==='kiosk') ? m : 'auto'; }
 // RawBT على أندرويد: منبعت الفاتورة كصورة ESC/POS مباشرة للتطبيق — بلا نافذة طباعة
 async function printReceiptRawBT(inv, currency, totalUSD, rate, customerLabel, received, changeDue){
   try{
@@ -6962,6 +6962,7 @@ async function printPosReceipt(inv, currency, totalUSD, rate, customerLabel, rec
   if(afterSale && mode==='none') return;
   if(mode==='rawbt' && format==='thermal80'){
     if(await printReceiptRawBT(inv, currency, totalUSD, rate, customerLabel, received, changeDue)) return;
+    if(afterSale) return;   // بعد القبض: ما في نافذة طباعة أبداً
   }
   const silent = mode!=='dialog' && desktopCanPrint();
   // البلوتوث (BLE) ما عاد نجرّب الطباعة المباشرة فيه — أثبتت الاختبارات إنو ما بيوصل
@@ -6970,8 +6971,13 @@ async function printPosReceipt(inv, currency, totalUSD, rate, customerLabel, rec
   if(!silent && mode!=='dialog' && format==='thermal80' && DB.settings.posPrinterVendorId && DB.settings.posPrinterType!=='bluetooth'){
     const ok = await printReceiptRaw(inv, currency, totalUSD, rate, customerLabel, received, changeDue);
     if(ok) return;
-    // فشلت الطباعة المباشرة عبر USB — نرجع لنافذة الطباعة العادية
+    // فشلت الطباعة المباشرة عبر USB — بعد القبض ما منفتح نافذة؛ من زر الطباعة بس
+    if(afterSale) return;
   }
+  // بعد القبض: نافذة الطباعة ما بتطلع أبداً إلا إذا اختار «نافذة الطباعة العادية» بالإعدادات.
+  // بلا تطبيق الكمبيوتر وبلا طابعة USB/RawBT: الفاتورة محفوظة وبتنطبع من «طباعة آخر فاتورة»
+  // «kiosk»: Chrome مفتوح بـ --kiosk-printing بيطبع على الطابعة الافتراضية بصمت
+  if(afterSale && !silent && mode!=='dialog' && mode!=='kiosk') return;
   const old = document.getElementById('pos-receipt-print'); if(old) old.remove();
   const oldSt = document.getElementById('pos-receipt-print-style'); if(oldSt) oldSt.remove();
   const styleEl = document.createElement('style');
@@ -8678,7 +8684,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-10-26 · 20:30 · v16';
+const APP_TRADE_BUILD = '2026-10-26 · 20:55 · v17';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 function settingsView(){
   const s = DB.settings;
@@ -8825,16 +8831,17 @@ function settingsView(){
     <div class="field" style="max-width:520px;"><label>طريقة الطباعة بعد القبض</label>
       <select id="s_pos_print_mode">
         <option value="auto" ${posPrintMode()==='auto'?'selected':''}>🖨 تلقائي — مباشرة على الطابعة المختارة بدون نافذة</option>
+        <option value="kiosk" ${posPrintMode()==='kiosk'?'selected':''}>🖨 الطابعة الافتراضية للكمبيوتر — بلا نافذة (Chrome من ملف «LibanApps POS»)</option>
         <option value="rawbt" ${posPrintMode()==='rawbt'?'selected':''}>📱 أندرويد — مباشرة عبر تطبيق RawBT بدون نافذة</option>
         <option value="none" ${posPrintMode()==='none'?'selected':''}>🚫 بدون طباعة بعد القبض (بتطبع وقت ما بدك من «طباعة آخر فاتورة»)</option>
-        <option value="dialog" ${posPrintMode()==='dialog'?'selected':''}>🪟 نافذة الطباعة العادية</option>
+        <option value="dialog" ${posPrintMode()==='dialog'?'selected':''}>🪟 نافذة الطباعة العادية بعد كل قبض</option>
       </select>
       <div style="font-size:11.5px; color:var(--ink-soft); margin-top:6px; line-height:1.8;">
         المتصفح ما بيسمح لأي موقع يطبع بدون نافذة إلا بإحدى هالطرق:<br>
         • <b>تطبيق LibanApps للكمبيوتر:</b> اختار الطابعة فوق — بتطبع لحالها.<br>
         • <b>كمبيوتر + طابعة USB:</b> اربط الطابعة تحت (🔌 USB) واختار «تلقائي» — بتطبع لحالها.<br>
         • <b>أندرويد:</b> ثبّت RawBT واقرن الطابعة فيه، واختار «RawBT».<br>
-        • <b>Windows بأي طابعة:</b> اعمل اختصار لـ Chrome وزيد عليه <span class="num" dir="ltr">--kiosk-printing</span> وافتح البرنامج منو — بيطبع على الطابعة الافتراضية بدون نافذة.
+        • <b>Windows على الطابعة الافتراضية:</b> نزّل ملف التشغيل <a href="/LibanApps-POS.bat" download>LibanApps-POS.bat</a>، حطو عالـ Desktop وافتح البرنامج منو (سجّل دخول أول مرة)، واختار فوق «الطابعة الافتراضية للكمبيوتر» — بتطبع لحالها بلا نافذة.
       </div>
     </div>
     <div class="field">
