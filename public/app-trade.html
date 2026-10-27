@@ -2137,7 +2137,7 @@ function settingsVatRate(){ const r = DB.settings && DB.settings.vatRate; return
 function itemVatRate(it){ return (it.vatRate===undefined || it.vatRate===null || it.vatRate==='') ? settingsVatRate() : Number(it.vatRate); }
 function itemCostWithVat(it){
   if(it.costPrice===undefined || it.costPrice===null || it.costPrice==='') return null;
-  return Math.round(Number(it.costPrice)*(1+itemVatRate(it)/100)*100)/100;
+  return roundAmt(Number(it.costPrice)*(1+itemVatRate(it)/100));
 }
 // عند تغيّر التكلفة (مثلاً من فاتورة مشتريات) وإذا كان للمنتج هامش ربح: يُعاد حساب سعر البيع
 function repriceFromMargin(it){
@@ -8732,8 +8732,31 @@ function budgetCategoryView(cat, period, a, b){
     <div class="sig">التوقيع</div>
   </div>`;
 }
+// الربح من المبيعات بالفترة: صافي المبيع (بعد الحسم والمرتجع) ناقص سعر شراء البضاعة المباعة
+function salesProfitForRange(from, to){
+  let sales = 0, cost = 0, noCostSales = 0, count = 0;
+  DB.invoices.forEach(inv=>{
+    if(inv.deleted || !inv.date || inv.date<from || inv.date>to) return;
+    count++;
+    const f = posDiscFactor(inv);
+    (inv.items||[]).forEach(it=>{
+      const qty = Number(it.qty)||0; if(!qty) return;
+      const qNet = Math.max(0, qty - invItemReturnedQty(it));
+      const sale = (Number(it.total)||0) * (qNet/qty) * f;
+      sales += sale;
+      const w = it.productId && DB.warehouseItems.find(x=>x.id===it.productId);
+      const cu = w ? itemCostWithVat(w) : null;
+      if(cu===null || !(cu>0)){ noCostSales += sale; return; }
+      cost += qNet * cu;
+    });
+  });
+  const profit = sales - cost;
+  const base = sales - noCostSales;
+  return { sales, cost, profit, noCostSales, count, pct: base>0 ? (base - cost)/base*100 : 0 };
+}
 function budgetOverviewView(period, a, b){
   const {from, to} = computePeriodRange(period, a, b);
+  const sp = salesProfitForRange(from, to);
   const income = DB.budgetCategories.filter(c=>c.type==='income');
   const expense = DB.budgetCategories.filter(c=>c.type==='expense');
   const incRows = income.map(c=>{
@@ -8761,7 +8784,18 @@ function budgetOverviewView(period, a, b){
       <div class="r"><span>من تاريخ:</span><b class="num">${fmtDate(from)}</b></div>
       <div class="r"><span>إلى تاريخ:</span><b class="num">${fmtDate(to)}</b></div>
     </div>
-    <div style="font-weight:800; text-decoration:underline; margin:14px 0 6px;">المقبوضات</div>
+    <div style="font-weight:800; text-decoration:underline; margin:14px 0 6px;">📈 الربح من المبيعات</div>
+    <table><tbody>
+      <tr><td>مجموع المبيعات (${sp.count} فاتورة — بعد الحسم والمرتجع)</td><td class="num">${fmtMoney(sp.sales)}</td></tr>
+      <tr><td>ناقص: سعر شراء البضاعة المباعة</td><td class="num" style="color:var(--debit);">− ${fmtMoney(sp.cost)}</td></tr>
+    </tbody><tfoot>
+      <tr style="font-weight:800; background:var(--paper)"><td>الربح</td><td class="num" style="color:${sp.profit>=0?'var(--credit)':'var(--debit)'};">${fmtMoney(sp.profit)}</td></tr>
+      <tr style="font-weight:800; background:var(--paper)"><td>نسبة الربح</td><td class="num" style="color:${sp.pct>=0?'var(--credit)':'var(--debit)'};">${sp.pct.toFixed(1)}%</td></tr>
+    </tfoot></table>
+    ${sp.noCostSales>0.0001? `<div style="font-size:11.5px; color:var(--bronze-deep, #8a5a1a); margin-top:4px;">⚠️ مبيعات بقيمة ${fmtMoney(sp.noCostSales)} لأصناف ما إلها سعر شراء — محسوبة ربح كامل بالمجموع وما داخلة بنسبة الربح. زيد سعر الشراء من «✏️ تعديل الأسعار» بالمستودع.</div>` : ''}
+    <div style="font-size:11.5px; color:var(--ink-soft); margin-top:4px;">سعر الشراء المعتمد هو سعر الشراء الحالي للصنف بالمستودع.</div>
+
+    <div style="font-weight:800; text-decoration:underline; margin:18px 0 6px;">المقبوضات</div>
     <table><thead><tr><th>الحقل</th><th>المبلغ</th></tr></thead><tbody>
       ${incRows.map(r=>`<tr><td>${escapeHtml(r.name)}</td><td class="num">${fmtMoney(r.total)}</td></tr>`).join('')}
     </tbody><tfoot><tr style="font-weight:800; background:var(--paper)"><td>مجموع المقبوضات</td><td class="num">${fmtMoney(totalIncome)}</td></tr></tfoot></table>
@@ -9334,7 +9368,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-10-27 · 21:20 · v36';
+const APP_TRADE_BUILD = '2026-10-27 · 21:40 · v37';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 function settingsView(){
   const s = DB.settings;
