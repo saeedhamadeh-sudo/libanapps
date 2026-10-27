@@ -8153,7 +8153,8 @@ function clientSlug(){ if(!CLIENT_ID) return ''; try{ return localStorage.getIte
 // C Cup (مرة وحدة): كل بنود فواتير POS بتاخد سعر المستودع الحالي (بلا كسور)، وإيصال القبض وحركة الصندوق
 // بيتصحّحو معها، والصناديق المفتوحة بتتعدّل بالفرق — حتى ما يبقى ولا كسر باليومية والصناديق
 function fixPosInvoicesV2(){
-  if(DB.settings.posFixV2 || !primIsSec() || !currentUser || !isPrivilegedUser(currentUser) || clientSlug()!=='ccup') return;
+  if(DB.settings.posFixV2 || !primIsSec() || !currentUser || !isPrivilegedUser(currentUser)) return;
+  if(!(clientSlug()==='ccup' || /c\s*cup/i.test(String(DB.settings.companyName||'')))) return;
   let inv_ch = 0, rc_ch = false, mv_ch = false, sh_ch = false;
   DB.invoices.forEach(inv=>{
     if(inv.deleted || inv.docType!=='بيع نقطة بيع (POS)') return;
@@ -9221,7 +9222,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-10-27 · 17:35 · v31';
+const APP_TRADE_BUILD = '2026-10-27 · 17:45 · v32';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 function settingsView(){
   const s = DB.settings;
