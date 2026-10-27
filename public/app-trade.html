@@ -4588,6 +4588,7 @@ function render(){
   try{ autoRoundSellPrices(); }catch(e){ console.error('autoRoundSellPrices', e); }
   try{ fixPosInvoicesV2(); }catch(e){ console.error('fixPosInvoicesV2', e); }
   try{ fixCcupLbpV3(); }catch(e){ console.error('fixCcupLbpV3', e); }
+  try{ normalizeLbpData(); }catch(e){ console.error('normalizeLbpData', e); }
   try{ fixPosInvoicesV1(); }catch(e){ console.error('fixPosInvoicesV1', e); }
   if(!_shrinkImagesRunning && (DB.warehouseItems||[]).some(it=>typeof it.image==='string' && it.image.length>60000)) setTimeout(()=>shrinkOldProductImages(), 1500);
   const lic = licenseStatus();
@@ -8153,6 +8154,71 @@ function whSimpleCols(){
   return clientSlug()==='ccup';
 }
 function clientSlug(){ if(!CLIENT_ID) return ''; try{ return localStorage.getItem('la_slug_'+CLIENT_ID)||''; }catch(e){ return ''; } }
+/* ===== تصحيح مستمر (كل مرة بينفتح البرنامج، وكل 10 دقايق): أي فاتورة POS انعملت من جهاز عليه نسخة قديمة
+   (مجموع البند متدوّر لأقرب سنت ← 60,300 بدل 60,000) بتتصحّح لحالها، وعند C Cup كل مبالغ الليرة بالألوف ===== */
+let _lbpNormAt = 0;
+function normalizeLbpData(force){
+  if(!primIsSec() || !currentUser || !(isPrivilegedUser(currentUser) || hasPermission('pos'))) return;
+  if(!force && Date.now() - _lbpNormAt < 10*60*1000) return;
+  _lbpNormAt = Date.now();
+  const ccup = isCcupClient();
+  let inv = false, rc = false, mv = false, sh = false;
+  DB.invoices.forEach(i=>{
+    if(i.deleted || i.docType!=='بيع نقطة بيع (POS)') return;
+    const rate = Number(i.exchangeRate) || curRate();
+    let changed = false;
+    (i.items||[]).forEach(it=>{
+      const qty = Number(it.qty)||0; let price = Number(it.price)||0;
+      // سعر البند لازم يكون ليرة كاملة (وعند C Cup بالألوف)
+      const lbpUnit = price*rate, want = ccup ? Math.round(lbpUnit/1000)*1000 : Math.round(lbpUnit);
+      if(want>0 && Math.abs(lbpUnit-want) > 1e-6 && Math.abs(lbpUnit-want) < (ccup? 500 : 1)){ price = want/rate; it.price = price; changed = true; }
+      const t = roundAmt(price*qty);
+      if(Math.abs((Number(it.total)||0)-t) > 1e-7){ it.total = t; changed = true; }
+    });
+    if(!changed) return;
+    inv = true;
+    const r = posSaleReceipt(i);
+    if(r && !/\$/.test(r.method||'')){
+      const lbp = Math.round(computeInvoiceTotal(i).totalUSD*rate);
+      const old = Number(r.amount)||0;
+      if(lbp!==old && Math.abs(lbp-old) <= Math.max(1000, lbp*0.01)){
+        r.amount = lbp; rc = true;
+        const m = (DB.cashMovements||[]).find(x=>x.refSaleId===i.id && x.type==='sale' && x.currency==='LBP');
+        if(m){ m.amount = lbp; mv = true; }
+        const s2 = !isWhishMethod(r.method) && r.shiftId && (DB.cashierShifts||[]).find(x=>x.id===r.shiftId && x.status==='open');
+        if(s2){ s2.cashLBP = (Number(s2.cashLBP)||0) + (lbp-old); sh = true; }
+      }
+    }
+  });
+  if(ccup){
+    (DB.receipts||[]).forEach(r=>{ if(r.deleted || /\$/.test(r.method||'') || !isPosReceipt(r)) return; const n = lbpThousands(r.amount); if(n!==Number(r.amount)){ r.amount = n; rc = true; } });
+    (DB.cashMovements||[]).forEach(m=>{ if(m.currency!=='LBP') return; const n = lbpThousands(m.amount); if(n!==Number(m.amount)){ m.amount = n; mv = true; } });
+    (DB.cashierShifts||[]).forEach(x=>{ if(x.status!=='open') return; const n = lbpThousands(x.cashLBP); if(n!==Number(x.cashLBP)){ x.cashLBP = n; sh = true; } });
+  }
+  const saves = [];
+  if(inv) saves.push(save(KEYS.invoices, DB.invoices));
+  if(rc) saves.push(save(KEYS.receipts, DB.receipts));
+  if(mv) saves.push(save(KEYS.cashMovements, DB.cashMovements));
+  if(sh) saves.push(save(KEYS.cashierShifts, DB.cashierShifts));
+  if(saves.length) Promise.all(saves).then(()=>{ if(!location.hash.startsWith('#/pos')) render(); });
+}
+/* ===== الأجهزة يلي عليها نسخة قديمة بتتحدّث لحالها (هيك ما بيرجع يصير حساب غلط من جهاز ما انعملو refresh) ===== */
+let _verCheckAt = 0;
+async function checkForNewBuild(){
+  if(Date.now() - _verCheckAt < 5*60*1000) return;
+  _verCheckAt = Date.now();
+  try{
+    const r = await fetch(location.pathname + '?v=' + Date.now(), {cache:'no-store'});
+    if(!r.ok) return;
+    const m = (await r.text()).match(/const APP_TRADE_BUILD = '([^']+)'/);
+    if(!m || m[1]===APP_TRADE_BUILD) return;
+    const busy = (typeof _posTickets!=='undefined') && _posTickets.some(t=>t.cart && t.cart.length);
+    const modal = document.querySelector('.modal-bg');
+    if(busy || modal){ _verCheckAt = Date.now() - 4*60*1000; return; }   // منحاول بعد دقيقة لما تفضى السلة
+    location.reload();
+  }catch(e){}
+}
+setInterval(()=>{ try{ checkForNewBuild(); normalizeLbpData(); }catch(e){} }, 60*1000);
 // C Cup كلو لبناني: كل مبالغ الليرة (إيصالات، حركات صندوق، الصناديق المفتوحة) بلا كسور — لأقرب 1,000. مرة وحدة
 function isCcupClient(){ return clientSlug()==='ccup' || /c\s*cup/i.test(String(DB.settings.companyName||'')); }
 function lbpThousands(v){ return Math.round((Number(v)||0)/1000)*1000; }
@@ -9245,7 +9311,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-10-27 · 17:55 · v33';
+const APP_TRADE_BUILD = '2026-10-27 · 18:20 · v34';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 function settingsView(){
   const s = DB.settings;
