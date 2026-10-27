@@ -1128,6 +1128,48 @@ const SUPABASE_TABLES = {
   workerPayments: {table:'worker_payments', toDb:workerPaymentToDb, fromDb:workerPaymentFromDb, label:'دفعات العمال'},
   workerAccounts: {table:'worker_accounts', toDb:workerAccountToDb, fromDb:workerAccountFromDb, label:'حسابات دخول العمال'}
 };
+/* جلسة الدخول على هالجهاز ما عادت صالحة بالسيرفر (مثلاً انفتح البرنامج بنافذة/تبويب تاني أو انتهت الجلسة):
+   قاعدة البيانات بترفض الحفظ (42501). البيانات محفوظة عالجهاز — منطلب كلمة السر مرة وحدة ومنرجع نرفع يلي ما انرفع */
+const _pendingResync = new Set();
+let _reauthOpen = false, _resyncing = false;
+function handleSessionDenied(localKey){
+  _pendingResync.add(localKey);
+  if(_reauthOpen) return;
+  _reauthOpen = true;
+  const wrap = document.createElement('div');
+  wrap.className = 'modal-bg';
+  wrap.style.zIndex = '9500';
+  wrap.innerHTML = `<div class="modal" style="max-width:420px;">
+    <h3>🔐 أكّد دخولك</h3>
+    <p style="font-size:13px; line-height:1.8;">جلسة الدخول على هالجهاز انتهت، فالسحابة رفضت الحفظ. <b>العمليات محفوظة على الجهاز وما راحت</b> — اكتب كلمة السر لـ <b>${escapeHtml(currentUser.username||'')}</b> ومنكمّل رفعها.</p>
+    <div class="field"><label>كلمة السر</label><input type="password" id="ra_pw" autocomplete="current-password" style="font-size:17px; padding:10px;"></div>
+    <div class="field" id="ra_totp_wrap" style="display:none;"><label>رمز التحقق (2FA)</label><input type="text" id="ra_totp" inputmode="numeric" class="num"></div>
+    <div id="ra_err" style="color:var(--debit); font-size:13px; min-height:18px;"></div>
+    <div class="row" style="margin-top:8px;">
+      <button class="btn" id="ra_later">لاحقاً</button>
+      <button class="btn btn-primary" id="ra_ok">✅ تأكيد ورفع العمليات</button>
+    </div>
+  </div>`;
+  document.body.appendChild(wrap);
+  const $ = q=>wrap.querySelector(q);
+  setTimeout(()=>{ try{ $('#ra_pw').focus(); }catch(e){} }, 50);
+  const close = ()=>{ wrap.remove(); _reauthOpen = false; };
+  $('#ra_later').addEventListener('click', ()=>{ close(); toast('⚠️ في عمليات ما انرفعت عالسحابة — بتنرفع بعد تأكيد الدخول'); });
+  const go2 = async ()=>{
+    $('#ra_ok').disabled = true; $('#ra_err').textContent = '';
+    const res = await rpcLogin(currentUser.username, $('#ra_pw').value, $('#ra_totp').value.trim());
+    if(res && res.need_totp){ $('#ra_totp_wrap').style.display = ''; $('#ra_err').textContent = 'اكتب رمز التحقق'; $('#ra_ok').disabled = false; return; }
+    if(!res || !res.ok){ $('#ra_err').textContent = res ? rpcLoginErrorText(res) : 'تعذّر التحقق — حدّث الصفحة'; $('#ra_ok').disabled = false; return; }
+    close();
+    const keys = Array.from(_pendingResync); _pendingResync.clear();
+    _resyncing = true;
+    try{ for(const k of keys){ if(Array.isArray(DB[k])) await syncArrayToSupabase(k, DB[k]); } }
+    finally{ _resyncing = false; }
+    toast(_pendingResync.size? '⚠️ بعض العمليات بعدها ما انرفعت' : '✅ تم تأكيد الدخول ورفع كل العمليات عالسحابة');
+  };
+  $('#ra_ok').addEventListener('click', go2);
+  $('#ra_pw').addEventListener('keydown', e=>{ if(e.key==='Enter') go2(); });
+}
 async function syncArrayToSupabase(localKey, arr){
   const cfg = SUPABASE_TABLES[localKey];
   if(!cfg || !supabaseClient) return;
@@ -1135,6 +1177,8 @@ async function syncArrayToSupabase(localKey, arr){
     if(arr.length){
       const rows = arr.map(cfg.toDb);
       const { error } = await supabaseClient.from(T(cfg.table)).upsert(rows.map(withClient));
+      if(error && error.code==='42501' && SECURE_MODE && currentUser && !_resyncing){ handleSessionDenied(localKey); return; }
+      if(error && error.code==='42501' && _resyncing){ _pendingResync.add(localKey); error.message = 'المستخدم «'+(currentUser&&currentUser.username)+'» ما عندو صلاحية حفظ '+cfg.label+' — زيد الصلاحية من «المستخدمين» — '+error.message; }
       if(error){
         lastSupabaseError = describeSupabaseError(error);
         console.error(cfg.table+' upsert error:', lastSupabaseError);
@@ -6749,8 +6793,9 @@ function openPosPaymentModal(currency, prefill){
   const due = currency==='USD'? totalUSD : totalUSD*rate;
   const wrap = document.createElement('div');
   wrap.className='modal-bg';
+  const namedCust = !!ticket.customerId && DB.customers.some(c=>c.id===ticket.customerId);
   wrap.innerHTML = `<div class="modal">
-    <h3>${currency==='USD'?'💵 قبض دولار':'💴 قبض ليرة'}</h3>
+    <h3>${currency==='USD'?'💵 قبض دولار':'💴 قبض ليرة'}${namedCust? ' — '+escapeHtml(ticket.customerLabel) : ''}</h3>
     <div style="font-size:14px; margin-bottom:10px;">المطلوب: <b class="num">${currency==='USD'?'$'+due.toFixed(2):fmtNum(due)+' '+secCurLabel()}</b></div>
     <div class="field"><label>المبلغ المقبوض من الزبون *</label>
       <input type="number" step="${currency==='USD'?'0.01':'1'}" id="pp_received" class="num" value="${prefill>0? prefill : due.toFixed(currency==='USD'?2:0)}" style="font-size:18px; padding:10px;">
@@ -6758,10 +6803,14 @@ function openPosPaymentModal(currency, prefill){
     <div style="font-size:15px; margin-top:8px;">الباقي للزبون: <b class="num" id="pp_change" style="color:var(--credit);">0</b></div>
     <div class="row" style="margin-top:14px;">
       <button class="btn" id="pp_cancel">إلغاء</button>
-      <button class="btn btn-primary" id="pp_confirm">✅ تأكيد القبض</button>
+      ${namedCust? `<button class="btn btn-debit" id="pp_debt" style="font-weight:800;">📒 دين بالحساب</button>` : ''}
+      <button class="btn btn-primary" id="pp_confirm">💵 نقداً — تأكيد القبض</button>
     </div>
+    ${namedCust? `<div style="font-size:11.5px; color:var(--ink-soft); margin-top:8px;">«دين بالحساب»: الفاتورة بتنسجّل على حساب الزبون بلا إيصال قبض، وما بتدخل الصندوق.</div>` : ''}
   </div>`;
   document.body.appendChild(wrap);
+  const debtBtn = wrap.querySelector('#pp_debt');
+  if(debtBtn) debtBtn.addEventListener('click', ()=>{ wrap.remove(); completePosSale('CREDIT', null, null, {paid:0}); });
   const input = wrap.querySelector('#pp_received');
   const changeEl = wrap.querySelector('#pp_change');
   function updateChange(){
@@ -8023,6 +8072,8 @@ function autoRoundOn(){
 let _autoRoundRunning = false;
 function autoRoundSellPrices(){
   if(_autoRoundRunning || !autoRoundOn() || !primIsSec()) return;
+  // بس المستخدم يلي بيحق لو يعدّل المستودع (الكاشير ما بيحفظ أسعار)
+  if(!currentUser || !(isPrivilegedUser(currentUser) || hasPermission('warehouse') || hasPermission('edit_products'))) return;
   const r = curRate(); if(!(r>0)) return;
   const fix = [];
   (DB.warehouseItems||[]).forEach(it=>{
@@ -8992,7 +9043,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-10-27 · 12:40 · v27';
+const APP_TRADE_BUILD = '2026-10-27 · 16:40 · v28';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 function settingsView(){
   const s = DB.settings;
