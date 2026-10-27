@@ -986,7 +986,8 @@ function settingsToDb(s){
       posPrintMode: s.posPrintMode||'auto',
       posFullscreen: s.posFullscreen!==false,
       posFixV1: !!s.posFixV1,
-      posFixV2: !!s.posFixV2}})
+      posFixV2: !!s.posFixV2,
+      posFixV3: !!s.posFixV3}})
   };
 }
 function applySettingsFromDb(row, base){
@@ -1037,7 +1038,8 @@ function applySettingsFromDb(row, base){
     posPrintMode: (row.product_lists && row.product_lists._ui && row.product_lists._ui.posPrintMode) ? row.product_lists._ui.posPrintMode : base.posPrintMode,
     posFullscreen: (row.product_lists && row.product_lists._ui && row.product_lists._ui.posFullscreen!=null) ? !!row.product_lists._ui.posFullscreen : base.posFullscreen,
     posFixV1: !!(row.product_lists && row.product_lists._ui && row.product_lists._ui.posFixV1),
-    posFixV2: !!(row.product_lists && row.product_lists._ui && row.product_lists._ui.posFixV2)
+    posFixV2: !!(row.product_lists && row.product_lists._ui && row.product_lists._ui.posFixV2),
+    posFixV3: !!(row.product_lists && row.product_lists._ui && row.product_lists._ui.posFixV3)
   };
 }
 async function syncSettingsToSupabase(settings){
@@ -4585,6 +4587,7 @@ function render(){
   try{ syncNativePrices(); }catch(e){ console.error('syncNativePrices', e); }
   try{ autoRoundSellPrices(); }catch(e){ console.error('autoRoundSellPrices', e); }
   try{ fixPosInvoicesV2(); }catch(e){ console.error('fixPosInvoicesV2', e); }
+  try{ fixCcupLbpV3(); }catch(e){ console.error('fixCcupLbpV3', e); }
   try{ fixPosInvoicesV1(); }catch(e){ console.error('fixPosInvoicesV1', e); }
   if(!_shrinkImagesRunning && (DB.warehouseItems||[]).some(it=>typeof it.image==='string' && it.image.length>60000)) setTimeout(()=>shrinkOldProductImages(), 1500);
   const lic = licenseStatus();
@@ -4991,7 +4994,7 @@ function hubView(){
       <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:10px;">
         <h2 style="margin:0;"><span class="dot"></span> 💵 صناديق الموظفين</h2>
       </div>
-      <div style="font-size:12px; color:var(--ink-soft); margin-bottom:10px;">مبيعات اليوم (POS، تقرير فقط): <b class="num">${todaySales.count} عملية — $${todaySales.totalUSD.toFixed(2)}</b></div>
+      <div style="font-size:12px; color:var(--ink-soft); margin-bottom:10px;">مبيعات اليوم (POS، تقرير فقط): <b class="num">${todaySales.count} عملية — ${fmtPrim(todaySales.totalUSD)}</b></div>
       <div style="display:flex; justify-content:space-between; align-items:center; background:var(--bg-2); border:1px solid var(--line); border-radius:8px; padding:8px 12px; margin-bottom:8px; flex-wrap:wrap; gap:8px;">
         <div><b>صندوقي (${escapeHtml(currentUser.username)})</b><div style="font-size:11px; color:var(--ink-soft);">${myShift? 'مفتوح منذ '+new Date(myShift.openedAt).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}) : 'مقفل'}</div></div>
         <div><div class="num" style="font-weight:800;">$${(myShift? myShift.cashUSD : 0).toFixed(2)} + ${fmtNum(myShift? myShift.cashLBP : 0)} ${secCurLabel()}</div>${myShift? whishBoxHtml([myShift]) : ''}</div>
@@ -6973,7 +6976,7 @@ async function completePosSale(currency, received, due, opts){
   const whish = !!opts.whish;
   if(whish) inv.payMethod = 'whish';
   const receipt = {id:uid(), createdAt:now, customerId, number:nextReceiptNumber(), date, shiftId:myShift.id,
-    amount: currency==='USD'? totalUSD : Math.round(totalUSD*rate),
+    amount: currency==='USD'? totalUSD : (isCcupClient()? lbpThousands(totalUSD*rate) : Math.round(totalUSD*rate)),
     method: whish ? (currency==='USD'? 'Whish $ (POS)' : 'Whish '+secCurLabel()+' (POS)') : (currency==='USD'?'نقد $ (POS)':'نقد '+secCurLabel()+' (POS)'),
     details:'بيع نقطة بيع #'+inv.number+' — الكاشير: '+currentUser.username};
   DB.receipts.push(receipt);
@@ -6987,10 +6990,10 @@ async function completePosSale(currency, received, due, opts){
     go('#/pos'); render();
     return;
   }
-  const movement = {id:uid(), createdAt:now, type:'sale', currency, amount: currency==='USD'?totalUSD:Math.round(totalUSD*rate), note:'بيع POS #'+inv.number+' — '+currentUser.username, refSaleId:inv.id, date, shiftId:myShift.id};
+  const movement = {id:uid(), createdAt:now, type:'sale', currency, amount: currency==='USD'?totalUSD:(isCcupClient()? lbpThousands(totalUSD*rate) : Math.round(totalUSD*rate)), note:'بيع POS #'+inv.number+' — '+currentUser.username, refSaleId:inv.id, date, shiftId:myShift.id};
   DB.cashMovements.push(movement);
   if(currency==='USD') myShift.cashUSD = (myShift.cashUSD||0) + totalUSD;
-  else myShift.cashLBP = (myShift.cashLBP||0) + Math.round(totalUSD*rate);
+  else myShift.cashLBP = (myShift.cashLBP||0) + (isCcupClient()? lbpThousands(totalUSD*rate) : Math.round(totalUSD*rate));
 
   await Promise.all([
     save(KEYS.invoices, DB.invoices),
@@ -8150,11 +8153,31 @@ function whSimpleCols(){
   return clientSlug()==='ccup';
 }
 function clientSlug(){ if(!CLIENT_ID) return ''; try{ return localStorage.getItem('la_slug_'+CLIENT_ID)||''; }catch(e){ return ''; } }
+// C Cup كلو لبناني: كل مبالغ الليرة (إيصالات، حركات صندوق، الصناديق المفتوحة) بلا كسور — لأقرب 1,000. مرة وحدة
+function isCcupClient(){ return clientSlug()==='ccup' || /c\s*cup/i.test(String(DB.settings.companyName||'')); }
+function lbpThousands(v){ return Math.round((Number(v)||0)/1000)*1000; }
+function fixCcupLbpV3(){
+  if(DB.settings.posFixV3 || !primIsSec() || !currentUser || !isPrivilegedUser(currentUser) || !isCcupClient()) return;
+  if(!DB.settings.posFixV2){ fixPosInvoicesV2(); return; }   // أول شي الفواتير على سعر المستودع، وبعدها هيدا بالـ render الجاي
+  let rc = false, mv = false, sh = false;
+  (DB.receipts||[]).forEach(r=>{ if(r.deleted || /\$/.test(r.method||'') || !isPosReceipt(r)) return; const n = lbpThousands(r.amount); if(n!==Number(r.amount)){ r.amount = n; rc = true; } });
+  (DB.cashMovements||[]).forEach(m=>{ if(m.currency!=='LBP') return; const n = lbpThousands(m.amount); if(n!==Number(m.amount)){ m.amount = n; mv = true; } });
+  (DB.cashierShifts||[]).forEach(x=>{ if(x.status!=='open') return; const n = lbpThousands(x.cashLBP); if(n!==Number(x.cashLBP)){ x.cashLBP = n; sh = true; } });
+  DB.settings.posFixV3 = true;
+  const saves = [save(KEYS.settings, DB.settings)];
+  if(rc) saves.push(save(KEYS.receipts, DB.receipts));
+  if(mv) saves.push(save(KEYS.cashMovements, DB.cashMovements));
+  if(sh) saves.push(save(KEYS.cashierShifts, DB.cashierShifts));
+  Promise.all(saves).then(res=>{
+    if(!res.every(Boolean)){ DB.settings.posFixV3 = false; toast('⚠️ تعذّر حفظ تصحيح الصندوق'); return; }
+    if(rc||mv||sh){ toast('تم تصحيح مبالغ الصندوق — بلا كسور ✅'); render(); }
+  });
+}
 // C Cup (مرة وحدة): كل بنود فواتير POS بتاخد سعر المستودع الحالي (بلا كسور)، وإيصال القبض وحركة الصندوق
 // بيتصحّحو معها، والصناديق المفتوحة بتتعدّل بالفرق — حتى ما يبقى ولا كسر باليومية والصناديق
 function fixPosInvoicesV2(){
   if(DB.settings.posFixV2 || !primIsSec() || !currentUser || !isPrivilegedUser(currentUser)) return;
-  if(!(clientSlug()==='ccup' || /c\s*cup/i.test(String(DB.settings.companyName||'')))) return;
+  if(!isCcupClient()) return;
   let inv_ch = 0, rc_ch = false, mv_ch = false, sh_ch = false;
   DB.invoices.forEach(inv=>{
     if(inv.deleted || inv.docType!=='بيع نقطة بيع (POS)') return;
@@ -9222,7 +9245,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-10-27 · 17:45 · v32';
+const APP_TRADE_BUILD = '2026-10-27 · 17:55 · v33';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 function settingsView(){
   const s = DB.settings;
