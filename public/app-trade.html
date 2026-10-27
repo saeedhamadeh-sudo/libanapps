@@ -985,7 +985,8 @@ function settingsToDb(s){
       posLayout: s.posLayout==='old' ? 'old' : 'pro',
       posPrintMode: s.posPrintMode||'auto',
       posFullscreen: s.posFullscreen!==false,
-      posFixV1: !!s.posFixV1}})
+      posFixV1: !!s.posFixV1,
+      posFixV2: !!s.posFixV2}})
   };
 }
 function applySettingsFromDb(row, base){
@@ -1035,7 +1036,8 @@ function applySettingsFromDb(row, base){
     posLayout: (row.product_lists && row.product_lists._ui && row.product_lists._ui.posLayout) ? row.product_lists._ui.posLayout : base.posLayout,
     posPrintMode: (row.product_lists && row.product_lists._ui && row.product_lists._ui.posPrintMode) ? row.product_lists._ui.posPrintMode : base.posPrintMode,
     posFullscreen: (row.product_lists && row.product_lists._ui && row.product_lists._ui.posFullscreen!=null) ? !!row.product_lists._ui.posFullscreen : base.posFullscreen,
-    posFixV1: !!(row.product_lists && row.product_lists._ui && row.product_lists._ui.posFixV1)
+    posFixV1: !!(row.product_lists && row.product_lists._ui && row.product_lists._ui.posFixV1),
+    posFixV2: !!(row.product_lists && row.product_lists._ui && row.product_lists._ui.posFixV2)
   };
 }
 async function syncSettingsToSupabase(settings){
@@ -4582,6 +4584,7 @@ function render(){
   try{ applyFavicon(); }catch(e){}
   try{ syncNativePrices(); }catch(e){ console.error('syncNativePrices', e); }
   try{ autoRoundSellPrices(); }catch(e){ console.error('autoRoundSellPrices', e); }
+  try{ fixPosInvoicesV2(); }catch(e){ console.error('fixPosInvoicesV2', e); }
   try{ fixPosInvoicesV1(); }catch(e){ console.error('fixPosInvoicesV1', e); }
   if(!_shrinkImagesRunning && (DB.warehouseItems||[]).some(it=>typeof it.image==='string' && it.image.length>60000)) setTimeout(()=>shrinkOldProductImages(), 1500);
   const lic = licenseStatus();
@@ -8147,6 +8150,54 @@ function whSimpleCols(){
   return clientSlug()==='ccup';
 }
 function clientSlug(){ if(!CLIENT_ID) return ''; try{ return localStorage.getItem('la_slug_'+CLIENT_ID)||''; }catch(e){ return ''; } }
+// C Cup (مرة وحدة): كل بنود فواتير POS بتاخد سعر المستودع الحالي (بلا كسور)، وإيصال القبض وحركة الصندوق
+// بيتصحّحو معها، والصناديق المفتوحة بتتعدّل بالفرق — حتى ما يبقى ولا كسر باليومية والصناديق
+function fixPosInvoicesV2(){
+  if(DB.settings.posFixV2 || !primIsSec() || !currentUser || !isPrivilegedUser(currentUser) || clientSlug()!=='ccup') return;
+  let inv_ch = 0, rc_ch = false, mv_ch = false, sh_ch = false;
+  DB.invoices.forEach(inv=>{
+    if(inv.deleted || inv.docType!=='بيع نقطة بيع (POS)') return;
+    const rate = Number(inv.exchangeRate) || curRate();
+    let changed = false;
+    (inv.items||[]).forEach(it=>{
+      const qty = Number(it.qty)||0;
+      const w = it.productId && DB.warehouseItems.find(x=>x.id===it.productId);
+      let lbp = (Number(it.price)||0)*rate;
+      if(w && it.origPrice==null){
+        const stockLbp = Number(w.priceSec)>0 ? Number(w.priceSec) : Math.round(Number(w.price)*rate);
+        if(stockLbp>0) lbp = stockLbp;
+      } else lbp = Math.round(lbp/1000)*1000 || Math.round(lbp);   // بند حر / بند عليه حسم: بلا كسور
+      const price = lbp/rate, total = roundAmt(price*qty);
+      if(Math.abs((Number(it.price)||0)-price) > 1e-9){ it.price = price; changed = true; }
+      if(Math.abs((Number(it.total)||0)-total) > 1e-7){ it.total = total; changed = true; }
+    });
+    if(Number(inv.discount)>0){ const d = Math.round(Number(inv.discount)*rate/1000)*1000/rate; if(Math.abs(d-Number(inv.discount))>1e-9){ inv.discount = d; changed = true; } }
+    if(!changed) return;
+    inv_ch++;
+    const lbpTotal = Math.round(computeInvoiceTotal(inv).totalUSD*rate);
+    const r = posSaleReceipt(inv);
+    if(r && !/\$/.test(r.method||'')){
+      const delta = lbpTotal - (Number(r.amount)||0);
+      if(delta){
+        r.amount = lbpTotal; rc_ch = true;
+        const mv = (DB.cashMovements||[]).find(m=>m.refSaleId===inv.id && m.type==='sale' && m.currency==='LBP');
+        if(mv){ mv.amount = lbpTotal; mv_ch = true; }
+        const sh = !isWhishMethod(r.method) && r.shiftId && (DB.cashierShifts||[]).find(x=>x.id===r.shiftId && x.status==='open');
+        if(sh){ sh.cashLBP = (Number(sh.cashLBP)||0) + delta; sh_ch = true; }
+      }
+    }
+  });
+  DB.settings.posFixV2 = true; DB.settings.posFixV1 = true;
+  const saves = [save(KEYS.settings, DB.settings)];
+  if(inv_ch) saves.push(save(KEYS.invoices, DB.invoices));
+  if(rc_ch) saves.push(save(KEYS.receipts, DB.receipts));
+  if(mv_ch) saves.push(save(KEYS.cashMovements, DB.cashMovements));
+  if(sh_ch) saves.push(save(KEYS.cashierShifts, DB.cashierShifts));
+  Promise.all(saves).then(res=>{
+    if(!res.every(Boolean)){ DB.settings.posFixV2 = false; toast('⚠️ تعذّر حفظ تصحيح الفواتير'); return; }
+    if(inv_ch){ toast('تم تصحيح '+inv_ch+' فاتورة على سعر المستودع ✅'); render(); }
+  });
+}
 // تصحيح فواتير POS القديمة (مرة وحدة): مجموع البند كان يتدوّر لأقرب سنت فكان يطلع 50,400 بدل 50,000 باللبناني.
 // بنود الصنف يلي سعرها بيختلف عن سعر المستودع أقل من 1% (99,999 ← 100,000) بتاخد سعر المستودع؛ والإيصال المرتبط بيتصحّح معها
 function fixPosInvoicesV1(){
@@ -9170,7 +9221,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-10-27 · 17:20 · v30';
+const APP_TRADE_BUILD = '2026-10-27 · 17:35 · v31';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 function settingsView(){
   const s = DB.settings;
