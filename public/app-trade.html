@@ -4589,6 +4589,7 @@ function render(){
   try{ fixPosInvoicesV2(); }catch(e){ console.error('fixPosInvoicesV2', e); }
   try{ fixCcupLbpV3(); }catch(e){ console.error('fixCcupLbpV3', e); }
   try{ normalizeLbpData(); }catch(e){ console.error('normalizeLbpData', e); }
+  try{ closeOrphanShifts(); }catch(e){ console.error('closeOrphanShifts', e); }
   try{ fixPosInvoicesV1(); }catch(e){ console.error('fixPosInvoicesV1', e); }
   if(!_shrinkImagesRunning && (DB.warehouseItems||[]).some(it=>typeof it.image==='string' && it.image.length>60000)) setTimeout(()=>shrinkOldProductImages(), 1500);
   const lic = licenseStatus();
@@ -5008,7 +5009,7 @@ function hubView(){
       </div>
       ${openShifts.filter(sh=>!myShift || sh.id!==myShift.id).length? openShifts.filter(sh=>!myShift || sh.id!==myShift.id).map(sh=>`
       <div style="display:flex; justify-content:space-between; align-items:center; background:var(--bg-2); border:1px solid var(--line); border-radius:8px; padding:8px 12px; margin-bottom:8px; flex-wrap:wrap; gap:8px;">
-        <div><b>${escapeHtml(sh.username)}</b><div style="font-size:11px; color:var(--ink-soft);">مفتوح منذ ${new Date(sh.openedAt).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}</div></div>
+        <div><b>${escapeHtml(sh.username)}</b>${shiftUserExists(sh)? '' : ' <span style="font-size:11px; color:var(--debit);">(موظف محذوف)</span>'}<div style="font-size:11px; color:var(--ink-soft);">مفتوح منذ ${new Date(sh.openedAt).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}</div>${shiftUserExists(sh)? '' : `<button class="btn btn-sm btn-danger" data-close-orphan="${sh.id}" style="margin-top:4px; padding:3px 8px;">🔒 إقفال الصندوق</button>`}</div>
         <div><div class="num" style="font-weight:800;">$${sh.cashUSD.toFixed(2)} + ${fmtNum(sh.cashLBP)} ${secCurLabel()}</div>${whishBoxHtml([sh])}</div>
         <div style="display:flex; gap:5px;">
           <button class="btn btn-sm" data-admin-cashmove="deposit" data-shift="${sh.id}" data-currency="USD" style="padding:3px 8px;">➕$</button>
@@ -8212,14 +8213,35 @@ async function checkForNewBuild(){
     if(!r.ok) return;
     const m = (await r.text()).match(/const APP_TRADE_BUILD = '([^']+)'/);
     if(!m || m[1]===APP_TRADE_BUILD) return;
-    const busy = (typeof _posTickets!=='undefined') && _posTickets.some(t=>t.cart && t.cart.length);
-    const modal = document.querySelector('.modal-bg');
-    if(busy || modal){ _verCheckAt = Date.now() - 4*60*1000; return; }   // منحاول بعد دقيقة لما تفضى السلة
-    location.reload();
+    // ما منعمل refresh لحالنا (الـ refresh بيطلب تسجيل دخول) — منبيّن شريط والموظف بيكبسو وقت ما يفضى
+    if(document.getElementById('new_build_bar')) return;
+    const bar = document.createElement('div');
+    bar.id = 'new_build_bar';
+    bar.style.cssText = 'position:fixed; top:8px; left:50%; transform:translateX(-50%); z-index:9800; background:#1e2a38; color:#fff; border-radius:12px; padding:8px 12px; display:flex; gap:10px; align-items:center; box-shadow:0 6px 20px rgba(0,0,0,.25); font-size:13.5px;';
+    bar.innerHTML = '🔄 في نسخة جديدة من البرنامج <button type="button" class="btn btn-sm btn-primary" id="nb_go">تحديث</button><button type="button" class="btn btn-sm" id="nb_x" style="background:transparent; color:#fff; border-color:#5a6675;">لاحقاً</button>';
+    document.body.appendChild(bar);
+    bar.querySelector('#nb_go').addEventListener('click', ()=>location.reload());
+    bar.querySelector('#nb_x').addEventListener('click', ()=>{ bar.remove(); _verCheckAt = Date.now() + 25*60*1000; });
   }catch(e){}
 }
 setInterval(()=>{ try{ checkForNewBuild(); normalizeLbpData(); }catch(e){} }, 60*1000);
 // C Cup كلو لبناني: كل مبالغ الليرة (إيصالات، حركات صندوق، الصناديق المفتوحة) بلا كسور — لأقرب 1,000. مرة وحدة
+// صندوق موظف انحذف: إذا فاضي بينقفل لحالو؛ إذا فيه مصاري بيضل ظاهر مع زر «إقفال»
+function shiftUserExists(sh){ const us = DB.settings.users||[]; return !us.length || us.some(u=>u.id===sh.userId) || (currentUser && currentUser.id===sh.userId); }
+async function closeShiftAsOrphan(sh, note){
+  sh.closingCountedUSD = Number(sh.cashUSD)||0; sh.closingCountedLBP = Number(sh.cashLBP)||0;
+  sh.status = 'closed'; sh.closedAt = Date.now();
+  sh.note = (sh.note? sh.note+' | ' : '') + (note || 'أُقفل تلقائياً — الموظف محذوف');
+}
+let _orphanChecked = false;
+function closeOrphanShifts(){
+  if(_orphanChecked || !currentUser || !isPrivilegedUser(currentUser) || !(DB.settings.users||[]).length) return;
+  _orphanChecked = true;
+  const empty = (DB.cashierShifts||[]).filter(sh=>sh.status==='open' && !shiftUserExists(sh) && Math.abs(Number(sh.cashUSD)||0)<0.005 && Math.abs(Number(sh.cashLBP)||0)<1);
+  if(!empty.length) return;
+  empty.forEach(sh=>closeShiftAsOrphan(sh));
+  save(KEYS.cashierShifts, DB.cashierShifts).then(ok=>{ if(ok) render(); });
+}
 function isCcupClient(){ return clientSlug()==='ccup' || /c\s*cup/i.test(String(DB.settings.companyName||'')); }
 function lbpThousands(v){ return Math.round((Number(v)||0)/1000)*1000; }
 function fixCcupLbpV3(){
@@ -9311,7 +9333,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-10-27 · 18:20 · v34';
+const APP_TRADE_BUILD = '2026-10-27 · 18:45 · v35';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 function settingsView(){
   const s = DB.settings;
@@ -10102,6 +10124,13 @@ function bindEvents(){
       openCashMovementModal(btn.getAttribute('data-cashmove'), btn.getAttribute('data-currency'));
     });
   });
+  document.querySelectorAll('[data-close-orphan]').forEach(btn=>btn.addEventListener('click', async ()=>{
+    const sh = (DB.cashierShifts||[]).find(x=>x.id===btn.getAttribute('data-close-orphan')); if(!sh) return;
+    if(!confirm('إقفال صندوق '+sh.username+' (موظف محذوف)؟ الرصيد فيه: '+fmtNum(sh.cashLBP)+' '+secCurLabel()+' + $'+(Number(sh.cashUSD)||0).toFixed(2))) return;
+    closeShiftAsOrphan(sh, 'أقفله '+currentUser.username+' — الموظف محذوف');
+    const ok = await save(KEYS.cashierShifts, DB.cashierShifts);
+    toast(ok? 'تم إقفال الصندوق ✅' : 'حدث خطأ أثناء الحفظ'); render();
+  }));
   document.querySelectorAll('[data-admin-cashmove]').forEach(btn=>{
     btn.addEventListener('click', (e)=>{
       e.stopPropagation();
@@ -10890,6 +10919,8 @@ function openDeleteUserModal(user){
   wrap.querySelector('#dum_cancel').addEventListener('click', ()=>wrap.remove());
   wrap.querySelector('#dum_confirm').addEventListener('click', async ()=>{
     DB.settings.users = (DB.settings.users||[]).filter(u=>u.id!==user.id);
+    const theirs = (DB.cashierShifts||[]).filter(sh=>sh.status==='open' && sh.userId===user.id);
+    if(theirs.length){ theirs.forEach(sh=>closeShiftAsOrphan(sh, 'أُقفل عند حذف الموظف')); await save(KEYS.cashierShifts, DB.cashierShifts); }
     const ok = await save(KEYS.settings, DB.settings);
     wrap.remove();
     toast(ok? 'تم حذف المستخدم':'حدث خطأ أثناء الحفظ');
