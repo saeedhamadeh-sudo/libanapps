@@ -7933,7 +7933,7 @@ function whSimpleCols(){
   return clientSlug()==='ccup';
 }
 function clientSlug(){ if(!CLIENT_ID) return ''; try{ return localStorage.getItem('la_slug_'+CLIENT_ID)||''; }catch(e){ return ''; } }
-// تقريب سعر البيع بالليرة لأقرب 1,000 تلقائياً (بلا كسور) — من الإعدادات، ومفعّل تلقائياً لزبون C Cup
+// تقريب سعر البيع بالليرة لأقرب 10,000 تلقائياً: تحت 5,000 بينزل (54,650 ← 50,000) و 5,000 وفوق بيطلع (55,000 ← 60,000) — من الإعدادات، ومفعّل تلقائياً لزبون C Cup
 function autoRoundOn(){
   if(isAutoShop()) return false;   // محل الإطارات والزيوت: بلا أي تغيير
   const v = DB.settings && DB.settings.autoRoundSell1000;
@@ -7948,7 +7948,7 @@ function autoRoundSellPrices(){
   (DB.warehouseItems||[]).forEach(it=>{
     if(!(Number(it.price)>0)) return;
     const v = Number(it.priceSec)>0 ? Number(it.priceSec) : Math.round(Number(it.price)*r);
-    const n = Math.round(v/1000)*1000;
+    const n = Math.round(v/10000)*10000;
     if(n>0 && n!==v) fix.push([it, n]);
     else if(n>0 && !(Number(it.priceSec)>0)) fix.push([it, n]);   // نثبّت السعر بالليرة حتى ما يرجع يطلع كسور مع سعر الصرف
   });
@@ -8912,7 +8912,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-10-27 · 11:20 · v22';
+const APP_TRADE_BUILD = '2026-10-27 · 11:35 · v23';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 function settingsView(){
   const s = DB.settings;
@@ -9037,7 +9037,7 @@ function settingsView(){
         <option value="simple" ${whSimpleCols()?'selected':''}>مختصرة: الباركود، اسم الصنف، سعر الشراء، سعر البيع، الحالة، الكمية</option>
       </select>
     </div>
-    <label style="display:flex; gap:6px; align-items:center; font-size:13px; margin:4px 0 10px;"><input type="checkbox" id="s_autoround" ${autoRoundOn()?'checked':''} style="width:auto;"> تقريب سعر البيع تلقائياً لأقرب 1,000 (بلا كسور) — عندما تكون العملة الأساسية المحلية</label>`}
+    <label style="display:flex; gap:6px; align-items:center; font-size:13px; margin:4px 0 10px;"><input type="checkbox" id="s_autoround" ${autoRoundOn()?'checked':''} style="width:auto;"> تقريب سعر البيع تلقائياً لأقرب 10,000 (54,650 ← 50,000 · 55,000 ← 60,000) — عندما تكون العملة الأساسية المحلية</label>`}
     <button class="btn btn-primary" id="saveWarehouseSettingsBtn">💾 حفظ إعدادات المستودع</button>
   </div>
 
