@@ -3417,6 +3417,88 @@ function openProductImagesWebModal(){
     toast('تم حفظ '+ok+' صورة ✅');
   });
 }
+// تعديل سعر البيع وسعر الشراء لكل المنتجات من صفحة وحدة (بالعملة الأساسية) — بيحفظ بس يلي تغيّر
+function openEditPricesModal(){
+  const showCost = hasPermission('cost_prices');
+  const sec = primIsSec(), r = curRate();
+  const sellOf = it=> !(Number(it.price)>0) ? '' : (sec ? (Number(it.priceSec)>0 ? Number(it.priceSec) : Math.round(Number(it.price)*r)) : Math.round(Number(it.price)*100)/100);
+  const costOf = it=> (it.costPrice===undefined || it.costPrice===null || it.costPrice==='' || !(Number(it.costPrice)>0)) ? '' : (sec ? (Number(it.costSec)>0 ? Number(it.costSec) : Math.round(Number(it.costPrice)*r)) : Math.round(Number(it.costPrice)*100)/100);
+  const edits = {};   // id -> {sell, cost}
+  const wrap = document.createElement('div');
+  wrap.className = 'modal-bg';
+  wrap.innerHTML = `<div class="modal modal-wide" style="max-width:820px;">
+    <h3>✏️ تعديل الأسعار (${escapeHtml(primSym())})</h3>
+    <input type="text" id="ep_q" placeholder="🔍 بحث بالاسم أو الباركود..." style="width:100%; margin-bottom:8px; font-size:15px; padding:9px 12px;">
+    <div id="ep_info" style="font-size:12px; color:var(--ink-soft); margin-bottom:6px;"></div>
+    ${(autoRoundOn() && sec)? `<div style="font-size:12px; color:var(--bronze-deep, #8a5a1a); margin-bottom:6px;">ملاحظة: التقريب التلقائي مفعّل — سعر البيع بيتقرّب لأقرب 10,000 بعد الحفظ (مثلاً 54,000 ← 50,000).</div>` : ''}
+    <div class="table-scroll" style="max-height:58vh; overflow:auto;"><table style="font-size:13px;">
+      <thead><tr><th>الصنف</th><th>الباركود</th>${showCost? '<th style="width:150px;">سعر الشراء</th>' : ''}<th style="width:150px;">سعر البيع</th></tr></thead>
+      <tbody id="ep_body"></tbody>
+    </table></div>
+    <div class="row modal-sticky-actions">
+      <button class="btn" id="ep_cancel">إلغاء</button>
+      <button class="btn btn-primary" id="ep_save" disabled>💾 حفظ التعديلات</button>
+    </div>
+  </div>`;
+  document.body.appendChild(wrap);
+  const $ = q=>wrap.querySelector(q);
+  const step = sec ? '1000' : '0.01';
+  function draw(){
+    const q = normalizeSearchText($('#ep_q').value||'');
+    const list = (q ? smartSearchWarehouse($('#ep_q').value, DB.warehouseItems) : DB.warehouseItems).filter(it=>!isServiceItem(it) || true);
+    const shown = list.slice(0, 300);
+    $('#ep_info').textContent = (list.length>300? 'يظهر 300 من '+list.length+' — ابحث لتضييق اللائحة · ' : list.length+' صنف · ') + 'غيّر الرقم واكبس «حفظ التعديلات»';
+    $('#ep_body').innerHTML = shown.map(it=>{ const e = edits[it.id]||{};
+      return `<tr>
+        <td><div class="wh-name-cell">${whThumb(it)}<b class="bidi">${escapeHtml(it.name)}</b></div></td>
+        <td class="num" style="font-size:11.5px;">${it.barcode? `<span dir="ltr">${escapeHtml(it.barcode)}</span>` : '—'}</td>
+        ${showCost? `<td><input type="number" inputmode="decimal" step="${step}" min="0" class="num" data-ep-cost="${it.id}" value="${e.cost!==undefined? e.cost : costOf(it)}" style="width:100%; padding:7px; ${e.cost!==undefined?'background:#fff6e0;':''}"></td>` : ''}
+        <td><input type="number" inputmode="decimal" step="${step}" min="0" class="num" data-ep-sell="${it.id}" value="${e.sell!==undefined? e.sell : sellOf(it)}" style="width:100%; padding:7px; font-weight:800; ${e.sell!==undefined?'background:#fff6e0;':''}"></td>
+      </tr>`; }).join('') || `<tr><td colspan="4" style="text-align:center; color:var(--ink-soft);">لا نتائج</td></tr>`;
+    wrap.querySelectorAll('[data-ep-sell],[data-ep-cost]').forEach(inp=>inp.addEventListener('input', ()=>{
+      const id = inp.getAttribute('data-ep-sell') || inp.getAttribute('data-ep-cost');
+      const kind = inp.hasAttribute('data-ep-sell') ? 'sell' : 'cost';
+      const it = DB.warehouseItems.find(x=>x.id===id);
+      const orig = String(kind==='sell' ? sellOf(it) : costOf(it));
+      edits[id] = edits[id] || {};
+      if(String(inp.value)===orig) delete edits[id][kind]; else edits[id][kind] = inp.value;
+      if(!Object.keys(edits[id]).length) delete edits[id];
+      inp.style.background = edits[id] && edits[id][kind]!==undefined ? '#fff6e0' : '';
+      const n = Object.keys(edits).length;
+      $('#ep_save').disabled = !n; $('#ep_save').textContent = '💾 حفظ التعديلات'+(n? ' ('+n+')' : '');
+    }));
+  }
+  let tmr = null;
+  $('#ep_q').addEventListener('input', ()=>{ clearTimeout(tmr); tmr = setTimeout(draw, 120); });
+  draw();
+  setTimeout(()=>$('#ep_q').focus(), 50);
+  $('#ep_cancel').addEventListener('click', ()=>{ if(Object.keys(edits).length && !confirm('في تعديلات ما انحفظت — إغلاق بدون حفظ؟')) return; wrap.remove(); });
+  $('#ep_save').addEventListener('click', async ()=>{
+    const ids = Object.keys(edits); if(!ids.length) return;
+    for(const id of ids){ const e = edits[id];
+      for(const k of ['sell','cost']) if(e[k]!==undefined && e[k]!=='' && !(Number(e[k])>=0)){ toast('رقم غير صحيح'); return; } }
+    $('#ep_save').disabled = true;
+    ids.forEach(id=>{
+      const it = DB.warehouseItems.find(x=>x.id===id); if(!it) return;
+      const e = edits[id];
+      if(e.sell!==undefined){
+        const v = Number(e.sell)||0;
+        if(sec){ it.priceSec = v>0? v : null; it.price = v>0? v/r : 0; } else { it.price = v; it.priceSec = null; }
+        if(it.margin!==undefined && it.margin!==null && it.margin!=='') it.margin = '';   // السعر صار يدوي
+      }
+      if(e.cost!==undefined){
+        if(e.cost===''){ it.costPrice = ''; it.costSec = null; }
+        else { const v = Number(e.cost)||0; if(sec){ it.costSec = v>0? v : null; it.costPrice = v/r; } else { it.costPrice = v; it.costSec = null; } }
+      }
+    });
+    invalidateWarehouseCaches();
+    const ok = await save(KEYS.warehouseItems, DB.warehouseItems);
+    if(!ok){ toast('⚠️ حدث خطأ أثناء الحفظ — راجع رسالة الخطأ'); $('#ep_save').disabled = false; return; }
+    wrap.remove();
+    toast('تم تعديل أسعار '+ids.length+' صنف ✅');
+    render();
+  });
+}
 // اختيار صورة لمنتج مباشرة (من شاشة POS) — تُحفظ للمنتج وتظهر على مربعه
 function pickProductImage(item, onDone){
   const inp = document.createElement('input');
@@ -7961,7 +8043,7 @@ function warehouseHubView(){
     <div class="action-row" style="margin-top:10px;">
       <button class="btn" data-nav="#/warehouse-print">🖨 طباعة جرد المستودع</button>
       ${(()=>{ const n = lowStockNoticeItems().length; return `<button class="btn ${n?'btn-debit':''}" data-nav="#/low-stock">⚠️ اشعار نقص ستوك${n? ' ('+n+')' : ''}</button>`; })()}
-      ${(isPrivilegedUser(currentUser) || hasPermission('edit_products'))? `<button class="btn" id="whWebImagesBtn">🌐 صور من الانترنت</button><button class="btn" id="whRoundPricesBtn">🔢 تقريب الأسعار</button>` : ''}
+      ${(isPrivilegedUser(currentUser) || hasPermission('edit_products'))? `<button class="btn btn-primary" id="whEditPricesBtn">✏️ تعديل الأسعار</button><button class="btn" id="whWebImagesBtn">🌐 صور من الانترنت</button><button class="btn" id="whRoundPricesBtn">🔢 تقريب الأسعار</button>` : ''}
     </div>
     ${auto? warehouseCatChipsHtml() : ''}
     <div id="whTableWrap" style="margin-top:14px;">
@@ -9043,7 +9125,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-10-27 · 16:40 · v28';
+const APP_TRADE_BUILD = '2026-10-27 · 16:55 · v29';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 function settingsView(){
   const s = DB.settings;
@@ -9913,6 +9995,8 @@ function bindEvents(){
   }
 
   /* Warehouse */
+  const whEditPricesBtn = document.getElementById('whEditPricesBtn');
+  if(whEditPricesBtn) whEditPricesBtn.addEventListener('click', openEditPricesModal);
   const whWebImagesBtn = document.getElementById('whWebImagesBtn');
   if(whWebImagesBtn) whWebImagesBtn.addEventListener('click', openProductImagesWebModal);
   const whRoundPricesBtn = document.getElementById('whRoundPricesBtn');
