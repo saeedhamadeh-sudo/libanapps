@@ -5691,11 +5691,11 @@ function posSearchResults(){ const q = _posSearchQ.trim(); return q ? smartSearc
 function posTilesHtml(list){
   if(!list.length) return `<div class="empty" style="grid-column:1/-1;"><div class="big">${_posSearchQ.trim()? 'لا نتائج لـ «'+escapeHtml(_posSearchQ.trim())+'»' : 'لا توجد منتجات — أضف منتجًا من المستودع أولاً'}</div></div>`;
   const shown = list.slice(0, POS_TILE_LIMIT);
-  // بالشكل الجديد: تغيير الصورة من المستودع بس (ما في أيقونة على المربع)
-  const canEditImg = posLayoutMode()!=='pro' && (isPrivilegedUser(currentUser) || hasPermission('edit_products'));
+  // أيقونة 📷 بس على المنتج يلي ما إلو صورة (📦) — بعد ما تنحط الصورة بتختفي، وتغييرها من المستودع
+  const canEditImg = isPrivilegedUser(currentUser) || hasPermission('edit_products');
   return shown.map(it=>{ const st = fastStock(it.id);
     return `<button class="pos-tile" data-pos-tile="${it.id}">
-    ${canEditImg? `<span class="pos-tile-img-btn" data-pos-tile-img="${it.id}" title="${it.image?'تغيير صورة المنتج':'إضافة صورة للمنتج'}">📷</span>` : ''}
+    ${(canEditImg && !it.image)? `<span class="pos-tile-img-btn" data-pos-tile-img="${it.id}" title="إضافة صورة للمنتج">📷</span>` : ''}
     ${it.image? `<img src="${it.image}" class="pos-tile-img" loading="lazy" alt="">` : `<div class="pos-tile-img pos-tile-img-placeholder">📦</div>`}
     <div class="pos-tile-name">${escapeHtml(it.name)}</div>
     <div class="pos-tile-price">${fmtPrim(it.price)}</div>
@@ -8992,7 +8992,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-10-27 · 12:30 · v26';
+const APP_TRADE_BUILD = '2026-10-27 · 12:40 · v27';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 function settingsView(){
   const s = DB.settings;
