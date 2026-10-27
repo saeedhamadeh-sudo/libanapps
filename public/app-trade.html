@@ -301,7 +301,7 @@
   }
 
   /* ---- شاشة POS بالشكل الجديد ---- */
-  .pc-wrap{display:grid; grid-template-columns:72px clamp(430px, 40vw, 760px) minmax(0,1fr); grid-template-rows:minmax(0,1fr) auto; gap:8px; padding:0 10px 8px; height:calc(100dvh - var(--pc-top, 80px) - 6px); min-height:420px;}
+  .pc-wrap{display:grid; grid-template-columns:72px clamp(430px, 40vw, 760px) minmax(0,1fr); grid-template-rows:minmax(0,1fr) auto; gap:8px; padding:0 10px 8px; height:calc(100dvh - var(--pc-top, 80px) - 6px); min-height:300px;}
   .pc-tools{grid-row:1; display:flex; flex-direction:column; gap:6px; overflow-y:auto;}
   .pc-tool{display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; min-height:58px; padding:6px 4px; background:var(--white); border:1px solid var(--line); border-radius:12px; cursor:pointer; font-family:inherit; color:var(--ink); -webkit-tap-highlight-color:transparent;}
   .pc-tool span{font-size:20px; line-height:1;}
@@ -355,6 +355,20 @@
   html.pc-noscroll, html.pc-noscroll body{overflow:hidden; overscroll-behavior:none;}
   html.pc-noscroll .crumbs{display:none;}
   html.pc-noscroll .topbar{margin-bottom:8px;}
+  /* شاشة قصيرة (أقل من ~520px للـ POS): كل شي أصغر حتى تضل صفحة وحدة */
+  html.pc-tiny .pc-meta, html.pc-tiny .pc-lines-head{display:none;}
+  html.pc-tiny .pc-pad{grid-template-rows:26px repeat(4, 30px) !important; gap:3px;}
+  html.pc-tiny .pc-display{height:26px !important; font-size:13px;}
+  html.pc-tiny .pc-key{font-size:15px;}
+  html.pc-tiny .pc-cust-btn{padding:5px 8px;}
+  html.pc-tiny .pc-cust{margin-bottom:3px;}
+  html.pc-tiny .pc-grand b{font-size:18px;}
+  html.pc-tiny .pc-totals{padding:0 2px 3px;}
+  html.pc-tiny .pc-tool{min-height:40px; flex-direction:row; gap:5px;}
+  html.pc-tiny .pc-tool span{font-size:15px;}
+  html.pc-tiny .pc-tool b{font-size:11px;}
+  html.pc-tiny .pc-bar .pc-tool{min-height:38px;}
+  html.pc-tiny .pc-line{min-height:36px; padding:4px 8px; font-size:14px;}
   @media(max-height:720px) and (min-width:901px){
     .pc-wrap{min-height:380px;}
     .pc-pad{grid-template-rows:30px repeat(4, 36px); gap:4px;}
@@ -3544,7 +3558,7 @@ document.addEventListener('pointerdown', (e)=>{
   try{ const pr = req.call(el); _posFsByUs = true; if(pr && pr.catch) pr.catch(()=>{ _posFsByUs = false; }); }catch(err){ _posFsByUs = false; }
 }, true);
 window.addEventListener('hashchange', ()=>{
-  if(!isPosRoute()) document.documentElement.classList.remove('pc-noscroll');
+  if(!isPosRoute()) document.documentElement.classList.remove('pc-noscroll', 'pc-tiny');
   if(!isPosRoute() && _posFsByUs && document.fullscreenElement){
     _posFsByUs = false;
     try{ (document.exitFullscreen || document.webkitExitFullscreen).call(document); }catch(e){}
@@ -6095,7 +6109,9 @@ function bindPosProEvents(){
   }));
   // صفحة وحدة بلا scroll: ارتفاع الشاشة = الشاشة ناقص الشريط العلوي
   const fitPc = ()=>{ const w = document.querySelector('.pc-wrap'); if(!w) return; window.scrollTo(0,0);
-    document.documentElement.style.setProperty('--pc-top', Math.max(0, Math.round(w.getBoundingClientRect().top))+'px'); };
+    const top = Math.max(0, Math.round(w.getBoundingClientRect().top));
+    document.documentElement.style.setProperty('--pc-top', top+'px');
+    document.documentElement.classList.toggle('pc-tiny', innerWidth>900 && (innerHeight - top) < 560); };
   document.documentElement.classList.add('pc-noscroll'); fitPc();
   if(!window._pcFitBound){ window._pcFitBound = true; window.addEventListener('resize', ()=>{ if(document.querySelector('.pc-wrap')) fitPc(); });
     document.addEventListener('fullscreenchange', ()=>setTimeout(()=>{ if(document.querySelector('.pc-wrap')) fitPc(); }, 120)); }
@@ -8925,7 +8941,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-10-27 · 11:50 · v24';
+const APP_TRADE_BUILD = '2026-10-27 · 12:05 · v25';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 function settingsView(){
   const s = DB.settings;
