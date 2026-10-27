@@ -3730,6 +3730,7 @@ async function bootPlatform(){
   if(!supabaseClient) return { ok:false, reason:'no_client' };
   const segs = location.pathname.split('/').filter(Boolean);
   const slugFromUrl = (segs.length >= 2 && segs[0] === 'portal-trade') ? segs[1] : null;
+  if(slugFromUrl){ try{ localStorage.setItem('la_last_slug', slugFromUrl.toLowerCase()); }catch(e){} }
 
   let ses = await supabaseClient.auth.getSession();
 
@@ -4391,6 +4392,7 @@ function routeRequiredPermission(routeKey){
 function render(){
   try{ applyFavicon(); }catch(e){}
   try{ syncNativePrices(); }catch(e){ console.error('syncNativePrices', e); }
+  try{ autoRoundSellPrices(); }catch(e){ console.error('autoRoundSellPrices', e); }
   if(!_shrinkImagesRunning && (DB.warehouseItems||[]).some(it=>typeof it.image==='string' && it.image.length>60000)) setTimeout(()=>shrinkOldProductImages(), 1500);
   const lic = licenseStatus();
   if(!lic.active){
@@ -7882,6 +7884,42 @@ function openWipeWarehouseModal(){
     go('#/warehouse'); render();
   });
 }
+// أعمدة المستودع المختصرة (باركود / اسم / شراء / بيع / حالة / كمية) — من الإعدادات، وتلقائياً لزبون C Cup
+function whSimpleCols(){
+  const v = DB.settings && DB.settings.warehouseColumns;
+  if(v==='simple') return true;
+  if(v==='full') return false;
+  return clientSlug()==='ccup';
+}
+function clientSlug(){ try{ return localStorage.getItem('la_last_slug')||''; }catch(e){ return ''; } }
+// تقريب سعر البيع بالليرة لأقرب 1,000 تلقائياً (بلا كسور) — من الإعدادات، ومفعّل تلقائياً لزبون C Cup
+function autoRoundOn(){
+  const v = DB.settings && DB.settings.autoRoundSell1000;
+  if(v===true || v===false) return v;
+  return clientSlug()==='ccup';
+}
+let _autoRoundRunning = false;
+function autoRoundSellPrices(){
+  if(_autoRoundRunning || !autoRoundOn() || !primIsSec()) return;
+  const r = curRate(); if(!(r>0)) return;
+  const fix = [];
+  (DB.warehouseItems||[]).forEach(it=>{
+    if(!(Number(it.price)>0)) return;
+    const v = Number(it.priceSec)>0 ? Number(it.priceSec) : Math.round(Number(it.price)*r);
+    const n = Math.round(v/1000)*1000;
+    if(n>0 && n!==v) fix.push([it, n]);
+    else if(n>0 && !(Number(it.priceSec)>0)) fix.push([it, n]);   // نثبّت السعر بالليرة حتى ما يرجع يطلع كسور مع سعر الصرف
+  });
+  if(!fix.length) return;
+  _autoRoundRunning = true;
+  fix.forEach(([it,n])=>{ it.priceSec = n; it.price = n/r; });
+  invalidateWarehouseCaches();
+  save(KEYS.warehouseItems, DB.warehouseItems).then(ok=>{
+    _autoRoundRunning = false;
+    if(!ok) toast('⚠️ تعذّر حفظ تقريب الأسعار — راجع رسالة الخطأ');
+    else render();
+  }).catch(e=>{ _autoRoundRunning = false; console.error(e); toast('⚠️ تعذّر حفظ تقريب الأسعار'); });
+}
 function warehouseItemTable(items, isSearch){
   if(!items.length) return `<div class="empty"><div class="big">${isSearch? 'لا توجد نتائج مطابقة' : 'لا توجد منتجات في المستودع بعد'}</div></div>`;
   if(isAutoShop()){
@@ -7903,6 +7941,23 @@ function warehouseItemTable(items, isSearch){
     }).join('');
     return `${items.length>500? `<div style="font-size:12px; color:var(--ink-soft); margin-bottom:6px;">تُعرض أول 500 نتيجة من ${items.length} — دقّق البحث</div>`:''}
     <div class="table-scroll"><table><thead><tr><th>المنتج</th><th>الماركة</th><th>الحالة</th><th>سنة الصنع</th><th>الكمية</th>${showCost?'<th>التكلفة شامل الضريبة</th>':''}<th>سعر البيع</th></tr></thead><tbody>${rowsHtml}</tbody></table></div>`;
+  }
+  if(whSimpleCols()){
+    const showCost = hasPermission('cost_prices');
+    const rowsHtml = items.map(it=>{
+      const stock = fastStock(it.id);
+      const avail = normItemStatus(it.status)==='available';
+      const cost = (it.costPrice!==undefined && it.costPrice!==null && it.costPrice!=='') ? Number(it.costPrice) : null;
+      return `<tr data-nav="#/warehouse-item/${it.id}" style="${avail?'':'opacity:.65;'}">
+        <td class="num">${it.barcode? `<span dir="ltr">${escapeHtml(it.barcode)}</span>` : '—'}</td>
+        <td><div class="wh-name-cell">${whThumb(it)}<b>${escapeHtml(it.name)}</b></div></td>
+        ${showCost? `<td class="num">${cost!==null? fmtPrim(cost) : '—'}</td>` : ''}
+        <td class="num"><b>${it.price? fmtPrim(it.price) : '—'}</b></td>
+        <td><span style="font-size:12px; font-weight:700; padding:2px 8px; border-radius:999px; background:${avail?'#e6f4ea':'#fbe9e7'}; color:${avail?'var(--credit)':'var(--debit)'};">${itemStatusLabel(it.status)}</span></td>
+        <td class="${stock<0?'bal-pos':'bal-zero'}">${isServiceItem(it)? '🛠 خدمة' : fmtQty(stock)}</td>
+      </tr>`;
+    }).join('');
+    return `<div class="table-scroll"><table><thead><tr><th>الباركود</th><th>اسم الصنف</th>${showCost?'<th>سعر الشراء</th>':''}<th>سعر البيع</th><th>الحالة</th><th>الكمية الحالية</th></tr></thead><tbody>${rowsHtml}</tbody></table></div>`;
   }
   const rowsHtml = items.map(it=>{
     const stock = fastStock(it.id);
@@ -8934,6 +8989,13 @@ function settingsView(){
       </div>
       <div style="font-size:11.5px; color:var(--ink-soft); margin-top:4px;">كل مستخدم يقدر يبدّل طريقته بنفسه من زر «📷 كاميرا / 🔫 قارئ» بشاشة نقطة البيع.</div>
     </div>
+    <div class="field" style="margin-top:6px; max-width:460px;"><label>أعمدة جدول المستودع</label>
+      <select id="s_whcols">
+        <option value="full" ${!whSimpleCols()?'selected':''}>كاملة (الماركة، النوع، تاريخ الانتهاء…)</option>
+        <option value="simple" ${whSimpleCols()?'selected':''}>مختصرة: الباركود، اسم الصنف، سعر الشراء، سعر البيع، الحالة، الكمية</option>
+      </select>
+    </div>
+    <label style="display:flex; gap:6px; align-items:center; font-size:13px; margin:4px 0 10px;"><input type="checkbox" id="s_autoround" ${autoRoundOn()?'checked':''} style="width:auto;"> تقريب سعر البيع تلقائياً لأقرب 1,000 (بلا كسور) — عندما تكون العملة الأساسية المحلية</label>
     <button class="btn btn-primary" id="saveWarehouseSettingsBtn">💾 حفظ إعدادات المستودع</button>
   </div>
 
@@ -9867,6 +9929,8 @@ function bindEvents(){
     const days = Number(document.getElementById('s_expdays').value);
     DB.settings.expiryAlertDays = Number.isFinite(days) && days>0 ? days : 20;
     DB.settings.barcodeScanMethod = document.getElementById('s_scanmethod').value || 'camera';
+    { const ar = document.getElementById('s_autoround'); if(ar) DB.settings.autoRoundSell1000 = !!ar.checked; }
+    { const wc = document.getElementById('s_whcols'); if(wc) DB.settings.warehouseColumns = wc.value==='simple' ? 'simple' : 'full'; }
     const usm = Object.assign({}, DB.settings.userScanMethods||{});
     document.querySelectorAll('[data-user-scan]').forEach(sel=>{ usm[sel.getAttribute('data-user-scan')] = sel.value; });
     DB.settings.userScanMethods = usm;
