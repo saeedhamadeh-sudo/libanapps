@@ -984,7 +984,8 @@ function settingsToDb(s){
       whishQr: s.whishQr||null,
       posLayout: s.posLayout==='old' ? 'old' : 'pro',
       posPrintMode: s.posPrintMode||'auto',
-      posFullscreen: s.posFullscreen!==false}})
+      posFullscreen: s.posFullscreen!==false,
+      posFixV1: !!s.posFixV1}})
   };
 }
 function applySettingsFromDb(row, base){
@@ -1033,7 +1034,8 @@ function applySettingsFromDb(row, base){
     whishQr: (row.product_lists && row.product_lists._ui && row.product_lists._ui.whishQr) ? row.product_lists._ui.whishQr : base.whishQr,
     posLayout: (row.product_lists && row.product_lists._ui && row.product_lists._ui.posLayout) ? row.product_lists._ui.posLayout : base.posLayout,
     posPrintMode: (row.product_lists && row.product_lists._ui && row.product_lists._ui.posPrintMode) ? row.product_lists._ui.posPrintMode : base.posPrintMode,
-    posFullscreen: (row.product_lists && row.product_lists._ui && row.product_lists._ui.posFullscreen!=null) ? !!row.product_lists._ui.posFullscreen : base.posFullscreen
+    posFullscreen: (row.product_lists && row.product_lists._ui && row.product_lists._ui.posFullscreen!=null) ? !!row.product_lists._ui.posFullscreen : base.posFullscreen,
+    posFixV1: !!(row.product_lists && row.product_lists._ui && row.product_lists._ui.posFixV1)
   };
 }
 async function syncSettingsToSupabase(settings){
@@ -1557,7 +1559,7 @@ function receiptAmountUSD(r){
   if(!receiptIsSecondCurrency(r)) return amt;
   const inv = posInvoiceForReceipt(r);
   const rate = (inv && inv.exchangeRate) || DB.settings.defaultExchangeRate || 90000;
-  return Math.round(amt/rate*100)/100;
+  return roundAmt(amt/rate);
 }
 function posSaleReceipt(inv){
   const re = new RegExp('بيع نقطة بيع #'+String(inv.number).replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'(?![\\w\\d])');
@@ -1590,13 +1592,13 @@ function posCreditReturnEntries(inv){
   if(!(inv.items||[]).some(it=>Array.isArray(it.returnLog) && it.returnLog.length)) return [];
   if(!posIsOnAccount(inv)) return [];
   const f = posDiscFactor(inv); const out = [];
-  inv.items.forEach(it=> (it.returnLog||[]).forEach(r=> out.push({date:r.date, createdAt:r.createdAt||0, qty:Number(r.qty)||0, desc:it.desc, amountUSD: Math.round((Number(r.qty)||0)*Number(it.price||0)*f*100)/100})));
+  inv.items.forEach(it=> (it.returnLog||[]).forEach(r=> out.push({date:r.date, createdAt:r.createdAt||0, qty:Number(r.qty)||0, desc:it.desc, amountUSD: roundAmt((Number(r.qty)||0)*Number(it.price||0)*f)})));
   return out;
 }
 function posCreditReturnsInRange(from, to){
   let t = 0;
   DB.invoices.forEach(i=>{ if(i.deleted || i.docType!=='بيع نقطة بيع (POS)') return; posCreditReturnEntries(i).forEach(r=>{ if(r.date>=from && r.date<=to) t += r.amountUSD; }); });
-  return Math.round(t*100)/100;
+  return roundAmt(t);
 }
 function posRefundReceiptsInRange(from, to){ return DB.receipts.filter(r=>!r.deleted && isPosRefundReceipt(r) && r.date>=from && r.date<=to); }
 // صافي مبيعات الصندوق بعملة معيّنة = مبيعات − مرتجعات
@@ -4580,6 +4582,7 @@ function render(){
   try{ applyFavicon(); }catch(e){}
   try{ syncNativePrices(); }catch(e){ console.error('syncNativePrices', e); }
   try{ autoRoundSellPrices(); }catch(e){ console.error('autoRoundSellPrices', e); }
+  try{ fixPosInvoicesV1(); }catch(e){ console.error('fixPosInvoicesV1', e); }
   if(!_shrinkImagesRunning && (DB.warehouseItems||[]).some(it=>typeof it.image==='string' && it.image.length>60000)) setTimeout(()=>shrinkOldProductImages(), 1500);
   const lic = licenseStatus();
   if(!lic.active){
@@ -6705,7 +6708,7 @@ function openPosReturnModal(){
   const curInv = ()=>posInvoices.find(i=>i.id===sel.value);
   // نسبة الحسم: المرتجع يُحسب بعد توزيع حسم الفاتورة على البنود
   const discFactor = posDiscFactor;
-  function lineAmount(inv, it, qty){ return Math.round(qty*Number(it.price||0)*discFactor(inv)*100)/100; }
+  function lineAmount(inv, it, qty){ return roundAmt(qty*Number(it.price||0)*discFactor(inv)); }
   function refreshTotal(){
     const inv = curInv(); let t = 0;
     inv.items.forEach((it,idx)=>{
@@ -6938,7 +6941,7 @@ async function completePosSale(currency, received, due, opts){
     customerId = walkin.id;
   }
   const invItems = ticket.cart.map(l=>{ const w = DB.warehouseItems.find(x=>x.id===l.itemId);
-    return {id:uid(), productId:l.itemId, desc: (w? salesLineDesc(w) : l.name) + (l.note? ' — '+l.note : ''), qty:l.qty, price:l.price, total:Math.round(l.price*l.qty*100)/100}; });
+    return {id:uid(), productId:l.itemId, desc: (w? salesLineDesc(w) : l.name) + (l.note? ' — '+l.note : ''), qty:l.qty, price:l.price, total:roundAmt(l.price*l.qty)}; });
   const inv = {id:uid(), customerId, number:nextInvoiceNumber(), date, docType:'بيع نقطة بيع (POS)', exchangeRate:rate, items:invItems, discount:posDiscountUSD(ticket), createdAt:now, cashierUsername:currentUser.username};
   DB.invoices.push(inv);
   ticket.cart.forEach(l=>{
@@ -6967,7 +6970,7 @@ async function completePosSale(currency, received, due, opts){
   const whish = !!opts.whish;
   if(whish) inv.payMethod = 'whish';
   const receipt = {id:uid(), createdAt:now, customerId, number:nextReceiptNumber(), date, shiftId:myShift.id,
-    amount: currency==='USD'? totalUSD : totalUSD*rate,
+    amount: currency==='USD'? totalUSD : Math.round(totalUSD*rate),
     method: whish ? (currency==='USD'? 'Whish $ (POS)' : 'Whish '+secCurLabel()+' (POS)') : (currency==='USD'?'نقد $ (POS)':'نقد '+secCurLabel()+' (POS)'),
     details:'بيع نقطة بيع #'+inv.number+' — الكاشير: '+currentUser.username};
   DB.receipts.push(receipt);
@@ -6981,10 +6984,10 @@ async function completePosSale(currency, received, due, opts){
     go('#/pos'); render();
     return;
   }
-  const movement = {id:uid(), createdAt:now, type:'sale', currency, amount: currency==='USD'?totalUSD:totalUSD*rate, note:'بيع POS #'+inv.number+' — '+currentUser.username, refSaleId:inv.id, date, shiftId:myShift.id};
+  const movement = {id:uid(), createdAt:now, type:'sale', currency, amount: currency==='USD'?totalUSD:Math.round(totalUSD*rate), note:'بيع POS #'+inv.number+' — '+currentUser.username, refSaleId:inv.id, date, shiftId:myShift.id};
   DB.cashMovements.push(movement);
   if(currency==='USD') myShift.cashUSD = (myShift.cashUSD||0) + totalUSD;
-  else myShift.cashLBP = (myShift.cashLBP||0) + totalUSD*rate;
+  else myShift.cashLBP = (myShift.cashLBP||0) + Math.round(totalUSD*rate);
 
   await Promise.all([
     save(KEYS.invoices, DB.invoices),
@@ -8144,6 +8147,48 @@ function whSimpleCols(){
   return clientSlug()==='ccup';
 }
 function clientSlug(){ if(!CLIENT_ID) return ''; try{ return localStorage.getItem('la_slug_'+CLIENT_ID)||''; }catch(e){ return ''; } }
+// تصحيح فواتير POS القديمة (مرة وحدة): مجموع البند كان يتدوّر لأقرب سنت فكان يطلع 50,400 بدل 50,000 باللبناني.
+// بنود الصنف يلي سعرها بيختلف عن سعر المستودع أقل من 1% (99,999 ← 100,000) بتاخد سعر المستودع؛ والإيصال المرتبط بيتصحّح معها
+function fixPosInvoicesV1(){
+  if(DB.settings.posFixV1 || !primIsSec() || !currentUser || !isPrivilegedUser(currentUser)) return;
+  let inv_ch = 0, rc_ch = false, mv_ch = false;
+  DB.invoices.forEach(inv=>{
+    if(inv.deleted || inv.docType!=='بيع نقطة بيع (POS)') return;
+    const rate = Number(inv.exchangeRate) || curRate();
+    const oldTotal = computeInvoiceTotal(inv).totalUSD;
+    let changed = false;
+    (inv.items||[]).forEach(it=>{
+      const qty = Number(it.qty)||0; let price = Number(it.price)||0;
+      const w = it.productId && DB.warehouseItems.find(x=>x.id===it.productId);
+      if(w && it.origPrice==null){
+        const stockLbp = Number(w.priceSec)>0 ? Number(w.priceSec) : Math.round(Number(w.price)*rate);
+        const lineLbp = price*rate;
+        if(stockLbp>0 && Math.abs(lineLbp-stockLbp) > 0.5 && Math.abs(lineLbp-stockLbp)/stockLbp < 0.01){ price = stockLbp/rate; it.price = price; changed = true; }
+      }
+      const t = roundAmt(price*qty);
+      if(Math.abs((Number(it.total)||0) - t) > 1e-7){ it.total = t; changed = true; }
+    });
+    if(!changed) return;
+    inv_ch++;
+    const newTotal = computeInvoiceTotal(inv).totalUSD;
+    const r = posSaleReceipt(inv);
+    if(r && !/\$/.test(r.method||'')){
+      const lbp = Math.round(newTotal*rate);
+      if(Math.abs((Number(r.amount)||0) - lbp) >= 1 && Math.abs((Number(r.amount)||0) - oldTotal*rate) < Math.max(5, oldTotal*rate*0.01)){ r.amount = lbp; rc_ch = true;
+        const mv = (DB.cashMovements||[]).find(m=>m.refSaleId===inv.id && m.type==='sale' && m.currency==='LBP');
+        if(mv){ mv.amount = lbp; mv_ch = true; } }
+    }
+  });
+  DB.settings.posFixV1 = true;
+  const saves = [save(KEYS.settings, DB.settings)];
+  if(inv_ch) saves.push(save(KEYS.invoices, DB.invoices));
+  if(rc_ch) saves.push(save(KEYS.receipts, DB.receipts));
+  if(mv_ch) saves.push(save(KEYS.cashMovements, DB.cashMovements));
+  Promise.all(saves).then(res=>{
+    if(!res.every(Boolean)){ DB.settings.posFixV1 = false; toast('⚠️ تعذّر حفظ تصحيح الفواتير'); return; }
+    if(inv_ch){ toast('تم تصحيح '+inv_ch+' فاتورة POS (كسور الأسعار) ✅'); render(); }
+  });
+}
 // تقريب سعر البيع بالليرة لأقرب 10,000 تلقائياً: تحت 5,000 بينزل (54,650 ← 50,000) و 5,000 وفوق بيطلع (55,000 ← 60,000) — من الإعدادات، ومفعّل تلقائياً لزبون C Cup
 function autoRoundOn(){
   if(isAutoShop()) return false;   // محل الإطارات والزيوت: بلا أي تغيير
@@ -9125,7 +9170,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-10-27 · 16:55 · v29';
+const APP_TRADE_BUILD = '2026-10-27 · 17:20 · v30';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 function settingsView(){
   const s = DB.settings;
