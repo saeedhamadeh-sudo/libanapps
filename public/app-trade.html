@@ -632,6 +632,12 @@ function syncDocsToBox(key, arr){
       const mRate = m && (m.rate || (m.currency==='LBP' && !m.deleted && usd0>0 && Math.abs(Number(m.amount)||0)>usd0*100 ? Math.abs(Number(m.amount))/usd0 : 0));
       const eff = legacyClosed ? docBoxEffectBase(key, d) : docBoxEffect(key, d, mRate || undefined);
       if(!m){
+        // صرف جديد عملتو هلق عهالجهاز → منسأل: من الصندوق ولا من الخزنة؟
+        if(eff && eff.sign<0 && now - (d.createdAt||0) <= 5*60*1000 && !_paySrcAsked.has(d.id) && !(_sentSnap[key] && _sentSnap[key].has(d.id))){
+          _paySrcAsked.add(d.id); _paySrcQueue.push({key, id:d.id}); setTimeout(nextPaySourceAsk, 50);
+          return;
+        }
+        if(eff && eff.sign<0) return;
         // سند جديد هلق (مش سندات قديمة) → على صندوقي المفتوح
         if(!eff || !myShift || !(d.createdAt >= myShift.openedAt) || now - (d.createdAt||0) > 5*60*1000) return;
         const mv = {id:uid(), createdAt:now, type: eff.sign>0?'deposit':'withdraw', currency:eff.currency, amount:eff.amt,
@@ -641,13 +647,14 @@ function syncDocsToBox(key, arr){
         if(_shiftAdd(myShift.id, eff.currency, eff.sign*eff.amt)) shiftsChanged = true;
         return;
       }
+      const isSafe = m.type==='safe_out';   // مدفوع من الخزنة: منصحّح الحركة بس، ما في صندوق
       const oldSigned = m.deleted? 0 : (m.type==='deposit'?1:-1)*Math.abs(Number(m.amount)||0);
       const newSigned = eff? eff.sign*eff.amt : 0;
       const newCur = eff? eff.currency : m.currency;
       if(oldSigned===newSigned && newCur===m.currency) return;
       if(oldSigned && _shiftAdd(m.shiftId, m.currency, -oldSigned)) shiftsChanged = true;
       if(eff){
-        m.type = eff.sign>0?'deposit':'withdraw'; m.currency = eff.currency; m.amount = eff.amt; m.deleted = false;
+        m.type = isSafe? 'safe_out' : (eff.sign>0?'deposit':'withdraw'); m.currency = eff.currency; m.amount = eff.amt; m.deleted = false;
         if(eff.rate) m.rate = eff.rate;
         m.date = d.date || m.date; m.note = DOC_MIRROR_TAG+eff.label+' — '+(String(m.note).split(' — ').pop()||currentUser.username);
         if(_shiftAdd(m.shiftId, eff.currency, newSigned)) shiftsChanged = true;
@@ -658,6 +665,56 @@ function syncDocsToBox(key, arr){
     if(shiftsChanged) save(KEYS.cashierShifts, DB.cashierShifts);
   }catch(e){ console.error('syncDocsToBox', e); }
   finally{ _docBoxBusy = false; }
+}
+// ===== من وين انصرف؟ (الصندوق ولا الخزنة) =====
+const _paySrcAsked = new Set(), _paySrcQueue = [];
+let _paySrcOpen = false;
+function nextPaySourceAsk(){
+  if(_paySrcOpen) return;
+  const q = _paySrcQueue.shift(); if(!q) return;
+  const d = (DB[q.key]||[]).find(x=>x.id===q.id);
+  const eff = d && docBoxEffect(q.key, d);
+  if(!eff || eff.sign>=0 || (DB.cashMovements||[]).some(m=>isDocMirrorMove(m) && m.refSaleId===q.id)){ nextPaySourceAsk(); return; }
+  _paySrcOpen = true;
+  const sh = currentUserShift();
+  const fmt = (cur, v)=> cur==='LBP'? fmtNum(v)+' '+secCurLabel() : '$'+(Number(v)||0).toFixed(2);
+  const amtTxt = fmt(eff.currency, eff.amt);
+  const sb = safeBalance(), boxBal = sh? (eff.currency==='LBP'? sh.cashLBP : sh.cashUSD) : 0;
+  const safeBal = eff.currency==='LBP'? sb.lbp : sb.usd;
+  const wrap = document.createElement('div');
+  wrap.className = 'modal-bg';
+  wrap.innerHTML = `<div class="modal" style="max-width:440px;">
+    <h3>💸 من وين دفعت؟</h3>
+    <div style="font-size:15px; margin-bottom:10px;">${escapeHtml(eff.label)} — <b class="num">${amtTxt}</b></div>
+    <div style="display:grid; gap:10px;">
+      <button class="btn btn-primary" data-src="box" style="padding:14px; font-size:16px;" ${sh? '' : 'disabled'}>💵 من الصندوق<br><small style="font-weight:400;">${sh? 'رصيد صندوقك: '+fmt(eff.currency, boxBal) : 'ما عندك صندوق مفتوح'}</small></button>
+      <button class="btn" data-src="safe" style="padding:14px; font-size:16px;">🗄 من الخزنة<br><small>رصيد الخزنة: ${fmt(eff.currency, safeBal)}</small></button>
+      <button class="btn btn-sm" data-src="none" style="opacity:.75;">ما تنقّص من شي</button>
+    </div>
+  </div>`;
+  document.body.appendChild(wrap);
+  wrap.addEventListener('click', async e=>{
+    const b = e.target.closest('[data-src]'); if(!b || b.disabled) return;
+    wrap.remove(); _paySrcOpen = false;
+    await applyPaySource(q.key, q.id, b.getAttribute('data-src'));
+    nextPaySourceAsk();
+  });
+}
+async function applyPaySource(key, id, src){
+  if(src==='none') return;
+  const d = (DB[key]||[]).find(x=>x.id===id); const eff = d && docBoxEffect(key, d);
+  if(!eff || (DB.cashMovements||[]).some(m=>isDocMirrorMove(m) && m.refSaleId===id)) return;
+  const sh = src==='box'? currentUserShift() : null;
+  if(src==='box' && !sh) return;
+  const mv = {id:uid(), createdAt:Date.now(), type: src==='safe'? 'safe_out' : 'withdraw', currency:eff.currency, amount:eff.amt,
+    note:DOC_MIRROR_TAG+eff.label+' — '+currentUser.username, refSaleId:id, date:d.date||todayISO(), shiftId: sh? sh.id : null, deleted:false};
+  if(eff.rate) mv.rate = eff.rate;
+  DB.cashMovements.push(mv);
+  const jobs = [save(KEYS.cashMovements, DB.cashMovements)];
+  if(sh && _shiftAdd(sh.id, eff.currency, -eff.amt)) jobs.push(save(KEYS.cashierShifts, DB.cashierShifts));
+  await Promise.all(jobs);
+  toast(src==='safe'? 'انخصم من الخزنة ✅' : 'انخصم من الصندوق ✅');
+  try{ render(); }catch(e){}
 }
 async function save(key, value){
   try{
@@ -8607,7 +8664,7 @@ function safeMoves(){
     if(m.type==='shift_close'){ const i = shiftCloseInfo(m)||{}; if(i.legacy) return;   // الإقفالات القديمة بالسجل بس، ما بتحرّك رصيد الخزنة
       out.push({id:m.id, at:m.createdAt, date:m.date, kind:'in', lbp:Number(i.toSafeLBP)||0, usd:Number(i.toSafeUSD)||0, label:'إقفال صندوق '+(i.user||'')+' — أقفله: '+(i.by||'')}); }
     else { const sign = m.type==='safe_in'? 1 : -1, a = Math.abs(Number(m.amount)||0);
-      out.push({id:m.id, at:m.createdAt, date:m.date, kind:m.type==='safe_in'?'in':'out', lbp: m.currency==='LBP'? sign*a : 0, usd: m.currency==='USD'? sign*a : 0, label:(m.type==='safe_in'?'إيداع بالخزنة':'سحب من الخزنة')+(m.note? ' — '+m.note : '')}); }
+      out.push({id:m.id, at:m.createdAt, date:m.date, kind:m.type==='safe_in'?'in':'out', lbp: m.currency==='LBP'? sign*a : 0, usd: m.currency==='USD'? sign*a : 0, label: isDocMirrorMove(m)? 'صرف: '+String(m.note).slice(DOC_MIRROR_TAG.length) : (m.type==='safe_in'?'إيداع بالخزنة':'سحب من الخزنة')+(m.note? ' — '+m.note : '')}); }
   });
   out.sort((a,b)=>(a.at||0)-(b.at||0));
   let bl = 0, bu = 0; out.forEach(r=>{ bl += r.lbp; bu += r.usd; r.balLBP = bl; r.balUSD = bu; });
@@ -9893,7 +9950,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-10-29 · 00:50 · v46';
+const APP_TRADE_BUILD = '2026-10-29 · 00:55 · v47';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 function settingsView(){
   const s = DB.settings;
