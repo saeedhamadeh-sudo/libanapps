@@ -538,12 +538,13 @@ async function loadAll(){
     workers:wk, workEntries:we, workerPayments:wp, workerAccounts:wa};
 }
 async function loadCustomers(){
+  if(supabaseClient && !cloudSessionReady()) return [];
   if(supabaseClient){
     const remote = await supabaseListCustomers();
     if(remote !== null){
       // زبائن انضافوا على هالجهاز (مثلاً من شاشة POS) وما وصلوا للسحابة: منرفعهم بدل ما يضيعوا
       _sentSnap[KEYS.customers] = new Map(remote.map(c=>{ const o = customerToDb(c); return [o.id, JSON.stringify(o)]; }));
-      const { merged, localOnly } = mergeLocalOnly(KEYS.customers, remote, true);
+      const { merged, localOnly } = mergeLocalOnly(KEYS.customers, remote, false);
       try{ localStorage.setItem(skey(KEYS.customers), JSON.stringify(merged)); }catch(e){}
       if(localOnly.length) setTimeout(()=>{ localOnly.forEach(c=>supabaseUpsertCustomer(c)); }, 1500);
       return merged;
@@ -747,6 +748,7 @@ async function supabaseListCustomers(){
 }
 async function supabaseUpsertCustomer(customer){
   if(!supabaseClient) return false;
+  if(!cloudSessionReady()) return false;
   try{
     const { error } = await supabaseClient.from(T('customers')).upsert(withClient(customerToDb(customer)));
     if(error){ lastSupabaseError = describeSupabaseError(error); console.error('supabaseUpsertCustomer error:', lastSupabaseError); return false; }
@@ -1052,6 +1054,7 @@ function applySettingsFromDb(row, base){
 }
 async function syncSettingsToSupabase(settings){
   if(!supabaseClient) return;
+  if(!cloudSessionReady()) return;
   try{
     const { error } = await supabaseClient.from(T('app_settings')).upsert(withClient(settingsToDb(settings)));
     if(!error){ clearTimeout(window._liveSetT); window._liveSetT = setTimeout(()=>liveBroadcast({k:'settings'}), 800); }
@@ -1298,8 +1301,11 @@ function handleSessionDenied(localKey){
 /* ===== مزامنة آمنة بين أكتر من جهاز: منتذكّر شو الصفوف يلي انرفعت/انجابت من السحابة على هالجهاز =====
    - اللي على الجهاز وما وصل للسحابة أبداً (مثلاً زبون انضاف والحفظ ما زبط) بيرجع ينرفع بدل ما يضيع
    - اللي انحذف عن جهاز تاني بيختفي من هون كمان */
-function getSyncedIds(key){ try{ const v = localStorage.getItem(skey('synced_'+key)); return v ? new Set(JSON.parse(v)) : null; }catch(e){ return null; } }
-function setSyncedIds(key, ids){ try{ localStorage.setItem(skey('synced_'+key), JSON.stringify(Array.from(ids))); }catch(e){} }
+// قبل ما يفوت المستخدم (الوضع الآمن) السيرفر ما بيعطي بيانات وما بيقبل حفظ — فما منحمّل/منرفع شي، وما منلمس نسخة الجهاز
+function cloudSessionReady(){ return !SECURE_MODE || !!authenticated; }
+// synced2_: بداية نظيفة — القوائم القديمة ممكن تكون انكتبت فاضية من تحميل قبل الدخول
+function getSyncedIds(key){ try{ const v = localStorage.getItem(skey('synced2_'+key)); return v ? new Set(JSON.parse(v)) : null; }catch(e){ return null; } }
+function setSyncedIds(key, ids){ try{ localStorage.setItem(skey('synced2_'+key), JSON.stringify(Array.from(ids))); }catch(e){} }
 function mergeLocalOnly(key, remote, firstRunMerge){
   const local = (()=>{ try{ return JSON.parse(localStorage.getItem(skey(key))||'[]'); }catch(e){ return []; } })();
   const remoteIds = new Set(remote.map(r=>r.id));
@@ -1319,6 +1325,7 @@ function mergeLocalOnly(key, remote, firstRunMerge){
 async function syncArrayToSupabase(localKey, arr){
   const cfg = SUPABASE_TABLES[localKey];
   if(!cfg || !supabaseClient) return;
+  if(!cloudSessionReady()) return;   // قبل الدخول: بيضل محفوظ عالجهاز وبينرفع بعد الدخول
   try{
     const snap = _sentSnap[localKey];
     const rows = arr.map(cfg.toDb);
@@ -1366,6 +1373,7 @@ async function syncArrayToSupabase(localKey, arr){
 }
 async function loadSyncedArray(localKey, fallback){
   const cfg = SUPABASE_TABLES[localKey];
+  if(supabaseClient && cfg && !cloudSessionReady()) return [];   // شاشة الدخول: ما منحتاج بيانات وما منمسح نسخة الجهاز
   if(supabaseClient && cfg){
     try{
       const { data, error } = await scoped(supabaseClient.from(T(cfg.table)).select('*'));
@@ -9668,7 +9676,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-10-28 · 19:00 · v42';
+const APP_TRADE_BUILD = '2026-10-28 · 23:50 · v43';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 function settingsView(){
   const s = DB.settings;
