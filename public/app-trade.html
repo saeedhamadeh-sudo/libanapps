@@ -4923,6 +4923,10 @@ function render(){
   /* ---------- Warehouse (المستودع) ---------- */
   } else if(parts[0]==='pos'){
     html += crumbs([['الرئيسية','#/'],['نقطة البيع (POS)',null]]) + posView();
+  } else if(parts[0]==='safe' && (isPrivilegedUser(currentUser) || hasPermission('reports'))){
+    html += crumbs([['الرئيسية','#/'],['الخزنة',null]]) + safeView();
+  } else if(parts[0]==='shift-closes' && (isPrivilegedUser(currentUser) || hasPermission('reports'))){
+    html += crumbs([['الرئيسية','#/'],['سجل إقفال الصناديق',null]]) + shiftClosesView();
   } else if(parts[0]==='journal'){
     const qs = new URLSearchParams(location.hash.split('?')[1]||'');
     html += crumbs([['الرئيسية','#/'],['اليوميات',null]]) + journalView(qs);
@@ -5095,6 +5099,18 @@ function hubView(){
       <div class="hub-title">نقطة البيع (POS)</div>
       <div class="hub-sub">بيع سريع بالباركود</div>
       <div class="hub-amt" style="color:var(--steel)">افتح شاشة البيع</div>
+    </div>`},
+    {key:'safe', perm:'reports', html:`<div class="hub-card" data-nav="#/safe">
+      <div class="hub-icon">🗄</div>
+      <div class="hub-title">الخزنة</div>
+      <div class="hub-sub">يلي انتقل من الصناديق</div>
+      <div class="hub-amt num" style="color:var(--steel)">${fmtNum(safeBalance().lbp)} ${secCurLabel()}</div>
+    </div>`},
+    {key:'shiftCloses', perm:'reports', html:`<div class="hub-card" data-nav="#/shift-closes">
+      <div class="hub-icon">📜</div>
+      <div class="hub-title">سجل إقفال الصناديق</div>
+      <div class="hub-sub">التاريخ، الساعة، المبلغ ومين أقفل</div>
+      <div class="hub-amt" style="color:var(--steel)">${shiftCloseRecords().length} إقفال</div>
     </div>`},
     {key:'journal', perm:'reports', html:`<div class="hub-card" data-nav="#/journal">
       <div class="hub-icon">📒</div>
@@ -5888,8 +5904,8 @@ function openStartShiftModal(){
     <div id="ss_new_wrap">
       <p style="font-size:12.5px; color:var(--ink-soft);">أو ابدأ صندوقًا جديدًا فارغًا — أدخل المبلغ الموجود فعلياً داخل الصندوق الآن (نقدية افتتاحية، اختياري):</p>
       <div class="grid grid-2">
-        <div class="field"><label>افتتاحي $</label><input type="number" step="0.01" id="ss_open_usd" class="num" value="0"></div>
-        <div class="field"><label>افتتاحي ${secCurLabel()}</label><input type="number" id="ss_open_lbp" class="num" value="0"></div>
+        <div class="field"><label>افتتاحي $</label><input type="number" step="0.01" id="ss_open_usd" class="num" value="${lastDrawerKept().usd||0}"></div>
+        <div class="field"><label>افتتاحي ${secCurLabel()}</label><input type="number" id="ss_open_lbp" class="num" value="${lastDrawerKept().lbp||0}"></div>
       </div>
     </div>
     <div class="row"><button class="btn btn-primary" id="ss_confirm" style="width:100%;">ابدأ البيع</button></div>
@@ -5918,34 +5934,67 @@ function closeMyShiftModal(){
   const myMoves = (DB.cashMovements||[]).filter(m=>m.shiftId===shift.id && !m.deleted);
   const salesUSD = netSalesOf(myMoves, 'USD');
   const salesLBP = netSalesOf(myMoves, 'LBP');
+  const lbpOnly = currencyMode()==='SEC' && Math.abs(Number(shift.cashUSD)||0) < 0.005;
+  const L = secCurLabel();
   const wrap = document.createElement('div');
   wrap.className='modal-bg';
-  wrap.innerHTML = `<div class="modal">
-    <h3>🔒 إقفال صندوقي</h3>
-    <p style="font-size:12.5px; color:var(--ink-soft);">مبيعاتك في هذه الوردية: $${salesUSD.toFixed(2)} + ${fmtNum(salesLBP)} ${secCurLabel()}</p>
-    <div class="grid grid-2">
-      <div class="field"><label>رصيد الصندوق في النظام $</label><input type="text" class="num" value="$${shift.cashUSD.toFixed(2)}" disabled></div>
-      <div class="field"><label>رصيد الصندوق في النظام ${secCurLabel()}</label><input type="text" class="num" value="${fmtNum(shift.cashLBP)}" disabled></div>
+  wrap.innerHTML = `<div class="modal" style="max-width:520px;">
+    <h3>🔒 إقفال الصندوق — ${escapeHtml(shift.username)}</h3>
+    <p style="font-size:12.5px; color:var(--ink-soft);">مبيعات هالوردية: ${lbpOnly? fmtNum(salesLBP)+' '+L : '$'+salesUSD.toFixed(2)+' + '+fmtNum(salesLBP)+' '+L}</p>
+    <div class="grid ${lbpOnly?'':'grid-2'}">
+      <div class="field"><label>رصيد الصندوق بالنظام ${L}</label><input type="text" class="num" value="${fmtNum(shift.cashLBP)}" disabled></div>
+      ${lbpOnly? '' : `<div class="field"><label>رصيد الصندوق بالنظام $</label><input type="text" class="num" value="$${shift.cashUSD.toFixed(2)}" disabled></div>`}
     </div>
-    <div class="grid grid-2">
-      <div class="field"><label>المعدود فعلياً $</label><input type="number" step="0.01" id="cs_usd" class="num" value="${shift.cashUSD.toFixed(2)}"></div>
-      <div class="field"><label>المعدود فعلياً ${secCurLabel()}</label><input type="number" id="cs_lbp" class="num" value="${shift.cashLBP}"></div>
+    <div class="grid ${lbpOnly?'':'grid-2'}">
+      <div class="field"><label>المعدود فعلياً ${L}</label><input type="number" id="cs_lbp" class="num" value="${Math.round(shift.cashLBP)}"></div>
+      ${lbpOnly? '' : `<div class="field"><label>المعدود فعلياً $</label><input type="number" step="0.01" id="cs_usd" class="num" value="${shift.cashUSD.toFixed(2)}"></div>`}
     </div>
+    <div class="grid ${lbpOnly?'':'grid-2'}">
+      <div class="field"><label>💵 قديش بدك تترك بالصندوق؟ ${L} *</label><input type="number" id="cs_keep_lbp" class="num" value="0" min="0"></div>
+      ${lbpOnly? '' : `<div class="field"><label>💵 قديش بدك تترك بالصندوق؟ $</label><input type="number" step="0.01" id="cs_keep_usd" class="num" value="0" min="0"></div>`}
+    </div>
+    <div class="field"><label>👤 اسم الموظف يلي عم يقفل الصندوق *</label><input type="text" id="cs_by" placeholder="اكتب الاسم" autocomplete="off"></div>
+    <div id="cs_sum" style="font-size:14px; line-height:1.9; background:var(--bg-2); border:1px solid var(--line); border-radius:8px; padding:8px 12px;"></div>
+    <div id="cs_err" style="color:var(--debit); font-size:13px; min-height:18px; margin-top:4px;"></div>
     <div class="row">
       <button class="btn" id="cs_cancel">إلغاء</button>
-      <button class="btn btn-primary" id="cs_confirm">🖨 إقفال وطباعة تقريري</button>
+      <button class="btn btn-primary" id="cs_confirm">🔒 إقفال الصندوق</button>
     </div>
   </div>`;
   document.body.appendChild(wrap);
-  wrap.querySelector('#cs_cancel').addEventListener('click', ()=>wrap.remove());
-  wrap.querySelector('#cs_confirm').addEventListener('click', async ()=>{
-    shift.closingCountedUSD = Number(wrap.querySelector('#cs_usd').value)||0;
-    shift.closingCountedLBP = Number(wrap.querySelector('#cs_lbp').value)||0;
+  const $ = q=>wrap.querySelector(q);
+  const v = q=>{ const e = $(q); return e? (Number(e.value)||0) : 0; };
+  const upd = ()=>{
+    const toL = v('#cs_lbp') - v('#cs_keep_lbp'), toU = v('#cs_usd') - v('#cs_keep_usd');
+    const diffL = v('#cs_lbp') - (Number(shift.cashLBP)||0), diffU = v('#cs_usd') - (Number(shift.cashUSD)||0);
+    $('#cs_sum').innerHTML = `🗄 بينتقل عالخزنة: <b class="num">${fmtNum(toL)} ${L}${lbpOnly? '' : ' + $'+toU.toFixed(2)}</b><br>`
+      + `💵 بيبقى بالصندوق: <b class="num">${fmtNum(v('#cs_keep_lbp'))} ${L}${lbpOnly? '' : ' + $'+v('#cs_keep_usd').toFixed(2)}</b>`
+      + ((Math.abs(diffL)>=1 || Math.abs(diffU)>=0.005)? `<br><span style="color:var(--debit);">⚠️ فرق عن النظام: ${fmtNum(diffL)} ${L}${lbpOnly? '' : ' / $'+diffU.toFixed(2)}</span>` : '');
+  };
+  ['#cs_lbp','#cs_usd','#cs_keep_lbp','#cs_keep_usd'].forEach(q=>{ const e = $(q); if(e) e.addEventListener('input', upd); });
+  upd();
+  setTimeout(()=>$('#cs_keep_lbp').focus(), 50);
+  $('#cs_cancel').addEventListener('click', ()=>wrap.remove());
+  $('#cs_confirm').addEventListener('click', async ()=>{
+    const by = $('#cs_by').value.trim();
+    const cL = v('#cs_lbp'), cU = v('#cs_usd'), kL = v('#cs_keep_lbp'), kU = v('#cs_keep_usd');
+    if(!by){ $('#cs_err').textContent = 'لازم تكتب اسم الموظف يلي عم يقفل الصندوق'; $('#cs_by').focus(); return; }
+    if(kL<0 || kU<0){ $('#cs_err').textContent = 'المبلغ المتروك ما بيصير يكون سالب'; return; }
+    if(kL>cL || kU>cU+0.0001){ $('#cs_err').textContent = 'المبلغ المتروك أكبر من المعدود بالصندوق'; return; }
+    $('#cs_confirm').disabled = true;
+    const now = Date.now();
+    shift.closingCountedUSD = lbpOnly? 0 : cU;
+    shift.closingCountedLBP = cL;
     shift.status = 'closed';
-    shift.closedAt = Date.now();
-    await save(KEYS.cashierShifts, DB.cashierShifts);
+    shift.closedAt = now;
+    shift.note = (shift.note? shift.note+' | ' : '') + 'أقفله: '+by;
+    const info = { by, user:shift.username, shiftId:shift.id, sysLBP:Number(shift.cashLBP)||0, sysUSD:Number(shift.cashUSD)||0,
+      countedLBP:cL, countedUSD:lbpOnly?0:cU, keptLBP:kL, keptUSD:lbpOnly?0:kU, toSafeLBP:cL-kL, toSafeUSD:lbpOnly?0:(cU-kU), openedAt:shift.openedAt };
+    // سجل الإقفال + الإيداع بالخزنة: حركة وحدة (ما إلها وردية، فما بتأثر على أي صندوق)
+    DB.cashMovements.push({id:uid(), createdAt:now, type:'shift_close', currency:'LBP', amount:info.toSafeLBP, note:SHIFT_CLOSE_TAG+JSON.stringify(info), refSaleId:shift.id, date:todayISO(), shiftId:null});
+    const res = await Promise.all([save(KEYS.cashierShifts, DB.cashierShifts), save(KEYS.cashMovements, DB.cashMovements)]);
     wrap.remove();
-    toast('تم إقفال صندوقك ✅');
+    toast(res.every(Boolean)? 'تم إقفال الصندوق ✅ — بقي فيه '+fmtNum(kL)+' '+L+' وانتقل الباقي عالخزنة' : 'حدث خطأ أثناء الحفظ');
     printShiftReport(shift, myMoves);
     render();
   });
@@ -7846,7 +7895,7 @@ function journalEntriesForRange(from, to){
     rows.push({cat:'paySup', date:v.date, createdAt:v.createdAt||0, type:'سند صرف ('+(v.method||'')+')', party:sup?sup.name:'—', usd:isLBP?0:-amt, lbp:isLBP?-amt:0, nav:null});
   });
   // حركات صندوق يدوية أو استرجاع (المبيعات نفسها موجودة أصلاً ضمن إيصالات القبض فوق، ما منكررها هون)
-  (DB.cashMovements||[]).filter(m=>!m.deleted && m.type!=='sale' && !isDocMirrorMove(m) && m.date>=from && m.date<=to).forEach(m=>{
+  (DB.cashMovements||[]).filter(m=>!m.deleted && m.type!=='sale' && !SAFE_MOVE_TYPES.includes(m.type) && !isDocMirrorMove(m) && m.date>=from && m.date<=to).forEach(m=>{
     const isLBP = m.currency==='LBP';
     const signed = m.type==='deposit'? Math.abs(m.amount) : -Math.abs(m.amount);
     const label = m.type==='deposit'?'إضافة يدوية للصندوق':m.type==='withdraw'?'سحب يدوي من الصندوق':'استرجاع POS';
@@ -8533,6 +8582,100 @@ function openMoveInvoiceModal(invId){
   $('#mi_cancel').addEventListener('click', ()=>wrap.remove());
 }
 document.addEventListener('click', e=>{ const b = e.target.closest && e.target.closest('[data-move-invoice]'); if(b){ e.preventDefault(); openMoveInvoiceModal(b.getAttribute('data-move-invoice')); } });
+/* ============================= إقفال الصندوق + الخزنة =============================
+   كل إقفال صندوق بينحفظ كحركة 'shift_close' (بلا وردية) فيها: مين أقفل، المعدود، المتروك بالصندوق، ويلي انتقل عالخزنة.
+   الخزنة = كل يلي انتقل من الصناديق + إيداع يدوي − سحب يدوي */
+const SHIFT_CLOSE_TAG = '[إقفال] ';
+const SAFE_MOVE_TYPES = ['shift_close','safe_in','safe_out'];
+function shiftCloseInfo(m){ try{ return JSON.parse(String(m.note||'').slice(SHIFT_CLOSE_TAG.length)); }catch(e){ return null; } }
+function shiftCloseRecords(){
+  return (DB.cashMovements||[]).filter(m=>!m.deleted && m.type==='shift_close').map(m=>Object.assign({id:m.id, at:m.createdAt, date:m.date}, shiftCloseInfo(m)||{}))
+    .sort((a,b)=>(b.at||0)-(a.at||0));
+}
+function lastDrawerKept(){ const r = shiftCloseRecords()[0]; return r ? {lbp:Number(r.keptLBP)||0, usd:Number(r.keptUSD)||0} : {lbp:0, usd:0}; }
+function safeMoves(){
+  const out = [];
+  (DB.cashMovements||[]).forEach(m=>{
+    if(m.deleted || !SAFE_MOVE_TYPES.includes(m.type)) return;
+    if(m.type==='shift_close'){ const i = shiftCloseInfo(m)||{};
+      out.push({id:m.id, at:m.createdAt, date:m.date, kind:'in', lbp:Number(i.toSafeLBP)||0, usd:Number(i.toSafeUSD)||0, label:'إقفال صندوق '+(i.user||'')+' — أقفله: '+(i.by||'')}); }
+    else { const sign = m.type==='safe_in'? 1 : -1, a = Math.abs(Number(m.amount)||0);
+      out.push({id:m.id, at:m.createdAt, date:m.date, kind:m.type==='safe_in'?'in':'out', lbp: m.currency==='LBP'? sign*a : 0, usd: m.currency==='USD'? sign*a : 0, label:(m.type==='safe_in'?'إيداع بالخزنة':'سحب من الخزنة')+(m.note? ' — '+m.note : '')}); }
+  });
+  out.sort((a,b)=>(a.at||0)-(b.at||0));
+  let bl = 0, bu = 0; out.forEach(r=>{ bl += r.lbp; bu += r.usd; r.balLBP = bl; r.balUSD = bu; });
+  return out;
+}
+function safeBalance(){ const m = safeMoves(); const l = m[m.length-1]; return l ? {lbp:l.balLBP, usd:l.balUSD} : {lbp:0, usd:0}; }
+function safeView(){
+  const L = secCurLabel(), lbpOnly = currencyMode()==='SEC';
+  const moves = safeMoves().slice().reverse();
+  const bal = safeBalance();
+  const fmtBoth = (l,u)=> lbpOnly && Math.abs(u)<0.005 ? fmtNum(l)+' '+L : fmtNum(l)+' '+L+' + $'+u.toFixed(2);
+  return `<div class="card">
+    <h2><span class="dot"></span> 🗄 الخزنة</h2>
+    <div class="stats" style="margin:8px 0 12px;">
+      <div class="stat"><div class="k">الموجود بالخزنة ${L}</div><div class="v num">${fmtNum(bal.lbp)}</div></div>
+      ${(lbpOnly && Math.abs(bal.usd)<0.005)? '' : `<div class="stat"><div class="k">الموجود بالخزنة $</div><div class="v num">$${bal.usd.toFixed(2)}</div></div>`}
+    </div>
+    ${isPrivilegedUser(currentUser)? `<div class="action-row" style="margin-bottom:10px;">
+      <button class="btn btn-credit" data-safe-move="safe_in">➕ إيداع بالخزنة</button>
+      <button class="btn btn-debit" data-safe-move="safe_out">➖ سحب من الخزنة</button>
+    </div>` : ''}
+    <div class="table-scroll"><table>
+      <thead><tr><th>التاريخ والساعة</th><th>الحركة</th><th>المبلغ</th><th>الرصيد بعدها</th></tr></thead>
+      <tbody>${moves.length? moves.map(r=>`<tr>
+        <td class="num">${new Date(r.at||0).toLocaleString('en-GB',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})}</td>
+        <td>${escapeHtml(r.label)}</td>
+        <td class="num" style="color:${(r.lbp+r.usd)>=0?'var(--credit)':'var(--debit)'};">${(r.lbp+r.usd)>=0?'+':'−'} ${fmtBoth(Math.abs(r.lbp), Math.abs(r.usd))}</td>
+        <td class="num"><b>${fmtBoth(r.balLBP, r.balUSD)}</b></td></tr>`).join('') : `<tr><td colspan="4" style="text-align:center; color:var(--ink-soft);">الخزنة فاضية — بتتعبّى لما تقفل صندوق</td></tr>`}</tbody>
+    </table></div>
+  </div>`;
+}
+function shiftClosesView(){
+  const L = secCurLabel(), lbpOnly = currencyMode()==='SEC';
+  const recs = shiftCloseRecords();
+  const f = (l,u)=> (lbpOnly && Math.abs(Number(u)||0)<0.005)? fmtNum(l||0)+' '+L : fmtNum(l||0)+' '+L+' + $'+(Number(u)||0).toFixed(2);
+  return `<div class="card">
+    <h2><span class="dot"></span> 📜 سجل إقفال الصناديق</h2>
+    <div class="table-scroll"><table>
+      <thead><tr><th>التاريخ والساعة</th><th>الصندوق</th><th>أقفله</th><th>رصيد النظام</th><th>المعدود</th><th>الفرق</th><th>بقي بالصندوق</th><th>انتقل عالخزنة</th></tr></thead>
+      <tbody>${recs.length? recs.map(r=>{ const dL = (r.countedLBP||0)-(r.sysLBP||0), dU = (r.countedUSD||0)-(r.sysUSD||0); return `<tr>
+        <td class="num">${new Date(r.at||0).toLocaleString('en-GB',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})}</td>
+        <td>${escapeHtml(r.user||'—')}</td><td><b>${escapeHtml(r.by||'—')}</b></td>
+        <td class="num">${f(r.sysLBP, r.sysUSD)}</td><td class="num">${f(r.countedLBP, r.countedUSD)}</td>
+        <td class="num" style="color:${(Math.abs(dL)>=1||Math.abs(dU)>=0.005)?'var(--debit)':'var(--ink-soft)'};">${(Math.abs(dL)>=1||Math.abs(dU)>=0.005)? f(dL, dU) : '—'}</td>
+        <td class="num">${f(r.keptLBP, r.keptUSD)}</td><td class="num"><b>${f(r.toSafeLBP, r.toSafeUSD)}</b></td></tr>`; }).join('')
+        : `<tr><td colspan="8" style="text-align:center; color:var(--ink-soft);">ما في إقفالات مسجّلة بعد</td></tr>`}</tbody>
+    </table></div>
+  </div>`;
+}
+function openSafeMoveModal(type){
+  const L = secCurLabel(), lbpOnly = currencyMode()==='SEC';
+  const wrap = document.createElement('div');
+  wrap.className = 'modal-bg';
+  wrap.innerHTML = `<div class="modal" style="max-width:400px;">
+    <h3>${type==='safe_in'? '➕ إيداع بالخزنة' : '➖ سحب من الخزنة'}</h3>
+    <div style="display:flex; gap:6px;"><input type="number" id="sm_amt" class="num" min="0" style="flex:1; font-size:18px; padding:10px;">
+      ${lbpOnly? '' : `<select id="sm_cur" style="width:80px;"><option value="LBP">${escapeHtml(L)}</option><option value="USD">$</option></select>`}</div>
+    <div class="field" style="margin-top:8px;"><label>ملاحظة (مين / ليش) *</label><input type="text" id="sm_note"></div>
+    <div id="sm_err" style="color:var(--debit); font-size:13px; min-height:18px;"></div>
+    <div class="row"><button class="btn" id="sm_cancel">إلغاء</button><button class="btn btn-primary" id="sm_ok">✅ حفظ</button></div>
+  </div>`;
+  document.body.appendChild(wrap);
+  const $ = q=>wrap.querySelector(q);
+  setTimeout(()=>$('#sm_amt').focus(), 50);
+  $('#sm_cancel').addEventListener('click', ()=>wrap.remove());
+  $('#sm_ok').addEventListener('click', async ()=>{
+    const amt = Number($('#sm_amt').value)||0, note = $('#sm_note').value.trim(), cur = $('#sm_cur')? $('#sm_cur').value : 'LBP';
+    if(!(amt>0)){ $('#sm_err').textContent = 'اكتب مبلغ صحيح'; return; }
+    if(!note){ $('#sm_err').textContent = 'اكتب ملاحظة'; return; }
+    DB.cashMovements.push({id:uid(), createdAt:Date.now(), type, currency:cur, amount:amt, note:note+' — '+currentUser.username, refSaleId:null, date:todayISO(), shiftId:null});
+    const ok = await save(KEYS.cashMovements, DB.cashMovements);
+    wrap.remove(); toast(ok? 'تم ✅' : 'حدث خطأ أثناء الحفظ'); render();
+  });
+}
+document.addEventListener('click', e=>{ const b = e.target.closest && e.target.closest('[data-safe-move]'); if(b){ e.preventDefault(); openSafeMoveModal(b.getAttribute('data-safe-move')); } });
 // C Cup كلو لبناني: كل مبالغ الليرة (إيصالات، حركات صندوق، الصناديق المفتوحة) بلا كسور — لأقرب 1,000. مرة وحدة
 // صندوق موظف انحذف: إذا فاضي بينقفل لحالو؛ إذا فيه مصاري بيضل ظاهر مع زر «إقفال»
 function shiftUserExists(sh){ const us = DB.settings.users||[]; return !us.length || us.some(u=>u.id===sh.userId) || (currentUser && currentUser.id===sh.userId); }
@@ -9676,7 +9819,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-10-28 · 23:50 · v43';
+const APP_TRADE_BUILD = '2026-10-29 · 00:20 · v44';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 function settingsView(){
   const s = DB.settings;
