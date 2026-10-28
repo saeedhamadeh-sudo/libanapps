@@ -1737,6 +1737,29 @@ function buildSupplierLedger(supplierId){
   return {rows:out, totFrom, totTo, finalBalance:bal};
 }
 function supplierBalance(supplierId){ return buildSupplierLedger(supplierId).finalBalance; }
+// إلغاء (حذف) فاتورة مبيعات: الكمية يلي طلعت من المستودع بترجع (حركة إضافة «إلغاء فاتورة»)، والاسترجاع من السلة بيشيلها
+async function syncSalesInvoiceStock(inv){
+  if(!inv) return true;
+  const voidRef = inv.id+':void';
+  DB.stockIns = DB.stockIns.filter(x=>x.refId!==voidRef);
+  if(inv.deleted){
+    const n = String(inv.number);
+    const net = {};
+    DB.stockOuts.forEach(o=>{
+      const isPos = o.note==='بيع POS #'+n && inv.docType==='بيع نقطة بيع (POS)';
+      const isInv = o.number==='INV-'+n && String(o.note||'').indexOf('خصم تلقائي من فاتورة #'+n)===0 && inv.docType!=='بيع نقطة بيع (POS)';
+      if((isPos || isInv) && o.itemId) net[o.itemId] = (net[o.itemId]||0) + (Number(o.qty)||0);
+    });
+    // يلي انرجع من قبل (فاتورة استرجاع) ما منرجّعو مرتين
+    const retRe = new RegExp('^استرجاع من فاتورة POS #'+n.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'(?![\\d])');
+    DB.stockIns.forEach(x=>{ if(x.itemId && (x.refId===inv.id || retRe.test(x.note||''))) net[x.itemId] = (net[x.itemId]||0) - (Number(x.qty)||0); });
+    Object.entries(net).forEach(([itemId, q])=>{
+      q = Math.round(q*1000)/1000; if(!(q>0)) return;
+      DB.stockIns.push({id:uid(), createdAt:Date.now(), itemId, qty:q, date:todayISO(), number:nextStockInNumber(), note:'إلغاء فاتورة #'+n+' — رجعت الكمية', refId:voidRef});
+    });
+  }
+  return await save(KEYS.stockIns, DB.stockIns);
+}
 // حركات المستودع المرتبطة بفاتورة مشتريات / مرتجع: تُعاد بناؤها كاملة عند الحفظ والحذف والاسترجاع
 async function syncPurchaseStock(doc){
   if(!doc) return true;
@@ -9518,7 +9541,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-10-28 · 17:55 · v40';
+const APP_TRADE_BUILD = '2026-10-28 · 18:15 · v41';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 function settingsView(){
   const s = DB.settings;
@@ -10902,6 +10925,7 @@ const DOC_KIND_MAP = {
       item.deleted = true; item.deletedAt = Date.now();
       await save(KEYS[cfg.key], DB[cfg.arr]);
       if(kind==='purchase') await syncPurchaseStock(item);
+      if(kind==='invoice') await syncSalesInvoiceStock(item);
       toast(`انتقل${cfg.label==='الفاتورة'||cfg.label==='فاتورة المشتريات'?'ت':''} ${cfg.label} إلى سلة المحذوفات`);
       go(cfg.backRoute(item[cfg.partyField]));
     });
@@ -10916,6 +10940,7 @@ const DOC_KIND_MAP = {
       delete item.deleted; delete item.deletedAt; delete item.adminPurged;
       await save(KEYS[cfg.key], DB[cfg.arr]);
       if(kind==='purchase') await syncPurchaseStock(item);
+      if(kind==='invoice') await syncSalesInvoiceStock(item);
       toast(`تم استرجاع ${cfg.label}`);
       render();
     });
