@@ -1341,12 +1341,12 @@ function syncNativePrices(){
 // قيمة بالدولار → رقم بالعملة الأساسية (لخانات الإدخال)
 function toPrim(usd){ const n = Number(usd)||0; return primIsSec() ? Math.round(n*curRate()) : Math.round(n*100)/100; }
 // رقم مُدخل بالعملة الأساسية → دولار للحفظ
-function fromPrim(v){ const n = Number(v)||0; return primIsSec() ? Math.round(n/curRate()*1e6)/1e6 : n; }
+function fromPrim(v){ const n = Number(v)||0; return primIsSec() ? Math.round(n/curRate()*1e10)/1e10 : n; }
 // تدوير مبلغ (بالدولار) حسب العملة الأساسية: سنتات للدولار، دقة أعلى للعملة المحلية حتى ترجع أرقامها كما أُدخلت
-function roundAmt(usd){ const n = Number(usd)||0; return primIsSec() ? Math.round(n*1e6)/1e6 : Math.round(n*100)/100; }
+function roundAmt(usd){ const n = Number(usd)||0; return primIsSec() ? Math.round(n*1e10)/1e10 : Math.round(n*100)/100; }
 // خانات الإدخال: قيمة محفوظة بالدولار → ما يظهر بالخانة بالعملة الأساسية (وبالعكس عند القراءة). rate = سعر صرف المستند إن وُجد
 function inPrim(usd, rate){ if(usd===''||usd===null||usd===undefined) return ''; return primIsSec() ? Math.round((Number(usd)||0)*(Number(rate)||curRate())) : usd; }
-function outPrim(v, rate){ if(v===''||v===null||v===undefined) return ''; const n = Number(v)||0; return primIsSec() ? Math.round(n/(Number(rate)||curRate())*1e6)/1e6 : n; }
+function outPrim(v, rate){ if(v===''||v===null||v===undefined) return ''; const n = Number(v)||0; return primIsSec() ? Math.round(n/(Number(rate)||curRate())*1e10)/1e10 : n; }
 function fmtSecAmt(usd){ return fmtNum(Math.round((Number(usd)||0)*curRate()))+' '+secCurLabel(); }
 // عرض مبلغ (محفوظ بالدولار) بالعملة الأساسية
 function fmtPrim(usd){ return primIsSec() ? fmtSecAmt(usd) : fmtUSD(usd); }
@@ -7749,7 +7749,9 @@ function journalCatsFor(rows){
   base.splice(at2, 0, ...exp);                      // المصاريف بعد المدفوعات
   return base;
 }
-function journalCurrencyMode(){ const m = DB.settings && DB.settings.journalCurrency; return (m==='USD' || m==='LBP') ? m : 'both'; }
+function journalCurrencyMode(){
+  if(currencyMode()==='SEC' || (typeof isCcupClient==='function' && isCcupClient())) return 'LBP';   // البرنامج كلو لبناني
+  const m = DB.settings && DB.settings.journalCurrency; return (m==='USD' || m==='LBP') ? m : 'both'; }
 function journalTableHtml(rows){
   const mode = journalCurrencyMode();
   const rate = DB.settings.defaultExchangeRate || 90000;
@@ -8225,6 +8227,25 @@ function normalizeLbpData(force){
       }
     }
   });
+  // كل الفواتير (مبيعات عادية ومشتريات) والسندات: الأرقام يلي بعيدة كسر صغير (أقل من ليرة) عن رقم صحيح بترجع صحيحة
+  const snap = (usd, rate)=>{ const l = (Number(usd)||0)*rate, w = Math.round(l); return (Math.abs(l-w) > 1e-6 && Math.abs(l-w) < 0.999) ? w/rate : null; };
+  const fixDoc = (d, rate)=>{ let ch = false;
+    (d.items||[]).forEach(it=>{ const qty = Number(it.qty)||0; const p = snap(it.price, rate); if(p!==null){ it.price = p; ch = true; }
+      if(it.price!=='' && it.price!=null){ const t = roundAmt((Number(it.price)||0)*qty); const tw = snap(it.total, rate);
+        if(Math.abs((Number(it.total)||0) - t) > 1e-9 && Math.abs(((Number(it.total)||0) - t)*rate) < 50){ it.total = t; ch = true; } else if(tw!==null){ it.total = tw; ch = true; } } });
+    const dd = snap(d.discount, rate); if(dd!==null){ d.discount = dd; ch = true; }
+    return ch; };
+  let pinv = false, pv = false, rcx = false, bud = false, wpay = false;
+  if(isPrivilegedUser(currentUser)){
+  DB.invoices.forEach(i=>{ if(!i.deleted && i.docType!=='بيع نقطة بيع (POS)' && fixDoc(i, Number(i.exchangeRate)||curRate())) inv = true; });
+  (DB.purchaseInvoices||[]).forEach(i=>{ if(!i.deleted && fixDoc(i, Number(i.exchangeRate)||curRate())) pinv = true; });
+  const snapAmt = arr=>{ let ch = false; (arr||[]).forEach(d=>{ if(d.deleted || (d.details && isPosReceipt(d))) return; const a = snap(d.amount, curRate()); if(a!==null){ d.amount = a; ch = true; } }); return ch; };
+  if(snapAmt(DB.receipts)) rcx = true;
+  if(snapAmt(DB.paymentVouchers)) pv = true;
+  if(snapAmt(DB.budgetEntries)) bud = true;
+  if(snapAmt(DB.workerPayments)) wpay = true;
+  if(rcx) rc = true;
+  }
   if(ccup){
     (DB.receipts||[]).forEach(r=>{ if(r.deleted || /\$/.test(r.method||'') || !isPosReceipt(r)) return; const n = lbpThousands(r.amount); if(n!==Number(r.amount)){ r.amount = n; rc = true; } });
     (DB.cashMovements||[]).forEach(m=>{ if(m.currency!=='LBP') return; const n = lbpThousands(m.amount); if(n!==Number(m.amount)){ m.amount = n; mv = true; } });
@@ -8233,6 +8254,10 @@ function normalizeLbpData(force){
   const saves = [];
   if(inv) saves.push(save(KEYS.invoices, DB.invoices));
   if(rc) saves.push(save(KEYS.receipts, DB.receipts));
+  if(pinv) saves.push(save(KEYS.purchaseInvoices, DB.purchaseInvoices));
+  if(pv) saves.push(save(KEYS.paymentVouchers, DB.paymentVouchers));
+  if(bud) saves.push(save(KEYS.budgetEntries, DB.budgetEntries));
+  if(wpay) saves.push(save(KEYS.workerPayments, DB.workerPayments));
   if(mv) saves.push(save(KEYS.cashMovements, DB.cashMovements));
   if(sh) saves.push(save(KEYS.cashierShifts, DB.cashierShifts));
   if(saves.length) Promise.all(saves).then(()=>{ if(!location.hash.startsWith('#/pos')) render(); });
@@ -9451,7 +9476,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-10-28 · 16:30 · v38';
+const APP_TRADE_BUILD = '2026-10-28 · 16:55 · v39';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 function settingsView(){
   const s = DB.settings;
