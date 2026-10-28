@@ -542,6 +542,7 @@ async function loadCustomers(){
     const remote = await supabaseListCustomers();
     if(remote !== null){
       // زبائن انضافوا على هالجهاز (مثلاً من شاشة POS) وما وصلوا للسحابة: منرفعهم بدل ما يضيعوا
+      _sentSnap[KEYS.customers] = new Map(remote.map(c=>{ const o = customerToDb(c); return [o.id, JSON.stringify(o)]; }));
       const { merged, localOnly } = mergeLocalOnly(KEYS.customers, remote, true);
       try{ localStorage.setItem(skey(KEYS.customers), JSON.stringify(merged)); }catch(e){}
       if(localOnly.length) setTimeout(()=>{ localOnly.forEach(c=>supabaseUpsertCustomer(c)); }, 1500);
@@ -772,7 +773,9 @@ async function saveCustomerRemote(customer){
   try{ localStorage.setItem(skey(KEYS.customers), JSON.stringify(DB.customers)); }catch(e){}
   if(supabaseClient){
     const ok = await supabaseUpsertCustomer(customer);
-    if(ok){ const k = getSyncedIds(KEYS.customers); if(k){ k.add(customer.id); setSyncedIds(KEYS.customers, k); } }
+    if(ok){ const k = getSyncedIds(KEYS.customers); if(k){ k.add(customer.id); setSyncedIds(KEYS.customers, k); }
+      (_sentSnap[KEYS.customers] || (_sentSnap[KEYS.customers] = new Map())).set(customer.id, JSON.stringify(customerToDb(customer)));
+      liveBroadcast({k:KEYS.customers, ids:[customer.id], rm:[]}); }
     if(!ok){
       toast('تم الحفظ محليًا لكن حدث خطأ في المزامنة مع السحابة');
       setTimeout(()=>{ if(lastSupabaseError) alert('تفاصيل خطأ المزامنة (التقط لقطة شاشة وأرسلها):\n\n'+lastSupabaseError); }, 400);
@@ -785,7 +788,7 @@ async function deleteCustomerRemote(id){
   try{ localStorage.setItem(skey(KEYS.customers), JSON.stringify(DB.customers)); }catch(e){}
   if(supabaseClient){
     const ok = await supabaseDeleteCustomer(id);
-    if(ok){ const k = getSyncedIds(KEYS.customers); if(k){ k.delete(id); setSyncedIds(KEYS.customers, k); } }
+    if(ok){ const k = getSyncedIds(KEYS.customers); if(k){ k.delete(id); setSyncedIds(KEYS.customers, k); } liveBroadcast({k:KEYS.customers, ids:[], rm:[id]}); }
     if(!ok) toast('تم الحذف محليًا لكن حدث خطأ في المزامنة مع السحابة');
     return ok;
   }
@@ -1051,6 +1054,7 @@ async function syncSettingsToSupabase(settings){
   if(!supabaseClient) return;
   try{
     const { error } = await supabaseClient.from(T('app_settings')).upsert(withClient(settingsToDb(settings)));
+    if(!error){ clearTimeout(window._liveSetT); window._liveSetT = setTimeout(()=>liveBroadcast({k:'settings'}), 800); }
     if(error){
       lastSupabaseError = describeSupabaseError(error);
       console.error('app_settings upsert error:', lastSupabaseError);
@@ -1140,6 +1144,115 @@ const SUPABASE_TABLES = {
   workerPayments: {table:'worker_payments', toDb:workerPaymentToDb, fromDb:workerPaymentFromDb, label:'دفعات العمال'},
   workerAccounts: {table:'worker_accounts', toDb:workerAccountToDb, fromDb:workerAccountFromDb, label:'حسابات دخول العمال'}
 };
+/* ============================= مزامنة لايف بين الأجهزة =============================
+   كل جهاز بيحفظ شي، بيبعت إشارة صغيرة (اسم الجدول وأرقام الصفوف بس، بلا بيانات) على قناة المؤسسة.
+   الأجهزة التانية بتجيب هالصفوف بس من قاعدة البيانات (بصلاحياتها) وبتحدّث الشاشة — بلا refresh. */
+const _sentSnap = {};
+let _liveCh = null, _liveCid = null, _liveReady = false, _liveRenderPending = false, _liveHiddenAt = 0;
+function ensureLiveChannel(){
+  if(!supabaseClient || !CLIENT_ID || !authenticated || !(currentUser || currentCustomerSession || currentWorkerSession)) return;
+  if(_liveCh && _liveCid===CLIENT_ID) return;
+  try{
+    if(_liveCh){ try{ supabaseClient.removeChannel(_liveCh); }catch(e){} }
+    _liveCid = CLIENT_ID; _liveReady = false;
+    _liveCh = supabaseClient.channel('la-trade-'+CLIENT_ID, { config: { broadcast: { self:false } } });
+    _liveCh.on('broadcast', { event:'chg' }, ({ payload })=>{ liveApply(payload).catch(e=>console.error('liveApply', e)); });
+    _liveCh.subscribe(st=>{ _liveReady = (st==='SUBSCRIBED'); if(st==='CHANNEL_ERROR' || st==='TIMED_OUT'){ _liveCh = null; setTimeout(ensureLiveChannel, 5000); } });
+  }catch(e){ console.error('live channel', e); _liveCh = null; }
+}
+function liveBroadcast(payload){
+  try{ if(_liveCh && _liveReady) _liveCh.send({ type:'broadcast', event:'chg', payload }); }catch(e){}
+}
+async function liveApply(p){
+  if(!p || !p.k || !supabaseClient || !authenticated) return;
+  if(p.k==='settings'){ await liveReloadSettings(); scheduleLiveRender(); return; }
+  const cfg = SUPABASE_TABLES[p.k]; if(!cfg || !Array.isArray(DB[p.k])) return;
+  const ids = (p.ids||[]).slice(0, 2000), rm = p.rm||[];
+  const got = [];
+  for(let i=0; i<ids.length; i+=100){
+    const { data, error } = await scoped(supabaseClient.from(T(cfg.table)).select('*')).in('id', ids.slice(i, i+100));
+    if(error){ console.error('live fetch', cfg.table, describeSupabaseError(error)); return; }
+    (data||[]).forEach(r=>got.push(r));
+  }
+  const arr = DB[p.k];
+  const idx = new Map(arr.map((r,i)=>[r.id, i]));
+  const sm = _sentSnap[p.k] || (_sentSnap[p.k] = new Map());
+  const known = getSyncedIds(p.k) || new Set(arr.map(r=>r.id));
+  got.forEach(row=>{
+    const o = cfg.fromDb(row);
+    if(idx.has(o.id)) arr[idx.get(o.id)] = o; else { arr.push(o); idx.set(o.id, arr.length-1); }
+    sm.set(o.id, JSON.stringify(cfg.toDb(o))); known.add(o.id);
+  });
+  if(rm.length){
+    const rs = new Set(rm);
+    DB[p.k] = arr.filter(r=>!rs.has(r.id));
+    rm.forEach(id=>{ sm.delete(id); known.delete(id); });
+  }
+  setSyncedIds(p.k, known);
+  try{ localStorage.setItem(skey(p.k), JSON.stringify(DB[p.k])); }catch(e){}
+  if(['warehouseItems','stockIns','stockOuts','suppliers'].includes(p.k)) invalidateWarehouseCaches();
+  scheduleLiveRender();
+}
+async function liveReloadSettings(){
+  try{
+    const { data, error } = await scoped(supabaseClient.from(T('app_settings')).select('*')).maybeSingle();
+    if(!error && data){
+      const users = DB.settings.users;
+      DB.settings = applySettingsFromDb(data, DB.settings);
+      DB.settings.users = users;
+    }
+    const u = await scoped(supabaseClient.from(T('app_users')).select('*'));
+    if(!u.error && u.data && u.data.length) DB.settings.users = u.data.map(userFromDb);
+    if(typeof stripLocalSecrets==='function') stripLocalSecrets();
+    if(currentUser){ const me = (DB.settings.users||[]).find(x=>x.id===currentUser.id); if(me) currentUser = Object.assign({}, currentUser, {role:me.role, permissions:me.permissions||[]}); }
+    try{ localStorage.setItem(skey(KEYS.settings), JSON.stringify(DB.settings)); }catch(e){}
+  }catch(e){ console.error('live settings', e); }
+}
+// ما منقاطع حدا عم يكتب: إذا في خانة مفتوحة أو نافذة، منستنى لحتى يخلص
+function liveCanRender(){
+  if(document.querySelector('.modal-bg')) return false;
+  const a = document.activeElement;
+  if(a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && a.id!=='pos_scan_input' && a.id!=='whSearch') return false;
+  if(/^#\/(invoice|purchase|receipt|voucher|stockin|stockout|workentry|workerpay|budget-entry)\/(new|edit)/.test(location.hash)) return false;
+  return true;
+}
+function scheduleLiveRender(){
+  if(!currentUser && !currentCustomerSession && !currentWorkerSession) return;
+  if(liveCanRender()){ _liveRenderPending = false; const y = window.scrollY; render(); try{ window.scrollTo(0, y); }catch(e){} return; }
+  if(_liveRenderPending) return;
+  _liveRenderPending = true;
+  const t = setInterval(()=>{ if(liveCanRender()){ clearInterval(t); _liveRenderPending = false; const y = window.scrollY; render(); try{ window.scrollTo(0, y); }catch(e){} } }, 1500);
+}
+// إذا الجهاز نام أو التبويب تسكّر فترة، ممكن تكون فاتت إشارات: منجيب الجديد لما يرجع
+document.addEventListener('visibilitychange', ()=>{
+  if(document.hidden){ _liveHiddenAt = Date.now(); return; }
+  if(_liveHiddenAt && Date.now()-_liveHiddenAt > 60*1000 && authenticated && supabaseClient && CLIENT_ID) liveCatchUp();
+  _liveHiddenAt = 0;
+});
+async function liveCatchUp(){
+  try{
+    for(const k of Object.keys(SUPABASE_TABLES)){
+      if(!Array.isArray(DB[k])) continue;
+      const cfg = SUPABASE_TABLES[k];
+      // أصناف المستودع: بلا الصور (تقيلة) — الصورة بتضل يلي عندنا
+      const { data, error } = await scoped(supabaseClient.from(T(cfg.table)).select(k==='warehouseItems'? 'id' : '*'));
+      if(error || !data) continue;
+      if(k==='warehouseItems'){
+        const have = new Set(DB.warehouseItems.map(x=>x.id)), there = new Set(data.map(r=>r.id));
+        const add = data.map(r=>r.id).filter(id=>!have.has(id)), rm = DB.warehouseItems.map(x=>x.id).filter(id=>!there.has(id) && (getSyncedIds(k)||new Set()).has(id));
+        if(add.length || rm.length) await liveApply({k, ids:add, rm});
+        continue;
+      }
+      const rows = data.map(cfg.fromDb);
+      const sm = _sentSnap[k] || new Map();
+      const changedIds = rows.filter(o=>sm.get(o.id)!==JSON.stringify(cfg.toDb(o))).map(o=>o.id);
+      const there = new Set(rows.map(o=>o.id)), known = getSyncedIds(k) || new Set();
+      const rm = DB[k].map(x=>x.id).filter(id=>!there.has(id) && known.has(id));
+      if(changedIds.length || rm.length) await liveApply({k, ids:changedIds, rm});
+    }
+    await liveReloadSettings(); scheduleLiveRender();
+  }catch(e){ console.error('liveCatchUp', e); }
+}
 /* جلسة الدخول على هالجهاز ما عادت صالحة بالسيرفر (مثلاً انفتح البرنامج بنافذة/تبويب تاني أو انتهت الجلسة):
    قاعدة البيانات بترفض الحفظ (42501). البيانات محفوظة عالجهاز — منطلب كلمة السر مرة وحدة ومنرجع نرفع يلي ما انرفع */
 const _pendingResync = new Set();
@@ -1207,9 +1320,16 @@ async function syncArrayToSupabase(localKey, arr){
   const cfg = SUPABASE_TABLES[localKey];
   if(!cfg || !supabaseClient) return;
   try{
-    if(arr.length){
-      const rows = arr.map(cfg.toDb);
-      const { error } = await supabaseClient.from(T(cfg.table)).upsert(rows.map(withClient));
+    const snap = _sentSnap[localKey];
+    const rows = arr.map(cfg.toDb);
+    const changed = [];   // بس الصفوف يلي تغيّرت — أخف بكتير، وما منرجّع تعديلات جهاز تاني لورا
+    rows.forEach(r=>{ const j = JSON.stringify(r); if(!snap || snap.get(r.id)!==j) changed.push([r, j]); });
+    if(changed.length){
+      let error = null;
+      for(let i=0; i<changed.length && !error; i+=400){
+        const res = await supabaseClient.from(T(cfg.table)).upsert(changed.slice(i, i+400).map(x=>withClient(x[0])));
+        error = res.error;
+      }
       if(error && error.code==='42501' && SECURE_MODE && currentUser && !_resyncing){ handleSessionDenied(localKey); return; }
       if(error && error.code==='42501' && _resyncing){ _pendingResync.add(localKey); error.message = 'المستخدم «'+(currentUser&&currentUser.username)+'» ما عندو صلاحية حفظ '+cfg.label+' — زيد الصلاحية من «المستخدمين» — '+error.message; }
       if(error){
@@ -1219,19 +1339,24 @@ async function syncArrayToSupabase(localKey, arr){
         setTimeout(()=>{ if(lastSupabaseError) alert('تفاصيل خطأ مزامنة '+cfg.label+' (التقط لقطة شاشة وأرسلها):\n\n'+lastSupabaseError); }, 400);
         return;
       }
+      const sm = _sentSnap[localKey] || (_sentSnap[localKey] = new Map());
+      changed.forEach(([r, j])=>sm.set(r.id, j));
     }
     // الحذف: بس الصفوف يلي كانت عنا وانحذفت عن هالجهاز — ما منحذف صفوف ضافها جهاز تاني وما وصلتنا بعد
     const ids = arr.map(r=>r.id);
     const known = getSyncedIds(localKey);
+    let removed = [];
     if(known){
       const now = new Set(ids);
-      const removed = Array.from(known).filter(id=>!now.has(id));
+      removed = Array.from(known).filter(id=>!now.has(id));
       for(let i=0; i<removed.length; i+=100){
         const { error: delErr } = await scoped(supabaseClient.from(T(cfg.table)).delete()).in('id', removed.slice(i, i+100));
         if(delErr){ lastSupabaseError = describeSupabaseError(delErr); console.error(cfg.table+' delete error:', lastSupabaseError); }
       }
+      if(_sentSnap[localKey]) removed.forEach(id=>_sentSnap[localKey].delete(id));
     }
     setSyncedIds(localKey, ids);
+    if(changed.length || removed.length) liveBroadcast({k:localKey, ids:changed.map(x=>x[0].id), rm:removed});
   }catch(e){
     lastSupabaseError = 'threw: '+(e && e.message);
     console.error(cfg.table+' sync threw:', e && e.message);
@@ -1245,6 +1370,7 @@ async function loadSyncedArray(localKey, fallback){
     try{
       const { data, error } = await scoped(supabaseClient.from(T(cfg.table)).select('*'));
       if(!error){
+        _sentSnap[localKey] = new Map(data.map(r=>{ const o = cfg.toDb(cfg.fromDb(r)); return [o.id, JSON.stringify(o)]; }));
         const { merged, localOnly } = mergeLocalOnly(localKey, data.map(cfg.fromDb), false);
         try{ localStorage.setItem(skey(localKey), JSON.stringify(merged)); }catch(e){}
         if(localOnly.length) setTimeout(()=>syncArrayToSupabase(localKey, merged), 1500);
@@ -4640,6 +4766,7 @@ function routeRequiredPermission(routeKey){
 }
 function render(){
   try{ applyFavicon(); }catch(e){}
+  try{ ensureLiveChannel(); }catch(e){ console.error('ensureLiveChannel', e); }
   try{ syncNativePrices(); }catch(e){ console.error('syncNativePrices', e); }
   try{ autoRoundSellPrices(); }catch(e){ console.error('autoRoundSellPrices', e); }
   try{ fixPosInvoicesV2(); }catch(e){ console.error('fixPosInvoicesV2', e); }
@@ -9541,7 +9668,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-10-28 · 18:15 · v41';
+const APP_TRADE_BUILD = '2026-10-28 · 19:00 · v42';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 function settingsView(){
   const s = DB.settings;
