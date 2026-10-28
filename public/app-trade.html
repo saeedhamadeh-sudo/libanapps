@@ -541,8 +541,11 @@ async function loadCustomers(){
   if(supabaseClient){
     const remote = await supabaseListCustomers();
     if(remote !== null){
-      try{ localStorage.setItem(skey(KEYS.customers), JSON.stringify(remote)); }catch(e){}
-      return remote;
+      // زبائن انضافوا على هالجهاز (مثلاً من شاشة POS) وما وصلوا للسحابة: منرفعهم بدل ما يضيعوا
+      const { merged, localOnly } = mergeLocalOnly(KEYS.customers, remote, true);
+      try{ localStorage.setItem(skey(KEYS.customers), JSON.stringify(merged)); }catch(e){}
+      if(localOnly.length) setTimeout(()=>{ localOnly.forEach(c=>supabaseUpsertCustomer(c)); }, 1500);
+      return merged;
     }
     toast('تعذّر الوصول إلى قاعدة البيانات السحابية — يتم استخدام آخر نسخة محفوظة على الجهاز');
     setTimeout(()=>{ if(lastSupabaseError) alert('تفاصيل خطأ الاتصال بالسحابة (التقط لقطة شاشة وأرسلها):\n\n'+lastSupabaseError); }, 400);
@@ -769,6 +772,7 @@ async function saveCustomerRemote(customer){
   try{ localStorage.setItem(skey(KEYS.customers), JSON.stringify(DB.customers)); }catch(e){}
   if(supabaseClient){
     const ok = await supabaseUpsertCustomer(customer);
+    if(ok){ const k = getSyncedIds(KEYS.customers); if(k){ k.add(customer.id); setSyncedIds(KEYS.customers, k); } }
     if(!ok){
       toast('تم الحفظ محليًا لكن حدث خطأ في المزامنة مع السحابة');
       setTimeout(()=>{ if(lastSupabaseError) alert('تفاصيل خطأ المزامنة (التقط لقطة شاشة وأرسلها):\n\n'+lastSupabaseError); }, 400);
@@ -781,6 +785,7 @@ async function deleteCustomerRemote(id){
   try{ localStorage.setItem(skey(KEYS.customers), JSON.stringify(DB.customers)); }catch(e){}
   if(supabaseClient){
     const ok = await supabaseDeleteCustomer(id);
+    if(ok){ const k = getSyncedIds(KEYS.customers); if(k){ k.delete(id); setSyncedIds(KEYS.customers, k); } }
     if(!ok) toast('تم الحذف محليًا لكن حدث خطأ في المزامنة مع السحابة');
     return ok;
   }
@@ -1115,6 +1120,7 @@ async function loadSettings(defaults){
   return merged;
 }
 const SUPABASE_TABLES = {
+  customers: {table:'customers', toDb:customerToDb, fromDb:customerFromDb, label:'الزبائن'},
   invoices: {table:'invoices', toDb:invoiceToDb, fromDb:invoiceFromDb, label:'الفواتير'},
   receipts: {table:'receipts', toDb:receiptToDb, fromDb:receiptFromDb, label:'الإيصالات'},
   suppliers: {table:'suppliers', toDb:supplierToDb, fromDb:supplierFromDb, label:'الموردين'},
@@ -1176,6 +1182,27 @@ function handleSessionDenied(localKey){
   $('#ra_ok').addEventListener('click', go2);
   $('#ra_pw').addEventListener('keydown', e=>{ if(e.key==='Enter') go2(); });
 }
+/* ===== مزامنة آمنة بين أكتر من جهاز: منتذكّر شو الصفوف يلي انرفعت/انجابت من السحابة على هالجهاز =====
+   - اللي على الجهاز وما وصل للسحابة أبداً (مثلاً زبون انضاف والحفظ ما زبط) بيرجع ينرفع بدل ما يضيع
+   - اللي انحذف عن جهاز تاني بيختفي من هون كمان */
+function getSyncedIds(key){ try{ const v = localStorage.getItem(skey('synced_'+key)); return v ? new Set(JSON.parse(v)) : null; }catch(e){ return null; } }
+function setSyncedIds(key, ids){ try{ localStorage.setItem(skey('synced_'+key), JSON.stringify(Array.from(ids))); }catch(e){} }
+function mergeLocalOnly(key, remote, firstRunMerge){
+  const local = (()=>{ try{ return JSON.parse(localStorage.getItem(skey(key))||'[]'); }catch(e){ return []; } })();
+  const remoteIds = new Set(remote.map(r=>r.id));
+  const known = getSyncedIds(key);
+  const remoteById = new Map(remote.map(r=>[r.id, r]));
+  let localOnly = [];
+  if(Array.isArray(local)){
+    if(known) localOnly = local.filter(r=>r && r.id && !remoteIds.has(r.id) && !known.has(r.id));
+    else if(firstRunMerge) localOnly = local.filter(r=>r && r.id && !remoteIds.has(r.id));
+    // زبون انعمل بالسحابة كـ«زبون مفقود» والاسم الحقيقي بعدو على هالجهاز: منرجّع الاسم
+    if(key===KEYS.customers) local.forEach(r=>{ const rm = r && remoteById.get(r.id); if(rm && /^زبون مفقود/.test(rm.name||'') && r.name && !/^زبون مفقود/.test(r.name)){ rm.name = r.name; if(r.phone) rm.phone = r.phone; localOnly.push(rm); } });
+  }
+  const merged = remote.concat(localOnly.filter(r=>!remoteIds.has(r.id)));
+  setSyncedIds(key, remote.map(r=>r.id));
+  return { merged, localOnly };
+}
 async function syncArrayToSupabase(localKey, arr){
   const cfg = SUPABASE_TABLES[localKey];
   if(!cfg || !supabaseClient) return;
@@ -1193,13 +1220,18 @@ async function syncArrayToSupabase(localKey, arr){
         return;
       }
     }
+    // الحذف: بس الصفوف يلي كانت عنا وانحذفت عن هالجهاز — ما منحذف صفوف ضافها جهاز تاني وما وصلتنا بعد
     const ids = arr.map(r=>r.id);
-    const delQuery = scoped(supabaseClient.from(T(cfg.table)).delete());
-    const { error: delErr } = ids.length ? await delQuery.not('id','in', `(${ids.join(',')})`) : await delQuery.neq('id','__none__');
-    if(delErr){
-      lastSupabaseError = describeSupabaseError(delErr);
-      console.error(cfg.table+' cleanup delete error:', lastSupabaseError);
+    const known = getSyncedIds(localKey);
+    if(known){
+      const now = new Set(ids);
+      const removed = Array.from(known).filter(id=>!now.has(id));
+      for(let i=0; i<removed.length; i+=100){
+        const { error: delErr } = await scoped(supabaseClient.from(T(cfg.table)).delete()).in('id', removed.slice(i, i+100));
+        if(delErr){ lastSupabaseError = describeSupabaseError(delErr); console.error(cfg.table+' delete error:', lastSupabaseError); }
+      }
     }
+    setSyncedIds(localKey, ids);
   }catch(e){
     lastSupabaseError = 'threw: '+(e && e.message);
     console.error(cfg.table+' sync threw:', e && e.message);
@@ -1213,9 +1245,10 @@ async function loadSyncedArray(localKey, fallback){
     try{
       const { data, error } = await scoped(supabaseClient.from(T(cfg.table)).select('*'));
       if(!error){
-        const arr = data.map(cfg.fromDb);
-        try{ localStorage.setItem(skey(localKey), JSON.stringify(arr)); }catch(e){}
-        return arr;
+        const { merged, localOnly } = mergeLocalOnly(localKey, data.map(cfg.fromDb), false);
+        try{ localStorage.setItem(skey(localKey), JSON.stringify(merged)); }catch(e){}
+        if(localOnly.length) setTimeout(()=>syncArrayToSupabase(localKey, merged), 1500);
+        return merged;
       }
       lastSupabaseError = describeSupabaseError(error);
       console.error(cfg.table+' list error:', lastSupabaseError);
@@ -4590,6 +4623,7 @@ function render(){
   try{ fixCcupLbpV3(); }catch(e){ console.error('fixCcupLbpV3', e); }
   try{ normalizeLbpData(); }catch(e){ console.error('normalizeLbpData', e); }
   try{ closeOrphanShifts(); }catch(e){ console.error('closeOrphanShifts', e); }
+  try{ healOrphanCustomers(); }catch(e){ console.error('healOrphanCustomers', e); }
   try{ fixPosInvoicesV1(); }catch(e){ console.error('fixPosInvoicesV1', e); }
   if(!_shrinkImagesRunning && (DB.warehouseItems||[]).some(it=>typeof it.image==='string' && it.image.length>60000)) setTimeout(()=>shrinkOldProductImages(), 1500);
   const lic = licenseStatus();
@@ -8226,6 +8260,55 @@ async function checkForNewBuild(){
 }
 // شريط «في نسخة جديدة» انشال بطلب صاحب البرنامج — التصحيح المستمر بيضل شغّال
 setInterval(()=>{ try{ normalizeLbpData(); }catch(e){} }, 60*1000);
+/* ===== فواتير زبائن ما وصلوا للسحابة (انضافوا من شاشة POS قبل التصليح): منرجّعهم =====
+   - فواتير مدفوعة كلها (نقد / Whish) ← على «زبون عابر (POS)» واحد
+   - إذا في دين أو إيصالات ← منرجّع الزبون بنفس رقمو باسم «زبون مفقود …» حتى يرجع حسابو ورصيدو، وبتغيّر الاسم */
+let _healDone = false;
+async function healOrphanCustomers(){
+  if(_healDone || !currentUser || !isPrivilegedUser(currentUser) || !supabaseClient) return;
+  _healDone = true;
+  const have = new Set(DB.customers.map(c=>c.id));
+  const groups = {};
+  DB.invoices.forEach(i=>{ if(i.customerId && !have.has(i.customerId)) (groups[i.customerId] = groups[i.customerId] || {inv:[], rc:[]}).inv.push(i); });
+  DB.receipts.forEach(r=>{ if(r.customerId && !have.has(r.customerId)) (groups[r.customerId] = groups[r.customerId] || {inv:[], rc:[]}).rc.push(r); });
+  let ids = Object.keys(groups); if(!ids.length) return;
+  // أمان: منتأكد من السحابة إنو هالزبائن فعلاً مش موجودين (حتى ما نكتب فوق زبون حقيقي إذا التحميل ما كمل)
+  try{
+    const found = new Set();
+    for(let k=0; k<ids.length; k+=100){
+      const { data, error } = await scoped(supabaseClient.from(T('customers')).select('id')).in('id', ids.slice(k, k+100));
+      if(error) return;
+      (data||[]).forEach(r=>found.add(r.id));
+    }
+    if(found.size) ids = ids.filter(id=>!found.has(id));
+    if(!ids.length) return;
+  }catch(e){ return; }
+  let walkin = DB.customers.find(c=>c.name==='زبون عابر (POS)');
+  const newCust = []; let invCh = false, rcCh = false, moved = 0, restored = 0;
+  ids.forEach(cid=>{
+    const g = groups[cid];
+    const allPaidPos = g.inv.length && g.inv.every(i=>i.docType==='بيع نقطة بيع (POS)' && (i.deleted || posSaleReceipt(i)))
+      && g.rc.every(r=>isPosReceipt(r) && !isPosPayReceipt(r));
+    if(allPaidPos){
+      if(!walkin){ walkin = {id:uid(), createdAt:Date.now(), name:'زبون عابر (POS)', accountNumber:autoAccountNumber(), phone:''}; DB.customers.push(walkin); newCust.push(walkin); }
+      g.inv.forEach(i=>{ i.customerId = walkin.id; invCh = true; });
+      g.rc.forEach(r=>{ r.customerId = walkin.id; rcCh = true; });
+      moved += g.inv.length;
+    } else {
+      const nums = g.inv.map(i=>i.number).filter(Boolean).sort((a,b)=>Number(a)-Number(b));
+      const first = Math.min(...g.inv.map(i=>i.createdAt||Date.now()), ...g.rc.map(r=>r.createdAt||Date.now()));
+      const c = {id:cid, createdAt:first, name:'زبون مفقود — فواتير #'+nums.slice(0,4).join(', #')+(nums.length>4?'…':''), accountNumber:autoAccountNumber(), phone:''};
+      DB.customers.push(c); newCust.push(c); restored++;
+    }
+  });
+  for(const c of newCust) await supabaseUpsertCustomer(c);
+  try{ localStorage.setItem(skey(KEYS.customers), JSON.stringify(DB.customers)); }catch(e){}
+  { const k = getSyncedIds(KEYS.customers); if(k){ newCust.forEach(c=>k.add(c.id)); setSyncedIds(KEYS.customers, k); } }
+  if(invCh) await save(KEYS.invoices, DB.invoices);
+  if(rcCh) await save(KEYS.receipts, DB.receipts);
+  if(restored) toast('⚠️ رجّعنا '+restored+' زبون كانو ضايعين باسم «زبون مفقود» — غيّر أسمائهم من صفحة الزبائن');
+  render();
+}
 // C Cup كلو لبناني: كل مبالغ الليرة (إيصالات، حركات صندوق، الصناديق المفتوحة) بلا كسور — لأقرب 1,000. مرة وحدة
 // صندوق موظف انحذف: إذا فاضي بينقفل لحالو؛ إذا فيه مصاري بيضل ظاهر مع زر «إقفال»
 function shiftUserExists(sh){ const us = DB.settings.users||[]; return !us.length || us.some(u=>u.id===sh.userId) || (currentUser && currentUser.id===sh.userId); }
@@ -9368,7 +9451,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-10-27 · 21:40 · v37';
+const APP_TRADE_BUILD = '2026-10-28 · 16:30 · v38';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 function settingsView(){
   const s = DB.settings;
