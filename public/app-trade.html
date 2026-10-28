@@ -8334,6 +8334,47 @@ async function healOrphanCustomers(){
   if(restored) toast('⚠️ رجّعنا '+restored+' زبون كانو ضايعين باسم «زبون مفقود» — غيّر أسمائهم من صفحة الزبائن');
   render();
 }
+// نقل فاتورة (مع إيصالات القبض المرتبطة فيها من POS) لزبون تاني
+function openMoveInvoiceModal(invId){
+  const inv = DB.invoices.find(i=>i.id===invId); if(!inv) return;
+  const from = DB.customers.find(c=>c.id===inv.customerId);
+  const wrap = document.createElement('div');
+  wrap.className = 'modal-bg';
+  wrap.innerHTML = `<div class="modal" style="max-width:480px;">
+    <h3>🔀 نقل الفاتورة #${escapeHtml(String(inv.number))}</h3>
+    <div style="font-size:13px; color:var(--ink-soft); margin-bottom:8px;">من: <b>${escapeHtml(from? from.name : '—')}</b> — قيمة الفاتورة <b class="num">${fmtMoney(computeInvoiceTotal(inv).totalUSD)}</b></div>
+    <input type="text" id="mi_q" placeholder="🔍 ابحث عن الزبون (الاسم، الهاتف، رقم الحساب)..." style="width:100%; font-size:15px; padding:9px 12px; margin-bottom:8px;">
+    <div id="mi_list" style="max-height:45vh; overflow:auto; display:flex; flex-direction:column; gap:6px;"></div>
+    <div class="row" style="margin-top:12px;"><button class="btn" id="mi_cancel">إلغاء</button></div>
+  </div>`;
+  document.body.appendChild(wrap);
+  const $ = q=>wrap.querySelector(q);
+  const draw = ()=>{
+    const q = normalizeSearchText($('#mi_q').value||'');
+    const list = DB.customers.filter(c=>c.id!==inv.customerId && (!q || normalizeSearchText([c.name, c.phone, c.accountNumber].join(' ')).includes(q)))
+      .sort((a,b)=>String(a.name).localeCompare(String(b.name),'ar')).slice(0,80);
+    $('#mi_list').innerHTML = list.map(c=>`<button type="button" class="btn" data-mi-to="${c.id}" style="justify-content:space-between; text-align:start; display:flex;">
+      <span><b>${escapeHtml(c.name)}</b>${c.phone? ' <small class="num" style="color:var(--ink-soft);">'+escapeHtml(c.phone)+'</small>':''}</span><small class="num" style="color:var(--ink-soft);">${escapeHtml(c.accountNumber||'')}</small></button>`).join('')
+      || `<div style="color:var(--ink-soft); font-size:13px;">لا نتائج</div>`;
+    wrap.querySelectorAll('[data-mi-to]').forEach(b=>b.addEventListener('click', async ()=>{
+      const to = DB.customers.find(c=>c.id===b.getAttribute('data-mi-to')); if(!to) return;
+      if(!confirm('نقل الفاتورة #'+inv.number+' من «'+(from?from.name:'—')+'» إلى «'+to.name+'»؟')) return;
+      inv.customerId = to.id;
+      // إيصالات POS المرتبطة بهالفاتورة (قبض البيعة أو دفعات على الحساب) بتنتقل معها
+      const re = new RegExp('نقطة بيع #'+String(inv.number).replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'(?![\\w\\d])');
+      let movedRc = 0;
+      if(inv.docType==='بيع نقطة بيع (POS)') DB.receipts.forEach(r=>{ if(!r.deleted && re.test(r.details||'') && r.customerId!==to.id){ r.customerId = to.id; movedRc++; } });
+      const res = await Promise.all([save(KEYS.invoices, DB.invoices)].concat(movedRc? [save(KEYS.receipts, DB.receipts)] : []));
+      wrap.remove();
+      toast(res.every(Boolean)? 'تم نقل الفاتورة إلى «'+to.name+'» ✅' : 'حدث خطأ أثناء الحفظ');
+      render();
+    }));
+  };
+  $('#mi_q').addEventListener('input', draw); draw();
+  setTimeout(()=>$('#mi_q').focus(), 50);
+  $('#mi_cancel').addEventListener('click', ()=>wrap.remove());
+}
+document.addEventListener('click', e=>{ const b = e.target.closest && e.target.closest('[data-move-invoice]'); if(b){ e.preventDefault(); openMoveInvoiceModal(b.getAttribute('data-move-invoice')); } });
 // C Cup كلو لبناني: كل مبالغ الليرة (إيصالات، حركات صندوق، الصناديق المفتوحة) بلا كسور — لأقرب 1,000. مرة وحدة
 // صندوق موظف انحذف: إذا فاضي بينقفل لحالو؛ إذا فيه مصاري بيضل ظاهر مع زر «إقفال»
 function shiftUserExists(sh){ const us = DB.settings.users||[]; return !us.length || us.some(u=>u.id===sh.userId) || (currentUser && currentUser.id===sh.userId); }
@@ -9343,6 +9384,7 @@ function itemDocPrintView(kind, doc){
   <div class="doc-actions no-print">
     ${readOnly? '' : `<button class="btn" data-nav="${cfg.editRoute(doc.id)}">✎ تعديل</button>
     <button class="btn btn-danger" data-del-doc="${doc.id}" data-doc-kind="${kind}">🗑 حذف</button>`}
+    ${(!readOnly && kind==='invoice' && !doc.deleted && hasPermission('edit_docs'))? `<button class="btn" data-move-invoice="${doc.id}">🔀 نقل إلى زبون آخر</button>` : ''}
     <button class="btn btn-primary" onclick="printWithFilename('${cfg.filenamePrefix}-${safeText(doc.number)}')">🖨 طباعة</button>
   </div>
   <div class="doc">
@@ -9476,7 +9518,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-10-28 · 16:55 · v39';
+const APP_TRADE_BUILD = '2026-10-28 · 17:55 · v40';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 function settingsView(){
   const s = DB.settings;
