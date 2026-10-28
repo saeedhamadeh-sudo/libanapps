@@ -4788,6 +4788,7 @@ function render(){
   try{ normalizeLbpData(); }catch(e){ console.error('normalizeLbpData', e); }
   try{ closeOrphanShifts(); }catch(e){ console.error('closeOrphanShifts', e); }
   try{ healOrphanCustomers(); }catch(e){ console.error('healOrphanCustomers', e); }
+  try{ importLegacyShiftCloses(); }catch(e){ console.error('importLegacyShiftCloses', e); }
   try{ fixPosInvoicesV1(); }catch(e){ console.error('fixPosInvoicesV1', e); }
   if(!_shrinkImagesRunning && (DB.warehouseItems||[]).some(it=>typeof it.image==='string' && it.image.length>60000)) setTimeout(()=>shrinkOldProductImages(), 1500);
   const lic = licenseStatus();
@@ -8603,7 +8604,7 @@ function safeMoves(){
   const out = [];
   (DB.cashMovements||[]).forEach(m=>{
     if(m.deleted || !SAFE_MOVE_TYPES.includes(m.type)) return;
-    if(m.type==='shift_close'){ const i = shiftCloseInfo(m)||{};
+    if(m.type==='shift_close'){ const i = shiftCloseInfo(m)||{}; if(i.legacy) return;   // الإقفالات القديمة بالسجل بس، ما بتحرّك رصيد الخزنة
       out.push({id:m.id, at:m.createdAt, date:m.date, kind:'in', lbp:Number(i.toSafeLBP)||0, usd:Number(i.toSafeUSD)||0, label:'إقفال صندوق '+(i.user||'')+' — أقفله: '+(i.by||'')}); }
     else { const sign = m.type==='safe_in'? 1 : -1, a = Math.abs(Number(m.amount)||0);
       out.push({id:m.id, at:m.createdAt, date:m.date, kind:m.type==='safe_in'?'in':'out', lbp: m.currency==='LBP'? sign*a : 0, usd: m.currency==='USD'? sign*a : 0, label:(m.type==='safe_in'?'إيداع بالخزنة':'سحب من الخزنة')+(m.note? ' — '+m.note : '')}); }
@@ -8645,17 +8646,84 @@ function shiftClosesView(){
   return `<div class="card">
     <h2><span class="dot"></span> 📜 سجل إقفال الصناديق</h2>
     <div class="table-scroll"><table>
-      <thead><tr><th>التاريخ والساعة</th><th>الصندوق</th><th>أقفله</th><th>رصيد النظام</th><th>المعدود</th><th>الفرق</th><th>بقي بالصندوق</th><th>انتقل عالخزنة</th></tr></thead>
+      <thead><tr><th>التاريخ والساعة</th><th>الصندوق</th><th>أقفله</th><th>رصيد النظام</th><th>المعدود</th><th>الفرق</th><th>بقي بالصندوق</th><th>انتقل عالخزنة</th>${isPrivilegedUser(currentUser)? '<th></th>' : ''}</tr></thead>
       <tbody>${recs.length? recs.map(r=>{ const dL = (r.countedLBP||0)-(r.sysLBP||0), dU = (r.countedUSD||0)-(r.sysUSD||0); return `<tr>
         <td class="num">${new Date(r.at||0).toLocaleString('en-GB',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})}</td>
-        <td>${escapeHtml(r.user||'—')}</td><td><b>${escapeHtml(r.by||'—')}</b></td>
+        <td>${escapeHtml(r.user||'—')}</td><td><b>${escapeHtml(r.by||'—')}</b>${r.legacy? ' <span title="إقفال قديم — ما بيأثر على رصيد الخزنة" style="font-size:11px; color:var(--ink-soft);">(قديم)</span>' : ''}</td>
         <td class="num">${f(r.sysLBP, r.sysUSD)}</td><td class="num">${f(r.countedLBP, r.countedUSD)}</td>
         <td class="num" style="color:${(Math.abs(dL)>=1||Math.abs(dU)>=0.005)?'var(--debit)':'var(--ink-soft)'};">${(Math.abs(dL)>=1||Math.abs(dU)>=0.005)? f(dL, dU) : '—'}</td>
-        <td class="num">${f(r.keptLBP, r.keptUSD)}</td><td class="num"><b>${f(r.toSafeLBP, r.toSafeUSD)}</b></td></tr>`; }).join('')
-        : `<tr><td colspan="8" style="text-align:center; color:var(--ink-soft);">ما في إقفالات مسجّلة بعد</td></tr>`}</tbody>
+        <td class="num">${f(r.keptLBP, r.keptUSD)}</td><td class="num"><b>${f(r.toSafeLBP, r.toSafeUSD)}</b></td>
+        ${isPrivilegedUser(currentUser)? `<td><button class="btn btn-sm" data-edit-close="${r.id}">✎ تعديل</button></td>` : ''}</tr>`; }).join('')
+        : `<tr><td colspan="9" style="text-align:center; color:var(--ink-soft);">ما في إقفالات مسجّلة بعد</td></tr>`}</tbody>
     </table></div>
   </div>`;
 }
+// الإقفالات القديمة (قبل سجل الإقفال): منسجّلها بالسجل مرة وحدة — أقفلها «محمد»، والمعدود كلو انتقل عالخزنة (بيتعدّل من «✎ تعديل»)
+let _legacyClosesDone = false;
+function importLegacyShiftCloses(){
+  if(_legacyClosesDone || !currentUser || !isPrivilegedUser(currentUser) || !cloudSessionReady()) return;
+  _legacyClosesDone = true;
+  const have = new Set((DB.cashMovements||[]).filter(m=>m.type==='shift_close').map(m=>m.refSaleId));   // حتى لو انمحى، ما منرجّعو
+  const add = [];
+  (DB.cashierShifts||[]).forEach(sh=>{
+    if(sh.deleted || sh.status!=='closed' || have.has(sh.id)) return;
+    const cL = sh.closingCountedLBP!=null ? Number(sh.closingCountedLBP)||0 : Number(sh.cashLBP)||0;
+    const cU = sh.closingCountedUSD!=null ? Number(sh.closingCountedUSD)||0 : Number(sh.cashUSD)||0;
+    if(Math.abs(cL)<1 && Math.abs(cU)<0.005 && Math.abs(Number(sh.cashLBP)||0)<1 && Math.abs(Number(sh.cashUSD)||0)<0.005) return;   // صناديق فاضية
+    const at = sh.closedAt || sh.openedAt || Date.now();
+    const info = { by:'محمد', user:sh.username, shiftId:sh.id, sysLBP:Number(sh.cashLBP)||0, sysUSD:Number(sh.cashUSD)||0,
+      countedLBP:cL, countedUSD:cU, keptLBP:0, keptUSD:0, toSafeLBP:cL, toSafeUSD:cU, openedAt:sh.openedAt, legacy:true };
+    add.push({id:'lc-'+sh.id, createdAt:at, type:'shift_close', currency:'LBP', amount:cL, note:SHIFT_CLOSE_TAG+JSON.stringify(info), refSaleId:sh.id, date:new Date(at).toISOString().slice(0,10), shiftId:null});
+  });
+  if(!add.length) return;
+  DB.cashMovements.push(...add);
+  save(KEYS.cashMovements, DB.cashMovements).then(ok=>{ if(ok){ toast('نزّلنا '+add.length+' إقفال صندوق قديم عالسجل ✅'); render(); } });
+}
+function openEditShiftCloseModal(id){
+  const m = (DB.cashMovements||[]).find(x=>x.id===id && x.type==='shift_close'); if(!m) return;
+  const i = shiftCloseInfo(m) || {};
+  const L = secCurLabel(), lbpOnly = currencyMode()==='SEC' && !(Number(i.countedUSD)||Number(i.keptUSD));
+  const wrap = document.createElement('div');
+  wrap.className = 'modal-bg';
+  const dt = new Date(m.createdAt||Date.now()); const pad = n=>String(n).padStart(2,'0');
+  const local = dt.getFullYear()+'-'+pad(dt.getMonth()+1)+'-'+pad(dt.getDate())+'T'+pad(dt.getHours())+':'+pad(dt.getMinutes());
+  wrap.innerHTML = `<div class="modal" style="max-width:480px;">
+    <h3>✎ تعديل إقفال صندوق ${escapeHtml(i.user||'')}</h3>
+    <div class="field"><label>التاريخ والساعة</label><input type="datetime-local" id="ec_at" value="${local}"></div>
+    <div class="field"><label>👤 أقفله *</label><input type="text" id="ec_by" value="${escapeHtml(i.by||'')}"></div>
+    <div class="grid ${lbpOnly?'':'grid-2'}">
+      <div class="field"><label>المعدود ${L}</label><input type="number" id="ec_cl" class="num" value="${Number(i.countedLBP)||0}"></div>
+      ${lbpOnly? '' : `<div class="field"><label>المعدود $</label><input type="number" step="0.01" id="ec_cu" class="num" value="${Number(i.countedUSD)||0}"></div>`}
+    </div>
+    <div class="grid ${lbpOnly?'':'grid-2'}">
+      <div class="field"><label>بقي بالصندوق ${L}</label><input type="number" id="ec_kl" class="num" value="${Number(i.keptLBP)||0}"></div>
+      ${lbpOnly? '' : `<div class="field"><label>بقي بالصندوق $</label><input type="number" step="0.01" id="ec_ku" class="num" value="${Number(i.keptUSD)||0}"></div>`}
+    </div>
+    <div id="ec_sum" style="font-size:14px; background:var(--bg-2); border:1px solid var(--line); border-radius:8px; padding:8px 12px;"></div>
+    <div id="ec_err" style="color:var(--debit); font-size:13px; min-height:18px;"></div>
+    <div class="row"><button class="btn" id="ec_cancel">إلغاء</button><button class="btn btn-primary" id="ec_ok">💾 حفظ</button></div>
+  </div>`;
+  document.body.appendChild(wrap);
+  const $ = q=>wrap.querySelector(q), v = q=>{ const e = $(q); return e? (Number(e.value)||0) : 0; };
+  const upd = ()=>{ $('#ec_sum').innerHTML = '🗄 انتقل عالخزنة: <b class="num">'+fmtNum(v('#ec_cl')-v('#ec_kl'))+' '+L+(lbpOnly? '' : ' + $'+(v('#ec_cu')-v('#ec_ku')).toFixed(2))+'</b>'; };
+  ['#ec_cl','#ec_cu','#ec_kl','#ec_ku'].forEach(q=>{ const e = $(q); if(e) e.addEventListener('input', upd); }); upd();
+  $('#ec_cancel').addEventListener('click', ()=>wrap.remove());
+  $('#ec_ok').addEventListener('click', async ()=>{
+    const by = $('#ec_by').value.trim();
+    if(!by){ $('#ec_err').textContent = 'اكتب اسم يلي أقفل الصندوق'; return; }
+    const cL = v('#ec_cl'), cU = v('#ec_cu'), kL = v('#ec_kl'), kU = v('#ec_ku');
+    if(kL<0 || kU<0 || kL>cL || kU>cU+0.0001){ $('#ec_err').textContent = 'المبلغ المتروك لازم يكون بين صفر والمعدود'; return; }
+    const at = new Date($('#ec_at').value).getTime();
+    Object.assign(i, {by, countedLBP:cL, countedUSD:cU, keptLBP:kL, keptUSD:kU, toSafeLBP:cL-kL, toSafeUSD:cU-kU});
+    if(at>0){ m.createdAt = at; m.date = new Date(at).toISOString().slice(0,10); }
+    m.amount = cL-kL; m.note = SHIFT_CLOSE_TAG+JSON.stringify(i);
+    const sh = (DB.cashierShifts||[]).find(x=>x.id===i.shiftId);
+    if(sh){ sh.closingCountedLBP = cL; sh.closingCountedUSD = cU; }
+    const res = await Promise.all([save(KEYS.cashMovements, DB.cashMovements)].concat(sh? [save(KEYS.cashierShifts, DB.cashierShifts)] : []));
+    wrap.remove(); toast(res.every(Boolean)? 'تم تعديل الإقفال ✅' : 'حدث خطأ أثناء الحفظ'); render();
+  });
+}
+document.addEventListener('click', e=>{ const b = e.target.closest && e.target.closest('[data-edit-close]'); if(b){ e.preventDefault(); openEditShiftCloseModal(b.getAttribute('data-edit-close')); } });
 function openSafeMoveModal(type){
   const L = secCurLabel(), lbpOnly = currencyMode()==='SEC';
   const wrap = document.createElement('div');
@@ -9825,7 +9893,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-10-29 · 00:35 · v45';
+const APP_TRADE_BUILD = '2026-10-29 · 00:50 · v46';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 function settingsView(){
   const s = DB.settings;
