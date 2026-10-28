@@ -187,7 +187,7 @@
   .ded-table th, .ded-table td{padding:8px 10px; font-size:13px;}
   .ded-table thead th{white-space:nowrap; font-size:12px;}
   .table-scroll{max-width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch;}
-  .doc{overflow-x:hidden;}
+  .doc{overflow-x:clip;}   /* clip (مش hidden) حتى عناوين الجداول تضل لازقة فوق مع الـ scroll */
   .page-break-after{page-break-after:always; break-after:page;}
   @media print{ .page-break-after{margin-bottom:0;} }
   .ltr-doc{direction:ltr; text-align:left;}
@@ -460,7 +460,13 @@
     .doc .inv-table .inv-idx{display:none;}
     .doc:has(.inv-table){padding:10px 6px;}
   }
-  @media print{ .table-scroll{overflow:visible !important;} }
+  @media print{ .table-scroll{overflow:visible !important; max-height:none !important;} thead th{position:static !important;} }
+  /* عناوين الجداول بتنزل وتطلع مع الـ scroll (اليوميات والتقارير) */
+  .jr-table thead th, .doc thead th{position:sticky; top:0; z-index:3;}
+  @media (min-width:901px){
+    .table-scroll{max-height:calc(100vh - 120px); overflow:auto;}
+    .table-scroll thead th{position:sticky; top:0; z-index:3;}
+  }
   /* اليومية: جدول مضغوط بلا تمرير يمين/شمال، وبطاقات على الشاشات الصغيرة */
   .doc.doc-wide{max-width:none;}
   .jr-table{table-layout:auto; width:100%;}
@@ -9819,7 +9825,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-10-29 · 00:20 · v44';
+const APP_TRADE_BUILD = '2026-10-29 · 00:35 · v45';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 function settingsView(){
   const s = DB.settings;
