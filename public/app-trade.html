@@ -1608,6 +1608,9 @@ function fmtDate(d){
   const dd=String(dt.getDate()).padStart(2,'0'), mm=String(dt.getMonth()+1).padStart(2,'0'), yy=dt.getFullYear();
   return `${dd}/${mm}/${yy}`;
 }
+// الساعة بنظام 12 (AM / PM) — مثلاً 9:05 PM
+function fmtTime12(ts){ const d = ts==null? new Date() : new Date(ts); if(isNaN(d) || !(d.getTime()>0)) return ''; let h = d.getHours(); const ap = h>=12? 'PM' : 'AM'; h = h%12 || 12; return h+':'+String(d.getMinutes()).padStart(2,'0')+' '+ap; }
+function fmtDateTime12(ts){ const d = new Date(ts); if(!(ts>0) || isNaN(d)) return ''; return fmtDate(d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'))+' '+fmtTime12(ts); }
 // تاريخ اليوم حسب ساعة الجهاز (بلبنان UTC+3) — مش UTC، وإلا الحركات بعد نص الليل بتنسجل على البارحة
 function todayISO(){ const d = new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 function timestampForFilename(){
@@ -5270,7 +5273,7 @@ function hubView(){
       </div>
       <div style="font-size:12px; color:var(--ink-soft); margin-bottom:10px;">مبيعات اليوم (POS، تقرير فقط): <b class="num">${todaySales.count} عملية — ${fmtPrim(todaySales.totalUSD)}</b></div>
       <div style="display:flex; justify-content:space-between; align-items:center; background:var(--bg-2); border:1px solid var(--line); border-radius:8px; padding:8px 12px; margin-bottom:8px; flex-wrap:wrap; gap:8px;">
-        <div><b>صندوقي (${escapeHtml(currentUser.username)})</b><div style="font-size:11px; color:var(--ink-soft);">${myShift? 'مفتوح منذ '+new Date(myShift.openedAt).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}) : 'مقفل'}</div></div>
+        <div><b>صندوقي (${escapeHtml(currentUser.username)})</b><div style="font-size:11px; color:var(--ink-soft);">${myShift? 'مفتوح منذ '+fmtTime12(myShift.openedAt) : 'مقفل'}</div></div>
         <div><div class="num" style="font-weight:800;">$${(myShift? myShift.cashUSD : 0).toFixed(2)} + ${fmtNum(myShift? myShift.cashLBP : 0)} ${secCurLabel()}</div>${myShift? whishBoxHtml([myShift]) : ''}</div>
         ${myShift? `<div style="display:flex; gap:5px; flex-wrap:wrap;">
           <button class="btn btn-sm" data-admin-cashmove="deposit" data-shift="${myShift.id}" data-currency="USD" style="padding:3px 8px;">➕$</button>
@@ -5281,7 +5284,7 @@ function hubView(){
       </div>
       ${openShifts.filter(sh=>!myShift || sh.id!==myShift.id).length? openShifts.filter(sh=>!myShift || sh.id!==myShift.id).map(sh=>`
       <div style="display:flex; justify-content:space-between; align-items:center; background:var(--bg-2); border:1px solid var(--line); border-radius:8px; padding:8px 12px; margin-bottom:8px; flex-wrap:wrap; gap:8px;">
-        <div><b>${escapeHtml(sh.username)}</b>${shiftUserExists(sh)? '' : ' <span style="font-size:11px; color:var(--debit);">(موظف محذوف)</span>'}<div style="font-size:11px; color:var(--ink-soft);">مفتوح منذ ${new Date(sh.openedAt).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}</div>${shiftUserExists(sh)? '' : `<button class="btn btn-sm btn-danger" data-close-orphan="${sh.id}" style="margin-top:4px; padding:3px 8px;">🔒 إقفال الصندوق</button>`}</div>
+        <div><b>${escapeHtml(sh.username)}</b>${shiftUserExists(sh)? '' : ' <span style="font-size:11px; color:var(--debit);">(موظف محذوف)</span>'}<div style="font-size:11px; color:var(--ink-soft);">مفتوح منذ ${fmtTime12(sh.openedAt)}</div>${shiftUserExists(sh)? '' : `<button class="btn btn-sm btn-danger" data-close-orphan="${sh.id}" style="margin-top:4px; padding:3px 8px;">🔒 إقفال الصندوق</button>`}</div>
         <div><div class="num" style="font-weight:800;">$${sh.cashUSD.toFixed(2)} + ${fmtNum(sh.cashLBP)} ${secCurLabel()}</div>${whishBoxHtml([sh])}</div>
         <div style="display:flex; gap:5px;">
           <button class="btn btn-sm" data-admin-cashmove="deposit" data-shift="${sh.id}" data-currency="USD" style="padding:3px 8px;">➕$</button>
@@ -6086,7 +6089,7 @@ function printShiftReport(shift, moves){
   <h3 style="margin-top:20px;">تفاصيل العمليات (${moves.length})</h3>
   <table>
     <tr><th>الوقت</th><th>النوع</th><th>العملة</th><th>المبلغ</th><th>ملاحظة</th></tr>
-    ${moves.map(m=>`<tr><td>${new Date(m.createdAt).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}</td><td>${isDocMirrorMove(m)?(m.type==='deposit'?'قبض':'صرف'):m.type==='sale'?'بيع':m.type==='deposit'?'إضافة':m.type==='withdraw'?'سحب':'استرجاع'}</td><td>${m.currency}</td><td>${Number(m.amount).toFixed(2)}</td><td>${escapeHtml(m.note||'')}</td></tr>`).join('')}
+    ${moves.map(m=>`<tr><td>${fmtTime12(m.createdAt)}</td><td>${isDocMirrorMove(m)?(m.type==='deposit'?'قبض':'صرف'):m.type==='sale'?'بيع':m.type==='deposit'?'إضافة':m.type==='withdraw'?'سحب':'استرجاع'}</td><td>${m.currency}</td><td>${Number(m.amount).toFixed(2)}</td><td>${escapeHtml(m.note||'')}</td></tr>`).join('')}
   </table>
   </body></html>`);
   w.document.close();
@@ -6344,7 +6347,7 @@ function posViewPro(){
       <div class="pc-lines-head"><span>الكمية</span><span>الصنف</span><span>القيمة</span></div>
       <div class="pc-lines" id="pc_lines">${has? lines : `<div class="pc-empty">السلة فارغة — اكبس على منتج أو امسح باركود</div>`}</div>
       <div class="pc-meta">
-        <span>🧑‍💼 ${escapeHtml(currentUser.username||'')} · <span class="num" id="pc_clock">${new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}</span></span>
+        <span>🧑‍💼 ${escapeHtml(currentUser.username||'')} · <span class="num" id="pc_clock">${fmtTime12()}</span></span>
         <span>صندوقك: <span class="num">${boxTxt}</span></span>
       </div>
       <div class="pc-totals">
@@ -6417,7 +6420,7 @@ function openPosListModal(){
     <div style="max-height:40vh; overflow:auto;">
       ${invs.length? invs.map(i=>{ const c = DB.customers.find(x=>x.id===i.customerId); const t = computeInvoiceTotal(i).totalUSD;
         return `<div data-pl-print="${i.id}" style="display:flex; justify-content:space-between; gap:8px; padding:8px 4px; border-bottom:1px dashed var(--line); cursor:pointer;">
-          <span>#<span class="num">${escapeHtml(String(i.number))}</span> — ${escapeHtml(c?c.name:'—')}${posIsWhish(i)?' 📱':''}${posIsOnAccount(i)?' 📒':''} <small style="color:var(--ink-soft);" class="num">${new Date(i.createdAt||0).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}${i.cashierUsername? ' · '+escapeHtml(i.cashierUsername):''}</small></span>
+          <span>#<span class="num">${escapeHtml(String(i.number))}</span> — ${escapeHtml(c?c.name:'—')}${posIsWhish(i)?' 📱':''}${posIsOnAccount(i)?' 📒':''} <small style="color:var(--ink-soft);" class="num">${fmtTime12(i.createdAt||0)}${i.cashierUsername? ' · '+escapeHtml(i.cashierUsername):''}</small></span>
           <b class="num">${fmtPrim(t)}</b></div>`; }).join('') : `<div style="color:var(--ink-soft); font-size:13px;">ما في فواتير POS اليوم</div>`}
     </div>
     <div class="row" style="margin-top:12px;"><button class="btn" id="pl_close">إغلاق</button></div>
@@ -6574,7 +6577,7 @@ function bindPosProEvents(){
     document.addEventListener('fullscreenchange', ()=>setTimeout(()=>{ if(document.querySelector('.pc-wrap')) fitPc(); }, 120)); }
   // ساعة الشاشة
   clearInterval(window._pcClockTimer);
-  window._pcClockTimer = setInterval(()=>{ const c = byId('pc_clock'); if(!c){ clearInterval(window._pcClockTimer); return; } c.textContent = new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}); }, 30000);
+  window._pcClockTimer = setInterval(()=>{ const c = byId('pc_clock'); if(!c){ clearInterval(window._pcClockTimer); return; } c.textContent = fmtTime12(); }, 30000);
 }
 // لوحة مفاتيح على الشاشة (للـ touch screen): بتكتب بخانة البحث/الباركود — عربي وإنكليزي
 function openPosOsk(){
@@ -6999,7 +7002,7 @@ function openPosReturnModal(){
     const partly = (i.items||[]).some(it=>invItemReturnedQty(it)>0);
     const cu = DB.customers.find(c=>c.id===i.customerId);
     const acc = posIsOnAccount(i);
-    return `#${escapeHtml(i.number)} — ${fmtDate(i.date)} — ${fmtMoney(tot)}${acc? ' — على حساب '+escapeHtml(cu?cu.name:''):''}${partly?' (مسترجع جزئياً)':''}`;
+    return `#${escapeHtml(i.number)} — ${fmtDate(i.date)}${i.createdAt? ' '+fmtTime12(i.createdAt) : ''} — ${fmtMoney(tot)}${acc? ' — على حساب '+escapeHtml(cu?cu.name:''):''}${partly?' (مسترجع جزئياً)':''}`;
   };
   wrap.innerHTML = `<div class="modal">
     <h3>↩ فاتورة استرجاع</h3>
@@ -7378,7 +7381,7 @@ async function renderReceiptToCanvas(inv, currency, totalUSD, rate, customerLabe
   rowLR(partyName, 'المطلوب من:', 18, false);
   rowLR(cust? (cust.accountNumber||'—') : '—', 'رقم الحساب:', 18, false);
   rowLR(String(inv.number), 'رقم الفاتورة:', 18, false);
-  rowLR(fmtDate(inv.date), 'التاريخ:', 18, false);
+  rowLR(fmtDate(inv.date)+(inv.createdAt? ' '+fmtTime12(inv.createdAt) : ''), 'التاريخ:', 18, false);
   if(inv.cashierUsername) rowLR(inv.cashierUsername, 'الموظف:', 16, false);
   dashed();
   rowLR('السعر الإجمالي', 'اسم المنتج', 16, true);
@@ -7541,7 +7544,7 @@ function posReceiptHtml(inv, currency, totalUSD, rate, customerLabel, received, 
       <div style="display:flex; justify-content:space-between;"><span>المطلوب من:</span><b>${escapeHtml(partyName)}</b></div>
       <div style="display:flex; justify-content:space-between;"><span>رقم الحساب:</span><b class="num">${escapeHtml(cust? cust.accountNumber||'—' : '—')}</b></div>
       <div style="display:flex; justify-content:space-between;"><span>رقم الفاتورة:</span><b class="num">${escapeHtml(inv.number)}</b></div>
-      <div style="display:flex; justify-content:space-between;"><span>التاريخ:</span><b class="num">${fmtDate(inv.date)}</b></div>
+      <div style="display:flex; justify-content:space-between;"><span>التاريخ:</span><b class="num" dir="ltr">${fmtDate(inv.date)}${inv.createdAt? ' '+fmtTime12(inv.createdAt) : ''}</b></div>
       ${inv.cashierUsername? `<div style="display:flex; justify-content:space-between;"><span>الموظف:</span><b>${escapeHtml(inv.cashierUsername)}</b></div>` : ''}
     </div>
     <div style="border-top:1px dashed #000; margin:6px 0;"></div>
@@ -8065,7 +8068,7 @@ function journalTableHtml(rows){
   const sumKind = (sub, inflow)=> rows.reduce((s,r)=>{ const c = CATS.find(x=>x.key===r.cat); if(!c || !c.cash || c.wallet || !!c.inflow!==inflow) return s; return s + pick(cellVals(r,c), sub, c); }, 0);
   const netSubs = mode==='both' ? ['usd','lbp'] : [mode==='USD' ? 'usd' : 'lbp'];
   const rowAttrs = r=>`${r.nav?`data-nav="${r.nav}"`:''} ${r.reprintPosId?`data-reprint-pos="${r.reprintPosId}"`:''} style="${(r.nav||r.reprintPosId)?'cursor:pointer;':''}"`;
-  const mvHtml = r=>`<b>${escapeHtml(r.type)}</b>${r.reprintPosId?' 🖨':''}<div style="font-size:11.5px; color:var(--ink-soft);">${escapeHtml(r.party)} · <span class="num">${fmtDate(r.date)}</span>${(isPrivilegedUser(currentUser) && r.cashierUsername)? ' · '+escapeHtml(r.cashierUsername) : ''}</div>`;
+  const mvHtml = r=>`<b>${escapeHtml(r.type)}</b>${r.reprintPosId?' 🖨':''}<div style="font-size:11.5px; color:var(--ink-soft);">${escapeHtml(r.party)} · <span class="num" dir="ltr">${fmtDate(r.date)}${r.createdAt>1e12? ' '+fmtTime12(r.createdAt) : ''}</span>${(isPrivilegedUser(currentUser) && r.cashierUsername)? ' · '+escapeHtml(r.cashierUsername) : ''}</div>`;
   const tableHtml = `<div class="jr-table-wrap"><table class="jr-table ${cols.length>9?'jr-dense':''}">
       <thead><tr><th>الحركة</th>${cols.map(col=>`<th>${escapeHtml(col.title)}</th>`).join('')}</tr></thead>
       <tbody>${rows.length? rows.map(r=>`<tr ${rowAttrs(r)}>
@@ -8113,9 +8116,19 @@ function journalTableHtml(rows){
 function journalView(qs){
   const period = qs.get('period')||'day';
   const a = qs.get('a')||''; const b = qs.get('b')||'';
-  const {from, to} = computePeriodRange(period, a, b);
-  const rows = journalEntriesForRange(from, to);
-  const title = from===to? 'كشف يومية — '+fmtDate(from) : 'كشف يوميات من '+fmtDate(from)+' إلى '+fmtDate(to);
+  let from, to, rows, title;
+  if(period==='dtrange'){
+    // من تاريخ وساعة لتاريخ وساعة (مثلاً من 8 المسا لـ 8 الصبح — منفتحين 24/24)
+    const t0 = new Date(a).getTime(), t1 = new Date(b).getTime();
+    from = (a||'').slice(0,10) || todayISO(); to = (b||'').slice(0,10) || todayISO();
+    rows = journalEntriesForRange(from, to).filter(r=>{ const t = Number(r.createdAt)||0; if(!(t>1e12)) return true; return (!(t0>0) || t>=t0) && (!(t1>0) || t<=t1); });
+    const iso = t=> t>0? '\u2066'+fmtDateTime12(t)+'\u2069' : '';
+    title = 'كشف يوميات من '+iso(t0)+' إلى '+iso(t1);
+  } else {
+    ({from, to} = computePeriodRange(period, a, b));
+    rows = journalEntriesForRange(from, to);
+    title = from===to? 'كشف يومية — '+fmtDate(from) : 'كشف يوميات من '+fmtDate(from)+' إلى '+fmtDate(to);
+  }
   return `
   <div class="card no-print">
     <h2><span class="dot"></span> 📒 اليوميات</h2>
@@ -9193,8 +9206,16 @@ function periodFilterHtml(idPrefix, period, a, b){
         <option value="month" ${period==='month'?'selected':''}>شهري</option>
         <option value="year" ${period==='year'?'selected':''}>سنوي</option>
         <option value="range" ${period==='range'?'selected':''}>من تاريخ - إلى تاريخ</option>
+        ${idPrefix==='jr'? `<option value="dtrange" ${period==='dtrange'?'selected':''}>من تاريخ وساعة - إلى تاريخ وساعة</option>` : ''}
       </select>
     </div>
+    ${idPrefix==='jr'? (()=>{ const nowL = todayISO()+'T'+String(new Date().getHours()).padStart(2,'0')+':'+String(new Date().getMinutes()).padStart(2,'0');
+      return `<div class="field" id="${idPrefix}_wrap_dt_from" style="${period==='dtrange'?'':'display:none;'}">
+      <label>من (تاريخ وساعة)</label><input type="datetime-local" id="${idPrefix}_dtfrom" value="${period==='dtrange'&&a? a : todayISO()+'T00:00'}">
+    </div>
+    <div class="field" id="${idPrefix}_wrap_dt_to" style="${period==='dtrange'?'':'display:none;'}">
+      <label>إلى (تاريخ وساعة)</label><input type="datetime-local" id="${idPrefix}_dtto" value="${period==='dtrange'&&b? b : nowL}">
+    </div>`; })() : ''}
     <div class="field" id="${idPrefix}_wrap_day" style="${(period==='day'||period==='week'||!period)?'':'display:none;'}">
       <label>اليوم</label><input type="date" id="${idPrefix}_day" value="${(period==='day'||period==='week')&&a? a : todayISO()}">
     </div>
@@ -9228,6 +9249,7 @@ function bindPeriodFilter(idPrefix, onApply){
     yearWrap.style.display = v==='year'?'':'none';
     fromWrap.style.display = v==='range'?'':'none';
     toWrap.style.display = v==='range'?'':'none';
+    ['_wrap_dt_from','_wrap_dt_to'].forEach(k=>{ const w = document.getElementById(idPrefix+k); if(w) w.style.display = v==='dtrange'?'':'none'; });
   });
   document.getElementById(idPrefix+'_apply').addEventListener('click', ()=>{
     const type = typeSel.value;
@@ -9236,6 +9258,7 @@ function bindPeriodFilter(idPrefix, onApply){
     else if(type==='month') a = document.getElementById(idPrefix+'_month').value;
     else if(type==='year') a = document.getElementById(idPrefix+'_year').value;
     else if(type==='range'){ a = document.getElementById(idPrefix+'_from').value; b = document.getElementById(idPrefix+'_to').value; }
+    else if(type==='dtrange'){ a = document.getElementById(idPrefix+'_dtfrom').value; b = document.getElementById(idPrefix+'_dtto').value; }
     onApply(type, a, b);
   });
 }
@@ -9416,7 +9439,7 @@ function ledgerTable(ledger, isQty){
     const pillClass = r.to>0 ? 'pill-debit' : 'pill-credit';
     const balCls = r.balance>0.004?'bal-pos':(r.balance<-0.004?'bal-neg':'bal-zero');
     return `<tr data-nav="${href}">
-      <td class="num">${fmtDate(r.date)}</td>
+      <td class="num">${fmtDate(r.date)}${r.sortKey>1e12? `<div style="font-size:11px; color:var(--ink-soft);" dir="ltr">${fmtTime12(r.sortKey)}</div>` : ''}</td>
       <td><span class="pill ${pillClass}">${escapeHtml(r.type)}</span></td>
       <td class="num">${escapeHtml(r.number)}</td>
       <td>${escapeHtml(r.label)}</td>
@@ -9825,7 +9848,7 @@ function itemDocPrintView(kind, doc){
       <div class="r"><span>${cfg.partyLabel}:</span><b>${escapeHtml(party?party.name:'')}</b></div>
       <div class="r"><span>رقم الحساب:</span><b class="num">${escapeHtml(party?party.accountNumber||'—':'')}</b></div>
       <div class="r"><span>رقم ${cfg.title}:</span><b class="num">${escapeHtml(doc.number)}</b></div>
-      <div class="r"><span>التاريخ:</span><b class="num">${fmtDate(doc.date)}</b></div>
+      <div class="r"><span>التاريخ:</span><b class="num" dir="ltr">${fmtDate(doc.date)}${doc.createdAt? ' · '+fmtTime12(doc.createdAt) : ''}</b></div>
     </div>
     <div class="table-scroll">
     <table class="invoice-items-table"><thead><tr>
@@ -9950,7 +9973,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-10-29 · 00:55 · v47';
+const APP_TRADE_BUILD = '2026-10-29 · 15:10 · v48';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 function settingsView(){
   const s = DB.settings;
