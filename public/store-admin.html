@@ -1054,7 +1054,7 @@ function renderEditor(){
 
    '<div class="card"><h3>'+L('السعر والتخفيض','Pricing & sale')+'</h3><div class="g3" style="margin-top:14px">'+
    '<label class="f"><span>'+L('السعر','Price')+' ('+esc(ST.currency_symbol)+') *</span><input type="number" step="any" min="0" id="pePrice" value="'+esc(p.price)+'"></label>'+
-   '<label class="f"><span>'+L('السعر قبل الخصم','Compare-at price')+'<span class="disc" id="peDisc">'+(disc?'-'+disc+'%':'')+'</span></span><input type="number" step="any" min="0" id="peCmp" value="'+esc(p.compare_price==null?'':p.compare_price)+'"><small>'+L('بيظهر مشطوب مع نسبة الخصم = Sale','Shown struck-through with a discount badge = Sale')+'</small></label>'+
+   '<label class="f"><span>'+L('السعر قبل الخصم','Compare-at price')+'<span class="disc" id="peDisc">'+(disc?'-'+disc+'%':'')+'</span></span><input type="number" step="any" min="0" id="peCmp" value="'+esc(p.compare_price==null?'':p.compare_price)+'"><small>'+L('لازم يكون أعلى من السعر الحالي، وبيظهر مشطوب فوقه','Must be higher than the current price; shown struck-through above it')+'</small></label>'+
    '<label class="f"><span>'+L('ينتهي التخفيض','Sale ends')+'</span><input type="datetime-local" id="peEnds" value="'+esc(toLocalInput(p.sale_ends_at))+'"><small>'+L('بعدها بيرجع السعر لما قبل الخصم تلقائياً','After that the price reverts to the compare-at price automatically')+'</small></label></div></div>'+
 
    (t.sizes?'<div class="card"><h3>'+esc(hasSz||t.optLabel?(pe.opt_label||optDef):L('المقاسات','Sizes'))+' <small>'+L('الحالة والمخزون لكل مقاس','Availability & stock per option')+'</small></h3>'+
@@ -1102,7 +1102,8 @@ async function saveProduct(){
   function bad(m){showMsg('peMsg',m,false);return false}
   if(!ar&&!en) return bad(L('اكتب اسم المنتج','Enter a product name'));
   if(price==null||price<0) return bad(L('اكتب السعر','Enter the price'));
-  var cmp=num(p.compare_price); if(cmp!=null&&cmp<=price) cmp=null;
+  var cmp=num(p.compare_price);
+  if(cmp!=null&&cmp<=price) return bad(L('السعر قبل الخصم لازم يكون أعلى من السعر الحالي (مثلاً السعر 200 والسعر قبل الخصم 230) — وإلا بلاش تخفيض، اترك الخانة فاضية','Compare-at price must be higher than the current price (e.g. price 200, compare-at 230) — otherwise leave it empty for no sale'));
   var vid=p.video_url.trim(); if(vid&&!ytId(vid)) return bad(L('رابط اليوتيوب غير صالح','Invalid YouTube link'));
   var sizes=[], seen={}; for(var i=0;i<p.sizes.length;i++){ var n=String(p.sizes[i].n).trim(); if(!n) continue;
     if(seen[n.toLowerCase()]) return bad(L('مقاس مكرّر: ','Duplicate size: ')+n); seen[n.toLowerCase()]=1;
