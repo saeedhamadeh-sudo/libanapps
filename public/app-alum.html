@@ -1550,8 +1550,22 @@ function ensureTrialStarted(){
     try{ localStorage.setItem(skey(KEYS.settings), JSON.stringify(DB.settings)); }catch(e){}
   }
 }
+// الاشتراك المدفوع على المنصة (يلي بينفعّل من لوحة /super أو بالدفع) بيفتح البرنامج كمان — مش بس رقم التفعيل
+function platformPaidUntil(){
+  let ms = 0;
+  try{
+    if(ACCESS && ACCESS.ok && ACCESS.expires_at){
+      ms = new Date(ACCESS.expires_at).getTime() || 0;
+      if(ms > 0 && CLIENT_ID){ try{ localStorage.setItem('la_paid_until_'+CLIENT_ID, String(ms)); }catch(e){} }
+    } else if(CLIENT_ID){ ms = Number(localStorage.getItem('la_paid_until_'+CLIENT_ID)) || 0; }   // بدون إنترنت: آخر اشتراك منعرفو
+  }catch(e){}
+  return ms;
+}
 function licenseStatus(){
   const s = DB.settings;
+  if(typeof ACCESS!=='undefined' && ACCESS && ACCESS.admin) return { active:true, mode:'licensed', expiresAt:Date.now()+365*86400000, label:'' };
+  const paid = platformPaidUntil();
+  if(paid > Date.now() && !(s.licenseExpiresAt > paid)) return { active:true, mode:'licensed', expiresAt:paid, label:s.licenseLabel||'' };
   if(s.licenseExpiresAt && s.licenseExpiresAt > Date.now()){
     return { active:true, mode:'licensed', expiresAt:s.licenseExpiresAt, label:s.licenseLabel||'' };
   }
