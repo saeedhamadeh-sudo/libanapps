@@ -8747,6 +8747,13 @@ let _legacyClosesDone = false;
 function importLegacyShiftCloses(){
   if(_legacyClosesDone || !currentUser || !isPrivilegedUser(currentUser) || !cloudSessionReady()) return;
   _legacyClosesDone = true;
+  if(!isCcupClient()){
+    // الإقفالات القديمة باسم «محمد» طلبها C Cup بس — إذا انعملت عند زبون تاني منشيلها (حذف مؤقت، بتضل بالسجل المحذوف)
+    let n = 0;
+    (DB.cashMovements||[]).forEach(m=>{ if(m.type==='shift_close' && !m.deleted && String(m.id).indexOf('lc-')===0){ const i = shiftCloseInfo(m)||{}; if(i.legacy && i.by==='محمد'){ m.deleted = true; m.deletedAt = Date.now(); n++; } } });
+    if(n) save(KEYS.cashMovements, DB.cashMovements).then(()=>render());
+    return;
+  }
   const have = new Set((DB.cashMovements||[]).filter(m=>m.type==='shift_close').map(m=>m.refSaleId));   // حتى لو انمحى، ما منرجّعو
   const add = [];
   (DB.cashierShifts||[]).forEach(sh=>{
@@ -9987,7 +9994,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-10-29 · 16:40 · v49';
+const APP_TRADE_BUILD = '2026-10-29 · 21:35 · v50';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 function settingsView(){
   const s = DB.settings;
