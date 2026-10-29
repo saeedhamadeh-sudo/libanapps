@@ -2335,13 +2335,13 @@ async function storeHead(env, url, slug, primaryHost, data) {
   return { title: `<title>${xmlEsc(title)}</title>`, tags };
 }
 
-// نسخة مخبّأة من store_public (60 ثانية بالـ isolate + stale-on-error) — بتتخدم من نفس دومين المتجر بدل رحلة CORS لـ Supabase
+// نسخة مخبّأة من store_public (15 ثانية بالـ isolate + stale-on-error) — بتتخدم من نفس دومين المتجر بدل رحلة CORS لـ Supabase
 const spCache = new Map();
-// بيانات المتجر: ذاكرة الـisolate (60ث) + كاش Cloudflare المشترك بكل مركز بيانات.
+// بيانات المتجر: ذاكرة الـisolate (15ث) + كاش Cloudflare المشترك بكل مركز بيانات.
 // Cloudflare بيشغّل نسخ كتير من الـworker، وكل وحدة ذاكرتها فاضية بالبداية — بدون الكاش المشترك
 // أغلب الزوار (وغوغل) كانوا يستنّوا Supabase كل مرة (1–3 ثواني). هلق: منرجّع النسخة المحفوظة فوراً
-// ومنجدّدها بالخلفية إذا صار عمرها أكتر من دقيقة.
-const SP_FRESH = 60000, SP_STALE = 3600000;
+// ومنجدّدها بالخلفية إذا صار عمرها أكتر من 15 ثانية — تعديل بلوحة التحكم (سعر، تخفيض، مخزون...) بيبين عالموقع خلال 15 ثانية تقريباً.
+const SP_FRESH = 15000, SP_STALE = 3600000;
 function spKey(slug) { return new Request('https://sp-cache.libanapps.internal/v1/' + encodeURIComponent(slug)); }
 async function spFetch(env, slug) {
   const r = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/store_public`, {
