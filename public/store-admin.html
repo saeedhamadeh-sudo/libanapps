@@ -428,7 +428,7 @@ function fm(n){
 function dt(d){ if(!d) return ''; var x=new Date(d); return x.toLocaleDateString('en-GB')+' '+x.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}); }
 function dd(d){ return d?new Date(d).toLocaleDateString('en-GB'):''; }
 function toLocalInput(d){ if(!d) return ''; var x=new Date(d); x=new Date(x.getTime()-x.getTimezoneOffset()*60000); return x.toISOString().slice(0,16); }
-function fromLocalInput(v){ return v?new Date(v).toISOString():null; }
+function fromLocalInput(v){ if(!v) return null; try{ var d=new Date(v); return isNaN(d.getTime())?null:d.toISOString(); }catch(e){ return null; } }
 function num(v){ v=String(v==null?'':v).trim(); if(v==='') return null; var n=Number(v); return isNaN(n)?null:n; }
 function ytId(u){ u=String(u||'').trim(); if(/^[A-Za-z0-9_-]{11}$/.test(u)) return u;
   var m=u.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?(?:[^#]*&)?v=|embed\/|shorts\/|live\/|v\/))([A-Za-z0-9_-]{11})/); return m?m[1]:'' }
@@ -1110,12 +1110,12 @@ async function saveProduct(){
   var colors=p.colors.filter(function(c){return String(c.n).trim()}).map(function(c){var o={n:String(c.n).trim(),h:c.h||'#111111',on:c.on!==false}; if(c.img) o.img=c.img; return o;});
   var specs=p.specs.filter(function(s){return String(s.k).trim()||String(s.v).trim()}).map(function(s){return {k:String(s.k).trim(),v:String(s.v).trim()}});
   var attrs={}; Object.keys(p.attrs).forEach(function(k){var v=String(p.attrs[k]||'').trim(); if(v) attrs[k]=v;});
-  var o={store_id:ST.id,category_id:(p.category_ids&&p.category_ids[0])||null,category_ids:p.category_ids||[],name_ar:ar||en,name_en:en,desc_ar:p.desc_ar.trim(),desc_en:p.desc_en.trim(),price:price,compare_price:cmp,
-    sale_ends_at:cmp!=null?fromLocalInput(p.sale_ends_at):null,stock:sizes.length?null:num(p.stock),image_url:p.imgs[0]||'',images:p.imgs.slice(1),video_url:vid,
-    is_active:p.is_active,is_hot:p.is_hot,is_new:p.is_new,is_featured:p.is_featured,brand:p.brand.trim(),sku:p.sku.trim(),opt_label:sizes.length?(p.opt_label||'').trim():'',
-    sizes:sizes,colors:colors,specs:specs,attrs:attrs,sort:Number(p.sort)||0};
   b.disabled=true; showMsg('peMsg',L('عم نحفظ…','Saving…'));
   try{
+    var o={store_id:ST.id,category_id:(p.category_ids&&p.category_ids[0])||null,category_ids:p.category_ids||[],name_ar:ar||en,name_en:en,desc_ar:p.desc_ar.trim(),desc_en:p.desc_en.trim(),price:price,compare_price:cmp,
+      sale_ends_at:cmp!=null?fromLocalInput(p.sale_ends_at):null,stock:sizes.length?null:num(p.stock),image_url:p.imgs[0]||'',images:p.imgs.slice(1),video_url:vid,
+      is_active:p.is_active,is_hot:p.is_hot,is_new:p.is_new,is_featured:p.is_featured,brand:p.brand.trim(),sku:p.sku.trim(),opt_label:sizes.length?(p.opt_label||'').trim():'',
+      sizes:sizes,colors:colors,specs:specs,attrs:attrs,sort:Number(p.sort)||0};
     var r=p.id?await sb.from('store_products').update(o).eq('id',p.id):await sb.from('store_products').insert(o);
     if(r.error) throw r.error; await ensureProds(true); pe=null; renderProds(); toast(L('تم حفظ المنتج ✓','Product saved ✓'));
   }catch(e){ showMsg('peMsg',errTxt(e),false); b.disabled=false; }
