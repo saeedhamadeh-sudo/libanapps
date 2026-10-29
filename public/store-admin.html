@@ -1116,8 +1116,10 @@ async function saveProduct(){
       sale_ends_at:cmp!=null?fromLocalInput(p.sale_ends_at):null,stock:sizes.length?null:num(p.stock),image_url:p.imgs[0]||'',images:p.imgs.slice(1),video_url:vid,
       is_active:p.is_active,is_hot:p.is_hot,is_new:p.is_new,is_featured:p.is_featured,brand:p.brand.trim(),sku:p.sku.trim(),opt_label:sizes.length?(p.opt_label||'').trim():'',
       sizes:sizes,colors:colors,specs:specs,attrs:attrs,sort:Number(p.sort)||0};
-    var r=p.id?await sb.from('store_products').update(o).eq('id',p.id):await sb.from('store_products').insert(o);
-    if(r.error) throw r.error; await ensureProds(true); pe=null; renderProds(); toast(L('تم حفظ المنتج ✓','Product saved ✓'));
+    var r=p.id?await sb.from('store_products').update(o).eq('id',p.id).select('id'):await sb.from('store_products').insert(o).select('id');
+    if(r.error) throw r.error;
+    if(p.id&&(!r.data||!r.data.length)) throw new Error(L('ما انحفظ — يمكن ما عندك صلاحية تعديل هالمنتج، أو صار خطأ بالاتصال. جرّب تحدّث الصفحة وأعد المحاولة.','Not saved — you may not have permission to edit this product, or a connection error happened. Refresh the page and try again.'));
+    await ensureProds(true); pe=null; renderProds(); toast(L('تم حفظ المنتج ✓','Product saved ✓'));
   }catch(e){ showMsg('peMsg',errTxt(e),false); b.disabled=false; }
 }
 
@@ -2757,7 +2759,7 @@ document.addEventListener('change',function(e){
   if(t.id==='codTgl'){ var o4={cod_enabled:t.checked}; sb.from('stores').update(o4).eq('id',ST.id).then(function(r){if(r.error){alert(errTxt(r.error));t.checked=!t.checked;}else{Object.assign(ST,o4);toast(L('تم الحفظ ✓','Saved ✓'));}});return;}
   if(t.id==='peFiles'){
     readPe(); var files=Array.prototype.slice.call(t.files).slice(0,60-pe.imgs.length); if(!files.length) return; showMsg('peMsg',L('عم نرفع الصور…','Uploading images…'));
-    (async function(){ try{ for(var i=0;i<files.length;i++) pe.imgs.push(await upload('items',files[i],1200)); showMsg('peMsg',''); renderEditor(); }catch(x){showMsg('peMsg',errTxt(x),false);} })(); return;}
+    (async function(){ try{ for(var i=0;i<files.length;i++) pe.imgs.push(await upload('items',files[i],1200)); readPe(); showMsg('peMsg',''); renderEditor(); }catch(x){showMsg('peMsg',errTxt(x),false);} })(); return;}
 });
 document.addEventListener('input',function(e){
   var t=e.target;
