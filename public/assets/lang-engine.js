@@ -77,6 +77,7 @@ window.LAEngine=function(opts){
     if(!text||!AR.test(text)) return null;
     var k=norm(text), hit=tCore(k,l);
     if(hit!=null) return hit;
+    if(opts.phrase){ var ph=opts.phrase(k,l); if(ph!=null && !AR.test(ph)) return ph; }
     // نص متعدد الأسطر (رسائل prompt/alert): كل سطر لحالو مع الحفاظ على الأسطر
     if(/\n/.test(text)){
       var ls=String(text).split('\n');
@@ -100,7 +101,7 @@ window.LAEngine=function(opts){
         if(h!=null){ any=true; return h; }
         return p;
       });
-      if(any) return out.join('');
+      if(any) return polish(out.join(''),l);
     }
     // مزيج عربي + لاتيني: منترجم القطع العربية لحالها
     var ch=k.split(/((?:[A-Za-z0-9@#$%&*+=\/\\._:\-]+\s*)+)/);
@@ -111,10 +112,12 @@ window.LAEngine=function(opts){
         var h=tCore(p.trim(),l); if(h!=null){ any2=true; return p.replace(p.trim(),h); }
         return p;
       });
-      if(any2) return o2.join('');
+      if(any2) return polish(o2.join(''),l);
     }
+    if(opts.phrase) return opts.phrase(k,l);   // آخر محاولة: ترجمة العبارات المعروفة جوّا النص
     return null;
   }
+  function polish(x,l){ if(!opts.phrase || !AR.test(x)) return x; var p=opts.phrase(x,l); return p==null?x:p; }
   function trKeepSpace(orig,l){
     var t=tr(orig,l); if(t==null) return orig;
     var lead=orig.match(/^\s*/)[0], tail=orig.match(/\s*$/)[0];
