@@ -726,9 +726,16 @@ async function save(key, value){
     syncSettingsToSupabase(value);
     syncUsersToSupabase(value.users||[]);
   } else {
-    syncArrayToSupabase(key, value);
+    trackSync(syncArrayToSupabase(key, value));
   }
   return true;
+}
+// الرفع عالسحابة شغّال بالخلفية: منستنّاه قبل الخروج حتى ما تضيع آخر العمليات
+const _pendingSyncs = new Set();
+function trackSync(p){ if(p && p.then){ _pendingSyncs.add(p); p.finally(()=>_pendingSyncs.delete(p)); } return p; }
+async function waitPendingSyncs(ms){
+  const t0 = Date.now();
+  while(_pendingSyncs.size && Date.now()-t0 < (ms||15000)){ await Promise.race([Promise.allSettled(Array.from(_pendingSyncs)), new Promise(r=>setTimeout(r, 500))]); }
 }
 
 let DB = {customers:[], invoices:[], receipts:[], settings:{}, suppliers:[], purchaseInvoices:[], paymentVouchers:[], warehouseItems:[], stockIns:[], stockOuts:[], customerAccounts:[], budgetCategories:[], budgetEntries:[], cashMovements:[], dayClosures:[], cashierShifts:[], workers:[], workEntries:[], workerPayments:[], workerAccounts:[]};
@@ -736,6 +743,7 @@ let authenticated = false;
 async function signOutEverywhere(){
   // مشرف المنصة داخل على مؤسسة زبون: نُغلق المؤسسة ونعود إلى /super مع إبقاء جلسة المشرف
   if(typeof PLATFORM_ADMIN!=='undefined' && PLATFORM_ADMIN){ location.href = '/super'; return; }
+  try{ if(_pendingSyncs.size){ toast('⏳ عم نكمّل رفع آخر العمليات عالسحابة...'); await waitPendingSyncs(15000); } }catch(e){}
   try{ if(supabaseClient && authenticated) await supabaseClient.rpc('app_logout', { p_product:'trade' }); }catch(e){}
   if(SECURE_MODE && CLIENT_ID){
     try{ Object.keys(localStorage).forEach(k=>{ if(k.indexOf('la_'+CLIENT_ID+'_')===0) localStorage.removeItem(k); }); }catch(e){}
@@ -1390,6 +1398,7 @@ async function syncArrayToSupabase(localKey, arr){
   if(!cfg || !supabaseClient) return;
   if(!cloudSessionReady()) return;   // قبل الدخول: بيضل محفوظ عالجهاز وبينرفع بعد الدخول
   try{
+    const knownAtStart = getSyncedIds(localKey);   // قبل ما نستنى الشبكة — حتى صفوف وصلت لايف بالنص ما تنحسب «محذوفة»
     const snap = _sentSnap[localKey];
     const rows = arr.map(cfg.toDb);
     const changed = [];   // بس الصفوف يلي تغيّرت — أخف بكتير، وما منرجّع تعديلات جهاز تاني لورا
@@ -1413,11 +1422,17 @@ async function syncArrayToSupabase(localKey, arr){
       changed.forEach(([r, j])=>sm.set(r.id, j));
     }
     // الحذف: بس الصفوف يلي كانت عنا وانحذفت عن هالجهاز — ما منحذف صفوف ضافها جهاز تاني وما وصلتنا بعد
-    const ids = arr.map(r=>r.id);
-    const known = getSyncedIds(localKey);
+    // الموجود هلق = يلي رفعناه + يلي بالجهاز هلق (ممكن المصفوفة تبدّلت أو وصلها صفوف من جهاز تاني وقت الرفع)
+    const cur = Array.isArray(DB[localKey]) ? DB[localKey] : arr;
+    const knownNow = getSyncedIds(localKey);
+    const smNow = _sentSnap[localKey];
+    const now = new Set(arr.map(r=>r.id));
+    const ids = Array.from(now);
+    // صفوف بالجهاز هلق مش بالمصفوفة يلي رفعناها: إذا إجت من السحابة (لايف) منعتبرها موجودة؛ يلي جديد بعد بيترفع بالحفظ الجاي
+    cur.forEach(r=>{ if(r && r.id && !now.has(r.id)){ now.add(r.id); if((knownNow && knownNow.has(r.id)) || (smNow && smNow.has(r.id))) ids.push(r.id); } });
+    const known = knownAtStart && knownNow ? new Set(Array.from(knownAtStart).filter(id=>knownNow.has(id))) : null;
     let removed = [];
     if(known){
-      const now = new Set(ids);
       removed = Array.from(known).filter(id=>!now.has(id));
       for(let i=0; i<removed.length; i+=100){
         const { error: delErr } = await scoped(supabaseClient.from(T(cfg.table)).delete()).in('id', removed.slice(i, i+100));
@@ -1899,13 +1914,13 @@ function purchaseDocVat(d){ return d && d.vatEnabled ? (Number(d.vatRate)||0) : 
 function nextInvoiceNumber(){
   const start = Number.isFinite(DB.settings.invoiceStart) ? DB.settings.invoiceStart : 0;
   const nums = DB.invoices.map(i=>parseInt(i.number)||0);
-  const max = nums.length? Math.max(...nums): (start-1);
+  const max = nums.length? nums.reduce((a,b)=>b>a?b:a, -Infinity): (start-1);
   return String(Math.max(max+1, start));
 }
 function nextReceiptNumber(){
   const start = Number.isFinite(DB.settings.receiptStart) ? DB.settings.receiptStart : 1000;
   const nums = DB.receipts.map(r=>parseInt(r.number)||0);
-  const max = nums.length? Math.max(...nums): (start-1);
+  const max = nums.length? nums.reduce((a,b)=>b>a?b:a, -Infinity): (start-1);
   return String(Math.max(max+1, start));
 }
 
@@ -1990,7 +2005,7 @@ function nextSupplierAcctNumber(){
 function nextVoucherNumber(){
   const start = Number.isFinite(DB.settings.voucherStart) ? DB.settings.voucherStart : 1000;
   const nums = DB.paymentVouchers.map(v=>parseInt(v.number)||0);
-  const max = nums.length? Math.max(...nums): (start-1);
+  const max = nums.length? nums.reduce((a,b)=>b>a?b:a, -Infinity): (start-1);
   return String(Math.max(max+1, start));
 }
 
@@ -2041,13 +2056,13 @@ function nextWorkerAcctNumber(){
 function nextWorkEntryNumber(){
   const start = Number.isFinite(DB.settings.workEntryStart) ? DB.settings.workEntryStart : 1;
   const nums = DB.workEntries.map(e=>parseInt(e.number)||0);
-  const max = nums.length? Math.max(...nums): (start-1);
+  const max = nums.length? nums.reduce((a,b)=>b>a?b:a, -Infinity): (start-1);
   return String(Math.max(max+1, start));
 }
 function nextWorkerPaymentNumber(){
   const start = Number.isFinite(DB.settings.workerPayStart) ? DB.settings.workerPayStart : 1000;
   const nums = DB.workerPayments.map(p=>parseInt(p.number)||0);
-  const max = nums.length? Math.max(...nums): (start-1);
+  const max = nums.length? nums.reduce((a,b)=>b>a?b:a, -Infinity): (start-1);
   return String(Math.max(max+1, start));
 }
 
@@ -2061,12 +2076,12 @@ const DEDUCTION_TYPES = {
 /* ============================= المستودع (WAREHOUSE / INVENTORY) ============================= */
 function nextStockInNumber(){
   const nums = DB.stockIns.map(s=>parseInt(s.number)||0);
-  const max = nums.length? Math.max(...nums):0;
+  const max = nums.length? nums.reduce((a,b)=>b>a?b:a, -Infinity):0;
   return String(max+1);
 }
 function nextStockOutNumber(){
   const nums = DB.stockOuts.map(s=>parseInt(s.number)||0);
-  const max = nums.length? Math.max(...nums):0;
+  const max = nums.length? nums.reduce((a,b)=>b>a?b:a, -Infinity):0;
   return String(max+1);
 }
 function buildStockLedger(itemId){
@@ -3954,7 +3969,7 @@ function budgetCategoryTotal(cat, from, to){
 }
 function nextBudgetEntryNumber(){
   const nums = DB.budgetEntries.map(e=>parseInt(e.number)||0);
-  const max = nums.length? Math.max(...nums):0;
+  const max = nums.length? nums.reduce((a,b)=>b>a?b:a, -Infinity):0;
   return String(max+1);
 }
 
@@ -10013,7 +10028,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-10-31 · 00:30 · v53';
+const APP_TRADE_BUILD = '2026-10-31 · 01:30 · v54';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 function settingsView(){
   const s = DB.settings;
