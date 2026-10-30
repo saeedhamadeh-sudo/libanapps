@@ -1352,8 +1352,12 @@ function catAndKids(id){var r=[id],q=[id],g=0; while(q.length&&g++<80){var x=q.s
 function pcats(p){return (p.category_ids&&p.category_ids.length)?p.category_ids:(p.category_id?[p.category_id]:[])}
 function inCat(p,ids){return pcats(p).some(function(c){return ids.indexOf(c)>=0})}
 function primaryCat(p){return pcats(p)[0]}
-function unitPrice(p,size){ if(size&&p.sizes&&p.sizes.length){var s=p.sizes.filter(function(x){return x.n===size})[0]; if(s&&s.p!=null&&s.p!==''&&!isNaN(Number(s.p))) return Number(s.p);} return Number(p.price); }
-function varPrice(p){return !!(p.sizes&&p.sizes.some(function(s){return s.p!=null&&s.p!==''&&Number(s.p)!==Number(p.price)}))}
+function optNum(v){ return (v!=null&&v!==''&&!isNaN(Number(v)))?Number(v):null; }
+function unitPrice(p,size,color){
+  if(size&&p.sizes&&p.sizes.length){var s=p.sizes.filter(function(x){return x.n===size})[0]; var sp=s&&optNum(s.p); if(sp!=null) return sp;}
+  if(color&&p.colors&&p.colors.length){var c=p.colors.filter(function(x){return x.n===color})[0]; var cp=c&&optNum(c.p); if(cp!=null) return cp;}
+  return Number(p.price); }
+function varPrice(p){return !!((p.sizes&&p.sizes.some(function(s){return s.p!=null&&s.p!==''&&Number(s.p)!==Number(p.price)}))||(p.colors&&p.colors.some(function(c){return c.p!=null&&c.p!==''&&Number(c.p)!==Number(p.price)})))}
 function catChain(id){var out=[],c=catById[id],g=0; while(c&&g++<5){out.unshift(c); c=c.parent_id?catById[c.parent_id]:null} return out}
 function catCount(id){if(LITE&&CATCNT) return CATCNT[id]||0; var ids=catAndKids(id); return PRODS.filter(function(p){return inCat(p,ids)}).length}
 function setMode(m){ view.mode=m; document.documentElement.dataset.mode=m; }
@@ -1727,13 +1731,17 @@ function renderHot(){
   }
   tick(); cdTimer=setInterval(tick,1000);
 }
+var IO_OK=!!window.IntersectionObserver, moreObs={};
+function moreBtn(attr){ return IO_OK?'<div class="spin" style="margin:0 auto"></div>':'<button class="btn" type="button" '+attr+'>'+esc(T.loadMore)+'</button>'; }
+function autoMore(key,host,fn){ if(moreObs[key]){moreObs[key].disconnect();moreObs[key]=null;} if(!IO_OK||!host||host.classList.contains('hidden')) return;
+  var o=moreObs[key]=new IntersectionObserver(function(en){ if(en[0]&&en[0].isIntersecting){ o.disconnect(); moreObs[key]=null; fn(); } },{rootMargin:'900px 0px'}); o.observe(host); }
 function renderLatest(){
   var sec=$('#latsec'); if(S.theme!=='electro'){sec.classList.add('hidden');return;}
   var l=PRODS.filter(function(p){return !p.is_new}).sort(function(a,b){return String(b.created_at).localeCompare(String(a.created_at))||((b.sort||0)-(a.sort||0))});
   if(!l.length){sec.classList.add('hidden');return;}
   var cfg=secCfg('latest'); if(latShown===16&&cfg.count) latShown=Math.max(4,Math.min(48,Number(cfg.count)));
   sec.classList.remove('hidden'); $('#latT').textContent=(cfg.title||'').trim()||T.latestT; $('#latrow').innerHTML=l.slice(0,latShown).map(cardHTML).join('');
-  var mo=$('#latMore'); if(l.length>latShown){mo.classList.remove('hidden');mo.innerHTML='<button class="btn" type="button" data-lm2>'+esc(T.loadMore)+'</button>';} else mo.classList.add('hidden');
+  var mo=$('#latMore'); if(l.length>latShown){mo.classList.remove('hidden');mo.innerHTML=moreBtn('data-lm2'); autoMore('lat',mo,function(){latShown+=8;renderLatest();});} else {mo.classList.add('hidden');autoMore('lat',null);}
 }
 function renderNew(){
   var l=PRODS.filter(function(p){return p.is_new}).sort(function(a,b){return String(b.created_at).localeCompare(String(a.created_at))||((b.sort||0)-(a.sort||0))}), sec=$('#newsec'), row=$('#newrow'), mo=$('#newMore'), cfg=secCfg('new'), title=(cfg.title||'').trim()||T.newArr;
@@ -1741,7 +1749,7 @@ function renderNew(){
     if(!l.length){sec.classList.add('hidden');return;}
     if(newShown===16&&cfg.count) newShown=Math.max(4,Math.min(48,Number(cfg.count)));
     sec.classList.remove('hidden'); $('#newT').textContent=title; row.className='grid'; row.innerHTML=l.slice(0,newShown).map(cardHTML).join('');
-    if(l.length>newShown){mo.classList.remove('hidden');mo.innerHTML='<button class="btn" type="button" data-lm>'+esc(T.loadMore)+'</button>';} else mo.classList.add('hidden');
+    if(l.length>newShown){mo.classList.remove('hidden');mo.innerHTML=moreBtn('data-lm'); autoMore('new',mo,function(){newShown+=8;renderNew();});} else {mo.classList.add('hidden');autoMore('new',null);}
     return;
   }
   mo.classList.add('hidden'); row.className='hrow'; l=l.slice(0,Math.max(2,Math.min(24,Number(cfg.count)||12)));
@@ -1910,11 +1918,11 @@ function renderGrid(){
   if(!a.length){ $('#grid').innerHTML='<div class="empty"><b>'+esc(T.noRes)+'</b>'+esc(T.noResS)+'</div>'; return; }
   var more=a.length>gridShown;
   $('#grid').innerHTML=a.slice(0,gridShown).map(cardHTML).join('')+
-    (more?'<div class="gmore" style="grid-column:1/-1;text-align:center;padding:12px 0"><button class="btn alt" type="button" data-gmore>'+esc(T.loadMore)+'</button></div>':'');
+    (more?'<div class="gmore" style="grid-column:1/-1;text-align:center;padding:12px 0">'+(IO_OK?'<div class="spin" style="margin:0 auto"></div>':'<button class="btn alt" type="button" data-gmore>'+esc(T.loadMore)+'</button>')+'</div>':'');
   if(gridObs){ gridObs.disconnect(); gridObs=null; }
   var gm=$('#grid .gmore');
   if(more&&gm&&window.IntersectionObserver){
-    gridObs=new IntersectionObserver(function(en){ if(en[0]&&en[0].isIntersecting){ gridObs.disconnect(); gridObs=null; gridShown+=GRID_STEP; renderGrid(); } },{rootMargin:'600px 0px'});
+    gridObs=new IntersectionObserver(function(en){ if(en[0]&&en[0].isIntersecting){ gridObs.disconnect(); gridObs=null; gridShown+=GRID_STEP; renderGrid(); } },{rootMargin:'900px 0px'});
     gridObs.observe(gm);
   }
 }
@@ -2003,7 +2011,7 @@ function attrRows(p){
 }
 function renderPV(){
   var p=curP; if(!p) return;
-  var n=tx(p,'name'), d=tx(p,'desc'), up=unitPrice(p,pvSel.size), optP=(up!==Number(p.price)), sale=isSale(p)&&!optP, so=soldOut(p), media=mediaOf(p), chain=catChain(primaryCat(p));
+  var n=tx(p,'name'), d=tx(p,'desc'), up=unitPrice(p,pvSel.size,pvSel.color), optP=(up!==Number(p.price)), sale=isSale(p)&&!optP, so=soldOut(p), media=mediaOf(p), chain=catChain(primaryCat(p));
   var cur=media[pvMedia]||media[0];
   var main=!cur?'<div class="noimg" style="position:absolute;inset:0;display:grid;place-items:center;font-size:80px;opacity:.3">'+esc(n.charAt(0))+'</div>':
     cur.t==='i'?'<img alt="'+esc(n)+'" fetchpriority="high"'+imgs(cur.u,[640,1024,1280],'(min-width:900px) 50vw, 100vw')+'>':
@@ -2043,7 +2051,7 @@ function renderPV(){
       '<div class="bds">'+(sale?'<span class="bd sale" dir="ltr">-'+pct(p)+'%</span>':'')+(p.is_new?'<span class="bd new">'+esc(T.newB)+'</span>':'')+'</div></div></div>'+
     '<div class="pv-info">'+(p.brand?'<span class="br">'+esc(p.brand)+'</span>':'')+'<h1>'+esc(n)+'</h1>'+
       (p.rating_count?'<a href="#rev" data-gorev>'+stars(p.rating_avg,p.rating_count)+'</a>':(S.theme==='electro'?'<div class="pv-rate">'+stars(0,1,true)+' <span>('+esc(T.noRevYet)+')</span></div>':''))+
-      '<div class="pv-pr">'+(varPrice(p)&&!pvSel.size?'<small class="fr">'+esc(T.fromL)+'</small>':'')+'<b>'+money(up)+'</b>'+(sale?'<s>'+money(p.compare_price)+'</s><span class="save">'+esc(T.save)+' '+money(p.compare_price-p.price)+'</span>':'')+'</div>'+
+      '<div class="pv-pr">'+(varPrice(p)&&!pvSel.size&&!pvSel.color?'<small class="fr">'+esc(T.fromL)+'</small>':'')+'<b>'+money(up)+'</b>'+(sale?'<s>'+money(p.compare_price)+'</s><span class="save">'+esc(T.save)+' '+money(p.compare_price-p.price)+'</span>':'')+'</div>'+
       (se?'<div class="saleend">⏱ '+esc(se)+'</div>':'')+
       (short?'<p class="pv-sd">'+esc(short)+'</p>':'')+keySpecs+opts+stockNote+
       '<div class="qrow"><div class="qty"><button type="button" data-pq="-1" aria-label="-">−</button><span id="pq">'+pvSel.q+'</span><button type="button" data-pq="1" aria-label="+">+</button></div>'+
@@ -2092,7 +2100,7 @@ function pvAdd(){
 function waOrderFromPV(){
   var p=curP; if(!p) return; var d=String(S.whatsapp||'').replace(/\D/g,''); if(!d) return;
   var v=[pvSel.size,pvSel.color].filter(Boolean).join(' / ');
-  var msg=T.waPre+'\n• '+tx(p,'name')+(v?' ('+v+')':'')+' ×'+pvSel.q+' — '+fmt(p.price*pvSel.q)+'\n'+location.origin+location.pathname+'#/p/'+p.id;
+  var msg=T.waPre+'\n• '+tx(p,'name')+(v?' ('+v+')':'')+' ×'+pvSel.q+' — '+fmt(unitPrice(p,pvSel.size,pvSel.color)*pvSel.q)+'\n'+location.origin+location.pathname+'#/p/'+p.id;
   window.open('https://wa.me/'+d+'?text='+encodeURIComponent(msg),'_blank','noopener');
 }
 
@@ -2121,7 +2129,7 @@ function quickAdd(id){
   if(hasSizes(p)||hasColors(p)){openProduct(id);return;}
   if(addLine(id,'','',1)) {}
 }
-function subtotal(){return cart.reduce(function(a,l){var p=byId[l.id];return a+(p?unitPrice(p,l.size)*l.q:0)},0)}
+function subtotal(){return cart.reduce(function(a,l){var p=byId[l.id];return a+(p?unitPrice(p,l.size,l.color)*l.q:0)},0)}
 function zoneObj(){return (S.shipping_zones||[]).filter(function(z){return z.n===zone})[0]}
 function calc(){
   var sub=subtotal(), disc=coupon?Math.min(coupon.discount,sub):0, fee=0;
@@ -2158,7 +2166,7 @@ function head(title,back){
 function lineHTML(l){
   var p=byId[l.id]; if(!p) return ''; var n=tx(p,'name'), v=[l.size,l.color].filter(Boolean).join(' · ');
   return '<div class="li"><div class="lt">'+(p.image_url?'<img alt="" src="'+esc(imgw(p.image_url,160))+'">':'')+'</div><div><h4>'+esc(n)+'</h4>'+(v?'<div class="var">'+esc(v)+'</div>':'')+
-    '<div class="pr"><b>'+money(unitPrice(p,l.size))+'</b>'+(isSale(p)&&unitPrice(p,l.size)===Number(p.price)?'<s>'+money(p.compare_price)+'</s>':'')+'</div>'+
+    '<div class="pr"><b>'+money(unitPrice(p,l.size,l.color))+'</b>'+(isSale(p)&&unitPrice(p,l.size,l.color)===Number(p.price)?'<s>'+money(p.compare_price)+'</s>':'')+'</div>'+
     '<div class="qty"><button type="button" data-lq="-1" data-k="'+esc(lk(l))+'" aria-label="-">−</button><span>'+l.q+'</span><button type="button" data-lq="1" data-k="'+esc(lk(l))+'" aria-label="+">+</button></div></div>'+
     '<button class="rm" type="button" data-lrm="'+esc(lk(l))+'">'+esc(T.remove)+'</button></div>';
 }
@@ -2316,7 +2324,7 @@ async function placeOrder(){
     else msg.textContent=T.err;
     return;
   }
-  var o=r.data; o.lines=cart.map(function(l){var p=byId[l.id];return {name:tx(p,'name'),size:l.size,color:l.color,q:l.q,price:unitPrice(p,l.size)}}); o.paid=false;
+  var o=r.data; o.lines=cart.map(function(l){var p=byId[l.id];return {name:tx(p,'name'),size:l.size,color:l.color,q:l.q,price:unitPrice(p,l.size,l.color)}}); o.paid=false;
   lastOrder=o; cart=[]; coupon=null; saveCart(); syncCounts(); payErr=false;
   if(phoneV.resendTick) clearInterval(phoneV.resendTick);
   phoneV={phone:'',sent:false,verified:false,busy:false,msg:'',resendAt:0,resendTick:null};

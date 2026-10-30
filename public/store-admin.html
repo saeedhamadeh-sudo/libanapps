@@ -196,7 +196,7 @@ ol.steps{padding-inline-start:20px;color:#344054}
 .mgal label.add input{display:none}
 .rows .r{display:grid;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line2)}
 .rows .r.sz{grid-template-columns:1.1fr auto .9fr .9fr 34px}
-.rows .r.cl{grid-template-columns:46px 1.2fr .9fr auto 34px}
+.rows .r.cl{grid-template-columns:46px 1.2fr 110px .9fr auto 34px}
 .rows .r.sp{grid-template-columns:1fr 1.4fr 34px}
 .rows .r.zn{grid-template-columns:1.6fr 1fr 34px}
 .rows .r.us{grid-template-columns:130px 1.2fr 1.2fr 34px}
@@ -297,6 +297,10 @@ ol.steps{padding-inline-start:20px;color:#344054}
 .rtb button{border:1px solid var(--line);border-radius:8px;padding:4px 10px;background:#fff;font-size:13px;font-weight:600}
 .rtb button:hover{border-color:var(--accent)}
 .rtb .muted{font-size:12px;margin-inline-start:6px}
+.rte{border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:#fff;min-height:120px;line-height:1.7;overflow:auto;outline:none}
+.rte:focus{border-color:var(--accent)}
+.rte p{margin:0 0 .7em}.rte ul,.rte ol{margin:0 0 .7em;padding-inline-start:1.4em}.rte h4{margin:.6em 0 .3em;font-size:16px}.rte img{max-width:100%}.rte table{border-collapse:collapse}.rte td,.rte th{border:1px solid var(--line);padding:4px 8px}
+
 .catbox{max-height:220px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:8px 12px;display:flex;flex-direction:column;gap:6px}
 .catbox label{display:flex;align-items:center;gap:8px;font-size:13.5px;cursor:pointer}
 .catbox input{width:16px;height:16px;accent-color:var(--accent)}
@@ -1013,16 +1017,72 @@ function editProduct(id){
 var PALETTE=[['أسود','Black','#111111'],['أبيض','White','#F5F5F3'],['رمادي','Gray','#8A8F98'],['كحلي','Navy','#1F3457'],['أزرق','Blue','#2F6FDE'],['أحمر','Red','#D03A3A'],
   ['أخضر','Green','#2F7D5B'],['بيج','Beige','#D9C7A6'],['بني','Brown','#7A5236'],['وردي','Pink','#E7A1B8'],['ذهبي','Gold','#D6B87A'],['فضي','Silver','#CFD3D8']];
 var SPEC_HINTS=['RAM','Storage','Screen','Processor','Battery','Camera','OS','Connectivity','Weight','Color'];
+/* ---------- محرر الوصف (عريض/تحته خط/قوائم...) مع الحفاظ على التنسيق عند اللصق ---------- */
+var RTE_OK={P:1,BR:1,UL:1,OL:1,LI:1,STRONG:1,EM:1,U:1,A:1,H2:1,H3:1,H4:1,BLOCKQUOTE:1,HR:1,TABLE:1,THEAD:1,TBODY:1,TR:1,TH:1,TD:1,IMG:1,SUP:1,SUB:1};
+var RTE_MAP={B:'STRONG',I:'EM',H1:'H2',H5:'H4',H6:'H4',DIV:'P',SECTION:'P',ARTICLE:'P',PRE:'P'};
+var RTE_DROP={SCRIPT:1,STYLE:1,IFRAME:1,OBJECT:1,EMBED:1,FORM:1,INPUT:1,BUTTON:1,SELECT:1,TEXTAREA:1,LINK:1,META:1,NOSCRIPT:1,SVG:1,VIDEO:1,AUDIO:1,CANVAS:1,TEMPLATE:1,HEAD:1,TITLE:1};
+function rteClean(html){
+  var doc=new DOMParser().parseFromString('<body>'+String(html||''),'text/html');
+  function ser(node){
+    var h='';
+    Array.prototype.forEach.call(node.childNodes,function(n){
+      if(n.nodeType===3){ h+=esc(String(n.nodeValue).replace(/ /g,' ').replace(/[ \t]*\n[ \t]*/g,' ')); return; }
+      if(n.nodeType!==1) return;
+      var t=n.tagName; if(RTE_DROP[t]) return;
+      var st=(n.getAttribute('style')||'').toLowerCase();
+      var inner=ser(n);
+      /* أدوات مثل Google Docs/Word بتحط العريض والخط التحتاني بـ style مش بوسوم */
+      if(t==='SPAN'||t==='FONT'||t==='B'||t==='I'||t==='STRONG'||t==='EM'||t==='U'){
+        var strong=(t==='B'||t==='STRONG')?!/font-weight:\s*(normal|400|300|lighter)/.test(st):/font-weight:\s*(bold|[6-9]00)/.test(st);
+        var em=(t==='I'||t==='EM')?!/font-style:\s*normal/.test(st):/font-style:\s*italic/.test(st);
+        var u=(t==='U')||/text-decoration[^;]*underline/.test(st);
+        if(!inner.replace(/<br>/g,'').trim()) return inner;
+        if(strong) inner='<strong>'+inner+'</strong>'; if(em) inner='<em>'+inner+'</em>'; if(u) inner='<u>'+inner+'</u>';
+        h+=inner; return;
+      }
+      var tt=RTE_MAP[t]||t, tl=tt.toLowerCase();
+      if(!RTE_OK[tt]){ h+=inner; return; }
+      if(tt==='BR'||tt==='HR'){ h+='<'+tl+'>'; return; }
+      if(tt==='IMG'){ var sr=n.getAttribute('src')||''; if(/^https?:\/\//i.test(sr)) h+='<img src="'+esc(sr)+'" alt="'+esc(n.getAttribute('alt')||'')+'">'; return; }
+      if(tt==='A'){ var hr=n.getAttribute('href')||''; h+=/^(https?:|mailto:|tel:)/i.test(hr)?'<a href="'+esc(hr)+'">'+inner+'</a>':inner; return; }
+      if(tt==='TD'||tt==='TH'){ var cs=n.getAttribute('colspan'); h+='<'+tl+(cs&&/^\d{1,2}$/.test(cs)?' colspan="'+cs+'"':'')+'>'+inner+'</'+tl+'>'; return; }
+      h+='<'+tl+'>'+inner+'</'+tl+'>';
+    });
+    return h;
+  }
+  var out=ser(doc.body), prev;
+  do{prev=out; out=out.replace(/<(p|strong|em|u|li|h[2-4]|blockquote|sup|sub)>(\s|<br>)*<\/\1>/g,'');}while(out!==prev);
+  return out.trim();
+}
+/* وصف قديم (نص عادي أو Markdown بسيط) → HTML للمحرر */
+function rteFrom(s){
+  s=String(s||'').replace(/\r/g,'');
+  if(/<\/?(p|br|ul|ol|li|table|tr|td|h[1-6]|strong|b|em|u|i|div|span|img|a)\b/i.test(s)) return rteClean(s);
+  function inl(t){ t=esc(t);
+    t=t.replace(/\*\*([^*\n]+)\*\*/g,'<strong>$1</strong>');
+    t=t.replace(/\[([^\]\n]+)\]\(((?:https?:\/\/|mailto:|tel:)[^\s)]+)\)/g,'<a href="$2">$1</a>');
+    t=t.replace(/(^|[\s(>])(https?:\/\/[^\s<)]+)/g,'$1<a href="$2">$2</a>'); return t; }
+  var out=[],list=[],para=[];
+  function fL(){ if(list.length){out.push('<ul>'+list.map(function(x){return '<li>'+inl(x)+'</li>'}).join('')+'</ul>');list=[];} }
+  function fP(){ if(para.length){out.push('<p>'+para.map(inl).join('<br>')+'</p>');para=[];} }
+  s.split('\n').forEach(function(line){ var m;
+    if((m=line.match(/^\s*[-*•]\s+(.*)$/))){fP();list.push(m[1]);}
+    else if((m=line.match(/^\s*#{1,3}\s+(.*)$/))){fP();fL();out.push('<h4>'+inl(m[1])+'</h4>');}
+    else if(!line.trim()){fP();fL();}
+    else {fL();para.push(line);} });
+  fP(); fL(); return out.join('');
+}
+function rteGet(sel){ var el=$(sel); return el?rteClean(el.innerHTML):''; }
 function readPe(){
   if(!$('#peName')) return;
-  pe.name_ar=$('#peName').value; pe.name_en=$('#peNameEn').value; pe.desc_ar=$('#peDesc').value; pe.desc_en=$('#peDescEn').value;
+  pe.name_ar=$('#peName').value; pe.name_en=$('#peNameEn').value; pe.desc_ar=rteGet('#peDesc'); pe.desc_en=rteGet('#peDescEn');
   pe.price=$('#pePrice').value; pe.compare_price=$('#peCmp').value; pe.sale_ends_at=$('#peEnds').value; pe.sku=$('#peSku').value; pe.brand=$('#peBrand').value;
   pe.video_url=$('#peVid').value; pe.category_ids=$$('[data-pcat]:checked').map(function(e){return e.value}); pe.category_id=pe.category_ids[0]||''; pe.is_active=$('#peAct').checked; pe.is_hot=$('#peHot').checked; pe.is_new=$('#peNew').checked; pe.is_featured=$('#peFeat').checked;
   if($('#peStock')) pe.stock=$('#peStock').value;
   if($('#peSort')) pe.sort=$('#peSort').value;
   if($('#peOptL')) pe.opt_label=$('#peOptL').value;
   $$('[data-sz]').forEach(function(r,i){ if(!pe.sizes[i]) return; pe.sizes[i].n=$('[data-szn]',r).value; pe.sizes[i].on=$('[data-szo]',r).checked; var s=$('[data-szs]',r).value; pe.sizes[i].s=s===''?null:Number(s); var sp=$('[data-szp]',r).value; pe.sizes[i].p=sp===''?null:Number(sp); });
-  $$('[data-cl]').forEach(function(r,i){ if(!pe.colors[i]) return; pe.colors[i].h=$('[data-clh]',r).value; pe.colors[i].n=$('[data-cln]',r).value; pe.colors[i].on=$('[data-clo]',r).checked; pe.colors[i].img=$('[data-cli]',r).value; });
+  $$('[data-cl]').forEach(function(r,i){ if(!pe.colors[i]) return; pe.colors[i].h=$('[data-clh]',r).value; pe.colors[i].n=$('[data-cln]',r).value; var cp=$('[data-clp]',r).value; pe.colors[i].p=cp===''?null:Number(cp); pe.colors[i].on=$('[data-clo]',r).checked; pe.colors[i].img=$('[data-cli]',r).value; });
   $$('[data-sp]').forEach(function(r,i){ if(!pe.specs[i]) return; pe.specs[i].k=$('[data-spk]',r).value; pe.specs[i].v=$('[data-spv]',r).value; });
   $$('[data-attr]').forEach(function(el){ pe.attrs[el.dataset.attr]=el.value; });
 }
@@ -1043,9 +1103,9 @@ function renderEditor(){
    '<div class="pe"><div>'+
    '<div class="card"><h3>'+L('المعلومات الأساسية','Basic information')+'</h3><div class="g2" style="margin-top:14px"><label class="f"><span>'+L('الاسم بالعربي *','Arabic name *')+'</span><input type="text" id="peName" value="'+esc(p.name_ar)+'"></label>'+
    '<label class="f"><span>'+L('الاسم بالإنكليزي','English name')+'</span><input type="text" id="peNameEn" dir="ltr" value="'+esc(p.name_en)+'"></label></div>'+
-   '<div class="rtb" data-for="peDesc"><button type="button" data-rt="b"><b>B</b></button><button type="button" data-rt="h">H</button><button type="button" data-rt="l">• '+L('قائمة','List')+'</button><button type="button" data-rt="a">🔗 '+L('رابط','Link')+'</button><span class="muted">'+L('**عريض** · - قائمة · ## عنوان · [نص](https://رابط) · أو الصق الرابط مباشرة','**bold** · - list · ## heading · [text](https://link) · or paste a URL')+'</span></div>'+
-   '<label class="f"><span>'+L('الوصف بالعربي','Arabic description')+'</span><textarea id="peDesc" style="min-height:160px">'+esc(p.desc_ar)+'</textarea></label>'+
-   '<label class="f"><span>'+L('الوصف بالإنكليزي','English description')+'</span><textarea id="peDescEn" dir="ltr" style="min-height:120px">'+esc(p.desc_en)+'</textarea></label></div>'+
+   '<div class="rtb" data-for="peDesc"><button type="button" data-rte="bold" title="Ctrl+B"><b>B</b></button><button type="button" data-rte="underline" title="Ctrl+U"><u>U</u></button><button type="button" data-rte="italic" title="Ctrl+I"><i>I</i></button><button type="button" data-rte="h">H</button><button type="button" data-rte="ul">• '+L('قائمة','List')+'</button><button type="button" data-rte="ol">1. '+L('قائمة','List')+'</button><button type="button" data-rte="a">🔗 '+L('رابط','Link')+'</button><button type="button" data-rte="clear">✕ '+L('مسح التنسيق','Clear')+'</button><span class="muted">'+L('حدّد النص واضغط الزر — واللصق من Word/Google Docs/موقع بيحافظ على العريض والتسطير والقوائم','Select text, then click a button — pasting from Word/Docs/web keeps bold, underline & lists')+'</span></div>'+
+   '<div class="f"><span>'+L('الوصف بالعربي','Arabic description')+'</span><div class="rte" id="peDesc" contenteditable="true" dir="auto" style="min-height:160px">'+rteFrom(p.desc_ar)+'</div></div>'+
+   '<div class="f"><span>'+L('الوصف بالإنكليزي','English description')+'</span><div class="rte" id="peDescEn" contenteditable="true" dir="auto" style="min-height:120px">'+rteFrom(p.desc_en)+'</div></div></div>'+
 
    '<div class="card"><h3>'+L('الصور والفيديو','Media')+'</h3><p class="sub">'+L('الأولى = الصورة الرئيسية، والثانية = بتظهر لما الزبون يقرّب الماوس على المنتج، والباقي بمعرض صفحة المنتج (بلا حد). اضغط أي صورة لتصير رئيسية.','1st = main image, 2nd = shown when the mouse hovers the product card, the rest fill the product-page gallery (no limit). Click an image to make it main.')+'</p>'+
    '<div class="mgal" id="peGal">'+p.imgs.map(function(u,i){return '<div class="m" data-mi="'+i+'"><img alt="" src="'+esc(thumbOf(u))+'">'+(i===0?'<span class="main">'+L('رئيسية','Main')+'</span>':(i===1?'<span class="main" style="background:#7c3aed">'+L('عند المرور','Hover')+'</span>':''))+'<button type="button" data-mrm="'+i+'" aria-label="x">×</button></div>'}).join('')+
@@ -1065,7 +1125,7 @@ function renderEditor(){
      (hasSz&&ST.store_type!=='fashion'?'<label class="f" style="max-width:320px;margin-top:8px"><span>'+L('اسم الخيار بالمتجر','Option label in store')+'</span><input type="text" id="peOptL" value="'+esc(p.opt_label||'')+'" placeholder="'+esc(optDef)+'"></label>':'')+'</div>':'')+
 
    (t.colors?'<div class="card"><h3>'+L('الألوان','Colors')+'</h3>'+
-     (p.colors.length?'<div class="rows" style="margin-top:8px">'+p.colors.map(function(c,i){return '<div class="r cl" data-cl="'+i+'"><input type="color" data-clh value="'+esc(/^#[0-9a-f]{6}$/i.test(c.h||'')?c.h:'#111111')+'"><input type="text" data-cln value="'+esc(c.n)+'" placeholder="'+L('اسم اللون','Color name')+'"><select data-cli title="'+L('صورة اللون','Color image')+'"><option value="">'+L('صورة…','Image…')+'</option>'+p.imgs.map(function(u,ii){return '<option value="'+esc(u)+'"'+(c.img===u?' selected':'')+'>#'+(ii+1)+'</option>'}).join('')+'</select><label class="sw"><input type="checkbox" data-clo'+(c.on!==false?' checked':'')+'>'+L('متوفر','Available')+'</label><button type="button" class="btn dg ic sm" data-clrm="'+i+'">×</button></div>'}).join('')+'</div>':'<div class="muted">'+L('اختياري — اضغط على لون لإضافته.','Optional — click a swatch to add a color.')+'</div>')+
+     (p.colors.length?'<div class="rows" style="margin-top:8px">'+p.colors.map(function(c,i){return '<div class="r cl" data-cl="'+i+'"><input type="color" data-clh value="'+esc(/^#[0-9a-f]{6}$/i.test(c.h||'')?c.h:'#111111')+'"><input type="text" data-cln value="'+esc(c.n)+'" placeholder="'+L('اسم اللون','Color name')+'"><input type="number" min="0" step="any" data-clp value="'+esc(c.p==null?'':c.p)+'" placeholder="'+L('سعر خاص','Own price')+'" title="'+L('سعر خاص لهالون (اختياري)','Price for this color (optional)')+'" style="max-width:110px"><select data-cli title="'+L('صورة اللون','Color image')+'"><option value="">'+L('صورة…','Image…')+'</option>'+p.imgs.map(function(u,ii){return '<option value="'+esc(u)+'"'+(c.img===u?' selected':'')+'>#'+(ii+1)+'</option>'}).join('')+'</select><label class="sw"><input type="checkbox" data-clo'+(c.on!==false?' checked':'')+'>'+L('متوفر','Available')+'</label><button type="button" class="btn dg ic sm" data-clrm="'+i+'">×</button></div>'}).join('')+'</div>':'<div class="muted">'+L('اختياري — اضغط على لون لإضافته.','Optional — click a swatch to add a color.')+'</div>')+
      '<div class="swatches">'+PALETTE.map(function(c,i){return '<button type="button" data-pal="'+i+'" title="'+esc(pick(c))+'" style="background:'+c[2]+'"></button>'}).join('')+'<button type="button" class="pill" data-clnew>+ '+L('لون مخصّص','Custom')+'</button></div></div>':'')+
 
    '<div class="card"><h3>'+L('تفاصيل المنتج','Product details')+' <small>'+esc(pick([t.ar,t.en]))+'</small></h3><div class="g2" style="margin-top:14px">'+attrFields+'</div>'+
@@ -1108,7 +1168,7 @@ async function saveProduct(){
   var sizes=[], seen={}; for(var i=0;i<p.sizes.length;i++){ var n=String(p.sizes[i].n).trim(); if(!n) continue;
     if(seen[n.toLowerCase()]) return bad(L('مقاس مكرّر: ','Duplicate size: ')+n); seen[n.toLowerCase()]=1;
     var sz={n:n,s:p.sizes[i].s==null||isNaN(p.sizes[i].s)?null:Math.max(0,Math.floor(p.sizes[i].s)),on:p.sizes[i].on!==false}; if(p.sizes[i].p!=null&&!isNaN(p.sizes[i].p)&&p.sizes[i].p>=0) sz.p=Number(p.sizes[i].p); sizes.push(sz); }
-  var colors=p.colors.filter(function(c){return String(c.n).trim()}).map(function(c){var o={n:String(c.n).trim(),h:c.h||'#111111',on:c.on!==false}; if(c.img) o.img=c.img; return o;});
+  var colors=p.colors.filter(function(c){return String(c.n).trim()}).map(function(c){var o={n:String(c.n).trim(),h:c.h||'#111111',on:c.on!==false}; if(c.img) o.img=c.img; if(c.p!=null&&c.p!==''&&!isNaN(c.p)&&Number(c.p)>=0) o.p=Number(c.p); return o;});
   var specs=p.specs.filter(function(s){return String(s.k).trim()||String(s.v).trim()}).map(function(s){return {k:String(s.k).trim(),v:String(s.v).trim()}});
   var attrs={}; Object.keys(p.attrs).forEach(function(k){var v=String(p.attrs[k]||'').trim(); if(v) attrs[k]=v;});
   b.disabled=true; showMsg('peMsg',L('عم نحفظ…','Saving…'));
@@ -2656,9 +2716,7 @@ document.addEventListener('click',function(e){
   if((el=t.closest('[data-bd]'))){if(confirmBox(L('حذف البنر؟','Delete this banner?'))) sb.from('store_banners').delete().eq('id',el.dataset.bd).then(function(r){if(r.error)alert(errTxt(r.error));else LOADERS.slides();});return;}
   // icons picker + rich text toolbar + product reorder
   if((el=t.closest('[data-cico]'))){$$('#cIcons button').forEach(function(b){b.classList.toggle('on',b===el)});return;}
-  if((el=t.closest('[data-rt]'))){var ta=$('#'+el.closest('.rtb').dataset['for']), a0=ta.selectionStart, b0=ta.selectionEnd, sel=ta.value.slice(a0,b0), k=el.dataset.rt, ins;
-    if(k==='b') ins='**'+(sel||L('نص عريض','bold text'))+'**'; else if(k==='h') ins='\n## '+(sel||L('عنوان','Heading'))+'\n'; else if(k==='l') ins='\n- '+(sel||L('عنصر','Item'))+'\n- '; else ins='['+(sel||L('نص الرابط','link text'))+'](https://)';
-    ta.value=ta.value.slice(0,a0)+ins+ta.value.slice(b0); ta.focus(); ta.setSelectionRange(a0+ins.length,a0+ins.length); return;}
+  if((el=t.closest('[data-rte]'))){ rteCmd(el.dataset.rte); return; }
   if((el=t.closest('[data-pmv]'))){moveProd(el.dataset.id,el.dataset.pmv);return;}
   // promo
   if((el=t.closest('[data-hotoff]'))){setHot(el.dataset.hotoff,false);return;}
@@ -2798,6 +2856,28 @@ async function boot(){
 }
 boot();
 })();
+
+/* ---- أزرار محرر الوصف + اللصق مع الحفاظ على التنسيق ---- */
+var rteLast=null;
+document.addEventListener('focusin',function(e){ if(e.target&&e.target.classList&&e.target.classList.contains('rte')) rteLast=e.target; });
+document.addEventListener('mousedown',function(e){ if(e.target.closest&&e.target.closest('[data-rte]')) e.preventDefault(); });   /* ما تفقد التحديد */
+function rteCmd(k){
+  var ed=rteLast&&document.body.contains(rteLast)?rteLast:$('#peDesc'); if(!ed) return; ed.focus();
+  if(k==='bold') document.execCommand('bold'); else if(k==='underline') document.execCommand('underline'); else if(k==='italic') document.execCommand('italic');
+  else if(k==='ul') document.execCommand('insertUnorderedList'); else if(k==='ol') document.execCommand('insertOrderedList');
+  else if(k==='h') document.execCommand('formatBlock',false,'h4');
+  else if(k==='clear'){ document.execCommand('removeFormat'); document.execCommand('formatBlock',false,'p'); }
+  else if(k==='a'){ var u=prompt(L('الرابط (https://…)','Link (https://…)'),'https://'); if(u&&/^(https?:|mailto:|tel:)/i.test(u)) document.execCommand('createLink',false,u); }
+}
+document.addEventListener('paste',function(e){
+  var ed=e.target.closest&&e.target.closest('.rte'); if(!ed) return;
+  var cd=e.clipboardData; if(!cd) return;
+  var html=cd.getData('text/html'), txt=cd.getData('text/plain');
+  e.preventDefault();
+  var out=html?rteClean(html):rteFrom(txt);
+  if(!out) out=esc(txt);
+  document.execCommand('insertHTML',false,out);
+});
 </script>
 </body>
 </html>
