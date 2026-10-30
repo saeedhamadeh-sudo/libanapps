@@ -8437,7 +8437,7 @@ function lowStockView(){
       ${auto? `<td>${escapeHtml(it.category||'—')}</td>` : ''}
       <td class="num" style="font-weight:800; color:${q<=0?'var(--debit)':'var(--bronze-deep)'};">${fmtQty(q)} <span style="font-family:'Cairo',sans-serif; font-size:.9em;">${escapeHtml(it.uom||'')}</span>${q<=0?' ⛔':''}</td>
       <td class="num">${it.price? fmtPrim(it.price) : '—'}</td>
-      ${canDelItems()? `<td class="no-print">${delItemBtn(it)}</td>` : ''}
+      ${canDelItems()? `<td class="no-print">${delItemBtn(it, true)}</td>` : ''}
     </tr>`;
   }).join('');
   return `
@@ -10013,7 +10013,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-10-31 · 00:40 · v52';
+const APP_TRADE_BUILD = '2026-10-31 · 00:30 · v53';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 function settingsView(){
   const s = DB.settings;
@@ -12414,12 +12414,12 @@ function openWarehouseItemModal(item, presetBarcode, opts){
   });
 }
 function canDelItems(){ return isPrivilegedUser(currentUser) || hasPermission('delete'); }
-function delItemBtn(it){ return canDelItems()? `<button class="btn btn-sm btn-danger" data-del-item="${it.id}" title="إلغاء المنتج" style="padding:4px 8px;">🗑 إلغاء</button>` : ''; }
+function delItemBtn(it, noName){ return canDelItems()? `<button class="btn btn-sm btn-danger" data-del-item="${it.id}" ${noName? 'data-del-noname="1"' : ''} title="إلغاء المنتج" style="padding:4px 8px;">🗑 إلغاء</button>` : ''; }
 // زر «إلغاء» بلوايح المستودع ونقص الستوك: ما بيفتح صفحة المنتج، بيفتح التأكيد
 document.addEventListener('click', e=>{
   const b = e.target.closest && e.target.closest('[data-del-item]'); if(!b) return;
   e.preventDefault(); e.stopPropagation();
-  openDeleteWarehouseItemModal(DB.warehouseItems.find(x=>x.id===b.getAttribute('data-del-item')), { stay:true });
+  openDeleteWarehouseItemModal(DB.warehouseItems.find(x=>x.id===b.getAttribute('data-del-item')), { stay:true, noName: b.hasAttribute('data-del-noname') });
 }, true);
 function openDeleteWarehouseItemModal(item, opts){
   opts = opts || {};
@@ -12432,7 +12432,7 @@ function openDeleteWarehouseItemModal(item, opts){
     <p style="font-size:13.5px; color:var(--ink-soft); line-height:1.7;">
       سيتم حذف <b>${escapeHtml(item.name)}</b> نهائيًا مع كل سجلات الإضافة والسحب المرتبطة به. لا يمكن التراجع عن هذا الإجراء.
     </p>
-    <div class="field"><label>اكتب اسم المنتج بالكامل للتأكيد</label><input type="text" id="wdel_confirm" placeholder="${escapeHtml(item.name)}"></div>
+    ${opts.noName? '<input type="hidden" id="wdel_confirm">' : `<div class="field"><label>اكتب اسم المنتج بالكامل للتأكيد</label><input type="text" id="wdel_confirm" placeholder="${escapeHtml(item.name)}"></div>`}
     <div class="row">
       <button class="btn" id="wdel_cancel">إلغاء</button>
       <button class="btn btn-danger" id="wdel_confirm_btn" disabled>⏳ 1</button>
@@ -12442,7 +12442,8 @@ function openDeleteWarehouseItemModal(item, opts){
   // العدّ من 1 لـ 5 قبل ما يصير الحذف ممكن، ولازم ينكتب اسم المنتج بالضبط
   const btnD = wrap.querySelector('#wdel_confirm_btn'), inpD = wrap.querySelector('#wdel_confirm');
   let cnt = 1, ready = false;
-  const sync = ()=>{ btnD.disabled = !(ready && inpD.value.trim()===String(item.name).trim()); };
+  const nameOk = ()=> opts.noName || inpD.value.trim()===String(item.name).trim();   // من إشعار نقص الستوك: بلا كتابة الاسم
+  const sync = ()=>{ btnD.disabled = !(ready && nameOk()); };
   const tick = setInterval(()=>{ if(!wrap.isConnected){ clearInterval(tick); return; } cnt++;
     if(cnt<=5) btnD.textContent = '⏳ '+cnt; else { clearInterval(tick); ready = true; btnD.textContent = '🗑 حذف نهائي'; sync(); } }, 1000);
   inpD.addEventListener('input', sync);
@@ -12451,7 +12452,7 @@ function openDeleteWarehouseItemModal(item, opts){
   btnD.addEventListener('click', async ()=>{
     if(!ready) return;
     const typed = inpD.value.trim();
-    if(typed !== String(item.name).trim()){ toast('يجب أن تكتب الاسم كما هو بالضبط'); return; }
+    if(!nameOk()){ toast('يجب أن تكتب الاسم كما هو بالضبط'); return; }
     btnD.disabled = true;
     DB.warehouseItems = DB.warehouseItems.filter(x=>x.id!==item.id);
     DB.stockIns = DB.stockIns.filter(x=>x.itemId!==item.id);
