@@ -808,7 +808,8 @@ function describeSupabaseError(error){
 async function supabaseListCustomers(){
   if(!supabaseClient) return null;
   try{
-    const { data, error } = await scoped(supabaseClient.from(T('customers')).select('*')).order('name');
+    const res = await selectAllRows('customers', '*');
+    const error = res.error, data = res.data ? res.data.slice().sort((a,b)=>String(a.name||'').localeCompare(String(b.name||''),'ar')) : null;
     if(error){ lastSupabaseError = describeSupabaseError(error); console.error('supabaseListCustomers error:', lastSupabaseError); return null; }
     return data.map(customerFromDb);
   }catch(e){
@@ -1197,6 +1198,18 @@ async function loadSettings(defaults){
   try{ localStorage.setItem(skey(KEYS.settings), JSON.stringify(merged)); }catch(e){}
   return merged;
 }
+// السحابة بترجّع 1000 صف بالمرة كحد أقصى — منجيب كل الجدول صفحة صفحة (مرتّب بالرقم حتى ما يتكرر أو ينطّ صف)
+async function selectAllRows(table, cols){
+  const PAGE = 1000; let all = [], from = 0;
+  for(let guard=0; guard<500; guard++){
+    const { data, error } = await scoped(supabaseClient.from(T(table)).select(cols||'*')).order('id', { ascending:true }).range(from, from+PAGE-1);
+    if(error) return { data:null, error };
+    all = all.concat(data||[]);
+    if(!data || data.length < PAGE) break;
+    from += data.length;
+  }
+  return { data:all, error:null };
+}
 const SUPABASE_TABLES = {
   customers: {table:'customers', toDb:customerToDb, fromDb:customerFromDb, label:'الزبائن'},
   invoices: {table:'invoices', toDb:invoiceToDb, fromDb:invoiceFromDb, label:'الفواتير'},
@@ -1309,7 +1322,7 @@ async function liveCatchUp(){
       if(!Array.isArray(DB[k])) continue;
       const cfg = SUPABASE_TABLES[k];
       // أصناف المستودع: بلا الصور (تقيلة) — الصورة بتضل يلي عندنا
-      const { data, error } = await scoped(supabaseClient.from(T(cfg.table)).select(k==='warehouseItems'? 'id' : '*'));
+      const { data, error } = await selectAllRows(cfg.table, k==='warehouseItems'? 'id' : '*');
       if(error || !data) continue;
       if(k==='warehouseItems'){
         const have = new Set(DB.warehouseItems.map(x=>x.id)), there = new Set(data.map(r=>r.id));
@@ -1454,7 +1467,7 @@ async function loadSyncedArray(localKey, fallback){
   if(supabaseClient && cfg && !cloudSessionReady()) return [];   // شاشة الدخول: ما منحتاج بيانات وما منمسح نسخة الجهاز
   if(supabaseClient && cfg){
     try{
-      const { data, error } = await scoped(supabaseClient.from(T(cfg.table)).select('*'));
+      const { data, error } = await selectAllRows(cfg.table, '*');
       if(!error){
         _sentSnap[localKey] = new Map(data.map(r=>{ const o = cfg.toDb(cfg.fromDb(r)); return [o.id, JSON.stringify(o)]; }));
         const { merged, localOnly } = mergeLocalOnly(localKey, data.map(cfg.fromDb), false);
@@ -10028,7 +10041,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-10-31 · 01:30 · v54';
+const APP_TRADE_BUILD = '2026-10-31 · 01:45 · v55';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 function settingsView(){
   const s = DB.settings;
