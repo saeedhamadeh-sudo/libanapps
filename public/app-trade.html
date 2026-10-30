@@ -3685,16 +3685,17 @@ function openEditPricesModal(){
   const sec = primIsSec(), r = curRate();
   const sellOf = it=> !(Number(it.price)>0) ? '' : (sec ? (Number(it.priceSec)>0 ? Number(it.priceSec) : Math.round(Number(it.price)*r)) : Math.round(Number(it.price)*100)/100);
   const costOf = it=> (it.costPrice===undefined || it.costPrice===null || it.costPrice==='' || !(Number(it.costPrice)>0)) ? '' : (sec ? (Number(it.costSec)>0 ? Number(it.costSec) : Math.round(Number(it.costPrice)*r)) : Math.round(Number(it.costPrice)*100)/100);
-  const edits = {};   // id -> {sell, cost}
+  const edits = {};   // id -> {sell, cost, qty}
+  const qtyOf = it=> Math.round(currentStock(it.id)*1000)/1000;
   const wrap = document.createElement('div');
   wrap.className = 'modal-bg';
   wrap.innerHTML = `<div class="modal modal-wide" style="max-width:820px;">
-    <h3>✏️ تعديل الأسعار (${escapeHtml(primSym())})</h3>
+    <h3>✏️ تعديل الأسعار والكميات (${escapeHtml(primSym())})</h3>
     <input type="text" id="ep_q" placeholder="🔍 بحث بالاسم أو الباركود..." style="width:100%; margin-bottom:8px; font-size:15px; padding:9px 12px;">
     <div id="ep_info" style="font-size:12px; color:var(--ink-soft); margin-bottom:6px;"></div>
     ${(autoRoundOn() && sec)? `<div style="font-size:12px; color:var(--bronze-deep, #8a5a1a); margin-bottom:6px;">ملاحظة: التقريب التلقائي مفعّل — سعر البيع بيتقرّب لأقرب 10,000 بعد الحفظ (مثلاً 54,000 ← 50,000).</div>` : ''}
     <div class="table-scroll" style="max-height:58vh; overflow:auto;"><table style="font-size:13px;">
-      <thead><tr><th>الصنف</th><th>الباركود</th>${showCost? '<th style="width:150px;">سعر الشراء</th>' : ''}<th style="width:150px;">سعر البيع</th></tr></thead>
+      <thead><tr><th>الصنف</th><th>الباركود</th>${showCost? '<th style="width:150px;">سعر الشراء</th>' : ''}<th style="width:150px;">سعر البيع</th><th style="width:110px;">الكمية</th><th style="width:44px;"></th></tr></thead>
       <tbody id="ep_body"></tbody>
     </table></div>
     <div class="row modal-sticky-actions">
@@ -3716,12 +3717,18 @@ function openEditPricesModal(){
         <td class="num" style="font-size:11.5px;">${it.barcode? `<span dir="ltr">${escapeHtml(it.barcode)}</span>` : '—'}</td>
         ${showCost? `<td><input type="number" inputmode="decimal" step="${step}" min="0" class="num" data-ep-cost="${it.id}" value="${e.cost!==undefined? e.cost : costOf(it)}" style="width:100%; padding:7px; ${e.cost!==undefined?'background:#fff6e0;':''}"></td>` : ''}
         <td><input type="number" inputmode="decimal" step="${step}" min="0" class="num" data-ep-sell="${it.id}" value="${e.sell!==undefined? e.sell : sellOf(it)}" style="width:100%; padding:7px; font-weight:800; ${e.sell!==undefined?'background:#fff6e0;':''}"></td>
-      </tr>`; }).join('') || `<tr><td colspan="4" style="text-align:center; color:var(--ink-soft);">لا نتائج</td></tr>`;
-    wrap.querySelectorAll('[data-ep-sell],[data-ep-cost]').forEach(inp=>inp.addEventListener('input', ()=>{
-      const id = inp.getAttribute('data-ep-sell') || inp.getAttribute('data-ep-cost');
-      const kind = inp.hasAttribute('data-ep-sell') ? 'sell' : 'cost';
+        <td>${isServiceItem(it)? '<span style="font-size:12px; color:var(--ink-soft);">🛠 خدمة</span>' : `<input type="number" inputmode="decimal" step="any" class="num" data-ep-qty="${it.id}" value="${e.qty!==undefined? e.qty : qtyOf(it)}" style="width:100%; padding:7px; ${e.qty!==undefined?'background:#fff6e0;':''}">`}</td>
+        <td>${canDelItems()? `<button class="btn btn-sm btn-danger" data-ep-del="${it.id}" title="إلغاء المنتج" style="padding:5px 8px;">🗑</button>` : ''}</td>
+      </tr>`; }).join('') || `<tr><td colspan="6" style="text-align:center; color:var(--ink-soft);">لا نتائج</td></tr>`;
+    wrap.querySelectorAll('[data-ep-del]').forEach(b=>b.addEventListener('click', ()=>{
+      const it = DB.warehouseItems.find(x=>x.id===b.getAttribute('data-ep-del'));
+      openDeleteWarehouseItemModal(it, { onDone: ()=>{ delete edits[it.id]; draw(); } });
+    }));
+    wrap.querySelectorAll('[data-ep-sell],[data-ep-cost],[data-ep-qty]').forEach(inp=>inp.addEventListener('input', ()=>{
+      const id = inp.getAttribute('data-ep-sell') || inp.getAttribute('data-ep-cost') || inp.getAttribute('data-ep-qty');
+      const kind = inp.hasAttribute('data-ep-sell') ? 'sell' : (inp.hasAttribute('data-ep-cost') ? 'cost' : 'qty');
       const it = DB.warehouseItems.find(x=>x.id===id);
-      const orig = String(kind==='sell' ? sellOf(it) : costOf(it));
+      const orig = String(kind==='sell' ? sellOf(it) : (kind==='cost' ? costOf(it) : qtyOf(it)));
       edits[id] = edits[id] || {};
       if(String(inp.value)===orig) delete edits[id][kind]; else edits[id][kind] = inp.value;
       if(!Object.keys(edits[id]).length) delete edits[id];
@@ -3738,7 +3745,9 @@ function openEditPricesModal(){
   $('#ep_save').addEventListener('click', async ()=>{
     const ids = Object.keys(edits); if(!ids.length) return;
     for(const id of ids){ const e = edits[id];
-      for(const k of ['sell','cost']) if(e[k]!==undefined && e[k]!=='' && !(Number(e[k])>=0)){ toast('رقم غير صحيح'); return; } }
+      for(const k of ['sell','cost']) if(e[k]!==undefined && e[k]!=='' && !(Number(e[k])>=0)){ toast('رقم غير صحيح'); return; }
+      if(e.qty!==undefined && (e.qty==='' || !Number.isFinite(Number(e.qty)))){ toast('الكمية غير صحيحة'); return; } }
+    let insCh = false, outsCh = false;
     $('#ep_save').disabled = true;
     ids.forEach(id=>{
       const it = DB.warehouseItems.find(x=>x.id===id); if(!it) return;
@@ -3752,12 +3761,18 @@ function openEditPricesModal(){
         if(e.cost===''){ it.costPrice = ''; it.costSec = null; }
         else { const v = Number(e.cost)||0; if(sec){ it.costSec = v>0? v : null; it.costPrice = v/r; } else { it.costPrice = v; it.costSec = null; } }
       }
+      // تعديل الكمية: حركة تسوية (إضافة أو سحب) بالفرق — متل تعديل الجرد من صفحة المنتج
+      if(e.qty!==undefined && !isServiceItem(it)){
+        const diff = Math.round((Number(e.qty) - currentStock(it.id))*1000)/1000;
+        if(diff>0){ DB.stockIns.push({id:uid(), createdAt:Date.now(), itemId:it.id, qty:diff, date:todayISO(), number:nextStockInNumber(), note:'تعديل الكمية (جرد)'}); insCh = true; }
+        else if(diff<0){ DB.stockOuts.push({id:uid(), createdAt:Date.now(), itemId:it.id, qty:-diff, date:todayISO(), number:nextStockOutNumber(), note:'تعديل الكمية (جرد)'}); outsCh = true; }
+      }
     });
     invalidateWarehouseCaches();
-    const ok = await save(KEYS.warehouseItems, DB.warehouseItems);
+    const ok = (await Promise.all([save(KEYS.warehouseItems, DB.warehouseItems)].concat(insCh? [save(KEYS.stockIns, DB.stockIns)] : [], outsCh? [save(KEYS.stockOuts, DB.stockOuts)] : []))).every(Boolean);
     if(!ok){ toast('⚠️ حدث خطأ أثناء الحفظ — راجع رسالة الخطأ'); $('#ep_save').disabled = false; return; }
     wrap.remove();
-    toast('تم تعديل أسعار '+ids.length+' صنف ✅');
+    toast('تم تعديل '+ids.length+' صنف ✅');
     render();
   });
 }
@@ -8388,7 +8403,7 @@ function warehouseHubView(){
     <div class="action-row" style="margin-top:10px;">
       <button class="btn" data-nav="#/warehouse-print">🖨 طباعة جرد المستودع</button>
       ${(()=>{ const n = lowStockNoticeItems().length; return `<button class="btn ${n?'btn-debit':''}" data-nav="#/low-stock">⚠️ اشعار نقص ستوك${n? ' ('+n+')' : ''}</button>`; })()}
-      ${(isPrivilegedUser(currentUser) || hasPermission('edit_products'))? `<button class="btn btn-primary" id="whEditPricesBtn">✏️ تعديل الأسعار</button><button class="btn" id="whWebImagesBtn">🌐 صور من الانترنت</button><button class="btn" id="whRoundPricesBtn">🔢 تقريب الأسعار</button>` : ''}
+      ${(isPrivilegedUser(currentUser) || hasPermission('edit_products'))? `<button class="btn btn-primary" id="whEditPricesBtn">✏️ تعديل الأسعار والكميات</button><button class="btn" id="whWebImagesBtn">🌐 صور من الانترنت</button><button class="btn" id="whRoundPricesBtn">🔢 تقريب الأسعار</button>` : ''}
     </div>
     ${auto? warehouseCatChipsHtml() : ''}
     <div id="whTableWrap" style="margin-top:14px;">
@@ -8422,6 +8437,7 @@ function lowStockView(){
       ${auto? `<td>${escapeHtml(it.category||'—')}</td>` : ''}
       <td class="num" style="font-weight:800; color:${q<=0?'var(--debit)':'var(--bronze-deep)'};">${fmtQty(q)} <span style="font-family:'Cairo',sans-serif; font-size:.9em;">${escapeHtml(it.uom||'')}</span>${q<=0?' ⛔':''}</td>
       <td class="num">${it.price? fmtPrim(it.price) : '—'}</td>
+      ${canDelItems()? `<td class="no-print">${delItemBtn(it)}</td>` : ''}
     </tr>`;
   }).join('');
   return `
@@ -8439,7 +8455,7 @@ function lowStockView(){
       <div class="r"><span>عدد الأصناف:</span><b class="num">${items.length}</b></div>
       <div class="r"><span>الحد:</span><b class="num">${th} أو أقل</b></div>
     </div>
-    ${items.length? `<div class="table-scroll"><table class="inv-table"><thead><tr><th class="inv-idx">#</th><th>اسم المنتج</th><th>الماركة</th>${auto?'<th>الفئة</th>':''}<th>الكمية الحالية</th><th>سعر البيع</th></tr></thead><tbody>${rows}</tbody></table></div>`
+    ${items.length? `<div class="table-scroll"><table class="inv-table"><thead><tr><th class="inv-idx">#</th><th>اسم المنتج</th><th>الماركة</th>${auto?'<th>الفئة</th>':''}<th>الكمية الحالية</th><th>سعر البيع</th>${canDelItems()?'<th class="no-print"></th>':''}</tr></thead><tbody>${rows}</tbody></table></div>`
       : `<div class="empty"><div class="big">✅ لا يوجد أي منتج كميته ${th} أو أقل</div></div>`}
   </div>`;
 }
@@ -9016,10 +9032,11 @@ function warehouseItemTable(items, isSearch){
         <td class="${stock<0?'bal-pos':'bal-zero'}">${isServiceItem(it)? '🛠 خدمة' : fmtQty(stock)+' '+escapeHtml(it.uom||'')}</td>
         ${showCost? `<td class="num">${cv!==null? fmtPrim(cv) : '—'}</td>` : ''}
         <td class="num"><b>${it.price? fmtPrim(it.price) : '—'}</b></td>
+        ${canDelItems()? `<td>${delItemBtn(it)}</td>` : ''}
       </tr>`;
     }).join('');
     return `${items.length>500? `<div style="font-size:12px; color:var(--ink-soft); margin-bottom:6px;">تُعرض أول 500 نتيجة من ${items.length} — دقّق البحث</div>`:''}
-    <div class="table-scroll"><table><thead><tr><th>المنتج</th><th>الماركة</th><th>الحالة</th><th>سنة الصنع</th><th>الكمية</th>${showCost?'<th>التكلفة شامل الضريبة</th>':''}<th>سعر البيع</th></tr></thead><tbody>${rowsHtml}</tbody></table></div>`;
+    <div class="table-scroll"><table><thead><tr><th>المنتج</th><th>الماركة</th><th>الحالة</th><th>سنة الصنع</th><th>الكمية</th>${showCost?'<th>التكلفة شامل الضريبة</th>':''}<th>سعر البيع</th>${canDelItems()?'<th></th>':''}</tr></thead><tbody>${rowsHtml}</tbody></table></div>`;
   }
   if(whSimpleCols()){
     const showCost = hasPermission('cost_prices');
@@ -9034,9 +9051,10 @@ function warehouseItemTable(items, isSearch){
         <td class="num"><b>${it.price? fmtPrim(it.price) : '—'}</b></td>
         <td><span style="font-size:12px; font-weight:700; padding:2px 8px; border-radius:999px; background:${avail?'#e6f4ea':'#fbe9e7'}; color:${avail?'var(--credit)':'var(--debit)'};">${itemStatusLabel(it.status)}</span></td>
         <td class="${stock<0?'bal-pos':'bal-zero'}">${isServiceItem(it)? '🛠 خدمة' : fmtQty(stock)}</td>
+        ${canDelItems()? `<td>${delItemBtn(it)}</td>` : ''}
       </tr>`;
     }).join('');
-    return `<div class="table-scroll"><table><thead><tr><th>الباركود</th><th>اسم الصنف</th>${showCost?'<th>سعر الشراء</th>':''}<th>سعر البيع</th><th>الحالة</th><th>الكمية الحالية</th></tr></thead><tbody>${rowsHtml}</tbody></table></div>`;
+    return `<div class="table-scroll"><table><thead><tr><th>الباركود</th><th>اسم الصنف</th>${showCost?'<th>سعر الشراء</th>':''}<th>سعر البيع</th><th>الحالة</th><th>الكمية الحالية</th>${canDelItems()?'<th></th>':''}</tr></thead><tbody>${rowsHtml}</tbody></table></div>`;
   }
   const rowsHtml = items.map(it=>{
     const stock = fastStock(it.id);
@@ -9049,9 +9067,10 @@ function warehouseItemTable(items, isSearch){
       <td>${escapeHtml(it.type||'—')}</td>
       <td class="${stockCls}">${isServiceItem(it)? '🛠 خدمة' : fmtQty(stock)}</td>
       <td>${it.expiryDate? `<span class="${expiring?'bal-pos':''}">${fmtDate(it.expiryDate)}${expiring?' ⚠️':''}</span>` : '—'}</td>
+      ${canDelItems()? `<td>${delItemBtn(it)}</td>` : ''}
     </tr>`;
   }).join('');
-  return `<div class="table-scroll"><table><thead><tr><th>اسم المنتج</th><th>الماركة</th><th>النوع</th><th>الكمية الحالية</th><th>تاريخ الانتهاء</th></tr></thead><tbody>${rowsHtml}</tbody></table></div>`;
+  return `<div class="table-scroll"><table><thead><tr><th>اسم المنتج</th><th>الماركة</th><th>النوع</th><th>الكمية الحالية</th><th>تاريخ الانتهاء</th>${canDelItems()?'<th></th>':''}</tr></thead><tbody>${rowsHtml}</tbody></table></div>`;
 }
 function warehouseItemView(item){
   const ledger = buildStockLedger(item.id);
@@ -9994,7 +10013,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-10-30 · 03:30 · v51';
+const APP_TRADE_BUILD = '2026-10-31 · 00:40 · v52';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 function settingsView(){
   const s = DB.settings;
@@ -12394,7 +12413,16 @@ function openWarehouseItemModal(item, presetBarcode, opts){
     }
   });
 }
-function openDeleteWarehouseItemModal(item){
+function canDelItems(){ return isPrivilegedUser(currentUser) || hasPermission('delete'); }
+function delItemBtn(it){ return canDelItems()? `<button class="btn btn-sm btn-danger" data-del-item="${it.id}" title="إلغاء المنتج" style="padding:4px 8px;">🗑 إلغاء</button>` : ''; }
+// زر «إلغاء» بلوايح المستودع ونقص الستوك: ما بيفتح صفحة المنتج، بيفتح التأكيد
+document.addEventListener('click', e=>{
+  const b = e.target.closest && e.target.closest('[data-del-item]'); if(!b) return;
+  e.preventDefault(); e.stopPropagation();
+  openDeleteWarehouseItemModal(DB.warehouseItems.find(x=>x.id===b.getAttribute('data-del-item')), { stay:true });
+}, true);
+function openDeleteWarehouseItemModal(item, opts){
+  opts = opts || {};
   if(denyIfNo('delete','الحذف')) return;
   if(!item) return;
   const wrap = document.createElement('div');
@@ -12407,21 +12435,34 @@ function openDeleteWarehouseItemModal(item){
     <div class="field"><label>اكتب اسم المنتج بالكامل للتأكيد</label><input type="text" id="wdel_confirm" placeholder="${escapeHtml(item.name)}"></div>
     <div class="row">
       <button class="btn" id="wdel_cancel">إلغاء</button>
-      <button class="btn btn-danger" id="wdel_confirm_btn">حذف نهائي</button>
+      <button class="btn btn-danger" id="wdel_confirm_btn" disabled>⏳ 1</button>
     </div>
   </div>`;
   document.body.appendChild(wrap);
+  // العدّ من 1 لـ 5 قبل ما يصير الحذف ممكن، ولازم ينكتب اسم المنتج بالضبط
+  const btnD = wrap.querySelector('#wdel_confirm_btn'), inpD = wrap.querySelector('#wdel_confirm');
+  let cnt = 1, ready = false;
+  const sync = ()=>{ btnD.disabled = !(ready && inpD.value.trim()===String(item.name).trim()); };
+  const tick = setInterval(()=>{ if(!wrap.isConnected){ clearInterval(tick); return; } cnt++;
+    if(cnt<=5) btnD.textContent = '⏳ '+cnt; else { clearInterval(tick); ready = true; btnD.textContent = '🗑 حذف نهائي'; sync(); } }, 1000);
+  inpD.addEventListener('input', sync);
+  setTimeout(()=>{ try{ inpD.focus(); }catch(e){} }, 50);
   wrap.querySelector('#wdel_cancel').addEventListener('click', ()=>wrap.remove());
-  wrap.querySelector('#wdel_confirm_btn').addEventListener('click', async ()=>{
-    const typed = wrap.querySelector('#wdel_confirm').value.trim();
-    if(typed !== item.name){ toast('يجب أن تكتب الاسم كما هو بالضبط'); return; }
+  btnD.addEventListener('click', async ()=>{
+    if(!ready) return;
+    const typed = inpD.value.trim();
+    if(typed !== String(item.name).trim()){ toast('يجب أن تكتب الاسم كما هو بالضبط'); return; }
+    btnD.disabled = true;
     DB.warehouseItems = DB.warehouseItems.filter(x=>x.id!==item.id);
     DB.stockIns = DB.stockIns.filter(x=>x.itemId!==item.id);
     DB.stockOuts = DB.stockOuts.filter(x=>x.itemId!==item.id);
     await Promise.all([save(KEYS.warehouseItems, DB.warehouseItems), save(KEYS.stockIns, DB.stockIns), save(KEYS.stockOuts, DB.stockOuts)]);
     wrap.remove();
+    if(typeof invalidateWarehouseCaches==='function') invalidateWarehouseCaches();
     toast('تم حذف المنتج وكل بياناته نهائيًا');
-    go('#/warehouse');
+    if(opts.onDone){ opts.onDone(); render(); }
+    else if(opts.stay) render();
+    else go('#/warehouse');
   });
 }
 function normalizePhone(raw){
