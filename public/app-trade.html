@@ -8842,6 +8842,7 @@ function safeView(){
     <h2><span class="dot"></span> 🗄 الصندوق الأساسي</h2>
     <div class="stats" style="margin:8px 0 12px;">
       <div class="stat"><div class="k">الموجود بالصندوق الأساسي ${L}</div><div class="v num">${fmtNum(bal.lbp)}</div></div>
+      ${(()=>{ const w = whishClosedTotals(); return (w.lbp||w.usd)? `<div class="stat"><div class="k">📱 منها Whish</div><div class="v num" style="color:#a3174a;">${[w.lbp? fmtNum(w.lbp)+' '+L : '', w.usd? '$'+w.usd.toFixed(2) : ''].filter(Boolean).join(' + ')}</div></div><div class="stat"><div class="k">💵 منها كاش ${L}</div><div class="v num">${fmtNum(bal.lbp - w.lbp)}</div></div>` : ''; })()}
       ${(lbpOnly && Math.abs(bal.usd)<0.005)? '' : `<div class="stat"><div class="k">الموجود بالصندوق الأساسي $</div><div class="v num">$${bal.usd.toFixed(2)}</div></div>`}
     </div>
     ${canUseSafe()? `<div class="action-row" style="margin-bottom:10px;">
@@ -8897,13 +8898,14 @@ const COA_DEFAULT_GROUPS = [
   {code:'215', name:'المعدات والتجهيزات'}, {code:'218', name:'أصول ثابتة أخرى'},
   {code:'370', name:'البضائع'},
   {code:'401', name:'الموردون'}, {code:'411', name:'الزبائن'}, {code:'421', name:'المستخدمون — الأجور المستحقة'},
-  {code:'512', name:'المصارف'}, {code:'531', name:'الصندوق'},
+  {code:'512', name:'المصارف'}, {code:'516', name:'المحافظ الإلكترونية'}, {code:'531', name:'الصندوق'},
   {code:'601', name:'مشتريات البضائع'}, {code:'610', name:'المصاريف التشغيلية'},
   {code:'701', name:'مبيعات البضائع'}, {code:'758', name:'إيرادات أخرى'}
 ];
 const COA_FIXED = [   // حسابات ثابتة بأرقام معروفة
   {code:'10801', name:'حساب صاحب المؤسسة', group:'108', kind:'owner'},
   {code:'37001', name:'مخزون البضائع', group:'370', kind:'stock'},
+  {code:'51601', name:'📱 Whish', group:'516', kind:'whish'},
   {code:'53101', name:MAIN_BOX_NAME+' — ليرة لبنانية', group:'531', kind:'mainLBP', cur:'LBP'},
   {code:'53102', name:MAIN_BOX_NAME+' — دولار', group:'531', kind:'mainUSD', cur:'USD'},
   {code:'53103', name:'حساب شخصي', group:'531', kind:'manual'},
@@ -8971,8 +8973,9 @@ function coaBalanceUSD(a){   // موجب = مدين
     case 'customer': return customerBalance(a.ref);                 // القيود داخلة بكشف الزبون
     case 'supplier': return -supplierBalance(a.ref);
     case 'worker':   return -workerBalance(a.ref);
-    case 'mainLBP':  return (safeBalance().lbp||0)/r;                 // القيود داخلة بحركات الصندوق الأساسي
-    case 'mainUSD':  return safeBalance().usd||0;
+    case 'mainLBP':  return ((safeBalance().lbp||0) - whishClosedTotals().lbp)/r;   // الكاش بس — الـ Whish إلو حساب لحالو (51601)
+    case 'mainUSD':  return (safeBalance().usd||0) - whishClosedTotals().usd;
+    case 'whish': { const c = whishClosedTotals(), o = whishOpenTotals(); return glDelta(a.code) + (c.lbp+o.lbp)/r + c.usd + o.usd; }
     case 'drawer':   return (DB.cashierShifts||[]).filter(s=>s.status==='open' && !s.deleted && s.username===a.ref).reduce((t,s)=>t+(Number(s.cashLBP)||0)/r+(Number(s.cashUSD)||0), 0);
     case 'owner':    return glDelta(a.code) - ownerPayMoves().reduce((t,m)=>t+(m.currency==='LBP'? Math.abs(Number(m.amount)||0)/r : Math.abs(Number(m.amount)||0)), 0);
     case 'stock':    return glDelta(a.code) + (DB.warehouseItems||[]).reduce((t,it)=>{ if(isServiceItem(it)) return t; const c = Number(it.costPrice)||0, q = fastStock(it.id); return t + (q>0? q*c : 0); }, 0);
@@ -8983,6 +8986,9 @@ function coaBalanceUSD(a){   // موجب = مدين
     default: return glDelta(a.code);
   }
 }
+// Whish: يلي انقفل وترحّل (موجود مع الصندوق الأساسي) + يلي بعدو مع الموظفين بصناديقهم المفتوحة
+function whishClosedTotals(){ const o = {lbp:0, usd:0}; (DB.cashMovements||[]).forEach(m=>{ if(m.deleted || m.type!=='whish_close') return; const a = Math.abs(Number(m.amount)||0); if(m.currency==='USD') o.usd += a; else o.lbp += a; }); return o; }
+function whishOpenTotals(){ const o = {lbp:0, usd:0}; (DB.cashierShifts||[]).filter(s=>s.status==='open' && !s.deleted).forEach(s=>{ const w = shiftWhishTotals(s); o.lbp += Math.max(w.lbp,0); o.usd += Math.max(w.usd,0); }); return o; }
 function coaFmtBal(usd){
   if(Math.abs(usd) < 0.0000005) return '<span style="color:var(--ink-soft);">—</span>';
   return `<span class="num" dir="ltr" style="color:${usd>0?'var(--debit)':'var(--credit)'};">${fmtPrim(Math.abs(usd))}</span> <small style="color:var(--ink-soft);">${usd>0?'مدين':'دائن'}</small>`;
@@ -9030,6 +9036,12 @@ function coaAccountRows(a){
   if(a.kind==='mainLBP' || a.kind==='mainUSD'){
     safeMoves().forEach(m=>{ if(m.gl) return; const v = a.kind==='mainLBP'? (m.lbp||0)/r : (m.usd||0); if(!v) return;
       rows.push({at:m.at, date:m.date, desc:m.label, dr:v>0? v : 0, cr:v<0? -v : 0}); });
+  }
+  if(a.kind==='whish'){
+    (DB.cashMovements||[]).forEach(m=>{ if(m.deleted || m.type!=='whish_close') return; const i = whishCloseInfo(m); const v = m.currency==='LBP'? Math.abs(Number(m.amount)||0)/r : Math.abs(Number(m.amount)||0);
+      rows.push({at:m.createdAt, date:m.date, desc:'إقفال Whish للموظف '+(i.user||'')+(i.by? ' — أقفله: '+i.by : '')+' (مع '+MAIN_BOX_NAME+')', dr:v, cr:0}); });
+    (DB.cashierShifts||[]).filter(s=>s.status==='open' && !s.deleted).forEach(s=>{ const w = shiftWhishTotals(s); const v = Math.max(w.lbp,0)/r + Math.max(w.usd,0); if(!(v>0)) return;
+      rows.push({at:Date.now(), date:todayISO(), desc:'بعدو مع الموظف '+s.username+' (صندوق مفتوح)', dr:v, cr:0}); });
   }
   if(a.kind==='owner') ownerPayMoves().forEach(m=>{ const v = m.currency==='LBP'? Math.abs(Number(m.amount)||0)/r : Math.abs(Number(m.amount)||0);
     rows.push({at:m.createdAt, date:m.date, desc:String(m.note||'').replace(DOC_MIRROR_TAG,''), dr:0, cr:v}); });
@@ -10500,7 +10512,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-11-01 · 21:45 · v63';
+const APP_TRADE_BUILD = '2026-11-01 · 21:55 · v64';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 function settingsView(){
   const s = DB.settings;
