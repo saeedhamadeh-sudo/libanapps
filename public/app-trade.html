@@ -792,7 +792,7 @@ async function signOutEverywhere(){
   if(SECURE_MODE && CLIENT_ID && !keepLocal){
     try{ Object.keys(localStorage).forEach(k=>{ if(k.indexOf('la_'+CLIENT_ID+'_')===0) localStorage.removeItem(k); }); }catch(e){}
   }
-  try{ if(supabaseClient) await supabaseClient.auth.signOut(); }catch(e){}
+  try{ if(supabaseClient) await supabaseClient.auth.signOut({ scope:'local' }); }catch(e){}
   try{
     Object.keys(localStorage).forEach(k=>{
       if(k.startsWith('sb-') || k.includes('supabase')) localStorage.removeItem(k);
@@ -2374,7 +2374,26 @@ function openSubUnitModal(baseId, editId){
 /* ===== الضيافة: منتجات متاحة للضيافة بتنقص من الستوك وبتتسجّل مصاريف ضيافة (61801) ===== */
 const HOSP_NOTE = 'ضيافة';
 function isHospOut(s){ return s && !s.deleted && String(s.note||'').indexOf(HOSP_NOTE)===0 && s.refId==='hosp'; }
-function hospUsedToday(itemId){ const t = todayISO(); return DB.stockOuts.filter(s=>isHospOut(s) && s.itemId===itemId && s.date===t).reduce((a,s)=>a+(Number(s.qty)||0), 0); }
+// الحد بيرجع يتجدّد بعد 24 ساعة من كل ضيافة (مش آخر النهار)
+function hospUsedToday(itemId){ const since = Date.now() - 24*3600*1000; return DB.stockOuts.filter(s=>isHospOut(s) && s.itemId===itemId && (s.createdAt||0) >= since).reduce((a,s)=>a+(Number(s.qty)||0), 0); }
+function hospLeft(it){ const lim = Number(it && it.hospLimit)||0; return lim? Math.max(lim - hospUsedToday(it.id), 0) : Infinity; }
+// السلة كلها ضيافة: منتأكد إنو كل بند متاح للضيافة وضمن الحد
+function posHospCheck(ticket){
+  if(!ticket || !ticket.cart.length) return {ok:false};
+  for(const l of ticket.cart){ const it = DB.warehouseItems.find(x=>x.id===l.itemId);
+    if(!it || !it.hospitality) return {ok:false, why:'«'+(l.name||'')+'» مش متاح للضيافة'};
+    if(hospLeft(it) < l.qty - 1e-9) return {ok:false, why:'«'+it.name+'» خلص حدّ الضيافة (بقي '+fmtQty(hospLeft(it))+' — بيرجع يتجدّد بعد 24 ساعة)'}; }
+  return {ok:true};
+}
+async function completePosHospitality(ticket, note){
+  const chk = posHospCheck(ticket); if(!chk.ok){ toast(chk.why||'مش متاح'); return; }
+  const now = Date.now();
+  ticket.cart.forEach(l=>DB.stockOuts.push({id:uid(), createdAt:now, itemId:l.itemId, qty:l.qty, date:todayISO(), number:nextStockOutNumber(), note:HOSP_NOTE+' — '+(currentUser? currentUser.username : '')+(note? ' — '+note : ''), refId:'hosp'}));
+  invalidateWarehouseCaches();
+  const ok = await save(KEYS.stockOuts, DB.stockOuts);
+  _posTickets = _posTickets.filter(t=>t.id!==ticket.id); _posActiveTicketId = null; _pcSel = -1; _pcBuf = '';
+  toast(ok? '☕ انسجّلت ضيافة (مصاريف الضيافة 61801)' : 'حدث خطأ أثناء الحفظ'); render();
+}
 function hospCostUSD(s){ const it = DB.warehouseItems.find(x=>x.id===s.itemId); return it? unitCostOf(it)*(Number(s.qty)||0) : 0; }
 function openHospSetModal(itemId){
   const it = DB.warehouseItems.find(x=>x.id===itemId); if(!it) return;
@@ -2386,7 +2405,7 @@ function openHospSetModal(itemId){
     <p style="font-size:12.5px; color:var(--ink-soft);">الضيافة بتنقص من الستوك وبتتسجّل بلوحة الحسابات على «61801 — مصاريف الضيافة» بسعر التكلفة.${isSoldByUnits(it)? ' هالمنتج مقسوم، فالضيافة بتكون من وحداتو.' : ''}</p>
     ${list.map(x=>`<div style="border:1px solid var(--line); border-radius:8px; padding:8px 10px; margin-bottom:8px;">
       <label style="display:flex; gap:8px; align-items:center; font-weight:700;"><input type="checkbox" class="hs-on" data-id="${x.id}" style="width:auto;" ${x.hospitality?'checked':''}> ${escapeHtml(x.name)} متاح للضيافة</label>
-      <div class="field" style="margin:6px 0 0;"><label>الحد باليوم (فاضي = بلا حد)</label><input type="number" class="num hs-lim" data-id="${x.id}" min="0" step="any" value="${Number(x.hospLimit)>0? x.hospLimit : ''}"></div>
+      <div class="field" style="margin:6px 0 0;"><label>الحد خلال 24 ساعة (فاضي = بلا حد)</label><input type="number" class="num hs-lim" data-id="${x.id}" min="0" step="any" value="${Number(x.hospLimit)>0? x.hospLimit : ''}"></div>
     </div>`).join('')}
     <div class="row"><button class="btn" id="hs_cancel">إلغاء</button><button class="btn btn-primary" id="hs_ok">💾 حفظ</button></div>
   </div>`;
@@ -2405,9 +2424,9 @@ function openHospitalityModal(){
   wrap.innerHTML = `<div class="modal" style="max-width:520px;">
     <h3>☕ ضيافة</h3>
     ${items.length? `<p style="font-size:12.5px; color:var(--ink-soft);">بينقص من الستوك وبينسجّل «مصاريف ضيافة» بلوحة الحسابات (61801) بسعر التكلفة.</p>
-    <div class="table-scroll"><table><thead><tr><th>المنتج</th><th>الموجود</th><th>الحد اليوم</th><th>الكمية</th></tr></thead><tbody>
+    <div class="table-scroll"><table><thead><tr><th>المنتج</th><th>الموجود</th><th>بقي من الحد</th><th>الكمية</th></tr></thead><tbody>
       ${items.map(it=>{ const lim = Number(it.hospLimit)||0, used = hospUsedToday(it.id); return `<tr><td><b>${escapeHtml(it.name)}</b></td><td class="num">${fmtQty(Math.floor(fastStock(it.id)+1e-9))}</td>
-        <td class="num">${lim? fmtQty(Math.max(lim-used,0))+' / '+fmtQty(lim) : '—'}</td><td><input type="number" class="num hp-q" data-id="${it.id}" min="0" step="1" style="width:80px;"></td></tr>`; }).join('')}
+        <td class="num">${lim? fmtQty(Math.max(lim-used,0))+' / '+fmtQty(lim)+' <small>(24 ساعة)</small>' : '—'}</td><td><input type="number" class="num hp-q" data-id="${it.id}" min="0" step="1" style="width:80px;"></td></tr>`; }).join('')}
     </tbody></table></div>
     <div class="field"><label>لمين / ملاحظة</label><input type="text" id="hp_note" placeholder="مثلاً: زبون، ضيف، موظف..."></div>`
     : `<p style="color:var(--ink-soft);">ما في منتجات متاحة للضيافة. من صفحة المنتج بالمستودع اكبس «☕ ضيافة» وفعّلها.</p>`}
@@ -2421,7 +2440,7 @@ function openHospitalityModal(){
     const lines = Array.from(wrap.querySelectorAll('.hp-q')).map(i=>({id:i.getAttribute('data-id'), q:Number(i.value)||0})).filter(x=>x.q>0);
     if(!lines.length){ wrap.querySelector('#hp_err').textContent = 'اكتب كمية لمنتج واحد على الأقل'; return; }
     for(const l of lines){ const it = DB.warehouseItems.find(x=>x.id===l.id); const lim = Number(it.hospLimit)||0;
-      if(lim && hospUsedToday(it.id)+l.q > lim + 1e-9){ wrap.querySelector('#hp_err').textContent = 'تجاوزت حد الضيافة اليوم لـ «'+it.name+'»'; return; } }
+      if(lim && hospUsedToday(it.id)+l.q > lim + 1e-9){ wrap.querySelector('#hp_err').textContent = 'تجاوزت حد الضيافة لـ «'+it.name+'» — بيرجع يتجدّد بعد 24 ساعة'; return; } }
     const note = wrap.querySelector('#hp_note').value.trim(), now = Date.now();
     lines.forEach(l=>DB.stockOuts.push({id:uid(), createdAt:now, itemId:l.id, qty:l.q, date:todayISO(), number:nextStockOutNumber(), note:HOSP_NOTE+' — '+(currentUser? currentUser.username : '')+(note? ' — '+note : ''), refId:'hosp'}));
     invalidateWarehouseCaches();
@@ -4629,7 +4648,7 @@ async function bootPlatform(){
           location.replace('/trade?c=' + encodeURIComponent(expJson.client_id));
           return { ok:false, reason:'no_session' };
         }
-        await supabaseClient.auth.signOut();
+        await supabaseClient.auth.signOut({ scope:'local' });
         ses = { data: { session: null } };
       }
     }catch(e){ console.error('slug/session mismatch check failed', e && e.message); }
@@ -5135,10 +5154,49 @@ function rpcLoginErrorText(res){
   if(res.reason==='error') return 'تعذّر تسجيل الدخول: '+(res.message||'');
   return 'اسم المستخدم أو كلمة السر غير صحيحة';
 }
+// تحديث DB من السحابة «بنفس المكان»: نفس المصفوفات والكائنات — يلي مفتوح بشاشة (تعديل، سلة…) بيضل مربوط
+function mergeDBInPlace(fresh){
+  Object.keys(fresh||{}).forEach(k=>{
+    const nv = fresh[k], cur = DB[k];
+    if(Array.isArray(nv) && Array.isArray(cur)){
+      const byId = new Map(cur.map(r=>[r && r.id, r])), keep = new Set();
+      nv.forEach(r=>{ if(!r || !r.id) return; keep.add(r.id); const o = byId.get(r.id); if(o){ Object.keys(o).forEach(x=>{ if(!(x in r)) delete o[x]; }); Object.assign(o, r); } else cur.push(r); });
+      for(let i=cur.length-1; i>=0; i--){ if(!cur[i] || !keep.has(cur[i].id)) cur.splice(i, 1); }
+      try{ localStorage.setItem(skey(k), JSON.stringify(cur)); }catch(e){}
+    } else if(k==='settings' && nv && typeof nv==='object'){ Object.assign(DB.settings, nv); }
+    else DB[k] = nv;
+  });
+}
 async function finishRpcLogin(res){
   const a = res.account || {};
   currentUser = null; currentCustomerSession = null; currentWorkerSession = null; pendingTotpUser = null;
-  authenticated = true; OFFLINE_SESSION = false;
+  authenticated = true; OFFLINE_SESSION = false; SESSION_LOST = false;
+  // دخول سريع: إذا في نسخة عالجهاز منفتح فيها فوراً، ومنحدّث من السحابة بالخلفية (بنفس المصفوفات حتى ما يضيع شي مفتوح)
+  if(res.kind==='staff'){
+    const cached = {}; for(const k of Object.keys(SUPABASE_TABLES)) cached[k] = await safeGet(k, []);
+    const hasCache = ['invoices','warehouseItems','customers','cashierShifts'].some(k=>Array.isArray(cached[k]) && cached[k].length);
+    if(hasCache){
+      Object.keys(cached).forEach(k=>{ DB[k] = Array.isArray(cached[k])? cached[k] : []; });
+      DB.settings = await safeGet(KEYS.settings, DB.settings||{});
+      currentUser = (DB.settings.users||[]).find(x=>x.id===a.id) || { id:a.id, username:a.username, role:a.role, permissions:a.permissions||[], totpEnabled:!!a.totp_enabled };
+      currentUser = Object.assign({}, currentUser, {role:a.role||currentUser.role, permissions:a.permissions||currentUser.permissions||[]});
+      invalidateWarehouseCaches();
+      go('#/'); render();
+      (async ()=>{
+        try{
+          if(obCount()) await flushOutbox();
+          const fresh = await loadAll();
+          mergeDBInPlace(fresh);
+          stripLocalSecrets(); migrateUsers();
+          const me = (DB.settings.users||[]).find(x=>x.id===a.id); if(me) currentUser = Object.assign({}, me, {role:a.role||me.role, permissions:a.permissions||me.permissions||[]});
+          invalidateWarehouseCaches();
+          if(seedBudgetCategoriesLocal()) await save(KEYS.budgetCategories, DB.budgetCategories);
+          scheduleLiveRender();
+        }catch(e){ console.error('background load', e); }
+      })();
+      return;
+    }
+  }
   // أول شي منرفع يلي بالانتظار من آخر مرة (بلا نت)، وبعدين منجيب من السحابة
   try{ if(obCount()){ for(const k of Object.keys(obGet())){ if(SUPABASE_TABLES[k]) DB[k] = await safeGet(k, []); } await flushOutbox(); } }catch(e){}
   // البيانات تُحمَّل بعد الدخول — قاعدة البيانات تعطي كل حساب ما يحق له فقط
@@ -7682,9 +7740,15 @@ function openPosPaymentModal(currency, prefill){
       ${namedCust? `<button class="btn btn-debit" id="pp_debt" style="font-weight:800;">📒 دين بالحساب</button>` : ''}
       <button class="btn btn-primary" id="pp_confirm">💵 نقداً — تأكيد القبض</button>
     </div>
+    ${ticket.cart.some(l=>{ const it = DB.warehouseItems.find(x=>x.id===l.itemId); return it && it.hospitality; })? (()=>{ const c = posHospCheck(ticket);
+      return `<div style="margin-top:10px; border-top:1px dashed var(--line); padding-top:10px;">
+        <button class="btn" id="pp_hosp" style="width:100%; justify-content:center; font-weight:800; background:#f3ece2;" ${c.ok? '' : 'disabled'}>☕ ضيافة (بلا قبض — مصاريف ضيافة)</button>
+        ${c.ok? '' : `<div style="font-size:12px; color:var(--debit); margin-top:4px;">${escapeHtml(c.why||'')}</div>`}</div>`; })() : ''}
     ${namedCust? `<div style="font-size:11.5px; color:var(--ink-soft); margin-top:8px;">«دين بالحساب»: الفاتورة بتنسجّل على حساب الزبون بلا إيصال قبض، وما بتدخل الصندوق.</div>` : ''}
   </div>`;
   document.body.appendChild(wrap);
+  const hospBtn = wrap.querySelector('#pp_hosp');
+  if(hospBtn) hospBtn.addEventListener('click', ()=>{ wrap.remove(); completePosHospitality(ticket); });
   const debtBtn = wrap.querySelector('#pp_debt');
   if(debtBtn) debtBtn.addEventListener('click', ()=>{ wrap.remove(); completePosSale('CREDIT', null, null, {paid:0}); });
   const input = wrap.querySelector('#pp_received');
@@ -9887,7 +9951,31 @@ function autoRoundSellPrices(){
     else render();
   }).catch(e=>{ _autoRoundRunning = false; console.error(e); toast('⚠️ تعذّر حفظ تقريب الأسعار'); });
 }
+// الوحدات (كاس، فنجان…) بتنعرض تحت المنتج الأساسي — مخفية، وبتطلع بكبسة السهم ▸
+let _whOpenSubs = new Set();
+function whNestSubItems(items){
+  const inList = new Set(items.map(x=>x.id)), out = [], kids = new Map();
+  items.forEach(it=>{ if(it.baseItemId && inList.has(it.baseItemId)){ (kids.get(it.baseItemId) || kids.set(it.baseItemId, []).get(it.baseItemId)).push(it); } });
+  items.forEach(it=>{ if(it.baseItemId && inList.has(it.baseItemId)) return; out.push(it); (kids.get(it.id)||[]).forEach(k=>out.push(Object.assign(Object.create(Object.getPrototypeOf(k)), k, {__subOf:it.id}))); });
+  return out;
+}
+function whSubRowAttrs(it){ if(!it.__subOf) return ''; return `data-sub-of="${it.__subOf}" class="wh-sub-row" style="${_whOpenSubs.has(it.__subOf)? '' : 'display:none;'} background:var(--bg-2);"`; }
+function whSubToggle(it){
+  if(it.__subOf) return '<span style="color:var(--ink-soft); margin-inline-end:4px;">↳</span>';
+  if(!isSoldByUnits(it)) return '';
+  const open = _whOpenSubs.has(it.id), n = subItemsOf(it.id).length;
+  return `<button type="button" class="btn btn-sm" data-sub-toggle="${it.id}" title="الوحدات" style="padding:2px 8px; margin-inline-end:6px;">${open? '▾' : '▸'} ${n}</button>`;
+}
+document.addEventListener('click', e=>{
+  const b = e.target.closest && e.target.closest('[data-sub-toggle]'); if(!b) return;
+  e.preventDefault(); e.stopPropagation();
+  const id = b.getAttribute('data-sub-toggle'), open = !_whOpenSubs.has(id);
+  if(open) _whOpenSubs.add(id); else _whOpenSubs.delete(id);
+  document.querySelectorAll('[data-sub-of="'+id+'"]').forEach(r=>r.style.display = open? '' : 'none');
+  b.innerHTML = (open? '▾' : '▸')+' '+subItemsOf(id).length;
+}, true);
 function warehouseItemTable(items, isSearch){
+  items = whNestSubItems(items);
   if(!items.length) return `<div class="empty"><div class="big">${isSearch? 'لا توجد نتائج مطابقة' : 'لا توجد منتجات في المستودع بعد'}</div></div>`;
   if(isAutoShop()){
     const showCost = hasPermission('cost_prices');
@@ -9896,8 +9984,8 @@ function warehouseItemTable(items, isSearch){
       const spec = [it.sku, it.tireSize, it.amperage, it.viscosity, it.oilType && !it.viscosity ? it.oilType : ''].filter(Boolean).filter(x=>!String(it.name||'').includes(x)).join(' • ');
       const avail = normItemStatus(it.status)==='available';
       const cv = itemCostWithVat(it);
-      return `<tr data-nav="#/warehouse-item/${it.id}" style="${avail?'':'opacity:.65;'}">
-        <td><div class="wh-name-cell">${whThumb(it)}<div><b>${escapeHtml(it.name)}</b>${spec? `<div style="font-size:11.5px; color:var(--ink-soft);">${escapeHtml(spec)}</div>`:''}</div></div></td>
+      return `<tr ${whSubRowAttrs(it)} data-nav="#/warehouse-item/${it.id}" style="${avail?'':'opacity:.65;'}">
+        <td><div class="wh-name-cell">${whSubToggle(it)}${whThumb(it)}<div><b>${escapeHtml(it.name)}</b>${spec? `<div style="font-size:11.5px; color:var(--ink-soft);">${escapeHtml(spec)}</div>`:''}</div></div></td>
         <td>${escapeHtml(it.brand||'—')}</td>
         <td><span style="font-size:12px; font-weight:700; padding:2px 8px; border-radius:999px; background:${avail?'#e6f4ea':'#fbe9e7'}; color:${avail?'var(--credit)':'var(--debit)'};">${itemStatusLabel(it.status)}</span></td>
         <td class="num">${escapeHtml(it.mfgYear||'—')}</td>
@@ -9916,9 +10004,9 @@ function warehouseItemTable(items, isSearch){
       const stock = fastStock(it.id);
       const avail = normItemStatus(it.status)==='available';
       const cost = (it.costPrice!==undefined && it.costPrice!==null && it.costPrice!=='') ? Number(it.costPrice) : null;
-      return `<tr data-nav="#/warehouse-item/${it.id}" style="${avail?'':'opacity:.65;'}">
+      return `<tr ${whSubRowAttrs(it)} data-nav="#/warehouse-item/${it.id}" style="${avail?'':'opacity:.65;'}">
         <td class="num">${it.barcode? `<span dir="ltr">${escapeHtml(it.barcode)}</span>` : '—'}</td>
-        <td><div class="wh-name-cell">${whThumb(it)}<b>${escapeHtml(it.name)}</b></div></td>
+        <td><div class="wh-name-cell">${whSubToggle(it)}${whThumb(it)}<b>${escapeHtml(it.name)}</b></div></td>
         ${showCost? `<td class="num">${cost!==null? fmtPrim(cost) : '—'}</td>` : ''}
         <td class="num"><b>${it.price? fmtPrim(it.price) : '—'}</b></td>
         <td><span style="font-size:12px; font-weight:700; padding:2px 8px; border-radius:999px; background:${avail?'#e6f4ea':'#fbe9e7'}; color:${avail?'var(--credit)':'var(--debit)'};">${itemStatusLabel(it.status)}</span></td>
@@ -9933,8 +10021,8 @@ function warehouseItemTable(items, isSearch){
     const stockCls = stock<0 ? 'bal-pos' : 'bal-zero';
     const expDays = daysUntilExpiry(it);
     const expiring = expDays!==null && expDays<=itemExpiryAlertDays(it);
-    return `<tr data-nav="#/warehouse-item/${it.id}">
-      <td><div class="wh-name-cell">${whThumb(it)}<b>${escapeHtml(it.name)}</b></div></td>
+    return `<tr ${whSubRowAttrs(it)} data-nav="#/warehouse-item/${it.id}">
+      <td><div class="wh-name-cell">${whSubToggle(it)}${whThumb(it)}<b>${escapeHtml(it.name)}</b></div></td>
       <td>${escapeHtml(it.brand||'—')}</td>
       <td>${escapeHtml(it.type||'—')}</td>
       <td class="${stockCls}">${isServiceItem(it)? '🛠 خدمة' : fmtQty(stock)}${subStockHint(it)}${subOfHint(it)}</td>
@@ -10928,7 +11016,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-11-02 · 02:25 · v71';
+const APP_TRADE_BUILD = '2026-11-02 · 03:25 · v73';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 function settingsView(){
   const s = DB.settings;
