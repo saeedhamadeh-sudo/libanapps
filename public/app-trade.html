@@ -971,7 +971,8 @@ function warehouseItemFromDb(row){
 // خانات إضافية للمنتج (محل إطارات وبطاريات وزيوت) — محفوظة بعمود extra (jsonb)
 const ITEM_EXTRA_KEYS = ['sku','subCategory','madeIn','uom','location','reorderPoint','costPrice','supplierId',
   'tireSize','dot','loadSpeed','rechargeDate','amperage','oilType','viscosity','compat','weight','dims','msds','status',
-  'vatRate','margin','mfgYear','priceSec','costSec'];
+  'vatRate','margin','mfgYear','priceSec','costSec',
+  'baseItemId','baseQty','unitsPerBase','contentPerUnit','contentUnit','perUnitContent','hospitality','hospLimit'];
 function pickItemExtra(src){
   const out = {};
   if(!src || typeof src!=='object') return out;
@@ -2158,15 +2159,136 @@ function nextStockOutNumber(){
   const max = nums.length? nums.reduce((a,b)=>b>a?b:a, -Infinity):0;
   return String(max+1);
 }
+/* ===== قسمة منتج لوحدات (كاس من قنينة، فنجان من بن) ===== */
+function openSubUnitModal(baseId, editId){
+  const edit = editId? DB.warehouseItems.find(x=>x.id===editId) : null;
+  const base = DB.warehouseItems.find(x=>x.id===(edit? edit.baseItemId : baseId));
+  if(!base){ toast('لم يتم العثور على المنتج'); return; }
+  const sec = primIsSec(), L = primSym();
+  const mode0 = edit && Number(edit.perUnitContent)>0 ? 'content' : 'units';
+  const wrap = document.createElement('div'); wrap.className = 'modal-bg';
+  wrap.innerHTML = `<div class="modal" style="max-width:500px;">
+    <h3>🧩 ${edit? 'تعديل القسمة' : 'قسّم لوحدات'} — ${escapeHtml(base.name)}</h3>
+    <p style="font-size:12.5px; color:var(--ink-soft); line-height:1.7;">بتشتري «${escapeHtml(base.name)}» متل العادة، والوحدة الجديدة بتنباع لحالها. كل ما تبيع وحدة بينقص من الأساسي بالنسبة، ولما تخلص كمية بتساوي واحد بينقص واحد.</p>
+    <div class="field"><label>اسم الوحدة *</label><input type="text" id="su_name" value="${escapeHtml(edit? edit.name : 'كاس '+base.name)}"></div>
+    <div class="field"><label>طريقة القسمة</label>
+      <select id="su_mode"><option value="units" ${mode0==='units'?'selected':''}>بالعدد (مثلاً القنينة بتعمل 8 كاسات)</option><option value="content" ${mode0==='content'?'selected':''}>بالوزن / الحجم (مثلاً 1000 غ بن، 7 غ للفنجان)</option></select></div>
+    <div id="su_units"><div class="field"><label>كم وحدة بتعمل من «${escapeHtml(base.name)}» الواحد؟ *</label><input type="number" id="su_n" class="num" min="1" step="any" value="${edit && Number(edit.unitsPerBase)>0? edit.unitsPerBase : ''}"></div></div>
+    <div id="su_content" style="display:none;">
+      <div class="grid grid-2">
+        <div class="field"><label>محتوى «${escapeHtml(base.name)}» الواحد *</label><input type="number" id="su_c" class="num" step="any" value="${Number(base.contentPerUnit)||''}"></div>
+        <div class="field"><label>الوحدة</label><select id="su_cu">${['غ','مل','كغ','ل'].map(u=>`<option ${ (base.contentUnit||'غ')===u?'selected':''}>${u}</option>`).join('')}</select></div>
+      </div>
+      <div class="field"><label>قديش بياخد كل وحدة؟ *</label><input type="number" id="su_p" class="num" step="any" value="${edit && Number(edit.perUnitContent)>0? edit.perUnitContent : ''}"></div>
+    </div>
+    <div class="field"><label>سعر البيع (${escapeHtml(L)})</label><input type="number" id="su_price" class="num" value="${edit? inPrim(edit.price) : ''}"></div>
+    <div id="su_sum" style="font-size:13.5px; background:var(--bg-2); border:1px solid var(--line); border-radius:8px; padding:8px 12px;"></div>
+    <div id="su_err" style="color:var(--debit); font-size:13px; min-height:18px;"></div>
+    <div class="row"><button class="btn" id="su_cancel">إلغاء</button><button class="btn btn-primary" id="su_ok">💾 حفظ</button></div>
+  </div>`;
+  document.body.appendChild(wrap);
+  const $ = q=>wrap.querySelector(q), num = q=>Number($(q).value)||0;
+  const ratio = ()=> $('#su_mode').value==='units' ? (num('#su_n')>0? 1/num('#su_n') : 0) : (num('#su_c')>0 && num('#su_p')>0 ? num('#su_p')/num('#su_c') : 0);
+  const upd = ()=>{ const cnt = $('#su_mode').value==='content'; $('#su_units').style.display = cnt? 'none' : ''; $('#su_content').style.display = cnt? '' : 'none';
+    const f = ratio(), q = fastStock(base.id);
+    $('#su_sum').innerHTML = f>0? `كل «${escapeHtml(base.name)}» = <b class="num">${fmtQty(Math.round(1/f*100)/100)}</b> وحدة · الموجود هلق بيعمل <b class="num">${fmtQty(Math.floor(q/f+1e-9))}</b> وحدة${unitCostOf(base)? ' · تكلفة الوحدة <b class="num">'+fmtPrim(unitCostOf(base)*f)+'</b>' : ''}` : 'حدّد النسبة'; };
+  wrap.querySelectorAll('input,select').forEach(e=>e.addEventListener('input', upd)); $('#su_mode').addEventListener('change', upd); upd();
+  $('#su_cancel').addEventListener('click', ()=>wrap.remove());
+  $('#su_ok').addEventListener('click', async ()=>{
+    const name = $('#su_name').value.trim(), f = ratio();
+    if(!name){ $('#su_err').textContent = 'اكتب اسم الوحدة'; return; }
+    if(!(f>0)){ $('#su_err').textContent = 'حدّد النسبة'; return; }
+    const pr = $('#su_price').value;
+    const it = edit || {id:uid(), createdAt:Date.now(), category:base.category||'', brand:base.brand||'', group:base.group};
+    it.name = name; it.baseItemId = base.id; it.baseQty = f;
+    if($('#su_mode').value==='units'){ it.unitsPerBase = num('#su_n'); delete it.perUnitContent; }
+    else { it.perUnitContent = num('#su_p'); delete it.unitsPerBase; base.contentPerUnit = num('#su_c'); base.contentUnit = $('#su_cu').value; }
+    if(pr!==''){ const v = Number(pr)||0; if(sec){ it.priceSec = v>0? v : null; it.price = v>0? v/curRate() : 0; } else { it.price = v; it.priceSec = null; } }
+    if(!edit) DB.warehouseItems.push(it);
+    invalidateWarehouseCaches();
+    const ok = await save(KEYS.warehouseItems, DB.warehouseItems);
+    wrap.remove(); toast(ok? '🧩 تم حفظ «'+name+'»' : 'حدث خطأ أثناء الحفظ'); if(!edit) go('#/warehouse-item/'+it.id); else render();
+  });
+}
+/* ===== الضيافة: منتجات متاحة للضيافة بتنقص من الستوك وبتتسجّل مصاريف ضيافة (61801) ===== */
+const HOSP_NOTE = 'ضيافة';
+function isHospOut(s){ return s && !s.deleted && String(s.note||'').indexOf(HOSP_NOTE)===0 && s.refId==='hosp'; }
+function hospUsedToday(itemId){ const t = todayISO(); return DB.stockOuts.filter(s=>isHospOut(s) && s.itemId===itemId && s.date===t).reduce((a,s)=>a+(Number(s.qty)||0), 0); }
+function hospCostUSD(s){ const it = DB.warehouseItems.find(x=>x.id===s.itemId); return it? unitCostOf(it)*(Number(s.qty)||0) : 0; }
+function openHospSetModal(itemId){
+  const it = DB.warehouseItems.find(x=>x.id===itemId); if(!it) return;
+  const wrap = document.createElement('div'); wrap.className = 'modal-bg';
+  wrap.innerHTML = `<div class="modal" style="max-width:420px;">
+    <h3>☕ الضيافة — ${escapeHtml(it.name)}</h3>
+    <label style="display:flex; gap:8px; align-items:center; font-weight:700; margin-bottom:10px;"><input type="checkbox" id="hs_on" style="width:auto;" ${it.hospitality?'checked':''}> متاح للضيافة</label>
+    <div class="field"><label>الحد باليوم (اتركه فاضي = بلا حد)</label><input type="number" id="hs_lim" class="num" min="0" step="any" value="${Number(it.hospLimit)>0? it.hospLimit : ''}"></div>
+    <div class="row"><button class="btn" id="hs_cancel">إلغاء</button><button class="btn btn-primary" id="hs_ok">💾 حفظ</button></div>
+  </div>`;
+  document.body.appendChild(wrap);
+  wrap.querySelector('#hs_cancel').addEventListener('click', ()=>wrap.remove());
+  wrap.querySelector('#hs_ok').addEventListener('click', async ()=>{
+    it.hospitality = wrap.querySelector('#hs_on').checked || undefined;
+    const l = Number(wrap.querySelector('#hs_lim').value)||0; if(l>0) it.hospLimit = l; else delete it.hospLimit;
+    const ok = await save(KEYS.warehouseItems, DB.warehouseItems); wrap.remove(); toast(ok? 'تم الحفظ ✅' : 'حدث خطأ أثناء الحفظ'); render();
+  });
+}
+function openHospitalityModal(){
+  const items = DB.warehouseItems.filter(x=>x.hospitality);
+  const wrap = document.createElement('div'); wrap.className = 'modal-bg';
+  wrap.innerHTML = `<div class="modal" style="max-width:520px;">
+    <h3>☕ ضيافة</h3>
+    ${items.length? `<p style="font-size:12.5px; color:var(--ink-soft);">بينقص من الستوك وبينسجّل «مصاريف ضيافة» بلوحة الحسابات (61801) بسعر التكلفة.</p>
+    <div class="table-scroll"><table><thead><tr><th>المنتج</th><th>الموجود</th><th>الحد اليوم</th><th>الكمية</th></tr></thead><tbody>
+      ${items.map(it=>{ const lim = Number(it.hospLimit)||0, used = hospUsedToday(it.id); return `<tr><td><b>${escapeHtml(it.name)}</b></td><td class="num">${fmtQty(Math.floor(fastStock(it.id)+1e-9))}</td>
+        <td class="num">${lim? fmtQty(Math.max(lim-used,0))+' / '+fmtQty(lim) : '—'}</td><td><input type="number" class="num hp-q" data-id="${it.id}" min="0" step="1" style="width:80px;"></td></tr>`; }).join('')}
+    </tbody></table></div>
+    <div class="field"><label>لمين / ملاحظة</label><input type="text" id="hp_note" placeholder="مثلاً: زبون، ضيف، موظف..."></div>`
+    : `<p style="color:var(--ink-soft);">ما في منتجات متاحة للضيافة. من صفحة المنتج بالمستودع اكبس «☕ ضيافة» وفعّلها.</p>`}
+    <div id="hp_err" style="color:var(--debit); font-size:13px; min-height:18px;"></div>
+    <div class="row"><button class="btn" id="hp_cancel">إلغاء</button>${items.length? '<button class="btn btn-primary" id="hp_ok">☕ تسجيل الضيافة</button>' : ''}</div>
+  </div>`;
+  document.body.appendChild(wrap);
+  wrap.querySelector('#hp_cancel').addEventListener('click', ()=>wrap.remove());
+  const ok = wrap.querySelector('#hp_ok'); if(!ok) return;
+  ok.addEventListener('click', async ()=>{
+    const lines = Array.from(wrap.querySelectorAll('.hp-q')).map(i=>({id:i.getAttribute('data-id'), q:Number(i.value)||0})).filter(x=>x.q>0);
+    if(!lines.length){ wrap.querySelector('#hp_err').textContent = 'اكتب كمية لمنتج واحد على الأقل'; return; }
+    for(const l of lines){ const it = DB.warehouseItems.find(x=>x.id===l.id); const lim = Number(it.hospLimit)||0;
+      if(lim && hospUsedToday(it.id)+l.q > lim + 1e-9){ wrap.querySelector('#hp_err').textContent = 'تجاوزت حد الضيافة اليوم لـ «'+it.name+'»'; return; } }
+    const note = wrap.querySelector('#hp_note').value.trim(), now = Date.now();
+    lines.forEach(l=>DB.stockOuts.push({id:uid(), createdAt:now, itemId:l.id, qty:l.q, date:todayISO(), number:nextStockOutNumber(), note:HOSP_NOTE+' — '+(currentUser? currentUser.username : '')+(note? ' — '+note : ''), refId:'hosp'}));
+    invalidateWarehouseCaches();
+    const r = await save(KEYS.stockOuts, DB.stockOuts);
+    wrap.remove(); toast(r? '☕ انسجّلت الضيافة' : 'حدث خطأ أثناء الحفظ'); render();
+  });
+}
+document.addEventListener('click', e=>{
+  const t = e.target.closest && e.target.closest('[data-sub-new],[data-sub-edit],[data-hosp-set],[data-hosp-open]'); if(!t) return;
+  e.preventDefault(); e.stopPropagation();
+  if(t.hasAttribute('data-sub-new')) openSubUnitModal(t.getAttribute('data-sub-new'));
+  else if(t.hasAttribute('data-sub-edit')) openSubUnitModal(null, t.getAttribute('data-sub-edit'));
+  else if(t.hasAttribute('data-hosp-set')) openHospSetModal(t.getAttribute('data-hosp-set'));
+  else openHospitalityModal();
+}, true);
 function buildStockLedger(itemId){
-  const ins = DB.stockIns.filter(s=>s.itemId===itemId && !s.deleted).map(s=>({
-    date:s.date, type:'إضافة', label:s.note? s.note : 'إضافة للمستودع', number:s.number,
-    from:0, to:Number(s.qty)||0, ref:'stockin', id:s.id, sortKey:s.createdAt||0
+  const it0 = (DB.warehouseItems||[]).find(x=>x.id===itemId), b0 = subBaseOf(it0);
+  if(b0){   // وحدة فرعية: كشف الأساسي محوّل لوحداتها
+    const L = buildStockLedger(b0.id); const f = b0.f;
+    const cv = r=>Object.assign({}, r, {from:r.from/f, to:r.to/f, balance:Math.round(r.balance/f*1000)/1000});
+    return {rows:L.rows.map(cv), totFrom:L.totFrom/f, totTo:L.totTo/f, finalBalance:Math.floor(L.finalBalance/f + 1e-9)};
+  }
+  const kids = subItemsOf(itemId), kidF = new Map(kids.map(k=>[k.id, Number(k.baseQty)])), kidN = new Map(kids.map(k=>[k.id, k.name]));
+  const mine = id=> id===itemId || kidF.has(id);
+  const qf = s=> (Number(s.qty)||0) * (kidF.get(s.itemId)||1);
+  const lbl = (s, def)=> (s.note? s.note : def) + (kidF.has(s.itemId)? ' — '+fmtQty(Number(s.qty)||0)+' '+kidN.get(s.itemId) : '');
+  const ins = DB.stockIns.filter(s=>mine(s.itemId) && !s.deleted).map(s=>({
+    date:s.date, type:'إضافة', label:lbl(s, 'إضافة للمستودع'), number:s.number,
+    from:0, to:qf(s), ref:'stockin', id:s.id, sortKey:s.createdAt||0
   }));
-  const outs = DB.stockOuts.filter(s=>s.itemId===itemId && !s.deleted).map(s=>{
+  const outs = DB.stockOuts.filter(s=>mine(s.itemId) && !s.deleted).map(s=>{
     return {
-      date:s.date, type:'سحب', label:s.note||'سحب من المستودع', number:s.number,
-      from:Number(s.qty)||0, to:0, ref:'stockout', id:s.id, sortKey:s.createdAt||0
+      date:s.date, type:'سحب', label:lbl(s, 'سحب من المستودع'), number:s.number,
+      from:qf(s), to:0, ref:'stockout', id:s.id, sortKey:s.createdAt||0
     };
   });
   let rows=[...ins,...outs];
@@ -3542,13 +3664,36 @@ let _stockMapCache = null;
 function invalidateWarehouseCaches(){ _whHayCache = new WeakMap(); _stockMapCache = null; }
 function stockMap(){
   const c = _stockMapCache;
-  if(c && c.ins===DB.stockIns && c.outs===DB.stockOuts && c.nIn===DB.stockIns.length && c.nOut===DB.stockOuts.length) return c.m;
+  if(c && c.ins===DB.stockIns && c.outs===DB.stockOuts && c.nIn===DB.stockIns.length && c.nOut===DB.stockOuts.length && c.items===DB.warehouseItems && c.nItems===DB.warehouseItems.length) return c.m;
   const m = new Map();
-  DB.stockIns.forEach(x=>{ if(!x.deleted) m.set(x.itemId, (m.get(x.itemId)||0) + (Number(x.qty)||0)); });
-  DB.stockOuts.forEach(x=>{ if(!x.deleted) m.set(x.itemId, (m.get(x.itemId)||0) - (Number(x.qty)||0)); });
-  _stockMapCache = {m, ins:DB.stockIns, outs:DB.stockOuts, nIn:DB.stockIns.length, nOut:DB.stockOuts.length};
+  // الوحدات الفرعية (كاس من قنينة، فنجان من بن): حركاتها بتنحسب على المنتج الأساسي بالنسبة
+  const sub = new Map(); (DB.warehouseItems||[]).forEach(it=>{ const b = subBaseOf(it); if(b) sub.set(it.id, b); });
+  const add = (id, q)=>{ const b = sub.get(id); if(b){ m.set(b.id, (m.get(b.id)||0) + q*b.f); } else m.set(id, (m.get(id)||0) + q); };
+  DB.stockIns.forEach(x=>{ if(!x.deleted) add(x.itemId, Number(x.qty)||0); });
+  DB.stockOuts.forEach(x=>{ if(!x.deleted) add(x.itemId, -(Number(x.qty)||0)); });
+  sub.forEach((b, id)=>{ m.set(id, Math.floor((m.get(b.id)||0)/b.f + 1e-9)); });   // الوحدات الكاملة يلي فينا نبيعها
+  _stockMapCache = {m, ins:DB.stockIns, outs:DB.stockOuts, nIn:DB.stockIns.length, nOut:DB.stockOuts.length, items:DB.warehouseItems, nItems:DB.warehouseItems.length};
   return m;
 }
+// منتج مقسوم من منتج تاني: {id: الأساسي، f: قديش بياخد من الأساسي لكل وحدة}
+function subBaseOf(it){
+  if(!it || !it.baseItemId || !(Number(it.baseQty)>0)) return null;
+  const base = (DB.warehouseItems||[]).find(x=>x.id===it.baseItemId);
+  if(!base || base.baseItemId) return null;   // مستوى واحد بس
+  return { id:base.id, f:Number(it.baseQty), base };
+}
+function subOfHint(it){ const b = subBaseOf(it); return b? `<div style="font-size:11px; color:var(--ink-soft);">🧩 من: ${escapeHtml(b.base.name)}</div>` : ''; }
+function subItemsOf(baseId){ return (DB.warehouseItems||[]).filter(x=>x.baseItemId===baseId && Number(x.baseQty)>0); }
+// عرض كمية منتج أساسي إلو وحدات فرعية: «4 قناني + 5 كاسات» أو بالغرام
+function subStockHint(it){
+  const kids = subItemsOf(it.id); if(!kids.length && !it.contentPerUnit) return '';
+  const q = fastStock(it.id), parts = [];
+  if(Number(it.contentPerUnit)>0) parts.push(fmtQty(Math.round(q*Number(it.contentPerUnit)))+' '+escapeHtml(it.contentUnit||'غ'));
+  kids.forEach(k=>{ const n = Math.floor(fastStock(k.id)+1e-9); parts.push('≈ '+fmtQty(n)+' '+escapeHtml(k.name)); });
+  return parts.length? `<div style="font-size:11.5px; color:var(--ink-soft);">${parts.join(' · ')}</div>` : '';
+}
+// تكلفة الوحدة (بالدولار الداخلي) — الوحدة الفرعية = تكلفة الأساسي × النسبة
+function unitCostOf(it){ const b = subBaseOf(it); const src = b? b.base : it; const c = Number(src && src.costPrice)||0; return b? c*b.f : c; }
 function fastStock(id){ return stockMap().get(id) || 0; }
 function warehouseItemHaystack(it){
   const cached = _whHayCache.get(it);
@@ -6532,6 +6677,7 @@ function posViewPro(){
       ${tool('pc_split_btn','✂️','تقسيم', !sel)}
       ${whishEnabled()? tool('pos_whish_btn','📱','قبض Whish', !has) : ''}
       ${tool('pos_return_btn','↩','استرجاع')}
+      ${DB.warehouseItems.some(x=>x.hospitality)? `<button type="button" class="pc-tool" data-hosp-open="1"><span>☕</span><b>ضيافة</b></button>` : ''}
       ${tool('pos_close_shift_btn','🔒','إقفال صندوقي')}
     </footer>
 
@@ -8542,8 +8688,8 @@ function warehouseHubView(){
   const items = warehouseFilteredByCat().slice().sort((a,b)=>String(a.name||'').localeCompare(String(b.name||''),'ar'));
   const auto = isAutoShop();
   const low = auto ? lowStockItems() : [];
-  const stockValue = auto ? DB.warehouseItems.reduce((s,it)=>{ const q=currentStock(it.id); const cv=itemCostWithVat(it); return s + (q>0 && cv? q*cv : 0); },0) : 0;
-  const saleValue = auto ? DB.warehouseItems.reduce((s,it)=>{ const q=currentStock(it.id); return s + (q>0 && Number(it.price)? q*Number(it.price) : 0); },0) : 0;
+  const stockValue = auto ? DB.warehouseItems.reduce((s,it)=>{ if(it.baseItemId) return s; const q=currentStock(it.id); const cv=itemCostWithVat(it); return s + (q>0 && cv? q*cv : 0); },0) : 0;
+  const saleValue = auto ? DB.warehouseItems.reduce((s,it)=>{ if(it.baseItemId) return s; const q=currentStock(it.id); return s + (q>0 && Number(it.price)? q*Number(it.price) : 0); },0) : 0;
   return `
   ${auto? `<div class="stats">
     <div class="stat"><div class="k">عدد الأصناف</div><div class="v">${DB.warehouseItems.length}</div></div>
@@ -8560,7 +8706,7 @@ function warehouseHubView(){
     <div class="action-row" style="margin-top:10px;">
       <button class="btn" data-nav="#/warehouse-print">🖨 طباعة جرد المستودع</button>
       ${(()=>{ const n = lowStockNoticeItems().length; return `<button class="btn ${n?'btn-debit':''}" data-nav="#/low-stock">⚠️ اشعار نقص ستوك${n? ' ('+n+')' : ''}</button>`; })()}
-      ${(isPrivilegedUser(currentUser) || hasPermission('edit_products'))? `<button class="btn btn-primary" id="whEditPricesBtn">✏️ تعديل الأسعار والكميات</button><button class="btn" id="whWebImagesBtn">🌐 صور من الانترنت</button><button class="btn" id="whRoundPricesBtn">🔢 تقريب الأسعار</button>` : ''}
+      ${(isPrivilegedUser(currentUser) || hasPermission('edit_products'))? `<button class="btn btn-primary" id="whEditPricesBtn">✏️ تعديل الأسعار والكميات</button><button class="btn" data-hosp-open="1">☕ ضيافة</button><button class="btn" id="whWebImagesBtn">🌐 صور من الانترنت</button><button class="btn" id="whRoundPricesBtn">🔢 تقريب الأسعار</button>` : ''}
     </div>
     ${auto? warehouseCatChipsHtml() : ''}
     <div id="whTableWrap" style="margin-top:14px;">
@@ -8578,7 +8724,7 @@ function warehouseHubView(){
 function lowStockThreshold(){ const t = DB.settings && DB.settings.lowStockThreshold; return (t===undefined || t===null || t==='') ? 2 : Number(t); }
 function lowStockNoticeItems(){
   const th = lowStockThreshold();
-  return DB.warehouseItems.filter(it=>!isServiceItem(it) && fastStock(it.id) <= th)
+  return DB.warehouseItems.filter(it=>!isServiceItem(it) && !it.baseItemId && fastStock(it.id) <= th)
     .sort((a,b)=> (fastStock(a.id)-fastStock(b.id)) || String(a.name||'').localeCompare(String(b.name||''),'ar'));
 }
 function lowStockView(){
@@ -8948,7 +9094,7 @@ const COA_DEFAULT_GROUPS = [
   {code:'370', name:'البضائع'},
   {code:'401', name:'الموردون'}, {code:'411', name:'الزبائن'}, {code:'421', name:'المستخدمون — الأجور المستحقة'},
   {code:'512', name:'المصارف'}, {code:'516', name:'المحافظ الإلكترونية'}, {code:'531', name:'الصندوق'},
-  {code:'601', name:'مشتريات البضائع'}, {code:'610', name:'المصاريف التشغيلية'},
+  {code:'601', name:'مشتريات البضائع'}, {code:'610', name:'المصاريف التشغيلية'}, {code:'618', name:'مصاريف الضيافة'},
   {code:'701', name:'مبيعات البضائع'}, {code:'758', name:'إيرادات أخرى'}
 ];
 const COA_FIXED = [   // حسابات ثابتة بأرقام معروفة
@@ -8959,6 +9105,7 @@ const COA_FIXED = [   // حسابات ثابتة بأرقام معروفة
   {code:'53102', name:MAIN_BOX_NAME+' — دولار', group:'531', kind:'mainUSD', cur:'USD'},
   {code:'53103', name:'حساب شخصي (صندوق المدير)', group:'531', kind:'personal'},
   {code:'60101', name:'مشتريات البضائع', group:'601', kind:'purchases'},
+  {code:'61801', name:'مصاريف الضيافة (من الستوك)', group:'618', kind:'hospitality'},
   {code:'70101', name:'مبيعات البضائع', group:'701', kind:'sales'}
 ];
 function coaReg(){
@@ -9038,7 +9185,8 @@ function coaBalanceUSD(a){   // موجب = مدين
     case 'personal': { const sh = personalShift(); return glDelta(a.code) + acctDelta(a.code) + (sh? (Number(sh.cashLBP)||0)/r + (Number(sh.cashUSD)||0) : 0); }
     case 'drawer':   return (DB.cashierShifts||[]).filter(s=>s.status==='open' && !s.deleted && s.username===a.ref).reduce((t,s)=>t+(Number(s.cashLBP)||0)/r+(Number(s.cashUSD)||0), 0);
     case 'owner':    return glDelta(a.code) + acctDelta(a.code) - ownerPayMoves().reduce((t,m)=>t+(m.currency==='LBP'? Math.abs(Number(m.amount)||0)/r : Math.abs(Number(m.amount)||0)), 0);
-    case 'stock':    return glDelta(a.code) + (DB.warehouseItems||[]).reduce((t,it)=>{ if(isServiceItem(it)) return t; const c = Number(it.costPrice)||0, q = fastStock(it.id); return t + (q>0? q*c : 0); }, 0);
+    case 'hospitality': return glDelta(a.code) + DB.stockOuts.filter(isHospOut).reduce((t,s)=>t+hospCostUSD(s), 0);
+    case 'stock':    return glDelta(a.code) + (DB.warehouseItems||[]).reduce((t,it)=>{ if(isServiceItem(it) || it.baseItemId) return t; const c = Number(it.costPrice)||0, q = fastStock(it.id); return t + (q>0? q*c : 0); }, 0);
     case 'purchases':return glDelta(a.code) + (DB.purchaseInvoices||[]).filter(i=>!i.deleted).reduce((t,i)=>t+(i.isReturn?-1:1)*computeInvoiceTotal(i).totalUSD, 0);
     case 'sales':    return glDelta(a.code) - (DB.invoices||[]).filter(i=>!i.deleted).reduce((t,i)=>t+computeInvoiceTotal(i).totalUSD, 0);
     case 'budget': { const c = (DB.budgetCategories||[]).find(x=>x.id===a.ref); const tot = (DB.budgetEntries||[]).filter(e=>!e.deleted && e.categoryId===a.ref).reduce((t,e)=>t+Math.abs(Number(e.amount)||0), 0);
@@ -9106,6 +9254,8 @@ function coaAccountRows(a){
       rows.push({at:m.createdAt, date:m.date, desc:'صندوق '+sh.username+' — '+(m.type==='sale'? 'بيع' : m.type==='return'? 'استرجاع' : String(m.note||'').replace(DOC_MIRROR_TAG,'').replace(ACCT_RE,'').trim()), dr:inn? v : 0, cr:inn? 0 : v}); });
     const op = (Number(sh.openingLBP)||0)/r + (Number(sh.openingUSD)||0); if(op) rows.push({at:sh.openedAt, date:new Date(sh.openedAt).toISOString().slice(0,10), desc:'رصيد افتتاح صندوق '+sh.username, dr:op, cr:0});
   } }
+  if(a.kind==='hospitality') DB.stockOuts.filter(isHospOut).forEach(s=>{ const it = DB.warehouseItems.find(x=>x.id===s.itemId);
+    rows.push({at:s.createdAt, date:s.date, desc:'☕ '+fmtQty(Number(s.qty)||0)+' '+(it? it.name : '')+' — '+String(s.note||'').replace(HOSP_NOTE+' — ',''), dr:hospCostUSD(s), cr:0}); });
   if(a.kind==='whish'){
     (DB.cashMovements||[]).forEach(m=>{ if(m.deleted || m.type!=='whish_close') return; const i = whishCloseInfo(m); const v = m.currency==='LBP'? Math.abs(Number(m.amount)||0)/r : Math.abs(Number(m.amount)||0);
       rows.push({at:m.createdAt, date:m.date, desc:'إقفال Whish للموظف '+(i.user||'')+(i.by? ' — أقفله: '+i.by : '')+' (مع '+MAIN_BOX_NAME+')', dr:v, cr:0}); });
@@ -9565,7 +9715,7 @@ function warehouseItemTable(items, isSearch){
         <td>${escapeHtml(it.brand||'—')}</td>
         <td><span style="font-size:12px; font-weight:700; padding:2px 8px; border-radius:999px; background:${avail?'#e6f4ea':'#fbe9e7'}; color:${avail?'var(--credit)':'var(--debit)'};">${itemStatusLabel(it.status)}</span></td>
         <td class="num">${escapeHtml(it.mfgYear||'—')}</td>
-        <td class="${stock<0?'bal-pos':'bal-zero'}">${isServiceItem(it)? '🛠 خدمة' : fmtQty(stock)+' '+escapeHtml(it.uom||'')}</td>
+        <td class="${stock<0?'bal-pos':'bal-zero'}">${isServiceItem(it)? '🛠 خدمة' : fmtQty(stock)+' '+escapeHtml(it.uom||'')}${subStockHint(it)}${subOfHint(it)}</td>
         ${showCost? `<td class="num">${cv!==null? fmtPrim(cv) : '—'}</td>` : ''}
         <td class="num"><b>${it.price? fmtPrim(it.price) : '—'}</b></td>
         ${canDelItems()? `<td>${delItemBtn(it)}</td>` : ''}
@@ -9586,7 +9736,7 @@ function warehouseItemTable(items, isSearch){
         ${showCost? `<td class="num">${cost!==null? fmtPrim(cost) : '—'}</td>` : ''}
         <td class="num"><b>${it.price? fmtPrim(it.price) : '—'}</b></td>
         <td><span style="font-size:12px; font-weight:700; padding:2px 8px; border-radius:999px; background:${avail?'#e6f4ea':'#fbe9e7'}; color:${avail?'var(--credit)':'var(--debit)'};">${itemStatusLabel(it.status)}</span></td>
-        <td class="${stock<0?'bal-pos':'bal-zero'}">${isServiceItem(it)? '🛠 خدمة' : fmtQty(stock)}</td>
+        <td class="${stock<0?'bal-pos':'bal-zero'}">${isServiceItem(it)? '🛠 خدمة' : fmtQty(stock)}${subStockHint(it)}${subOfHint(it)}</td>
         ${canDelItems()? `<td>${delItemBtn(it)}</td>` : ''}
       </tr>`;
     }).join('');
@@ -9601,7 +9751,7 @@ function warehouseItemTable(items, isSearch){
       <td><div class="wh-name-cell">${whThumb(it)}<b>${escapeHtml(it.name)}</b></div></td>
       <td>${escapeHtml(it.brand||'—')}</td>
       <td>${escapeHtml(it.type||'—')}</td>
-      <td class="${stockCls}">${isServiceItem(it)? '🛠 خدمة' : fmtQty(stock)}</td>
+      <td class="${stockCls}">${isServiceItem(it)? '🛠 خدمة' : fmtQty(stock)}${subStockHint(it)}${subOfHint(it)}</td>
       <td>${it.expiryDate? `<span class="${expiring?'bal-pos':''}">${fmtDate(it.expiryDate)}${expiring?' ⚠️':''}</span>` : '—'}</td>
       ${canDelItems()? `<td>${delItemBtn(it)}</td>` : ''}
     </tr>`;
@@ -9651,12 +9801,14 @@ function warehouseItemView(item){
         <button class="btn btn-debit" data-nav="#/stockout/new?item=${item.id}">📤 أمر سحب</button>
         <button class="btn btn-sm" id="printItemBarcodeBtn" data-item="${item.id}">${item.barcode? '🖨 طباعة باركود' : '🏷 إنشاء باركود'}</button>
         <button class="btn btn-sm" id="editWhItemBtn">✎ تعديل بيانات المنتج</button>
+        ${(hasPermission('edit_products') && !isServiceItem(item))? (item.baseItemId? `<button class="btn btn-sm" data-sub-edit="${item.id}">🧩 تعديل القسمة</button>` : `<button class="btn btn-sm" data-sub-new="${item.id}">🧩 قسّم لوحدات (كاس / فنجان)</button>`) : ''}
+        ${hasPermission('edit_products')? `<button class="btn btn-sm" data-hosp-set="${item.id}">☕ ضيافة: ${item.hospitality? 'متاح'+(Number(item.hospLimit)>0? ' (حد '+fmtQty(item.hospLimit)+' باليوم)' : '') : 'مش متاح'}</button>` : ''}
         <button class="btn btn-sm btn-danger" id="deleteWhItemBtn">🗑 حذف المنتج نهائيًا</button>
       </div>
     </div>
   </div>
   <div class="stats">
-    <div class="stat ${stock<0?'owe':''}"><div class="k">الكمية الحالية في المستودع</div><div class="v">${stock} ${escapeHtml(item.uom||'')}</div></div>
+    <div class="stat ${stock<0?'owe':''}"><div class="k">الكمية الحالية في المستودع</div><div class="v">${fmtQty(stock)} ${escapeHtml(item.uom||'')}${subStockHint(item)}${subOfHint(item)}</div></div>
     <div class="stat"><div class="k">عدد الحركات</div><div class="v">${ledger.rows.length}</div></div>
   </div>
   ${details.length? `<div class="card">
@@ -10589,7 +10741,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-11-01 · 23:15 · v67';
+const APP_TRADE_BUILD = '2026-11-02 · 00:10 · v68';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 function settingsView(){
   const s = DB.settings;
