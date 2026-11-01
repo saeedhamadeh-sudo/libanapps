@@ -2378,18 +2378,24 @@ function hospUsedToday(itemId){ const t = todayISO(); return DB.stockOuts.filter
 function hospCostUSD(s){ const it = DB.warehouseItems.find(x=>x.id===s.itemId); return it? unitCostOf(it)*(Number(s.qty)||0) : 0; }
 function openHospSetModal(itemId){
   const it = DB.warehouseItems.find(x=>x.id===itemId); if(!it) return;
+  // منتج مقسوم: الضيافة بتكون من وحداتو (فنجان، ظرف…) — منختار أي وحدة متاحة وحدّها
+  const list = isSoldByUnits(it)? subItemsOf(it.id) : [it];
   const wrap = document.createElement('div'); wrap.className = 'modal-bg';
-  wrap.innerHTML = `<div class="modal" style="max-width:420px;">
-    <h3>☕ الضيافة — ${escapeHtml(it.name)}</h3>
-    <label style="display:flex; gap:8px; align-items:center; font-weight:700; margin-bottom:10px;"><input type="checkbox" id="hs_on" style="width:auto;" ${it.hospitality?'checked':''}> متاح للضيافة</label>
-    <div class="field"><label>الحد باليوم (اتركه فاضي = بلا حد)</label><input type="number" id="hs_lim" class="num" min="0" step="any" value="${Number(it.hospLimit)>0? it.hospLimit : ''}"></div>
+  wrap.innerHTML = `<div class="modal" style="max-width:460px;">
+    <h3>☕ متاح للضيافة — ${escapeHtml(it.name)}</h3>
+    <p style="font-size:12.5px; color:var(--ink-soft);">الضيافة بتنقص من الستوك وبتتسجّل بلوحة الحسابات على «61801 — مصاريف الضيافة» بسعر التكلفة.${isSoldByUnits(it)? ' هالمنتج مقسوم، فالضيافة بتكون من وحداتو.' : ''}</p>
+    ${list.map(x=>`<div style="border:1px solid var(--line); border-radius:8px; padding:8px 10px; margin-bottom:8px;">
+      <label style="display:flex; gap:8px; align-items:center; font-weight:700;"><input type="checkbox" class="hs-on" data-id="${x.id}" style="width:auto;" ${x.hospitality?'checked':''}> ${escapeHtml(x.name)} متاح للضيافة</label>
+      <div class="field" style="margin:6px 0 0;"><label>الحد باليوم (فاضي = بلا حد)</label><input type="number" class="num hs-lim" data-id="${x.id}" min="0" step="any" value="${Number(x.hospLimit)>0? x.hospLimit : ''}"></div>
+    </div>`).join('')}
     <div class="row"><button class="btn" id="hs_cancel">إلغاء</button><button class="btn btn-primary" id="hs_ok">💾 حفظ</button></div>
   </div>`;
   document.body.appendChild(wrap);
   wrap.querySelector('#hs_cancel').addEventListener('click', ()=>wrap.remove());
   wrap.querySelector('#hs_ok').addEventListener('click', async ()=>{
-    it.hospitality = wrap.querySelector('#hs_on').checked || undefined;
-    const l = Number(wrap.querySelector('#hs_lim').value)||0; if(l>0) it.hospLimit = l; else delete it.hospLimit;
+    list.forEach(x=>{ const on = wrap.querySelector('.hs-on[data-id="'+x.id+'"]').checked; if(on) x.hospitality = true; else delete x.hospitality;
+      const l = Number(wrap.querySelector('.hs-lim[data-id="'+x.id+'"]').value)||0; if(l>0) x.hospLimit = l; else delete x.hospLimit; });
+    if(isSoldByUnits(it)) delete it.hospitality;
     const ok = await save(KEYS.warehouseItems, DB.warehouseItems); wrap.remove(); toast(ok? 'تم الحفظ ✅' : 'حدث خطأ أثناء الحفظ'); render();
   });
 }
@@ -9982,7 +9988,8 @@ function warehouseItemView(item){
         <button class="btn btn-sm" id="printItemBarcodeBtn" data-item="${item.id}">${item.barcode? '🖨 طباعة باركود' : '🏷 إنشاء باركود'}</button>
         <button class="btn btn-sm" id="editWhItemBtn">✎ تعديل بيانات المنتج</button>
         ${(hasPermission('edit_products') && !isServiceItem(item))? (item.baseItemId? `<button class="btn btn-sm" data-sub-edit="${item.id}">🧩 تعديل القسمة</button>` : `<button class="btn btn-sm" data-sub-new="${item.id}">🧩 قسّم لوحدات (كاس / فنجان)</button>`) : ''}
-        ${(hasPermission('edit_products') && !isSoldByUnits(item))? `<button class="btn btn-sm" data-hosp-set="${item.id}">☕ ضيافة: ${item.hospitality? 'متاح'+(Number(item.hospLimit)>0? ' (حد '+fmtQty(item.hospLimit)+' باليوم)' : '') : 'مش متاح'}</button>` : ''}
+        ${hasPermission('edit_products')? (()=>{ const us = isSoldByUnits(item)? subItemsOf(item.id) : [item]; const on = us.filter(x=>x.hospitality);
+          return `<button class="btn btn-sm" data-hosp-set="${item.id}">☕ متاح للضيافة: ${on.length? (isSoldByUnits(item)? on.map(x=>x.name).join('، ') : 'نعم'+(Number(item.hospLimit)>0? ' (حد '+fmtQty(item.hospLimit)+' باليوم)' : '')) : 'لأ'}</button>`; })() : ''}
         <button class="btn btn-sm btn-danger" id="deleteWhItemBtn">🗑 حذف المنتج نهائيًا</button>
       </div>
     </div>
@@ -10921,7 +10928,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-11-02 · 02:10 · v70';
+const APP_TRADE_BUILD = '2026-11-02 · 02:25 · v71';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 function settingsView(){
   const s = DB.settings;
