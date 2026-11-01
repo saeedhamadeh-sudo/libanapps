@@ -1397,9 +1397,26 @@ async function liveCatchUp(){
    قاعدة البيانات بترفض الحفظ (42501). البيانات محفوظة عالجهاز — منطلب كلمة السر مرة وحدة ومنرجع نرفع يلي ما انرفع */
 const _pendingResync = new Set();
 let _reauthOpen = false, _resyncing = false;
-function handleSessionDenied(localKey){
-  _pendingResync.add(localKey);
-  if(_reauthOpen) return;
+let SESSION_LOST = false;            // السيرفر رفض الجلسة: منكمّل عالجهاز (متل بلا نت) ومنستنى تأكيد الدخول من العلامة تحت
+const DENIED_KEYS = new Set();       // جداول ما عند المستخدم صلاحية يحفظ فيها — ما منرجع نجرّب لحتى يفوت من جديد
+let _deniedToast = {};
+// رفض 42501: يا الجلسة خلصت، يا المستخدم ما عندو صلاحية على هالجدول — منفحص بقراءة خفيفة قبل ما نطلب كلمة السر
+async function handleSessionDenied(localKey){
+  if(localKey) _pendingResync.add(localKey);
+  let sessionOk = false;
+  try{ const r = await scoped(supabaseClient.from(T('app_settings')).select('client_id')).limit(1); sessionOk = !r.error && Array.isArray(r.data) && r.data.length>0; }catch(e){}
+  if(sessionOk && localKey){
+    DENIED_KEYS.add(localKey);
+    const cfg = SUPABASE_TABLES[localKey];
+    if(!_deniedToast[localKey]){ _deniedToast[localKey] = 1; toast('⚠️ المستخدم «'+(currentUser? currentUser.username : '')+'» ما عندو صلاحية يحفظ '+(cfg? cfg.label : localKey)+' — العملية محفوظة عالجهاز (زيد الصلاحية من «المستخدمين»)'); }
+    return;
+  }
+  if(!SESSION_LOST){ SESSION_LOST = true; toast('🔐 جلسة الدخول انتهت — كمّل شغلك، والعمليات محفوظة عالجهاز. اكبس العلامة تحت لتأكيد الدخول'); }
+  try{ updateOfflineBadge(); }catch(e){}
+}
+function openReauthModal(){
+  if(_reauthOpen || !currentUser) return;
+  Object.keys(obGet()).forEach(k=>{ if(k!=='settings') _pendingResync.add(k); });
   _reauthOpen = true;
   const wrap = document.createElement('div');
   wrap.className = 'modal-bg';
@@ -1428,7 +1445,7 @@ function handleSessionDenied(localKey){
     close();
     const keys = Array.from(_pendingResync); _pendingResync.clear();
     _resyncing = true;
-    OFFLINE_SESSION = false;
+    OFFLINE_SESSION = false; SESSION_LOST = false; DENIED_KEYS.clear(); _deniedToast = {};
     try{ for(const k of keys){ if(Array.isArray(DB[k])) await syncArrayToSupabase(k, DB[k]); } await flushOutbox(); }
     finally{ _resyncing = false; updateOfflineBadge(); }
     toast(_pendingResync.size? '⚠️ بعض العمليات بعدها ما انرفعت' : '✅ تم تأكيد الدخول ورفع كل العمليات عالسحابة');
@@ -1441,7 +1458,7 @@ function handleSessionDenied(localKey){
    - اللي انحذف عن جهاز تاني بيختفي من هون كمان */
 // قبل ما يفوت المستخدم (الوضع الآمن) السيرفر ما بيعطي بيانات وما بيقبل حفظ — فما منحمّل/منرفع شي، وما منلمس نسخة الجهاز
 let OFFLINE_SESSION = false;   // دخلنا بلا إنترنت (بكلمة سر محفوظة عالجهاز) — منسجّل كل شي عالجهاز وبيترفع لما يرجع النت
-function cloudSessionReady(){ return !OFFLINE_SESSION && (!SECURE_MODE || !!authenticated); }
+function cloudSessionReady(){ return !OFFLINE_SESSION && !(typeof SESSION_LOST!=='undefined' && SESSION_LOST) && (!SECURE_MODE || !!authenticated); }
 /* ===== صندوق الانتظار (Outbox): كل تعديل ما انرفع عالسحابة بينحفظ عالجهاز (أرقام الصفوف)، وبيترفع لما يرجع النت =====
    - قبل الرفع منسجّل، وبعد النجاح منمحي — فإذا انقطع النت أو تسكّر البرنامج بالنص ما بيضيع شي
    - عند الدخول أو رجوع النت: منرفع يلي بالانتظار أول شي، وبعدين منجيب من السحابة (حتى ما تمحي السحابة تعديلات الجهاز) */
@@ -1474,6 +1491,7 @@ async function flushOutbox(){
   try{
     for(const key of keys){
       const e = o[key];
+      if(DENIED_KEYS.has(key)) continue;
       if(key==='settings'){ if(e.s){ const ok = await syncSettingsToSupabase(DB.settings); if(ok!==false){ const oo = obGet(); if(oo.settings){ delete oo.settings.s; if(!oo.settings.u.length && !oo.settings.d.length) delete oo.settings; obSet(oo); } } } continue; }
       const cfg = SUPABASE_TABLES[key]; if(!cfg || !Array.isArray(DB[key])) continue;
       const byId = new Map(DB[key].map(r=>[r.id, r]));
@@ -1483,7 +1501,7 @@ async function flushOutbox(){
         const res = await supabaseClient.from(T(cfg.table)).upsert(ups.slice(i,i+400).map(id=>withClient(cfg.toDb(byId.get(id)))));
         err = res.error;
       }
-      if(err){ if(!isNetErr(err)) console.error('outbox upsert', key, describeSupabaseError(err)); if(err.code==='42501' && SECURE_MODE && currentUser) handleSessionDenied(key); break; }
+      if(err){ if(!isNetErr(err)) console.error('outbox upsert', key, describeSupabaseError(err)); if(err.code==='42501' && SECURE_MODE && currentUser){ await handleSessionDenied(key); if(SESSION_LOST) break; continue; } break; }
       const dels = e.d.concat(gone);
       for(let i=0; i<e.d.length && !err; i+=100){
         const res = await scoped(supabaseClient.from(T(cfg.table)).delete()).in('id', e.d.slice(i,i+100));
@@ -1502,14 +1520,14 @@ async function flushOutbox(){
 }
 function updateOfflineBadge(){
   let b = document.getElementById('offlineBadge');
-  const n = obCount(), off = !navigator.onLine || OFFLINE_SESSION;
-  if(!n && !off){ if(b) b.remove(); return; }
+  const n = obCount(), off = !navigator.onLine || OFFLINE_SESSION, lost = SESSION_LOST || (OFFLINE_SESSION && navigator.onLine);
+  if(!n && !off && !lost){ if(b) b.remove(); return; }
   if(!b){ b = document.createElement('div'); b.id = 'offlineBadge'; b.setAttribute('data-noi18n','');
     b.style.cssText = 'position:fixed; bottom:10px; left:10px; z-index:9999; padding:6px 12px; border-radius:999px; font-size:12.5px; font-weight:800; box-shadow:0 2px 8px rgba(0,0,0,.18); cursor:pointer;';
-    b.addEventListener('click', ()=>{ if(OFFLINE_SESSION && navigator.onLine) reconnectAfterOffline(); else flushOutbox(); });
+    b.addEventListener('click', ()=>{ if((OFFLINE_SESSION || SESSION_LOST) && navigator.onLine) openReauthModal(); else flushOutbox(); });
     document.body.appendChild(b); }
   b.style.background = off? '#fff3cd' : '#e6f4ea'; b.style.color = off? '#8a5a1a' : '#1e6b34';
-  b.textContent = (off? '📴 بلا إنترنت' : '☁️ عم نرفع') + (n? ' — '+n+' عملية بالانتظار' : '');
+  b.textContent = (lost && navigator.onLine? '🔐 اكبس لتأكيد الدخول' : off? '📴 بلا إنترنت' : '☁️ عم نرفع') + (n? ' — '+n+' عملية بالانتظار' : '');
 }
 window.addEventListener('online', ()=>{ updateOfflineBadge(); if(OFFLINE_SESSION) reconnectAfterOffline(); else setTimeout(flushOutbox, 1500); });
 window.addEventListener('offline', ()=>updateOfflineBadge());
@@ -1517,8 +1535,8 @@ setInterval(()=>{ if(obCount() && navigator.onLine && !OFFLINE_SESSION) flushOut
 // رجع النت وكنا داخلين بلا إنترنت: منأكّد كلمة السر بالسيرفر (جلسة حقيقية) ومنرفع كل يلي بالانتظار
 function reconnectAfterOffline(){
   if(!OFFLINE_SESSION || !currentUser) return;
-  Object.keys(obGet()).forEach(k=>{ if(k!=='settings') _pendingResync.add(k); });
-  handleSessionDenied(Object.keys(obGet())[0] || 'customers');
+  toast('🌐 رجع الإنترنت — اكبس العلامة تحت (🔐) لتأكيد الدخول ورفع العمليات');
+  updateOfflineBadge();
 }
 /* ===== الدخول بلا إنترنت: بعد كل دخول ناجح منحفظ «بصمة» كلمة السر عالجهاز (PBKDF2 — مش كلمة السر نفسها) ===== */
 async function pwVerifier(pw, saltB64){
@@ -2310,7 +2328,9 @@ function openSubUnitModal(baseId, editId){
   wrap.innerHTML = `<div class="modal" style="max-width:500px;">
     <h3>🧩 ${edit? 'تعديل القسمة' : 'قسّم لوحدات'} — ${escapeHtml(base.name)}</h3>
     <p style="font-size:12.5px; color:var(--ink-soft); line-height:1.7;">بتشتري «${escapeHtml(base.name)}» متل العادة، والوحدة الجديدة بتنباع لحالها. كل ما تبيع وحدة بينقص من الأساسي بالنسبة، ولما تخلص كمية بتساوي واحد بينقص واحد.</p>
-    <div class="field"><label>اسم الوحدة *</label><input type="text" id="su_name" value="${escapeHtml(edit? edit.name : 'كاس '+base.name)}"></div>
+    <div class="field"><label>اسم الوحدة *</label><input type="text" id="su_name" value="${escapeHtml(edit? edit.name : 'كاس '+base.name)}">
+      <div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:6px;">${['كاس','فنجان','حبة','ظرف','قطعة','شوت'].map(w=>`<button type="button" class="btn btn-sm" data-su-w="${w}">${w}</button>`).join('')}</div></div>
+    <p style="font-size:12px; color:var(--bronze-deep, #8a5a1a);">بعد القسمة «${escapeHtml(base.name)}» ما بيعود ينباع لحالو — البيع والضيافة من الوحدات بس.</p>
     <div class="field"><label>طريقة القسمة</label>
       <select id="su_mode"><option value="units" ${mode0==='units'?'selected':''}>بالعدد (مثلاً القنينة بتعمل 8 كاسات)</option><option value="content" ${mode0==='content'?'selected':''}>بالوزن / الحجم (مثلاً 1000 غ بن، 7 غ للفنجان)</option></select></div>
     <div id="su_units"><div class="field"><label>كم وحدة بتعمل من «${escapeHtml(base.name)}» الواحد؟ *</label><input type="number" id="su_n" class="num" min="1" step="any" value="${edit && Number(edit.unitsPerBase)>0? edit.unitsPerBase : ''}"></div></div>
@@ -2332,6 +2352,7 @@ function openSubUnitModal(baseId, editId){
   const upd = ()=>{ const cnt = $('#su_mode').value==='content'; $('#su_units').style.display = cnt? 'none' : ''; $('#su_content').style.display = cnt? '' : 'none';
     const f = ratio(), q = fastStock(base.id);
     $('#su_sum').innerHTML = f>0? `كل «${escapeHtml(base.name)}» = <b class="num">${fmtQty(Math.round(1/f*100)/100)}</b> وحدة · الموجود هلق بيعمل <b class="num">${fmtQty(Math.floor(q/f+1e-9))}</b> وحدة${unitCostOf(base)? ' · تكلفة الوحدة <b class="num">'+fmtPrim(unitCostOf(base)*f)+'</b>' : ''}` : 'حدّد النسبة'; };
+  wrap.querySelectorAll('[data-su-w]').forEach(b=>b.addEventListener('click', ()=>{ $('#su_name').value = b.getAttribute('data-su-w')+' '+base.name; }));
   wrap.querySelectorAll('input,select').forEach(e=>e.addEventListener('input', upd)); $('#su_mode').addEventListener('change', upd); upd();
   $('#su_cancel').addEventListener('click', ()=>wrap.remove());
   $('#su_ok').addEventListener('click', async ()=>{
@@ -2373,7 +2394,7 @@ function openHospSetModal(itemId){
   });
 }
 function openHospitalityModal(){
-  const items = DB.warehouseItems.filter(x=>x.hospitality);
+  const items = DB.warehouseItems.filter(x=>x.hospitality && !isSoldByUnits(x));
   const wrap = document.createElement('div'); wrap.className = 'modal-bg';
   wrap.innerHTML = `<div class="modal" style="max-width:520px;">
     <h3>☕ ضيافة</h3>
@@ -3823,6 +3844,8 @@ function subBaseOf(it){
   return { id:base.id, f:Number(it.baseQty), base };
 }
 function subOfHint(it){ const b = subBaseOf(it); return b? `<div style="font-size:11px; color:var(--ink-soft);">🧩 من: ${escapeHtml(b.base.name)}</div>` : ''; }
+// المنتج الأساسي يلي إلو وحدات (قنينة، علبة شاي، كيلو بن) ما بينباع لحالو — البيع والضيافة من الوحدات بس
+function isSoldByUnits(it){ return !!(it && !it.baseItemId && (DB.warehouseItems||[]).some(x=>x.baseItemId===it.id && Number(x.baseQty)>0)); }
 function subItemsOf(baseId){ return (DB.warehouseItems||[]).filter(x=>x.baseItemId===baseId && Number(x.baseQty)>0); }
 // عرض كمية منتج أساسي إلو وحدات فرعية: «4 قناني + 5 كاسات» أو بالغرام
 function subStockHint(it){
@@ -6549,6 +6572,7 @@ function posFindItemByBarcode(code){
   return DB.warehouseItems.find(it=>it.barcode && it.barcode===code) || null;
 }
 function posAddToCart(ticket, item){
+  if(isSoldByUnits(item)){ const k = subItemsOf(item.id); toast('«'+item.name+'» بينباع بالوحدات: '+k.map(x=>x.name).join('، ')); if(k.length===1) item = k[0]; else return; }
   if(!item) return;
   const line = ticket.cart.find(l=>l.itemId===item.id);
   if(line) line.qty += 1;
@@ -6570,10 +6594,11 @@ let _posSearchQ = '';
 let _posCatSorting = false;
 const POS_TILE_LIMIT = 120;
 function posBaseItems(){
-  if(_posActiveCategory===null) return DB.warehouseItems;
-  if(_posActiveCategory==='__none__') return DB.warehouseItems.filter(it=>!it.category);
+  const all = DB.warehouseItems.filter(it=>!isSoldByUnits(it));   // الأساسي يلي إلو وحدات ما بيطلع للبيع — بتطلع وحداتو
+  if(_posActiveCategory===null) return all;
+  if(_posActiveCategory==='__none__') return all.filter(it=>!it.category);
   const ac = normalizeSearchText(_posActiveCategory);
-  return DB.warehouseItems.filter(it=>normalizeSearchText(it.category)===ac);
+  return all.filter(it=>normalizeSearchText(it.category)===ac);
 }
 function posSearchResults(){ const q = _posSearchQ.trim(); return q ? smartSearchWarehouse(q, posBaseItems()) : posBaseItems(); }
 function posTilesHtml(list){
@@ -9957,7 +9982,7 @@ function warehouseItemView(item){
         <button class="btn btn-sm" id="printItemBarcodeBtn" data-item="${item.id}">${item.barcode? '🖨 طباعة باركود' : '🏷 إنشاء باركود'}</button>
         <button class="btn btn-sm" id="editWhItemBtn">✎ تعديل بيانات المنتج</button>
         ${(hasPermission('edit_products') && !isServiceItem(item))? (item.baseItemId? `<button class="btn btn-sm" data-sub-edit="${item.id}">🧩 تعديل القسمة</button>` : `<button class="btn btn-sm" data-sub-new="${item.id}">🧩 قسّم لوحدات (كاس / فنجان)</button>`) : ''}
-        ${hasPermission('edit_products')? `<button class="btn btn-sm" data-hosp-set="${item.id}">☕ ضيافة: ${item.hospitality? 'متاح'+(Number(item.hospLimit)>0? ' (حد '+fmtQty(item.hospLimit)+' باليوم)' : '') : 'مش متاح'}</button>` : ''}
+        ${(hasPermission('edit_products') && !isSoldByUnits(item))? `<button class="btn btn-sm" data-hosp-set="${item.id}">☕ ضيافة: ${item.hospitality? 'متاح'+(Number(item.hospLimit)>0? ' (حد '+fmtQty(item.hospLimit)+' باليوم)' : '') : 'مش متاح'}</button>` : ''}
         <button class="btn btn-sm btn-danger" id="deleteWhItemBtn">🗑 حذف المنتج نهائيًا</button>
       </div>
     </div>
@@ -10896,7 +10921,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-11-02 · 01:30 · v69';
+const APP_TRADE_BUILD = '2026-11-02 · 02:10 · v70';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 function settingsView(){
   const s = DB.settings;
