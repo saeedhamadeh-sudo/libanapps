@@ -482,16 +482,13 @@
   @media (max-width: 900px){ .jr-table-wrap{display:none;} .jr-cards{display:block;} }
   @media (max-width: 1150px){ .jr-mid .jr-table-wrap{display:none;} .jr-mid .jr-cards{display:block;} }
   @media (max-width: 1400px){ .jr-many .jr-table-wrap{display:none;} .jr-many .jr-cards{display:block;} }
-  /* الجداول العادية على الهاتف: خط أصغر والنص يلتف بدل التمرير */
+  /* الجداول على الهاتف: ما منكسر الكلمات حرف حرف — الجدول بيتمرّر يمين/شمال */
   @media (max-width: 600px){
-    .table-scroll table{font-size:11px;}
-    .table-scroll th, .table-scroll td{padding:5px 3px; white-space:normal; overflow-wrap:anywhere;}
-    .table-scroll td.num, .table-scroll .num{white-space:nowrap; overflow-wrap:normal;}
-  }
-  @media (max-width: 430px){
-    .table-scroll table{font-size:10.5px;}
-    .table-scroll th, .table-scroll td{padding:4px 2px;}
-    .table-scroll td.num, .table-scroll .num{white-space:normal; overflow-wrap:anywhere;}
+    .table-scroll table{font-size:12px;}
+    .table-scroll th{padding:6px 8px; white-space:nowrap;}
+    .table-scroll td{padding:6px 8px; white-space:normal; word-break:normal; overflow-wrap:normal; min-width:84px; max-width:260px;}
+    .table-scroll td.num, .table-scroll .num, .table-scroll td:has(> button), .table-scroll td:has(> .btn){white-space:nowrap; min-width:0; max-width:none;}
+    .table-scroll .inv-idx{min-width:0;}
   }
   @media print{ .jr-table-wrap{display:block !important;} .jr-cards{display:none !important;} .doc.doc-wide{max-width:none;} }
 </style>
@@ -4899,6 +4896,15 @@ function routeRequiredPermission(routeKey){
   };
   return map[routeKey] || null;
 }
+// أي جدول مش داخل حاوية تمرير: منلفّو بوحدة، حتى على الهاتف يتمرّر يمين/شمال بدل ما تنكسر الكلمات
+function wrapLooseTables(root){
+  try{ (root||document).querySelectorAll('table').forEach(t=>{
+    if(t.closest('.table-scroll, .jr-table-wrap, .modal-bg, [data-nowrap-table]') || t.closest('#posReceiptPrint')) return;
+    const w = document.createElement('div'); w.className = 'table-scroll'; t.parentNode.insertBefore(w, t); w.appendChild(t);
+  }); }catch(e){}
+}
+new MutationObserver(()=>{ clearTimeout(window._wrapTblT); window._wrapTblT = setTimeout(()=>{ const r = document.getElementById('app'); if(r) wrapLooseTables(r); }, 30); })
+  .observe(document.documentElement, {childList:true, subtree:true});
 function render(){
   try{ applyFavicon(); }catch(e){}
   try{ ensureLiveChannel(); }catch(e){ console.error('ensureLiveChannel', e); }
@@ -10089,7 +10095,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-11-01 · 17:40 · v58';
+const APP_TRADE_BUILD = '2026-11-01 · 18:00 · v59';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 function settingsView(){
   const s = DB.settings;
