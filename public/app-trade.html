@@ -688,7 +688,7 @@ function nextPaySourceAsk(){
     <div style="font-size:15px; margin-bottom:10px;">${escapeHtml(eff.label)} — <b class="num">${amtTxt}</b></div>
     <div style="display:grid; gap:10px;">
       <button class="btn btn-primary" data-src="box" style="padding:14px; font-size:16px;" ${sh? '' : 'disabled'}>💵 من الصندوق<br><small style="font-weight:400;">${sh? 'رصيد صندوقك: '+fmt(eff.currency, boxBal) : 'ما عندك صندوق مفتوح'}</small></button>
-      ${canUseSafe()? `<button class="btn" data-src="safe" style="padding:14px; font-size:16px;">🗄 من الخزنة (مع ${escapeHtml(safeOwnerLabel())})<br><small>رصيد الخزنة: ${fmt(eff.currency, safeBal)}</small></button>` : ''}
+      ${canUseSafe()? `<button class="btn" data-src="safe" style="padding:14px; font-size:16px;">🗄 من الخزنة<br><small>رصيد الخزنة: ${fmt(eff.currency, safeBal)}</small></button>` : ''}
       <button class="btn btn-sm" data-src="none" style="opacity:.75;">ما تنقّص من شي</button>
     </div>
   </div>`;
@@ -4038,6 +4038,8 @@ const PERMISSION_EXTRAS = [
   {key:'pos_returns',   group:'نقطة البيع', label:'فاتورة استرجاع'},
   {key:'cash_moves',    group:'نقطة البيع', label:'إضافة وسحب يدوي من الصندوق'},
   {key:'pos_free_item', group:'نقطة البيع', label:'بند حر / خدمة صيانة بسعر يكتبه الموظف'},
+  {key:'safe_view',     group:'الخزنة',     label:'رؤية الخزنة ورصيدها وحركاتها'},
+  {key:'safe_withdraw', group:'الخزنة',     label:'السحب من الخزنة والدفع منها (سندات صرف ومصاريف) والإيداع فيها'},
   {key:'edit_docs',     group:'عام',        label:'تعديل الفواتير والإيصالات والسندات وبيانات الزبائن والموردين بعد حفظها'},
   {key:'delete',        group:'عام',        label:'الحذف (فواتير، إيصالات، سندات، زبائن، موردون، منتجات...)'}
 ];
@@ -5049,7 +5051,7 @@ function render(){
   /* ---------- Warehouse (المستودع) ---------- */
   } else if(parts[0]==='pos'){
     html += crumbs([['الرئيسية','#/'],['نقطة البيع (POS)',null]]) + posView();
-  } else if(parts[0]==='safe' && (canUseSafe() || hasPermission('reports'))){
+  } else if(parts[0]==='safe' && canSeeSafe()){
     html += crumbs([['الرئيسية','#/'],['الخزنة',null]]) + safeView();
   } else if(parts[0]==='shift-closes' && (isPrivilegedUser(currentUser) || hasPermission('reports'))){
     html += crumbs([['الرئيسية','#/'],['سجل إقفال الصناديق',null]]) + shiftClosesView();
@@ -5229,7 +5231,7 @@ function hubView(){
     {key:'safe', perm:'__safe__', html:`<div class="hub-card" data-nav="#/safe">
       <div class="hub-icon">🗄</div>
       <div class="hub-title">الخزنة</div>
-      <div class="hub-sub">مع: ${escapeHtml(safeOwnerLabel())}</div>
+      <div class="hub-sub">يلي انتقل من الصناديق</div>
       <div class="hub-amt num" style="color:var(--steel)">${fmtNum(safeBalance().lbp)} ${secCurLabel()}</div>
     </div>`},
     {key:'shiftCloses', perm:'reports', html:`<div class="hub-card" data-nav="#/shift-closes">
@@ -5293,7 +5295,7 @@ function hubView(){
       <div class="hub-amt" style="color:var(--steel)">مقبوضات ومدفوعات</div>
     </div>`}
   ];
-  const visibleCards = allCards.filter(c=> c.perm==='__safe__' ? (canUseSafe() || hasPermission('reports')) : hasPermission(c.perm));
+  const visibleCards = allCards.filter(c=> c.perm==='__safe__' ? canSeeSafe() : hasPermission(c.perm));
   const settingsCard = isAdmin? `<div class="hub-card" data-nav="#/settings">
       <div class="hub-icon">⚙</div>
       <div class="hub-title">الإعدادات</div>
@@ -8745,16 +8747,16 @@ function safeMoves(){
 }
 function safeBalance(){ const m = safeMoves(); const l = m[m.length-1]; return l ? {lbp:l.balLBP, usd:l.balUSD} : {lbp:0, usd:0}; }
 // الخزنة مع مين: المدير دايماً، ومستخدم بيختارو المدير من الإعدادات
-function safeOwner(){ const id = DB.settings && DB.settings.safeOwnerId; return id ? (DB.settings.users||[]).find(u=>u.id===id) || null : null; }
-function canUseSafe(){ if(!currentUser) return false; if(isPrivilegedUser(currentUser)) return true; const o = safeOwner(); return !!(o && o.id===currentUser.id); }
-function safeOwnerLabel(){ const o = safeOwner(); return o ? o.username : 'المدير'; }
+// الخزنة: كل مستخدم إلو صلاحية «رؤية الخزنة» بيشوفها، وبس يلي إلو «السحب من الخزنة» بيقدر يسحب ويدفع منها (المدير دايماً)
+function canSeeSafe(){ return hasPermission('safe_view') || hasPermission('safe_withdraw'); }
+function canUseSafe(){ return hasPermission('safe_withdraw'); }
 function safeView(){
   const L = secCurLabel(), lbpOnly = currencyMode()==='SEC';
   const moves = safeMoves().slice().reverse();
   const bal = safeBalance();
   const fmtBoth = (l,u)=> lbpOnly && Math.abs(u)<0.005 ? fmtNum(l)+' '+L : fmtNum(l)+' '+L+' + $'+u.toFixed(2);
   return `<div class="card">
-    <h2><span class="dot"></span> 🗄 الخزنة <span style="font-size:13px; font-weight:600; color:var(--ink-soft);">— مع: ${escapeHtml(safeOwnerLabel())}</span></h2>
+    <h2><span class="dot"></span> 🗄 الخزنة</h2>
     <div class="stats" style="margin:8px 0 12px;">
       <div class="stat"><div class="k">الموجود بالخزنة ${L}</div><div class="v num">${fmtNum(bal.lbp)}</div></div>
       ${(lbpOnly && Math.abs(bal.usd)<0.005)? '' : `<div class="stat"><div class="k">الموجود بالخزنة $</div><div class="v num">$${bal.usd.toFixed(2)}</div></div>`}
@@ -10087,7 +10089,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-11-01 · 17:25 · v57';
+const APP_TRADE_BUILD = '2026-11-01 · 17:40 · v58';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 function settingsView(){
   const s = DB.settings;
@@ -10214,18 +10216,6 @@ function settingsView(){
     </div>
     <label style="display:flex; gap:6px; align-items:center; font-size:13px; margin:4px 0 10px;"><input type="checkbox" id="s_autoround" ${autoRoundOn()?'checked':''} style="width:auto;"> تقريب سعر البيع تلقائياً لأقرب 10,000 (54,650 ← 50,000 · 55,000 ← 60,000) — عندما تكون العملة الأساسية المحلية</label>`}
     <button class="btn btn-primary" id="saveWarehouseSettingsBtn">💾 حفظ إعدادات المستودع</button>
-  </div>
-
-  <div class="card">
-    <h2><span class="dot"></span> 🗄 الخزنة</h2>
-    <p style="font-size:12.5px; color:var(--ink-soft); line-height:1.7;">اختار المستخدم يلي معو الخزنة: بيشوفها، وبيقدر يودع ويسحب منها، ويدفع منها سندات الصرف والمصاريف. المدير بيشوفها دايماً. إقفالات الصناديق بتنتقل عالخزنة متل ما هي.</p>
-    <div class="field"><label>الخزنة مع</label>
-      <select id="s_safe_owner">
-        <option value="">المدير (ADMIN)</option>
-        ${(DB.settings.users||[]).filter(u=>!isPrivilegedUser(u)).map(u=>`<option value="${escapeHtml(u.id)}" ${DB.settings.safeOwnerId===u.id?'selected':''}>${escapeHtml(u.username)}</option>`).join('')}
-      </select>
-    </div>
-    <button class="btn btn-primary" id="saveSafeOwnerBtn">💾 حفظ</button>
   </div>
 
   <div class="card">
@@ -11162,12 +11152,6 @@ function bindEvents(){
     }catch(e){ toast('لم نتمكن من الاتصال بخدمة أسعار الصرف — تأكد من الاتصال بالإنترنت'); console.error(e); }
     cur2SyncBtn.disabled = false; cur2SyncBtn.textContent = '🔄 جلب السعر من الإنترنت (اختياري)';
   });
-  const saveSafeOwnerBtn = document.getElementById('saveSafeOwnerBtn');
-  if(saveSafeOwnerBtn) saveSafeOwnerBtn.addEventListener('click', async ()=>{
-    DB.settings.safeOwnerId = document.getElementById('s_safe_owner').value || null;
-    const ok = await save(KEYS.settings, DB.settings);
-    toast(ok? '🗄 الخزنة صارت مع: '+safeOwnerLabel() : 'حدث خطأ أثناء الحفظ');
-  });
   const saveWarehouseSettingsBtn = document.getElementById('saveWarehouseSettingsBtn');
   if(saveWarehouseSettingsBtn) saveWarehouseSettingsBtn.addEventListener('click', async ()=>{
     const days = Number(document.getElementById('s_expdays').value);
@@ -11872,7 +11856,7 @@ function openAddBudgetEntryModal(categoryId){
     ${cat.type!=='income'? `<div class="field"><label>💸 من وين دفعت؟ *</label>
       <div style="display:flex; flex-wrap:wrap; gap:6px;">
         <button type="button" class="btn btn-sm" data-be-src="box" ${currentUserShift()? '' : 'disabled title="ما عندك صندوق مفتوح"'}>💵 صندوقي (${escapeHtml(currentUser.username||'')})</button>
-        ${canUseSafe()? `<button type="button" class="btn btn-sm" data-be-src="safe">🗄 الخزنة (مع ${escapeHtml(safeOwnerLabel())})</button>` : ''}
+        ${canUseSafe()? `<button type="button" class="btn btn-sm" data-be-src="safe">🗄 الخزنة</button>` : ''}
         <button type="button" class="btn btn-sm" data-be-src="other">✍️ غير (اكتب من وين)</button>
       </div>
       <input type="text" id="be_src_other" placeholder="مثلاً: من البنك، من جيبي، من محل تاني..." style="display:none; margin-top:6px;">
