@@ -8861,19 +8861,25 @@ function safeView(){
 function shiftClosesView(){
   const L = secCurLabel(), lbpOnly = currencyMode()==='SEC';
   const recs = shiftCloseRecords();
+  // Whish يلي انقفل مع كل إقفال صندوق (نفس الصندوق ونفس الوقت)
+  const wcs = (DB.cashMovements||[]).filter(m=>!m.deleted && m.type==='whish_close');
+  const whOf = r=>{ const o = {l:0, u:0}; wcs.forEach(m=>{ if(m.refSaleId!==r.shiftId) return; const i = whishCloseInfo(m);
+      if(!((r.dayClose && i.dayClose===r.dayClose) || Math.abs((m.createdAt||0)-(r.at||0)) < 120000)) return;
+      if(m.currency==='USD') o.u += Math.abs(Number(m.amount)||0); else o.l += Math.abs(Number(m.amount)||0); }); return o; };
   const f = (l,u)=> (lbpOnly && Math.abs(Number(u)||0)<0.005)? fmtNum(l||0)+' '+L : fmtNum(l||0)+' '+L+' + $'+(Number(u)||0).toFixed(2);
   return `<div class="card">
     <h2><span class="dot"></span> 📜 سجل إقفال الصناديق</h2>
     <div class="table-scroll"><table>
-      <thead><tr><th>التاريخ والساعة</th><th>الصندوق</th><th>أقفله</th><th>رصيد النظام</th><th>المعدود</th><th>الفرق</th><th>بقي بالصندوق</th><th>انتقل عالصندوق الأساسي</th>${isPrivilegedUser(currentUser)? '<th></th>' : ''}</tr></thead>
+      <thead><tr><th>التاريخ والساعة</th><th>الصندوق</th><th>أقفله</th><th>رصيد النظام</th><th>المعدود</th><th>الفرق</th><th>بقي بالصندوق</th><th>انتقل عالصندوق الأساسي</th><th>📱 Whish انتقل</th>${isPrivilegedUser(currentUser)? '<th></th>' : ''}</tr></thead>
       <tbody>${recs.length? recs.map(r=>{ const dL = (r.countedLBP||0)-(r.sysLBP||0), dU = (r.countedUSD||0)-(r.sysUSD||0); return `<tr>
         <td class="num">${new Date(r.at||0).toLocaleString('en-GB',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})}</td>
         <td>${escapeHtml(r.user||'—')}</td><td><b>${escapeHtml(r.by||'—')}</b>${r.legacy? ' <span title="إقفال قديم — ما بيأثر على رصيد الصندوق الأساسي" style="font-size:11px; color:var(--ink-soft);">(قديم)</span>' : ''}</td>
         <td class="num">${f(r.sysLBP, r.sysUSD)}</td><td class="num">${f(r.countedLBP, r.countedUSD)}</td>
         <td class="num" style="color:${(Math.abs(dL)>=1||Math.abs(dU)>=0.005)?'var(--debit)':'var(--ink-soft)'};">${(Math.abs(dL)>=1||Math.abs(dU)>=0.005)? f(dL, dU) : '—'}</td>
         <td class="num">${f(r.keptLBP, r.keptUSD)}</td><td class="num"><b>${f(r.toSafeLBP, r.toSafeUSD)}</b></td>
+        <td class="num" style="color:#a3174a;">${(()=>{ const w = whOf(r); return (w.l||w.u)? '<b>'+f(w.l, w.u)+'</b>' : '—'; })()}</td>
         ${isPrivilegedUser(currentUser)? `<td><button class="btn btn-sm" data-edit-close="${r.id}">✎ تعديل</button></td>` : ''}</tr>`; }).join('')
-        : `<tr><td colspan="9" style="text-align:center; color:var(--ink-soft);">ما في إقفالات مسجّلة بعد</td></tr>`}</tbody>
+        : `<tr><td colspan="10" style="text-align:center; color:var(--ink-soft);">ما في إقفالات مسجّلة بعد</td></tr>`}</tbody>
     </table></div>
   </div>`;
 }
@@ -10494,7 +10500,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-11-01 · 21:20 · v62';
+const APP_TRADE_BUILD = '2026-11-01 · 21:45 · v63';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 function settingsView(){
   const s = DB.settings;
