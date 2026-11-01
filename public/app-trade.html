@@ -9132,9 +9132,13 @@ function repairOldDayClosures(){
   _oldDayCloseDone = true;
   const linked = new Set();
   (DB.cashMovements||[]).forEach(m=>{ if(m.type==='shift_close'){ const i = shiftCloseInfo(m)||{}; if(i.dayClose) linked.add(i.dayClose); } });
-  const todo = (DB.dayClosures||[]).filter(c=>c && c.date>='2026-11-01' && c.createdAt && !linked.has(c.id) && !/^أقفله:/.test(c.note||''));
+  let todo = (DB.dayClosures||[]).filter(c=>c && c.date>='2026-11-01' && c.createdAt && !linked.has(c.id) && !/^أقفله:/.test(c.note||''));
   if(!todo.length) return;
+  // نفس اليوم مكرر (انكبس الزر مرتين): منرحّل آخر واحد بس، والباقي منعلّمو «مكرر»
+  const last = {}; todo.forEach(c=>{ if(!last[c.date] || c.createdAt > last[c.date].createdAt) last[c.date] = c; });
   let changed = false;
+  todo.forEach(c=>{ if(last[c.date]!==c){ c.note = 'أقفله: '+(isCcupClient()? 'omar' : '—')+' (مكرر — ما رُحّل)'+(c.note? ' — '+c.note : ''); changed = true; } });
+  todo = Object.values(last);
   todo.forEach(c=>{
     (DB.cashierShifts||[]).filter(sh=>!sh.deleted && sh.status==='open' && (sh.openedAt||0) < c.createdAt).forEach(sh=>{
       let pl = 0, pu = 0;   // صافي حركات الصندوق بعد الإقفال
@@ -10452,7 +10456,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-11-01 · 20:30 · v60';
+const APP_TRADE_BUILD = '2026-11-01 · 20:45 · v61';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 function settingsView(){
   const s = DB.settings;
