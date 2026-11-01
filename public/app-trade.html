@@ -785,8 +785,11 @@ async function signOutEverywhere(){
   // مشرف المنصة داخل على مؤسسة زبون: نُغلق المؤسسة ونعود إلى /super مع إبقاء جلسة المشرف
   if(typeof PLATFORM_ADMIN!=='undefined' && PLATFORM_ADMIN){ location.href = '/super'; return; }
   try{ if(_pendingSyncs.size){ toast('⏳ عم نكمّل رفع آخر العمليات عالسحابة...'); await waitPendingSyncs(15000); } }catch(e){}
-  try{ if(supabaseClient && authenticated) await supabaseClient.rpc('app_logout', { p_product:'trade' }); }catch(e){}
-  if(SECURE_MODE && CLIENT_ID){
+  try{ if(obCount() && navigator.onLine && !OFFLINE_SESSION) await flushOutbox(); }catch(e){}
+  const keepLocal = obCount() > 0;   // في عمليات ما انرفعت: ما منمحي نسخة الجهاز — بتنرفع لما تفوت مرة تانية
+  if(keepLocal) alert('⚠️ في '+obCount()+' عملية بعدها ما انرفعت عالسحابة (بلا إنترنت). محفوظين عالجهاز وبينرفعوا أول ما تفوت مع إنترنت.');
+  try{ if(supabaseClient && authenticated && !OFFLINE_SESSION) await supabaseClient.rpc('app_logout', { p_product:'trade' }); }catch(e){}
+  if(SECURE_MODE && CLIENT_ID && !keepLocal){
     try{ Object.keys(localStorage).forEach(k=>{ if(k.indexOf('la_'+CLIENT_ID+'_')===0) localStorage.removeItem(k); }); }catch(e){}
   }
   try{ if(supabaseClient) await supabaseClient.auth.signOut(); }catch(e){}
@@ -1172,10 +1175,14 @@ function applySettingsFromDb(row, base){
 }
 async function syncSettingsToSupabase(settings){
   if(!supabaseClient) return;
-  if(!cloudSessionReady()) return;
+  const markS = ()=>{ const o = obGet(); o.settings = o.settings || {u:[], d:[]}; o.settings.s = 1; obSet(o); };
+  if(!cloudSessionReady()){ if(OFFLINE_SESSION) markS(); return false; }
+  if(!navigator.onLine){ markS(); offlineToast(); return false; }
   try{
     const { error } = await supabaseClient.from(T('app_settings')).upsert(withClient(settingsToDb(settings)));
-    if(!error){ clearTimeout(window._liveSetT); window._liveSetT = setTimeout(()=>liveBroadcast({k:'settings'}), 800); }
+    if(!error){ clearTimeout(window._liveSetT); window._liveSetT = setTimeout(()=>liveBroadcast({k:'settings'}), 800);
+      const o = obGet(); if(o.settings){ delete o.settings.s; if(!o.settings.u.length && !o.settings.d.length) delete o.settings; obSet(o); } return true; }
+    if(error && isNetErr(error)){ markS(); offlineToast(); return false; }
     if(error){
       lastSupabaseError = describeSupabaseError(error);
       console.error('app_settings upsert error:', lastSupabaseError);
@@ -1421,8 +1428,9 @@ function handleSessionDenied(localKey){
     close();
     const keys = Array.from(_pendingResync); _pendingResync.clear();
     _resyncing = true;
-    try{ for(const k of keys){ if(Array.isArray(DB[k])) await syncArrayToSupabase(k, DB[k]); } }
-    finally{ _resyncing = false; }
+    OFFLINE_SESSION = false;
+    try{ for(const k of keys){ if(Array.isArray(DB[k])) await syncArrayToSupabase(k, DB[k]); } await flushOutbox(); }
+    finally{ _resyncing = false; updateOfflineBadge(); }
     toast(_pendingResync.size? '⚠️ بعض العمليات بعدها ما انرفعت' : '✅ تم تأكيد الدخول ورفع كل العمليات عالسحابة');
   };
   $('#ra_ok').addEventListener('click', go2);
@@ -1432,7 +1440,116 @@ function handleSessionDenied(localKey){
    - اللي على الجهاز وما وصل للسحابة أبداً (مثلاً زبون انضاف والحفظ ما زبط) بيرجع ينرفع بدل ما يضيع
    - اللي انحذف عن جهاز تاني بيختفي من هون كمان */
 // قبل ما يفوت المستخدم (الوضع الآمن) السيرفر ما بيعطي بيانات وما بيقبل حفظ — فما منحمّل/منرفع شي، وما منلمس نسخة الجهاز
-function cloudSessionReady(){ return !SECURE_MODE || !!authenticated; }
+let OFFLINE_SESSION = false;   // دخلنا بلا إنترنت (بكلمة سر محفوظة عالجهاز) — منسجّل كل شي عالجهاز وبيترفع لما يرجع النت
+function cloudSessionReady(){ return !OFFLINE_SESSION && (!SECURE_MODE || !!authenticated); }
+/* ===== صندوق الانتظار (Outbox): كل تعديل ما انرفع عالسحابة بينحفظ عالجهاز (أرقام الصفوف)، وبيترفع لما يرجع النت =====
+   - قبل الرفع منسجّل، وبعد النجاح منمحي — فإذا انقطع النت أو تسكّر البرنامج بالنص ما بيضيع شي
+   - عند الدخول أو رجوع النت: منرفع يلي بالانتظار أول شي، وبعدين منجيب من السحابة (حتى ما تمحي السحابة تعديلات الجهاز) */
+function obKey(){ return skey('outbox_v1'); }
+function obGet(){ try{ return JSON.parse(localStorage.getItem(obKey())||'{}')||{}; }catch(e){ return {}; } }
+function obSet(o){ try{ localStorage.setItem(obKey(), JSON.stringify(o)); }catch(e){} try{ updateOfflineBadge(); }catch(e){} }
+function obAdd(key, ups, dels){
+  if(!(ups&&ups.length) && !(dels&&dels.length)) return;
+  const o = obGet(); const e = o[key] || (o[key] = {u:[], d:[]});
+  const U = new Set(e.u), D = new Set(e.d);
+  (ups||[]).forEach(id=>{ U.add(id); D.delete(id); }); (dels||[]).forEach(id=>{ D.add(id); U.delete(id); });
+  e.u = Array.from(U); e.d = Array.from(D); obSet(o);
+}
+function obClear(key, ups, dels){
+  const o = obGet(); const e = o[key]; if(!e) return;
+  const su = new Set(ups||[]), sd = new Set(dels||[]);
+  e.u = e.u.filter(id=>!su.has(id)); e.d = e.d.filter(id=>!sd.has(id));
+  if(!e.u.length && !e.d.length && !e.s) delete o[key];
+  obSet(o);
+}
+function obCount(){ const o = obGet(); return Object.values(o).reduce((t,e)=>t+(e.u? e.u.length : 0)+(e.d? e.d.length : 0)+(e.s? 1 : 0), 0); }
+function isNetErr(err){ const m = String((err && (err.message||err.details)) || err || ''); return !navigator.onLine || /Failed to fetch|NetworkError|Load failed|network|fetch/i.test(m); }
+let _offToastAt = 0;
+function offlineToast(){ if(Date.now()-_offToastAt > 60000){ _offToastAt = Date.now(); toast('📴 بلا إنترنت — العمليات محفوظة عالجهاز وبتنرفع لحالها لما يرجع النت'); } }
+let _flushing = false;
+async function flushOutbox(){
+  if(_flushing || !supabaseClient || !cloudSessionReady() || !navigator.onLine) return;
+  const o = obGet(); const keys = Object.keys(o); if(!keys.length) return;
+  _flushing = true;
+  try{
+    for(const key of keys){
+      const e = o[key];
+      if(key==='settings'){ if(e.s){ const ok = await syncSettingsToSupabase(DB.settings); if(ok!==false){ const oo = obGet(); if(oo.settings){ delete oo.settings.s; if(!oo.settings.u.length && !oo.settings.d.length) delete oo.settings; obSet(oo); } } } continue; }
+      const cfg = SUPABASE_TABLES[key]; if(!cfg || !Array.isArray(DB[key])) continue;
+      const byId = new Map(DB[key].map(r=>[r.id, r]));
+      const ups = e.u.filter(id=>byId.has(id)), gone = e.u.filter(id=>!byId.has(id));
+      let err = null;
+      for(let i=0; i<ups.length && !err; i+=400){
+        const res = await supabaseClient.from(T(cfg.table)).upsert(ups.slice(i,i+400).map(id=>withClient(cfg.toDb(byId.get(id)))));
+        err = res.error;
+      }
+      if(err){ if(!isNetErr(err)) console.error('outbox upsert', key, describeSupabaseError(err)); if(err.code==='42501' && SECURE_MODE && currentUser) handleSessionDenied(key); break; }
+      const dels = e.d.concat(gone);
+      for(let i=0; i<e.d.length && !err; i+=100){
+        const res = await scoped(supabaseClient.from(T(cfg.table)).delete()).in('id', e.d.slice(i,i+100));
+        err = res.error;
+      }
+      if(err){ break; }
+      const sm = _sentSnap[key] || (_sentSnap[key] = new Map());
+      ups.forEach(id=>sm.set(id, JSON.stringify(cfg.toDb(byId.get(id))))); e.d.forEach(id=>sm.delete(id));
+      const known = getSyncedIds(key) || new Set(); ups.forEach(id=>known.add(id)); e.d.forEach(id=>known.delete(id)); setSyncedIds(key, known);
+      obClear(key, e.u, dels);
+      liveBroadcast({k:key, ids:ups, rm:e.d});
+    }
+  }catch(ex){ console.error('flushOutbox', ex); }
+  finally{ _flushing = false; }
+  if(!obCount()) toast('☁️ رفعنا كل العمليات يلي كانت محفوظة عالجهاز ✅');
+}
+function updateOfflineBadge(){
+  let b = document.getElementById('offlineBadge');
+  const n = obCount(), off = !navigator.onLine || OFFLINE_SESSION;
+  if(!n && !off){ if(b) b.remove(); return; }
+  if(!b){ b = document.createElement('div'); b.id = 'offlineBadge'; b.setAttribute('data-noi18n','');
+    b.style.cssText = 'position:fixed; bottom:10px; left:10px; z-index:9999; padding:6px 12px; border-radius:999px; font-size:12.5px; font-weight:800; box-shadow:0 2px 8px rgba(0,0,0,.18); cursor:pointer;';
+    b.addEventListener('click', ()=>{ if(OFFLINE_SESSION && navigator.onLine) reconnectAfterOffline(); else flushOutbox(); });
+    document.body.appendChild(b); }
+  b.style.background = off? '#fff3cd' : '#e6f4ea'; b.style.color = off? '#8a5a1a' : '#1e6b34';
+  b.textContent = (off? '📴 بلا إنترنت' : '☁️ عم نرفع') + (n? ' — '+n+' عملية بالانتظار' : '');
+}
+window.addEventListener('online', ()=>{ updateOfflineBadge(); if(OFFLINE_SESSION) reconnectAfterOffline(); else setTimeout(flushOutbox, 1500); });
+window.addEventListener('offline', ()=>updateOfflineBadge());
+setInterval(()=>{ if(obCount() && navigator.onLine && !OFFLINE_SESSION) flushOutbox(); }, 30000);
+// رجع النت وكنا داخلين بلا إنترنت: منأكّد كلمة السر بالسيرفر (جلسة حقيقية) ومنرفع كل يلي بالانتظار
+function reconnectAfterOffline(){
+  if(!OFFLINE_SESSION || !currentUser) return;
+  Object.keys(obGet()).forEach(k=>{ if(k!=='settings') _pendingResync.add(k); });
+  handleSessionDenied(Object.keys(obGet())[0] || 'customers');
+}
+/* ===== الدخول بلا إنترنت: بعد كل دخول ناجح منحفظ «بصمة» كلمة السر عالجهاز (PBKDF2 — مش كلمة السر نفسها) ===== */
+async function pwVerifier(pw, saltB64){
+  const enc = new TextEncoder();
+  const salt = saltB64 ? Uint8Array.from(atob(saltB64), c=>c.charCodeAt(0)) : crypto.getRandomValues(new Uint8Array(16));
+  const key = await crypto.subtle.importKey('raw', enc.encode(String(pw)), 'PBKDF2', false, ['deriveBits']);
+  const bits = await crypto.subtle.deriveBits({name:'PBKDF2', salt, iterations:120000, hash:'SHA-256'}, key, 256);
+  const b64 = a=>btoa(String.fromCharCode.apply(null, Array.from(new Uint8Array(a))));
+  return { salt: saltB64 || b64(salt), hash: b64(bits) };
+}
+function offAuthKey(u){ return 'la_offauth_'+(CLIENT_ID||'x')+'_'+String(u||'').trim().toLowerCase(); }
+async function rememberOfflineAuth(u, p, acc){
+  try{ if(!u || !p || !acc || !window.crypto || !crypto.subtle) return; const v = await pwVerifier(p);
+    localStorage.setItem(offAuthKey(u), JSON.stringify({salt:v.salt, hash:v.hash, acc:{id:acc.id, username:acc.username, role:acc.role, permissions:acc.permissions||[]}, at:Date.now()})); }catch(e){}
+}
+async function tryOfflineLogin(u, p){
+  try{ const raw = localStorage.getItem(offAuthKey(u)); if(!raw) return null; const r = JSON.parse(raw);
+    const v = await pwVerifier(p, r.salt); return v.hash===r.hash ? r.acc : false; }catch(e){ return null; }
+}
+async function enterOfflineSession(acc){
+  OFFLINE_SESSION = true; authenticated = true;
+  const keys = Object.keys(SUPABASE_TABLES);
+  for(const k of keys){ DB[k] = await safeGet(k, []); }
+  DB.settings = await safeGet(KEYS.settings, DB.settings||{});
+  currentCustomerSession = null; currentWorkerSession = null; pendingTotpUser = null;
+  currentUser = (DB.settings.users||[]).find(x=>x.id===acc.id) || acc;
+  currentUser = Object.assign({}, currentUser, {role:acc.role||currentUser.role, permissions:acc.permissions||currentUser.permissions||[]});
+  invalidateWarehouseCaches();
+  toast('📴 دخلت بلا إنترنت — كل شي بينحفظ عالجهاز وبيترفع لما يرجع النت');
+  go('#/'); render(); updateOfflineBadge();
+}
 // synced2_: بداية نظيفة — القوائم القديمة ممكن تكون انكتبت فاضية من تحميل قبل الدخول
 function getSyncedIds(key){ try{ const v = localStorage.getItem(skey('synced2_'+key)); return v ? new Set(JSON.parse(v)) : null; }catch(e){ return null; } }
 function setSyncedIds(key, ids){ try{ localStorage.setItem(skey('synced2_'+key), JSON.stringify(Array.from(ids))); }catch(e){} }
@@ -1455,7 +1572,17 @@ function mergeLocalOnly(key, remote, firstRunMerge){
 async function syncArrayToSupabase(localKey, arr){
   const cfg = SUPABASE_TABLES[localKey];
   if(!cfg || !supabaseClient) return;
-  if(!cloudSessionReady()) return;   // قبل الدخول: بيضل محفوظ عالجهاز وبينرفع بعد الدخول
+  {   // صندوق الانتظار: منسجّل شو تغيّر قبل ما نحاول نرفع (وإذا ما في جلسة/نت بيضل عالجهاز)
+    const snap0 = _sentSnap[localKey], known0 = getSyncedIds(localKey);
+    if(snap0 || known0){
+      const ids0 = new Set(arr.map(r=>r.id));
+      const ch0 = snap0 ? arr.filter(r=>snap0.get(r.id)!==JSON.stringify(cfg.toDb(r))).map(r=>r.id) : [];
+      const rm0 = known0 ? Array.from(known0).filter(id=>!ids0.has(id)) : [];
+      obAdd(localKey, ch0, rm0);
+    }
+  }
+  if(!cloudSessionReady()){ if(OFFLINE_SESSION) offlineToast(); return; }   // قبل الدخول أو بلا نت: بيضل عالجهاز وبينرفع بعدين
+  if(!navigator.onLine){ offlineToast(); return; }
   try{
     const knownAtStart = getSyncedIds(localKey);   // قبل ما نستنى الشبكة — حتى صفوف وصلت لايف بالنص ما تنحسب «محذوفة»
     const snap = _sentSnap[localKey];
@@ -1468,6 +1595,7 @@ async function syncArrayToSupabase(localKey, arr){
         const res = await supabaseClient.from(T(cfg.table)).upsert(changed.slice(i, i+400).map(x=>withClient(x[0])));
         error = res.error;
       }
+      if(error && isNetErr(error)){ offlineToast(); return; }   // بلا نت: بيضل بصندوق الانتظار
       if(error && error.code==='42501' && SECURE_MODE && currentUser && !_resyncing){ handleSessionDenied(localKey); return; }
       if(error && error.code==='42501' && _resyncing){ _pendingResync.add(localKey); error.message = 'المستخدم «'+(currentUser&&currentUser.username)+'» ما عندو صلاحية حفظ '+cfg.label+' — زيد الصلاحية من «المستخدمين» — '+error.message; }
       if(error){
@@ -1500,8 +1628,10 @@ async function syncArrayToSupabase(localKey, arr){
       if(_sentSnap[localKey]) removed.forEach(id=>_sentSnap[localKey].delete(id));
     }
     setSyncedIds(localKey, ids);
+    obClear(localKey, changed.map(x=>x[0].id), removed);
     if(changed.length || removed.length) liveBroadcast({k:localKey, ids:changed.map(x=>x[0].id), rm:removed});
   }catch(e){
+    if(isNetErr(e)){ offlineToast(); return; }
     lastSupabaseError = 'threw: '+(e && e.message);
     console.error(cfg.table+' sync threw:', e && e.message);
     toast('تم الحفظ محليًا لكن حدث خطأ في المزامنة '+cfg.label+' مع السحابة');
@@ -1516,7 +1646,17 @@ async function loadSyncedArray(localKey, fallback){
       const { data, error } = await selectAllRows(cfg.table, '*');
       if(!error){
         _sentSnap[localKey] = new Map(data.map(r=>{ const o = cfg.toDb(cfg.fromDb(r)); return [o.id, JSON.stringify(o)]; }));
-        const { merged, localOnly } = mergeLocalOnly(localKey, data.map(cfg.fromDb), false);
+        let remoteRows = data.map(cfg.fromDb);
+        // عمليات بالانتظار (ما انرفعت): نسخة الجهاز بتربح، والمحذوف عالجهاز ما بيرجع
+        const pend = obGet()[localKey];
+        if(pend && (pend.u.length || pend.d.length)){
+          const loc = await safeGet(localKey, []); const lmap = new Map((Array.isArray(loc)? loc : []).map(r=>[r.id, r]));
+          const pu = new Set(pend.u), pd = new Set(pend.d);
+          remoteRows = remoteRows.filter(r=>!pd.has(r.id)).map(r=> pu.has(r.id) && lmap.has(r.id) ? lmap.get(r.id) : r);
+          pend.u.forEach(id=>{ if(lmap.has(id) && !remoteRows.some(r=>r.id===id)) remoteRows.push(lmap.get(id)); });
+          setTimeout(flushOutbox, 2500);
+        }
+        const { merged, localOnly } = mergeLocalOnly(localKey, remoteRows, false);
         try{ localStorage.setItem(skey(localKey), JSON.stringify(merged)); }catch(e){}
         if(localOnly.length) setTimeout(()=>syncArrayToSupabase(localKey, merged), 1500);
         return merged;
@@ -4935,10 +5075,13 @@ async function ensureSupabaseAuthSession(username, password){
 }
 /* ===== الدخول عبر قاعدة البيانات (app_login) — كلمات السر و2FA تُفحص في السيرفر ===== */
 async function detectSecureMode(){
+  const ck = 'la_secure_'+(CLIENT_ID||'x');
   try{
     const r = await supabaseClient.rpc('app_mode');
+    if(r && r.error && isNetErr(r.error)) throw r.error;
     SECURE_MODE = !!(r && !r.error && r.data && r.data.secure);
-  }catch(e){ SECURE_MODE = false; }
+    try{ localStorage.setItem(ck, SECURE_MODE? '1' : '0'); }catch(e){}
+  }catch(e){ SECURE_MODE = (function(){ try{ return localStorage.getItem(ck)==='1'; }catch(x){ return false; } })(); }
 }
 function stripLocalSecrets(){
   if(!SECURE_MODE) return;
@@ -4966,7 +5109,9 @@ function rpcLoginErrorText(res){
 async function finishRpcLogin(res){
   const a = res.account || {};
   currentUser = null; currentCustomerSession = null; currentWorkerSession = null; pendingTotpUser = null;
-  authenticated = true;
+  authenticated = true; OFFLINE_SESSION = false;
+  // أول شي منرفع يلي بالانتظار من آخر مرة (بلا نت)، وبعدين منجيب من السحابة
+  try{ if(obCount()){ for(const k of Object.keys(obGet())){ if(SUPABASE_TABLES[k]) DB[k] = await safeGet(k, []); } await flushOutbox(); } }catch(e){}
   // البيانات تُحمَّل بعد الدخول — قاعدة البيانات تعطي كل حساب ما يحق له فقط
   const fresh = await loadAll();
   Object.assign(DB, fresh);
@@ -4992,10 +5137,17 @@ function bindLoginEvents(){
     const u = document.getElementById('login_user').value.trim();
     const p = document.getElementById('login_pass').value;
     if(btn) btn.disabled = true;
-    const res = await rpcLogin(u, p);
+    let res = await rpcLogin(u, p);
     if(btn) btn.disabled = false;
+    // بلا إنترنت: منتحقق من بصمة كلمة السر المحفوظة عالجهاز من آخر دخول
+    if((!res && !navigator.onLine) || (res && !res.ok && res.reason==='error' && isNetErr(res.message))){
+      const acc = await tryOfflineLogin(u, p);
+      if(acc) return enterOfflineSession(acc);
+      document.getElementById('login_err').textContent = acc===false ? 'كلمة السر غير صحيحة' : 'ما في إنترنت — والدخول بلا إنترنت بيشتغل بس لمستخدم فات قبل عهالجهاز';
+      return;
+    }
     if(res){
-      if(res.ok) return finishRpcLogin(res);
+      if(res.ok){ if(res.kind==='staff') rememberOfflineAuth(u, p, res.account||{}); OFFLINE_SESSION = false; return finishRpcLogin(res); }
       if(res.need_totp){ pendingTotpUser = { username:u, __pw:p, __rpc:true }; render(); return; }
       // الوضع الآمن: قرار قاعدة البيانات نهائي. الوضع العادي: نكمل بالطريقة القديمة كاحتياط
       if(SECURE_MODE){ document.getElementById('login_err').textContent = rpcLoginErrorText(res); return; }
@@ -5114,8 +5266,11 @@ function wrapLooseTables(root){
 }
 new MutationObserver(()=>{ clearTimeout(window._wrapTblT); window._wrapTblT = setTimeout(()=>{ const r = document.getElementById('app'); if(r) wrapLooseTables(r); }, 30); })
   .observe(document.documentElement, {childList:true, subtree:true});
+// البرنامج بيفتح بلا إنترنت: Service Worker «الشبكة أولاً» — بيخزّن آخر نسخة من البرنامج وبيستعملها بس إذا ما في نت
+try{ if('serviceWorker' in navigator && location.protocol==='https:') navigator.serviceWorker.register('/app-sw.js').catch(()=>{}); }catch(e){}
 function render(){
   try{ applyFavicon(); }catch(e){}
+  try{ updateOfflineBadge(); }catch(e){}
   try{ ensureLiveChannel(); }catch(e){ console.error('ensureLiveChannel', e); }
   try{ syncNativePrices(); }catch(e){ console.error('syncNativePrices', e); }
   try{ autoRoundSellPrices(); }catch(e){ console.error('autoRoundSellPrices', e); }
@@ -10741,7 +10896,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-11-02 · 00:10 · v68';
+const APP_TRADE_BUILD = '2026-11-02 · 01:30 · v69';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 function settingsView(){
   const s = DB.settings;
