@@ -644,14 +644,14 @@ function syncDocsToBox(key, arr){
         if(_shiftAdd(myShift.id, eff.currency, eff.sign*eff.amt)) shiftsChanged = true;
         return;
       }
-      const isSafe = m.type==='safe_out';   // مدفوع من الخزنة: منصحّح الحركة بس، ما في صندوق
+      const isSafe = m.type==='safe_out' || m.type==='owner_pay';   // مدفوع من الصندوق الأساسي: منصحّح الحركة بس، ما في صندوق
       const oldSigned = m.deleted? 0 : (m.type==='deposit'?1:-1)*Math.abs(Number(m.amount)||0);
       const newSigned = eff? eff.sign*eff.amt : 0;
       const newCur = eff? eff.currency : m.currency;
       if(oldSigned===newSigned && newCur===m.currency) return;
       if(oldSigned && _shiftAdd(m.shiftId, m.currency, -oldSigned)) shiftsChanged = true;
       if(eff){
-        m.type = isSafe? 'safe_out' : (eff.sign>0?'deposit':'withdraw'); m.currency = eff.currency; m.amount = eff.amt; m.deleted = false;
+        m.type = isSafe? m.type : (eff.sign>0?'deposit':'withdraw'); m.currency = eff.currency; m.amount = eff.amt; m.deleted = false;
         if(eff.rate) m.rate = eff.rate;
         m.date = d.date || m.date; m.note = DOC_MIRROR_TAG+eff.label+' — '+(String(m.note).split(' — ').pop()||currentUser.username);
         if(_shiftAdd(m.shiftId, eff.currency, newSigned)) shiftsChanged = true;
@@ -685,7 +685,8 @@ function nextPaySourceAsk(){
     <div style="font-size:15px; margin-bottom:10px;">${escapeHtml(eff.label)} — <b class="num">${amtTxt}</b></div>
     <div style="display:grid; gap:10px;">
       <button class="btn btn-primary" data-src="box" style="padding:14px; font-size:16px;" ${sh? '' : 'disabled'}>💵 من الصندوق<br><small style="font-weight:400;">${sh? 'رصيد صندوقك: '+fmt(eff.currency, boxBal) : 'ما عندك صندوق مفتوح'}</small></button>
-      ${canUseSafe()? `<button class="btn" data-src="safe" style="padding:14px; font-size:16px;">🗄 من الخزنة<br><small>رصيد الخزنة: ${fmt(eff.currency, safeBal)}</small></button>` : ''}
+      ${canUseSafe()? `<button class="btn" data-src="safe" style="padding:14px; font-size:16px;">🗄 من الصندوق الأساسي<br><small>رصيد الصندوق الأساسي: ${fmt(eff.currency, safeBal)}</small></button>` : ''}
+      ${hasPermission('owner_pay')? `<button class="btn" data-src="owner" style="padding:12px; font-size:15px;">👤 من حساب صاحب المؤسسة<br><small>بيتسجّل دين لصاحب المؤسسة (10801)</small></button>` : ''}
       <button class="btn btn-sm" data-src="none" style="opacity:.75;">ما تنقّص من شي</button>
     </div>
   </div>`;
@@ -703,14 +704,14 @@ async function applyPaySource(key, id, src){
   if(!eff || (DB.cashMovements||[]).some(m=>isDocMirrorMove(m) && m.refSaleId===id)) return;
   const sh = src==='box'? currentUserShift() : null;
   if(src==='box' && !sh) return;
-  const mv = {id:uid(), createdAt:Date.now(), type: src==='safe'? 'safe_out' : 'withdraw', currency:eff.currency, amount:eff.amt,
+  const mv = {id:uid(), createdAt:Date.now(), type: src==='safe'? 'safe_out' : src==='owner'? 'owner_pay' : 'withdraw', currency:eff.currency, amount:eff.amt,
     note:DOC_MIRROR_TAG+eff.label+' — '+currentUser.username, refSaleId:id, date:d.date||todayISO(), shiftId: sh? sh.id : null, deleted:false};
   if(eff.rate) mv.rate = eff.rate;
   DB.cashMovements.push(mv);
   const jobs = [save(KEYS.cashMovements, DB.cashMovements)];
   if(sh && _shiftAdd(sh.id, eff.currency, -eff.amt)) jobs.push(save(KEYS.cashierShifts, DB.cashierShifts));
   await Promise.all(jobs);
-  toast(src==='safe'? 'انخصم من الخزنة ✅' : 'انخصم من الصندوق ✅');
+  toast(src==='safe'? 'انخصم من الصندوق الأساسي ✅' : src==='owner'? 'انسجّل على حساب صاحب المؤسسة ✅' : 'انخصم من الصندوق ✅');
   try{ render(); }catch(e){}
 }
 async function save(key, value){
@@ -1067,7 +1068,8 @@ function settingsToDb(s){
       posFixV1: !!s.posFixV1,
       posFixV2: !!s.posFixV2,
       posFixV3: !!s.posFixV3,
-      safeOwnerId: s.safeOwnerId||null}})
+      safeOwnerId: s.safeOwnerId||null,
+      coa: (s.coa && typeof s.coa==='object')? s.coa : null}})
   };
 }
 function applySettingsFromDb(row, base){
@@ -1120,7 +1122,8 @@ function applySettingsFromDb(row, base){
     posFixV1: !!(row.product_lists && row.product_lists._ui && row.product_lists._ui.posFixV1),
     posFixV2: !!(row.product_lists && row.product_lists._ui && row.product_lists._ui.posFixV2),
     posFixV3: !!(row.product_lists && row.product_lists._ui && row.product_lists._ui.posFixV3),
-    safeOwnerId: (row.product_lists && row.product_lists._ui && row.product_lists._ui.safeOwnerId) || null
+    safeOwnerId: (row.product_lists && row.product_lists._ui && row.product_lists._ui.safeOwnerId) || null,
+    coa: (row.product_lists && row.product_lists._ui && row.product_lists._ui.coa) || base.coa || null
   };
 }
 async function syncSettingsToSupabase(settings){
@@ -4035,8 +4038,10 @@ const PERMISSION_EXTRAS = [
   {key:'pos_returns',   group:'نقطة البيع', label:'فاتورة استرجاع'},
   {key:'cash_moves',    group:'نقطة البيع', label:'إضافة وسحب يدوي من الصندوق'},
   {key:'pos_free_item', group:'نقطة البيع', label:'بند حر / خدمة صيانة بسعر يكتبه الموظف'},
-  {key:'safe_view',     group:'الخزنة',     label:'رؤية الخزنة ورصيدها وحركاتها'},
-  {key:'safe_withdraw', group:'الخزنة',     label:'السحب من الخزنة والدفع منها (سندات صرف ومصاريف) والإيداع فيها'},
+  {key:'safe_view',     group:'الصندوق الأساسي',     label:'رؤية الصندوق الأساسي ورصيدها وحركاتها'},
+  {key:'safe_withdraw', group:'الصندوق الأساسي',     label:'السحب من الصندوق الأساسي والدفع منها (سندات صرف ومصاريف) والإيداع فيها'},
+  {key:'gl_entries',    group:'المحاسبة',    label:'لوحة الحسابات: فتح حسابات وقيود من حساب إلى حساب'},
+  {key:'owner_pay',     group:'المحاسبة',    label:'الدفع من حساب صاحب المؤسسة (سندات صرف ومصاريف)'},
   {key:'edit_docs',     group:'عام',        label:'تعديل الفواتير والإيصالات والسندات وبيانات الزبائن والموردين بعد حفظها'},
   {key:'delete',        group:'عام',        label:'الحذف (فواتير، إيصالات، سندات، زبائن، موردون، منتجات...)'}
 ];
@@ -4886,7 +4891,7 @@ function bindLoginEvents(){
 
 function routeRequiredPermission(routeKey){
   const map = {
-    pos:'pos', journal:'reports', reports:'reports', 'product-sales':'reports', barcodes:'warehouse',
+    pos:'pos', coa:'reports', 'coa-account':'reports', journal:'reports', reports:'reports', 'product-sales':'reports', barcodes:'warehouse',
     customers:'customers', customer:'customers', invoice:'customers', receipt:'customers', statement:'customers',
     suppliers:'suppliers', supplier:'suppliers', purchase:'suppliers', voucher:'suppliers', 'supplier-statement':'suppliers',
     warehouse:'warehouse', 'warehouse-print':'warehouse', 'low-stock':'warehouse', 'warehouse-item':'warehouse', stockout:'warehouse', stockin:'warehouse',
@@ -4916,6 +4921,7 @@ function render(){
   try{ closeOrphanShifts(); }catch(e){ console.error('closeOrphanShifts', e); }
   try{ healOrphanCustomers(); }catch(e){ console.error('healOrphanCustomers', e); }
   try{ importLegacyShiftCloses(); }catch(e){ console.error('importLegacyShiftCloses', e); }
+  try{ repairOldDayClosures(); }catch(e){ console.error('repairOldDayClosures', e); }
   try{ fixPosInvoicesV1(); }catch(e){ console.error('fixPosInvoicesV1', e); }
   if(!_shrinkImagesRunning && (DB.warehouseItems||[]).some(it=>typeof it.image==='string' && it.image.length>60000)) setTimeout(()=>shrinkOldProductImages(), 1500);
   const lic = licenseStatus();
@@ -5058,7 +5064,11 @@ function render(){
   } else if(parts[0]==='pos'){
     html += crumbs([['الرئيسية','#/'],['نقطة البيع (POS)',null]]) + posView();
   } else if(parts[0]==='safe' && canSeeSafe()){
-    html += crumbs([['الرئيسية','#/'],['الخزنة',null]]) + safeView();
+    html += crumbs([['الرئيسية','#/'],['الصندوق الأساسي',null]]) + safeView();
+  } else if(parts[0]==='coa'){
+    html += crumbs([['الرئيسية','#/'],['لوحة الحسابات',null]]) + coaView();
+  } else if(parts[0]==='coa-account' && parts[1]){
+    html += crumbs([['الرئيسية','#/'],['لوحة الحسابات','#/coa'],[parts[1],null]]) + coaAccountView(parts[1]);
   } else if(parts[0]==='shift-closes' && (isPrivilegedUser(currentUser) || hasPermission('reports'))){
     html += crumbs([['الرئيسية','#/'],['سجل إقفال الصناديق',null]]) + shiftClosesView();
   } else if(parts[0]==='journal'){
@@ -5236,9 +5246,15 @@ function hubView(){
     </div>`},
     {key:'safe', perm:'__safe__', html:`<div class="hub-card" data-nav="#/safe">
       <div class="hub-icon">🗄</div>
-      <div class="hub-title">الخزنة</div>
+      <div class="hub-title">الصندوق الأساسي</div>
       <div class="hub-sub">يلي انتقل من الصناديق</div>
       <div class="hub-amt num" style="color:var(--steel)">${fmtNum(safeBalance().lbp)} ${secCurLabel()}</div>
+    </div>`},
+    {key:'coa', perm:'reports', html:`<div class="hub-card" data-nav="#/coa">
+      <div class="hub-icon">📚</div>
+      <div class="hub-title">لوحة الحسابات</div>
+      <div class="hub-sub">الفئات السبعة — حسابات وقيود</div>
+      <div class="hub-amt" style="color:var(--steel)">افتح الشجرة</div>
     </div>`},
     {key:'shiftCloses', perm:'reports', html:`<div class="hub-card" data-nav="#/shift-closes">
       <div class="hub-icon">📜</div>
@@ -6101,7 +6117,7 @@ function closeMyShiftModal(){
   const upd = ()=>{
     const toL = v('#cs_lbp') - v('#cs_keep_lbp'), toU = v('#cs_usd') - v('#cs_keep_usd');
     const diffL = v('#cs_lbp') - (Number(shift.cashLBP)||0), diffU = v('#cs_usd') - (Number(shift.cashUSD)||0);
-    $('#cs_sum').innerHTML = `🗄 بينتقل عالخزنة: <b class="num">${fmtNum(toL)} ${L}${lbpOnly? '' : ' + $'+toU.toFixed(2)}</b><br>`
+    $('#cs_sum').innerHTML = `🗄 بينتقل عالصندوق الأساسي: <b class="num">${fmtNum(toL)} ${L}${lbpOnly? '' : ' + $'+toU.toFixed(2)}</b><br>`
       + `💵 بيبقى بالصندوق: <b class="num">${fmtNum(v('#cs_keep_lbp'))} ${L}${lbpOnly? '' : ' + $'+v('#cs_keep_usd').toFixed(2)}</b>`
       + ((Math.abs(diffL)>=1 || Math.abs(diffU)>=0.005)? `<br><span style="color:var(--debit);">⚠️ فرق عن النظام: ${fmtNum(diffL)} ${L}${lbpOnly? '' : ' / $'+diffU.toFixed(2)}</span>` : '');
   };
@@ -6128,7 +6144,7 @@ function closeMyShiftModal(){
     DB.cashMovements.push({id:uid(), createdAt:now, type:'shift_close', currency:'LBP', amount:info.toSafeLBP, note:SHIFT_CLOSE_TAG+JSON.stringify(info), refSaleId:shift.id, date:todayISO(), shiftId:null});
     const res = await Promise.all([save(KEYS.cashierShifts, DB.cashierShifts), save(KEYS.cashMovements, DB.cashMovements)]);
     wrap.remove();
-    toast(res.every(Boolean)? 'تم إقفال الصندوق ✅ — بقي فيه '+fmtNum(kL)+' '+L+' وانتقل الباقي عالخزنة' : 'حدث خطأ أثناء الحفظ');
+    toast(res.every(Boolean)? 'تم إقفال الصندوق ✅ — بقي فيه '+fmtNum(kL)+' '+L+' وانتقل الباقي عالصندوق الأساسي' : 'حدث خطأ أثناء الحفظ');
     printShiftReport(shift, myMoves);
     render();
   });
@@ -7905,51 +7921,84 @@ function openCashMovementModal(type, currency, shift){
 /* ---------- إقفال يومية ---------- */
 function openDayCloseModal(){
   const today = todayISO();
-  const openShifts = (DB.cashierShifts||[]).filter(s=>s.status==='open');
-  const expectedUSD = openShifts.reduce((s,x)=>s+x.cashUSD,0);
-  const expectedLBP = openShifts.reduce((s,x)=>s+x.cashLBP,0);
+  const openShifts = (DB.cashierShifts||[]).filter(s=>s.status==='open' && !s.deleted);
   const todaysMoves = DB.cashMovements.filter(m=>m.date===today && !m.deleted);
   const salesUSD = netSalesOf(todaysMoves, 'USD');
   const salesLBP = netSalesOf(todaysMoves, 'LBP');
+  const L = secCurLabel();
+  const lbpOnly = currencyMode()==='SEC' && openShifts.every(s=>Math.abs(Number(s.cashUSD)||0)<0.005);
   const wrap = document.createElement('div');
   wrap.className='modal-bg';
-  wrap.innerHTML = `<div class="modal">
+  wrap.innerHTML = `<div class="modal" style="max-width:640px;">
     <h3>🔒 إقفال يومية شاملة — ${fmtDate(today)}</h3>
-    <p style="font-size:12.5px; color:var(--ink-soft);">مبيعات اليوم (كل الموظفين): $${salesUSD.toFixed(2)} + ${fmtNum(salesLBP)} ${secCurLabel()}</p>
-    ${openShifts.length? `<div class="table-scroll"><table>
-      <thead><tr><th>الموظف</th><th>$</th><th>${secCurLabel()}</th></tr></thead>
-      <tbody>${openShifts.map(s=>`<tr><td>${escapeHtml(s.username)}</td><td class="num">$${s.cashUSD.toFixed(2)}</td><td class="num">${fmtNum(s.cashLBP)}</td></tr>`).join('')}</tbody>
-    </table></div>` : `<p style="color:var(--ink-soft); font-size:12.5px;">لا توجد صناديق مفتوحة حالياً</p>`}
-    <div class="grid grid-2" style="margin-top:10px;">
-      <div class="field"><label>مجموع النظام $ (كل الصناديق المفتوحة)</label><input type="text" class="num" value="$${expectedUSD.toFixed(2)}" disabled></div>
-      <div class="field"><label>مجموع النظام ${secCurLabel()}</label><input type="text" class="num" value="${fmtNum(expectedLBP)}" disabled></div>
-    </div>
-    <div class="grid grid-2">
-      <div class="field"><label>المبلغ المعدود فعلياً $ (كل الصناديق)</label><input type="number" step="0.01" id="dc_usd" class="num" value="${expectedUSD.toFixed(2)}"></div>
-      <div class="field"><label>المبلغ المعدود فعلياً ${secCurLabel()}</label><input type="number" id="dc_lbp" class="num" value="${expectedLBP}"></div>
-    </div>
+    <p style="font-size:12.5px; color:var(--ink-soft);">مبيعات اليوم (كل الموظفين): ${lbpOnly? fmtNum(salesLBP)+' '+L : '$'+salesUSD.toFixed(2)+' + '+fmtNum(salesLBP)+' '+L}</p>
+    ${openShifts.length? `<p style="font-size:13px; margin:6px 0;">اختار الصناديق يلي بدك تقفلها — المعدود بكل صندوق بينتقل على <b>${MAIN_BOX_NAME}</b> والصندوق بيتصفّر وبيتسكّر:</p>
+    <label style="display:flex; gap:6px; align-items:center; font-weight:800; margin-bottom:6px;"><input type="checkbox" id="dc_all" style="width:auto;" checked> الكل</label>
+    <div class="table-scroll"><table>
+      <thead><tr><th></th><th>الصندوق</th><th>بالنظام ${L}</th><th>المعدود ${L}</th>${lbpOnly? '' : '<th>بالنظام $</th><th>المعدود $</th>'}</tr></thead>
+      <tbody>${openShifts.map(s=>`<tr>
+        <td><input type="checkbox" class="dc-sh" value="${s.id}" checked style="width:auto;"></td>
+        <td><b>${escapeHtml(s.username)}</b><div style="font-size:11px; color:var(--ink-soft);">مفتوح منذ ${fmtTime12(s.openedAt)}</div></td>
+        <td class="num">${fmtNum(s.cashLBP)}</td>
+        <td><input type="number" class="num dc-cl" data-id="${s.id}" value="${Math.round(Number(s.cashLBP)||0)}" style="width:120px;"></td>
+        ${lbpOnly? '' : `<td class="num">$${(Number(s.cashUSD)||0).toFixed(2)}</td><td><input type="number" step="0.01" class="num dc-cu" data-id="${s.id}" value="${(Number(s.cashUSD)||0).toFixed(2)}" style="width:90px;"></td>`}
+      </tr>`).join('')}</tbody>
+    </table></div>
+    <div class="field" style="margin-top:10px;"><label>👤 مين عم يعمل الإقفال *</label><input type="text" id="dc_by" value="${escapeHtml(currentUser? currentUser.username : '')}"></div>
     <div class="field"><label>ملاحظة</label><input type="text" id="dc_note" value=""></div>
-    <p style="font-size:11.5px; color:var(--ink-soft);">ملاحظة: هذا التقرير يلخّص الصناديق المفتوحة حالياً كمجموع عام؛ أما الصناديق التي أقفلها الموظفون أنفسهم فلها تقاريرها الخاصة أصلاً.</p>
+    <div id="dc_sum" style="font-size:14px; background:var(--bg-2); border:1px solid var(--line); border-radius:8px; padding:8px 12px;"></div>`
+    : `<p style="color:var(--ink-soft); font-size:12.5px;">لا توجد صناديق مفتوحة حالياً</p>`}
+    <div id="dc_err" style="color:var(--debit); font-size:13px; min-height:18px;"></div>
     <div class="row">
       <button class="btn" id="dc_cancel">إلغاء</button>
-      <button class="btn btn-primary" id="dc_confirm">🖨 تسجيل وطباعة التقرير الشامل</button>
+      ${openShifts.length? `<button class="btn btn-primary" id="dc_confirm">🖨 تسجيل وطباعة التقرير الشامل</button>` : ''}
     </div>
   </div>`;
   document.body.appendChild(wrap);
-  wrap.querySelector('#dc_cancel').addEventListener('click', ()=>wrap.remove());
-  wrap.querySelector('#dc_confirm').addEventListener('click', async ()=>{
-    const countedUSD = Number(wrap.querySelector('#dc_usd').value)||0;
-    const countedLBP = Number(wrap.querySelector('#dc_lbp').value)||0;
-    const note = wrap.querySelector('#dc_note').value.trim();
-    const closure = {id:uid(), createdAt:Date.now(), date:today,
-      expectedUSD, expectedLBP,
-      countedUSD, countedLBP, note};
+  const $ = q=>wrap.querySelector(q);
+  $('#dc_cancel').addEventListener('click', ()=>wrap.remove());
+  if(!openShifts.length) return;
+  const sel = ()=> Array.from(wrap.querySelectorAll('.dc-sh')).filter(c=>c.checked).map(c=>c.value);
+  const cnt = (cls, id)=>{ const e = wrap.querySelector(cls+'[data-id="'+id+'"]'); return e? (Number(e.value)||0) : 0; };
+  const upd = ()=>{
+    const ids = sel(); let tl = 0, tu = 0;
+    ids.forEach(id=>{ tl += cnt('.dc-cl', id); tu += cnt('.dc-cu', id); });
+    $('#dc_all').checked = ids.length===openShifts.length;
+    $('#dc_sum').innerHTML = ids.length ? `🗄 بينتقل على ${MAIN_BOX_NAME}: <b class="num">${fmtNum(tl)} ${L}${lbpOnly? '' : ' + $'+tu.toFixed(2)}</b> من ${ids.length} صندوق` : 'ما اخترت ولا صندوق';
+  };
+  $('#dc_all').addEventListener('change', e=>{ wrap.querySelectorAll('.dc-sh').forEach(c=>c.checked = e.target.checked); upd(); });
+  wrap.querySelectorAll('.dc-sh, .dc-cl, .dc-cu').forEach(el=>el.addEventListener(el.type==='checkbox'? 'change' : 'input', upd));
+  upd();
+  $('#dc_confirm').addEventListener('click', async ()=>{
+    const ids = sel();
+    const by = $('#dc_by').value.trim();
+    if(!ids.length){ $('#dc_err').textContent = 'اختار صندوق واحد على الأقل'; return; }
+    if(!by){ $('#dc_err').textContent = 'اكتب مين عم يعمل الإقفال'; $('#dc_by').focus(); return; }
+    $('#dc_confirm').disabled = true;
+    const now = Date.now(), note = $('#dc_note').value.trim();
+    const closure = {id:uid(), createdAt:now, date:today, expectedUSD:0, expectedLBP:0, countedUSD:0, countedLBP:0, note:''};
+    const closed = [];
+    ids.forEach(id=>{
+      const shift = DB.cashierShifts.find(x=>x.id===id); if(!shift || shift.status!=='open') return;
+      const cL = cnt('.dc-cl', id), cU = lbpOnly? 0 : cnt('.dc-cu', id);
+      const sysL = Number(shift.cashLBP)||0, sysU = Number(shift.cashUSD)||0;
+      closure.expectedLBP += sysL; closure.expectedUSD += sysU; closure.countedLBP += cL; closure.countedUSD += cU;
+      shift.closingCountedLBP = cL; shift.closingCountedUSD = cU;
+      shift.status = 'closed'; shift.closedAt = now;
+      shift.note = (shift.note? shift.note+' | ' : '') + 'أقفله: '+by+' (إقفال يومية شاملة)';
+      const info = { by, user:shift.username, shiftId:shift.id, sysLBP:sysL, sysUSD:sysU, countedLBP:cL, countedUSD:cU,
+        keptLBP:0, keptUSD:0, toSafeLBP:cL, toSafeUSD:cU, openedAt:shift.openedAt, dayClose:closure.id };
+      DB.cashMovements.push({id:uid(), createdAt:now, type:'shift_close', currency:'LBP', amount:cL, note:SHIFT_CLOSE_TAG+JSON.stringify(info), refSaleId:shift.id, date:today, shiftId:null});
+      closed.push(Object.assign({}, shift, {cashLBP:sysL, cashUSD:sysU}));
+    });
+    closure.note = 'أقفله: '+by+' — الصناديق: '+closed.map(x=>x.username).join('، ')+(note? ' — '+note : '');
     DB.dayClosures = DB.dayClosures || [];
     DB.dayClosures.push(closure);
-    await save(KEYS.dayClosures, DB.dayClosures);
+    const res = await Promise.all([save(KEYS.cashierShifts, DB.cashierShifts), save(KEYS.cashMovements, DB.cashMovements), save(KEYS.dayClosures, DB.dayClosures)]);
     wrap.remove();
-    toast('تم تسجيل إقفال اليومية ✅');
-    printDayCloseReport(closure, salesUSD, salesLBP, openShifts);
+    toast(res.every(Boolean)? '✅ تسكّر '+closed.length+' صندوق وانتقل المعدود على '+MAIN_BOX_NAME : 'حدث خطأ أثناء الحفظ');
+    printDayCloseReport(closure, salesUSD, salesLBP, closed);
+    render();
   });
 }
 function printDayCloseReport(closure, salesUSD, salesLBP, openShifts){
@@ -7962,7 +8011,7 @@ function printDayCloseReport(closure, salesUSD, salesLBP, openShifts){
   </head><body>
   <h2>${escapeHtml(s.companyName||'')} — تقرير إقفال يومية شاملة</h2>
   <p>التاريخ: ${fmtDate(closure.date)}</p>
-  ${(openShifts&&openShifts.length)? `<h3>الصناديق المفتوحة وقت الإقفال</h3>
+  ${(openShifts&&openShifts.length)? `<h3>الصناديق يلي تسكّرت وانتقلت على الصندوق الأساسي</h3>
   <table>
     <tr><th>الموظف</th><th>دولار $</th><th>${secCurLabel()}</th></tr>
     ${openShifts.map(sh=>`<tr><td>${escapeHtml(sh.username)}</td><td>$${sh.cashUSD.toFixed(2)}</td><td>${fmtNum(sh.cashLBP)}</td></tr>`).join('')}
@@ -8029,7 +8078,7 @@ function journalEntriesForRange(from, to){
     rows.push({cat:'paySup', date:v.date, createdAt:v.createdAt||0, type:'سند صرف ('+(v.method||'')+')', party:sup?sup.name:'—', usd:isLBP?0:-amt, lbp:isLBP?-amt:0, nav:null});
   });
   // حركات صندوق يدوية أو استرجاع (المبيعات نفسها موجودة أصلاً ضمن إيصالات القبض فوق، ما منكررها هون)
-  (DB.cashMovements||[]).filter(m=>!m.deleted && m.type!=='sale' && !SAFE_MOVE_TYPES.includes(m.type) && !isDocMirrorMove(m) && m.date>=from && m.date<=to).forEach(m=>{
+  (DB.cashMovements||[]).filter(m=>!m.deleted && m.type!=='sale' && m.type!=='gl' && !SAFE_MOVE_TYPES.includes(m.type) && !isDocMirrorMove(m) && m.date>=from && m.date<=to).forEach(m=>{
     const isLBP = m.currency==='LBP';
     const signed = m.type==='deposit'? Math.abs(m.amount) : -Math.abs(m.amount);
     const label = m.type==='deposit'?'إضافة يدوية للصندوق':m.type==='withdraw'?'سحب يدوي من الصندوق':'استرجاع POS';
@@ -8728,9 +8777,10 @@ function openMoveInvoiceModal(invId){
 }
 document.addEventListener('click', e=>{ const b = e.target.closest && e.target.closest('[data-move-invoice]'); if(b){ e.preventDefault(); openMoveInvoiceModal(b.getAttribute('data-move-invoice')); } });
 /* ============================= إقفال الصندوق + الخزنة =============================
-   كل إقفال صندوق بينحفظ كحركة 'shift_close' (بلا وردية) فيها: مين أقفل، المعدود، المتروك بالصندوق، ويلي انتقل عالخزنة.
-   الخزنة = كل يلي انتقل من الصناديق + إيداع يدوي − سحب يدوي */
+   كل إقفال صندوق بينحفظ كحركة 'shift_close' (بلا وردية) فيها: مين أقفل، المعدود، المتروك بالصندوق، ويلي انتقل عالصندوق الأساسي.
+   الصندوق الأساسي = كل يلي انتقل من الصناديق + إيداع يدوي − سحب يدوي */
 const SHIFT_CLOSE_TAG = '[إقفال] ';
+const MAIN_BOX_NAME = 'الصندوق الأساسي';   // كانت «الخزنة»
 const SAFE_MOVE_TYPES = ['shift_close','safe_in','safe_out'];
 function shiftCloseInfo(m){ try{ return JSON.parse(String(m.note||'').slice(SHIFT_CLOSE_TAG.length)); }catch(e){ return null; } }
 function shiftCloseRecords(){
@@ -8742,11 +8792,15 @@ function safeMoves(){
   const out = [];
   (DB.cashMovements||[]).forEach(m=>{
     if(m.deleted || !SAFE_MOVE_TYPES.includes(m.type)) return;
-    if(m.type==='shift_close'){ const i = shiftCloseInfo(m)||{}; if(i.legacy) return;   // الإقفالات القديمة بالسجل بس، ما بتحرّك رصيد الخزنة
+    if(m.type==='shift_close'){ const i = shiftCloseInfo(m)||{}; if(i.legacy) return;   // الإقفالات القديمة بالسجل بس، ما بتحرّك رصيد الصندوق الأساسي
       out.push({id:m.id, at:m.createdAt, date:m.date, kind:'in', lbp:Number(i.toSafeLBP)||0, usd:Number(i.toSafeUSD)||0, label:'إقفال صندوق '+(i.user||'')+' — أقفله: '+(i.by||'')}); }
     else { const sign = m.type==='safe_in'? 1 : -1, a = Math.abs(Number(m.amount)||0);
-      out.push({id:m.id, at:m.createdAt, date:m.date, kind:m.type==='safe_in'?'in':'out', lbp: m.currency==='LBP'? sign*a : 0, usd: m.currency==='USD'? sign*a : 0, label: isDocMirrorMove(m)? 'صرف: '+String(m.note).slice(DOC_MIRROR_TAG.length) : (m.type==='safe_in'?'إيداع بالخزنة':'سحب من الخزنة')+(m.note? ' — '+m.note : '')}); }
+      out.push({id:m.id, at:m.createdAt, date:m.date, kind:m.type==='safe_in'?'in':'out', lbp: m.currency==='LBP'? sign*a : 0, usd: m.currency==='USD'? sign*a : 0, label: isDocMirrorMove(m)? 'صرف: '+String(m.note).slice(DOC_MIRROR_TAG.length) : (m.type==='safe_in'?'إيداع بالصندوق الأساسي':'سحب من الصندوق الأساسي')+(m.note? ' — '+m.note : '')}); }
   });
+  // القيود اليدوية على الصندوق الأساسي (53101 ليرة / 53102 دولار)
+  (DB.cashMovements||[]).forEach(m=>{ if(m.deleted || m.type!=='gl') return; const i = glInfo(m)||{}; const a = Math.abs(Number(m.amount)||0);
+    ['53101','53102'].forEach(code=>{ if(i.dr!==code && i.cr!==code) return; const sg = i.dr===code? 1 : -1; const isL = code==='53101';
+      out.push({id:m.id, gl:true, at:m.createdAt, date:m.date, kind:sg>0?'in':'out', lbp:isL? sg*a : 0, usd:isL? 0 : sg*a, label:'قيد: '+(i.desc? i.desc+' — ' : '')+(sg>0? 'من ' : 'إلى ')+coaLabel(sg>0? i.cr : i.dr)}); }); });
   out.sort((a,b)=>(a.at||0)-(b.at||0));
   let bl = 0, bu = 0; out.forEach(r=>{ bl += r.lbp; bu += r.usd; r.balLBP = bl; r.balUSD = bu; });
   return out;
@@ -8762,14 +8816,14 @@ function safeView(){
   const bal = safeBalance();
   const fmtBoth = (l,u)=> lbpOnly && Math.abs(u)<0.005 ? fmtNum(l)+' '+L : fmtNum(l)+' '+L+' + $'+u.toFixed(2);
   return `<div class="card">
-    <h2><span class="dot"></span> 🗄 الخزنة</h2>
+    <h2><span class="dot"></span> 🗄 الصندوق الأساسي</h2>
     <div class="stats" style="margin:8px 0 12px;">
-      <div class="stat"><div class="k">الموجود بالخزنة ${L}</div><div class="v num">${fmtNum(bal.lbp)}</div></div>
-      ${(lbpOnly && Math.abs(bal.usd)<0.005)? '' : `<div class="stat"><div class="k">الموجود بالخزنة $</div><div class="v num">$${bal.usd.toFixed(2)}</div></div>`}
+      <div class="stat"><div class="k">الموجود بالصندوق الأساسي ${L}</div><div class="v num">${fmtNum(bal.lbp)}</div></div>
+      ${(lbpOnly && Math.abs(bal.usd)<0.005)? '' : `<div class="stat"><div class="k">الموجود بالصندوق الأساسي $</div><div class="v num">$${bal.usd.toFixed(2)}</div></div>`}
     </div>
     ${canUseSafe()? `<div class="action-row" style="margin-bottom:10px;">
-      <button class="btn btn-credit" data-safe-move="safe_in">➕ إيداع بالخزنة</button>
-      <button class="btn btn-debit" data-safe-move="safe_out">➖ سحب من الخزنة</button>
+      <button class="btn btn-credit" data-safe-move="safe_in">➕ إيداع بالصندوق الأساسي</button>
+      <button class="btn btn-debit" data-safe-move="safe_out">➖ سحب من الصندوق الأساسي</button>
     </div>` : ''}
     <div class="table-scroll"><table>
       <thead><tr><th>التاريخ والساعة</th><th>الحركة</th><th>المبلغ</th><th>الرصيد بعدها</th></tr></thead>
@@ -8777,7 +8831,7 @@ function safeView(){
         <td class="num">${new Date(r.at||0).toLocaleString('en-GB',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})}</td>
         <td>${escapeHtml(r.label)}</td>
         <td class="num" style="color:${(r.lbp+r.usd)>=0?'var(--credit)':'var(--debit)'};">${(r.lbp+r.usd)>=0?'+':'−'} ${fmtBoth(Math.abs(r.lbp), Math.abs(r.usd))}</td>
-        <td class="num"><b>${fmtBoth(r.balLBP, r.balUSD)}</b></td></tr>`).join('') : `<tr><td colspan="4" style="text-align:center; color:var(--ink-soft);">الخزنة فاضية — بتتعبّى لما تقفل صندوق</td></tr>`}</tbody>
+        <td class="num"><b>${fmtBoth(r.balLBP, r.balUSD)}</b></td></tr>`).join('') : `<tr><td colspan="4" style="text-align:center; color:var(--ink-soft);">الصندوق الأساسي فاضي — بتتعبّى لما تقفل صندوق</td></tr>`}</tbody>
     </table></div>
   </div>`;
 }
@@ -8788,10 +8842,10 @@ function shiftClosesView(){
   return `<div class="card">
     <h2><span class="dot"></span> 📜 سجل إقفال الصناديق</h2>
     <div class="table-scroll"><table>
-      <thead><tr><th>التاريخ والساعة</th><th>الصندوق</th><th>أقفله</th><th>رصيد النظام</th><th>المعدود</th><th>الفرق</th><th>بقي بالصندوق</th><th>انتقل عالخزنة</th>${isPrivilegedUser(currentUser)? '<th></th>' : ''}</tr></thead>
+      <thead><tr><th>التاريخ والساعة</th><th>الصندوق</th><th>أقفله</th><th>رصيد النظام</th><th>المعدود</th><th>الفرق</th><th>بقي بالصندوق</th><th>انتقل عالصندوق الأساسي</th>${isPrivilegedUser(currentUser)? '<th></th>' : ''}</tr></thead>
       <tbody>${recs.length? recs.map(r=>{ const dL = (r.countedLBP||0)-(r.sysLBP||0), dU = (r.countedUSD||0)-(r.sysUSD||0); return `<tr>
         <td class="num">${new Date(r.at||0).toLocaleString('en-GB',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})}</td>
-        <td>${escapeHtml(r.user||'—')}</td><td><b>${escapeHtml(r.by||'—')}</b>${r.legacy? ' <span title="إقفال قديم — ما بيأثر على رصيد الخزنة" style="font-size:11px; color:var(--ink-soft);">(قديم)</span>' : ''}</td>
+        <td>${escapeHtml(r.user||'—')}</td><td><b>${escapeHtml(r.by||'—')}</b>${r.legacy? ' <span title="إقفال قديم — ما بيأثر على رصيد الصندوق الأساسي" style="font-size:11px; color:var(--ink-soft);">(قديم)</span>' : ''}</td>
         <td class="num">${f(r.sysLBP, r.sysUSD)}</td><td class="num">${f(r.countedLBP, r.countedUSD)}</td>
         <td class="num" style="color:${(Math.abs(dL)>=1||Math.abs(dU)>=0.005)?'var(--debit)':'var(--ink-soft)'};">${(Math.abs(dL)>=1||Math.abs(dU)>=0.005)? f(dL, dU) : '—'}</td>
         <td class="num">${f(r.keptLBP, r.keptUSD)}</td><td class="num"><b>${f(r.toSafeLBP, r.toSafeUSD)}</b></td>
@@ -8799,6 +8853,309 @@ function shiftClosesView(){
         : `<tr><td colspan="9" style="text-align:center; color:var(--ink-soft);">ما في إقفالات مسجّلة بعد</td></tr>`}</tbody>
     </table></div>
   </div>`;
+}
+/* ============================= لوحة الحسابات (النظام المحاسبي اللبناني — 7 فئات) =============================
+   - الفئات السبعة ثابتة، وتحتها مجموعات (3 أرقام) وتحت كل مجموعة حسابات (المجموعة + رقمين: 53101، 53102…)
+   - الزبائن والموردين والعمال وحقول الميزانية والصناديق بيتسجّلوا لحالهم بالشجرة (رقم ثابت محفوظ بالإعدادات)
+   - القيود اليدوية (من حساب إلى حساب) محفوظة كحركات 'gl' (بلا جدول جديد) وبتأثر على الأرصدة وكشوف الحسابات */
+const GL_TAG = '[قيد] ';
+const COA_CLASSES = [
+  {c:'1', n:'حسابات الأموال الدائمة'}, {c:'2', n:'حسابات الأصول الثابتة'}, {c:'3', n:'حسابات المخزون والإنتاج قيد التنفيذ'},
+  {c:'4', n:'حسابات الذمم (الغير)'}, {c:'5', n:'الحسابات المالية'}, {c:'6', n:'حسابات الأعباء (المصاريف)'}, {c:'7', n:'حسابات الإيرادات'}
+];
+const COA_DEFAULT_GROUPS = [
+  {code:'101', name:'رأس المال'}, {code:'108', name:'حساب صاحب المؤسسة (المستثمر)'},
+  {code:'215', name:'المعدات والتجهيزات'}, {code:'218', name:'أصول ثابتة أخرى'},
+  {code:'370', name:'البضائع'},
+  {code:'401', name:'الموردون'}, {code:'411', name:'الزبائن'}, {code:'421', name:'المستخدمون — الأجور المستحقة'},
+  {code:'512', name:'المصارف'}, {code:'531', name:'الصندوق'},
+  {code:'601', name:'مشتريات البضائع'}, {code:'610', name:'المصاريف التشغيلية'},
+  {code:'701', name:'مبيعات البضائع'}, {code:'758', name:'إيرادات أخرى'}
+];
+const COA_FIXED = [   // حسابات ثابتة بأرقام معروفة
+  {code:'10801', name:'حساب صاحب المؤسسة', group:'108', kind:'owner'},
+  {code:'37001', name:'مخزون البضائع', group:'370', kind:'stock'},
+  {code:'53101', name:MAIN_BOX_NAME+' — ليرة لبنانية', group:'531', kind:'mainLBP', cur:'LBP'},
+  {code:'53102', name:MAIN_BOX_NAME+' — دولار', group:'531', kind:'mainUSD', cur:'USD'},
+  {code:'53103', name:'حساب شخصي', group:'531', kind:'manual'},
+  {code:'60101', name:'مشتريات البضائع', group:'601', kind:'purchases'},
+  {code:'70101', name:'مبيعات البضائع', group:'701', kind:'sales'}
+];
+function coaReg(){
+  const r = (DB.settings.coa && typeof DB.settings.coa==='object') ? DB.settings.coa : {};
+  return { groups: Array.isArray(r.groups)? r.groups : [], accounts: Array.isArray(r.accounts)? r.accounts : [] };
+}
+let _coaSaving = false;
+function coaSaveReg(reg){ DB.settings.coa = reg; _coaCache = null; if(_coaSaving) return; _coaSaving = true; save(KEYS.settings, DB.settings).finally(()=>{ _coaSaving = false; }); }
+function coaGroups(){
+  const reg = coaReg(), m = new Map();
+  COA_DEFAULT_GROUPS.forEach(g=>m.set(g.code, Object.assign({}, g)));
+  reg.groups.forEach(g=>{ if(g && g.code) m.set(String(g.code), Object.assign({}, m.get(String(g.code))||{}, g)); });
+  return Array.from(m.values()).sort((a,b)=>a.code<b.code?-1:1);
+}
+function coaNextCode(group, used){
+  for(let i=1;i<=99;i++){ const c = group+String(i).padStart(2,'0'); if(!used.has(c)) return c; }
+  for(let i=100;i<=9999;i++){ const c = group+String(i); if(!used.has(c)) return c; }
+  return group+Date.now();
+}
+// كل الحسابات (الثابتة + المسجّلة + المشتقة من الزبائن/الموردين/العمال/الميزانية/الصناديق) — بيسجّل الأرقام الجديدة مرة وحدة
+let _coaCache = null, _coaCacheAt = 0;
+function coaAccounts(){
+  if(_coaCache && Date.now()-_coaCacheAt < 300) return _coaCache;
+  _coaCache = coaAccountsBuild(); _coaCacheAt = Date.now(); return _coaCache;
+}
+function coaAccountsBuild(){
+  const reg = coaReg();
+  const list = []; const used = new Set();
+  COA_FIXED.forEach(a=>{ list.push(Object.assign({}, a)); used.add(a.code); });
+  reg.accounts.forEach(a=>{ if(a && a.code && !used.has(a.code)){ list.push(Object.assign({}, a)); used.add(a.code); } });
+  let added = false;
+  const ensure = (kind, ref, group, name)=>{
+    let a = list.find(x=>x.kind===kind && x.ref===ref);
+    if(!a){ a = {code:coaNextCode(group, used), name, group, kind, ref}; used.add(a.code); list.push(a); reg.accounts.push({code:a.code, name, group, kind, ref}); added = true; }
+    a.name = name; return a;
+  };
+  (DB.customers||[]).filter(c=>!c.deleted).forEach(c=>ensure('customer', c.id, '411', c.name||'زبون'));
+  (DB.suppliers||[]).filter(s=>!s.deleted).forEach(s=>ensure('supplier', s.id, '401', s.name||'مورد'));
+  (DB.workers||[]).filter(w=>!w.deleted).forEach(w=>ensure('worker', w.id, '421', w.name||'عامل'));
+  (DB.budgetCategories||[]).filter(c=>!c.auto).forEach(c=>ensure('budget', c.id, c.type==='income'? '758' : '610', c.name||''));
+  // صناديق الموظفين المفتوحة (رصيدها يلي بالدرج هلق)
+  Array.from(new Set((DB.cashierShifts||[]).filter(s=>s.status==='open' && !s.deleted).map(s=>s.username))).forEach(u=>ensure('drawer', u, '531', 'صندوق الموظف '+u));
+  if(added && currentUser && isPrivilegedUser(currentUser)) coaSaveReg(reg);
+  return list.sort((a,b)=>a.code<b.code?-1:1);
+}
+function coaFind(code){ return coaAccounts().find(a=>a.code===String(code)) || null; }
+function coaLabel(code){ const a = coaFind(code); return a? a.code+' — '+a.name : String(code||''); }
+// قيود 'gl' — {dr, cr, desc}: من حساب (دائن) إلى حساب (مدين)
+function glInfo(m){ try{ return JSON.parse(String(m.note||'').slice(GL_TAG.length)); }catch(e){ return null; } }
+function glEntries(){ return (DB.cashMovements||[]).filter(m=>!m.deleted && m.type==='gl').map(m=>Object.assign({id:m.id, at:m.createdAt, date:m.date, cur:m.currency, amt:Math.abs(Number(m.amount)||0)}, glInfo(m)||{})); }
+function glUsd(e){ return e.cur==='LBP' ? e.amt/curRate() : e.amt; }
+// أثر القيود على حساب (موجب = مدين) بالدولار الداخلي — أو بعملة معيّنة
+function glDelta(code, cur){
+  let d = 0; glEntries().forEach(e=>{ if(cur && e.cur!==cur) return; const v = cur? e.amt : glUsd(e); if(e.dr===code) d += v; if(e.cr===code) d -= v; }); return d;
+}
+// المدفوع من حساب صاحب المؤسسة (سندات صرف ومصاريف) — دائن لصاحب المؤسسة
+function ownerPayMoves(){ return (DB.cashMovements||[]).filter(m=>!m.deleted && m.type==='owner_pay'); }
+function coaBalanceUSD(a){   // موجب = مدين
+  const r = curRate();
+  switch(a.kind){
+    case 'customer': return customerBalance(a.ref);                 // القيود داخلة بكشف الزبون
+    case 'supplier': return -supplierBalance(a.ref);
+    case 'worker':   return -workerBalance(a.ref);
+    case 'mainLBP':  return (safeBalance().lbp||0)/r;                 // القيود داخلة بحركات الصندوق الأساسي
+    case 'mainUSD':  return safeBalance().usd||0;
+    case 'drawer':   return (DB.cashierShifts||[]).filter(s=>s.status==='open' && !s.deleted && s.username===a.ref).reduce((t,s)=>t+(Number(s.cashLBP)||0)/r+(Number(s.cashUSD)||0), 0);
+    case 'owner':    return glDelta(a.code) - ownerPayMoves().reduce((t,m)=>t+(m.currency==='LBP'? Math.abs(Number(m.amount)||0)/r : Math.abs(Number(m.amount)||0)), 0);
+    case 'stock':    return glDelta(a.code) + (DB.warehouseItems||[]).reduce((t,it)=>{ if(isServiceItem(it)) return t; const c = Number(it.costPrice)||0, q = fastStock(it.id); return t + (q>0? q*c : 0); }, 0);
+    case 'purchases':return glDelta(a.code) + (DB.purchaseInvoices||[]).filter(i=>!i.deleted).reduce((t,i)=>t+(i.isReturn?-1:1)*computeInvoiceTotal(i).totalUSD, 0);
+    case 'sales':    return glDelta(a.code) - (DB.invoices||[]).filter(i=>!i.deleted).reduce((t,i)=>t+computeInvoiceTotal(i).totalUSD, 0);
+    case 'budget': { const c = (DB.budgetCategories||[]).find(x=>x.id===a.ref); const tot = (DB.budgetEntries||[]).filter(e=>!e.deleted && e.categoryId===a.ref).reduce((t,e)=>t+Math.abs(Number(e.amount)||0), 0);
+      return glDelta(a.code) + (c && c.type==='income' ? -tot : tot); }
+    default: return glDelta(a.code);
+  }
+}
+function coaFmtBal(usd){
+  if(Math.abs(usd) < 0.0000005) return '<span style="color:var(--ink-soft);">—</span>';
+  return `<span class="num" dir="ltr" style="color:${usd>0?'var(--debit)':'var(--credit)'};">${fmtPrim(Math.abs(usd))}</span> <small style="color:var(--ink-soft);">${usd>0?'مدين':'دائن'}</small>`;
+}
+function canPostGl(){ return hasPermission('gl_entries'); }
+function coaView(){
+  const accs = coaAccounts(), groups = coaGroups();
+  const bal = new Map(accs.map(a=>[a.code, coaBalanceUSD(a)]));
+  const grpSum = g=> accs.filter(a=>a.group===g).reduce((t,a)=>t+(bal.get(a.code)||0), 0);
+  const clsSum = c=> groups.filter(g=>g.code[0]===c).reduce((t,g)=>t+grpSum(g.code), 0);
+  const q = (window._coaQ||'').trim();
+  const match = a=> !q || a.code.includes(q) || normalizeSearchText(a.name).includes(normalizeSearchText(q));
+  return `<div class="card">
+    <h2><span class="dot"></span> 📚 لوحة الحسابات</h2>
+    <p style="font-size:12.5px; color:var(--ink-soft);">النظام المحاسبي اللبناني — 7 فئات. اكبس على أي حساب لتشوف كشفو${canPostGl()? ' أو تعمل قيد منو لحساب تاني' : ''}.</p>
+    <div class="action-row" style="margin-bottom:10px;">
+      <input type="text" id="coaQ" placeholder="🔍 بحث برقم الحساب أو الاسم" value="${escapeHtml(q)}" style="flex:1; min-width:180px;">
+      ${canPostGl()? `<button class="btn btn-primary" id="coaNewAccBtn">➕ فتح حساب</button><button class="btn" id="coaNewEntryBtn">🔁 قيد محاسبي</button>` : ''}
+    </div>
+    ${COA_CLASSES.map(cl=>{ const gs = groups.filter(g=>g.code[0]===cl.c);
+      const body = gs.map(g=>{ const as = accs.filter(a=>a.group===g.code && match(a)); if(q && !as.length && !match({code:g.code, name:g.name})) return '';
+        return `<div style="margin:6px 0 2px; padding:6px 10px; background:var(--bg-2); border-radius:8px; display:flex; justify-content:space-between; gap:8px;"><b><span class="num">${g.code}</span> ${escapeHtml(g.name)}</b><span>${coaFmtBal(grpSum(g.code))}</span></div>
+          ${as.map(a=>`<div class="coa-acc" data-coa="${a.code}" style="display:flex; justify-content:space-between; gap:8px; padding:6px 10px 6px 10px; margin-inline-start:18px; border-bottom:1px dashed var(--line); cursor:pointer;">
+            <span><span class="num" style="color:var(--ink-soft);">${a.code}</span> ${escapeHtml(a.name)}</span><span>${coaFmtBal(bal.get(a.code)||0)}</span></div>`).join('')}`; }).join('');
+      if(q && !body.trim()) return '';
+      return `<details ${q? 'open' : (cl.c==='4'||cl.c==='5'? 'open' : '')} style="border:1px solid var(--line); border-radius:10px; padding:8px 12px; margin-bottom:8px;">
+        <summary style="cursor:pointer; font-weight:800; display:flex; justify-content:space-between; gap:8px;"><span>الفئة ${cl.c} — ${cl.n}</span><span>${coaFmtBal(clsSum(cl.c))}</span></summary>
+        ${body || '<div style="font-size:12px; color:var(--ink-soft); padding:6px;">ما في حسابات بعد</div>'}
+      </details>`; }).join('')}
+  </div>`;
+}
+function bindCoaEvents(){
+  const qi = document.getElementById('coaQ');
+  if(qi){ let t = null; qi.addEventListener('input', ()=>{ clearTimeout(t); t = setTimeout(()=>{ window._coaQ = qi.value; const pos = qi.selectionStart; render(); const n = document.getElementById('coaQ'); if(n){ n.focus(); try{ n.setSelectionRange(pos,pos); }catch(e){} } }, 250); }); }
+  document.querySelectorAll('[data-coa]').forEach(el=>el.addEventListener('click', ()=>go('#/coa-account/'+el.getAttribute('data-coa'))));
+  const na = document.getElementById('coaNewAccBtn'); if(na) na.addEventListener('click', openCoaNewAccountModal);
+  const ne = document.getElementById('coaNewEntryBtn'); if(ne) ne.addEventListener('click', ()=>openGlEntryModal());
+}
+// كشف حساب: حركات الحساب (قيود + حركات الصندوق الأساسي + الدفع من حساب صاحب المؤسسة) مع الرصيد
+function coaAccountRows(a){
+  const r = curRate(), rows = [];
+  glEntries().forEach(e=>{ if(e.dr!==a.code && e.cr!==a.code) return;
+    const other = e.dr===a.code? e.cr : e.dr; const v = glUsd(e);
+    rows.push({at:e.at, date:e.date, desc:(e.desc? e.desc+' — ' : '')+(e.dr===a.code? 'من: ' : 'إلى: ')+coaLabel(other), dr:e.dr===a.code? v : 0, cr:e.cr===a.code? v : 0, glId:e.id, native:(e.cur==='LBP'? fmtNum(e.amt)+' '+secCurLabel() : '$'+e.amt.toFixed(2))}); });
+  if(a.kind==='mainLBP' || a.kind==='mainUSD'){
+    safeMoves().forEach(m=>{ if(m.gl) return; const v = a.kind==='mainLBP'? (m.lbp||0)/r : (m.usd||0); if(!v) return;
+      rows.push({at:m.at, date:m.date, desc:m.label, dr:v>0? v : 0, cr:v<0? -v : 0}); });
+  }
+  if(a.kind==='owner') ownerPayMoves().forEach(m=>{ const v = m.currency==='LBP'? Math.abs(Number(m.amount)||0)/r : Math.abs(Number(m.amount)||0);
+    rows.push({at:m.createdAt, date:m.date, desc:String(m.note||'').replace(DOC_MIRROR_TAG,''), dr:0, cr:v}); });
+  rows.sort((x,y)=>(x.at||0)-(y.at||0));
+  let b = 0; rows.forEach(x=>{ b += x.dr - x.cr; x.bal = b; });
+  return rows;
+}
+function coaAccountView(code){
+  const a = coaFind(code);
+  if(!a) return emptyState('لم يتم العثور على هذا الحساب');
+  const link = a.kind==='customer'? `#/customer/${a.ref}` : a.kind==='supplier'? `#/supplier/${a.ref}` : a.kind==='worker'? `#/worker/${a.ref}` : a.kind==='budget'? `#/budget-category/${a.ref}` : (a.kind==='mainLBP'||a.kind==='mainUSD')? '#/safe' : null;
+  const rows = coaAccountRows(a).slice().reverse();
+  const derived = ['customer','supplier','worker','budget','stock','purchases','sales','drawer'].includes(a.kind);
+  return `<div class="card">
+    <h2><span class="dot"></span> <span class="num">${a.code}</span> — ${escapeHtml(a.name)}</h2>
+    <div class="stats" style="margin:8px 0 12px;"><div class="stat"><div class="k">الرصيد</div><div class="v">${coaFmtBal(coaBalanceUSD(a))}</div></div></div>
+    <div class="action-row" style="margin-bottom:10px;">
+      ${canPostGl()? `<button class="btn btn-primary" data-gl-from="${a.code}">🔁 قيد من هالحساب</button><button class="btn" data-gl-to="${a.code}">🔁 قيد لهالحساب</button>` : ''}
+      ${link? `<button class="btn" data-nav="${link}">📄 الكشف الكامل</button>` : ''}
+      ${(a.kind==='manual' && canPostGl() && !COA_FIXED.some(f=>f.code===a.code))? `<button class="btn" id="coaRenameBtn">✎ تعديل الاسم</button>` : ''}
+    </div>
+    ${derived? `<p style="font-size:12px; color:var(--ink-soft);">رصيد هالحساب محسوب من البرنامج${link? ' (فواتير، سندات…) — الكشف الكامل من الزر فوق' : ''}. تحت بس القيود اليدوية.</p>` : ''}
+    <div class="table-scroll"><table>
+      <thead><tr><th>التاريخ</th><th>البيان</th><th>مدين</th><th>دائن</th><th>الرصيد</th>${canPostGl()? '<th></th>' : ''}</tr></thead>
+      <tbody>${rows.length? rows.map(x=>`<tr><td class="num">${fmtDate(x.date)}${x.at? '<div style="font-size:11px; color:var(--ink-soft);" dir="ltr">'+fmtTime12(x.at)+'</div>' : ''}</td><td>${escapeHtml(x.desc||'')}${x.native? ' <small class="num" style="color:var(--ink-soft);">('+x.native+')</small>' : ''}</td>
+        <td class="num">${x.dr? fmtPrim(x.dr) : ''}</td><td class="num">${x.cr? fmtPrim(x.cr) : ''}</td><td>${coaFmtBal(x.bal)}</td>
+        ${canPostGl()? `<td>${x.glId? `<button class="btn btn-sm btn-danger" data-gl-del="${x.glId}">🗑</button>` : ''}</td>` : ''}</tr>`).join('')
+        : `<tr><td colspan="6" style="text-align:center; color:var(--ink-soft);">ما في حركات بعد</td></tr>`}</tbody>
+    </table></div>
+  </div>`;
+}
+function bindCoaAccountEvents(code){
+  document.querySelectorAll('[data-gl-from]').forEach(b=>b.addEventListener('click', ()=>openGlEntryModal({from:b.getAttribute('data-gl-from')})));
+  document.querySelectorAll('[data-gl-to]').forEach(b=>b.addEventListener('click', ()=>openGlEntryModal({to:b.getAttribute('data-gl-to')})));
+  document.querySelectorAll('[data-gl-del]').forEach(b=>b.addEventListener('click', async ()=>{
+    if(!confirm('حذف هالقيد؟')) return;
+    const m = DB.cashMovements.find(x=>x.id===b.getAttribute('data-gl-del')); if(!m) return;
+    m.deleted = true; const ok = await save(KEYS.cashMovements, DB.cashMovements); toast(ok? 'تم حذف القيد' : 'حدث خطأ أثناء الحفظ'); render();
+  }));
+  const rn = document.getElementById('coaRenameBtn');
+  if(rn) rn.addEventListener('click', ()=>{ const reg = coaReg(); const a = reg.accounts.find(x=>x.code===code); if(!a) return;
+    const n = prompt('اسم الحساب', a.name||''); if(n && n.trim()){ a.name = n.trim(); coaSaveReg(reg); render(); } });
+}
+function coaLeafOptions(){ return coaAccounts().map(a=>`<option value="${a.code} — ${escapeHtml(a.name)}">`).join(''); }
+function coaParseCode(v){ const m = String(v||'').trim().match(/^(\d+)/); const c = m? m[1] : ''; return coaFind(c)? c : null; }
+function openGlEntryModal(pre){
+  if(!canPostGl()){ toast('ليس لديك صلاحية القيود المحاسبية'); return; }
+  pre = pre || {};
+  const sec = primIsSec();
+  const wrap = document.createElement('div'); wrap.className = 'modal-bg';
+  wrap.innerHTML = `<div class="modal" style="max-width:520px;">
+    <h3>🔁 قيد محاسبي — من حساب إلى حساب</h3>
+    <datalist id="gl_accs">${coaLeafOptions()}</datalist>
+    <div class="field"><label>من حساب (دائن) *</label><input type="text" id="gl_from" list="gl_accs" placeholder="اكتب الرقم أو الاسم" value="${pre.from? escapeHtml(coaLabel(pre.from)) : ''}"></div>
+    <div class="field"><label>إلى حساب (مدين) *</label><input type="text" id="gl_to" list="gl_accs" placeholder="اكتب الرقم أو الاسم" value="${pre.to? escapeHtml(coaLabel(pre.to)) : ''}"></div>
+    <div class="grid grid-2">
+      <div class="field"><label>المبلغ *</label><input type="number" id="gl_amt" class="num"></div>
+      <div class="field"><label>العملة</label><select id="gl_cur"><option value="LBP" ${sec?'selected':''}>${secCurLabel()}</option><option value="USD" ${sec?'':'selected'}>$</option></select></div>
+    </div>
+    <div class="grid grid-2">
+      <div class="field"><label>التاريخ</label><input type="date" id="gl_date" value="${todayISO()}"></div>
+      <div class="field"><label>البيان</label><input type="text" id="gl_desc" placeholder="مثلاً: سحب صاحب المؤسسة"></div>
+    </div>
+    <div id="gl_err" style="color:var(--debit); font-size:13px; min-height:18px;"></div>
+    <div class="row"><button class="btn" id="gl_cancel">إلغاء</button><button class="btn btn-primary" id="gl_ok">💾 حفظ القيد</button></div>
+  </div>`;
+  document.body.appendChild(wrap);
+  const $ = q=>wrap.querySelector(q);
+  $('#gl_cancel').addEventListener('click', ()=>wrap.remove());
+  $('#gl_ok').addEventListener('click', async ()=>{
+    const err = t=>{ $('#gl_err').textContent = t; };
+    const cr = coaParseCode($('#gl_from').value), dr = coaParseCode($('#gl_to').value);
+    if(!cr) return err('اختار «من حساب» من اللائحة');
+    if(!dr) return err('اختار «إلى حساب» من اللائحة');
+    if(cr===dr) return err('ما بيصير نفس الحساب');
+    let cur = $('#gl_cur').value;
+    if(cr==='53101' || dr==='53101') cur = 'LBP';
+    if(cr==='53102' || dr==='53102') cur = 'USD';
+    if((cr==='53101'||dr==='53101') && (cr==='53102'||dr==='53102')) return err('للتحويل بين ليرة ودولار اعمل قيدين');
+    const amt = Number($('#gl_amt').value)||0;
+    if(!(amt>0)) return err('اكتب مبلغ أكبر من صفر');
+    const date = $('#gl_date').value || todayISO(), desc = $('#gl_desc').value.trim();
+    DB.cashMovements.push({id:uid(), createdAt:Date.now(), type:'gl', currency:cur, amount:amt, note:GL_TAG+JSON.stringify({dr, cr, desc, by:currentUser&&currentUser.username}), refSaleId:null, date, shiftId:null});
+    const ok = await save(KEYS.cashMovements, DB.cashMovements);
+    wrap.remove(); toast(ok? '✅ تم حفظ القيد' : 'حدث خطأ أثناء الحفظ'); render();
+  });
+}
+function openCoaNewAccountModal(){
+  if(!canPostGl()){ toast('ليس لديك صلاحية'); return; }
+  const groups = coaGroups();
+  const wrap = document.createElement('div'); wrap.className = 'modal-bg';
+  wrap.innerHTML = `<div class="modal" style="max-width:480px;">
+    <h3>➕ فتح حساب جديد</h3>
+    <div class="field"><label>الفئة</label><select id="na_cls">${COA_CLASSES.map(c=>`<option value="${c.c}">${c.c} — ${c.n}</option>`).join('')}</select></div>
+    <div class="field"><label>المجموعة</label><select id="na_grp"></select></div>
+    <div class="field" id="na_newgrp_wrap" style="display:none;"><label>اسم المجموعة الجديدة</label><input type="text" id="na_newgrp"></div>
+    <div class="field"><label>اسم الحساب *</label><input type="text" id="na_name"></div>
+    <div style="font-size:13px; color:var(--ink-soft);">رقم الحساب: <b class="num" id="na_code"></b></div>
+    <div id="na_err" style="color:var(--debit); font-size:13px; min-height:18px;"></div>
+    <div class="row"><button class="btn" id="na_cancel">إلغاء</button><button class="btn btn-primary" id="na_ok">💾 فتح الحساب</button></div>
+  </div>`;
+  document.body.appendChild(wrap);
+  const $ = q=>wrap.querySelector(q);
+  const used = new Set(coaAccounts().map(a=>a.code));
+  const newGrpCode = cls=>{ const gs = new Set(groups.map(g=>g.code)); for(let i=10;i<=99;i++){ const c = cls+String(i); if(!gs.has(c)) return c; } return cls+'99'; };
+  const fillGroups = ()=>{ const cls = $('#na_cls').value;
+    $('#na_grp').innerHTML = groups.filter(g=>g.code[0]===cls).map(g=>`<option value="${g.code}">${g.code} — ${escapeHtml(g.name)}</option>`).join('') + `<option value="__new">➕ مجموعة جديدة (${newGrpCode(cls)})</option>`; upd(); };
+  const upd = ()=>{ const g = $('#na_grp').value; const isNew = g==='__new'; $('#na_newgrp_wrap').style.display = isNew? '' : 'none';
+    const gc = isNew? newGrpCode($('#na_cls').value) : g; $('#na_code').textContent = coaNextCode(gc, used); };
+  $('#na_cls').addEventListener('change', fillGroups); $('#na_grp').addEventListener('change', upd);
+  $('#na_cls').value = '5'; fillGroups();
+  $('#na_cancel').addEventListener('click', ()=>wrap.remove());
+  $('#na_ok').addEventListener('click', ()=>{
+    const name = $('#na_name').value.trim(); if(!name){ $('#na_err').textContent = 'اكتب اسم الحساب'; return; }
+    const reg = coaReg(); let g = $('#na_grp').value;
+    if(g==='__new'){ const gn = $('#na_newgrp').value.trim(); if(!gn){ $('#na_err').textContent = 'اكتب اسم المجموعة'; return; }
+      g = newGrpCode($('#na_cls').value); reg.groups.push({code:g, name:gn}); }
+    const code = coaNextCode(g, used);
+    reg.accounts.push({code, name, group:g, kind:'manual'});
+    coaSaveReg(reg); wrap.remove(); toast('✅ انفتح الحساب '+code); go('#/coa-account/'+code);
+  });
+}
+
+// إقفال يومية شاملة انعمل بالطريقة القديمة (كان يسجّل التقرير بس — ما يسكّر الصناديق ولا يرحّل): منرحّل مرة وحدة
+// المبلغ يلي كان بكل صندوق وقت الإقفال على الصندوق الأساسي، ومنصفّر هالمبلغ من الصندوق (المبيعات بعد الإقفال بتضل فيه)
+let _oldDayCloseDone = false;
+function repairOldDayClosures(){
+  if(_oldDayCloseDone || !currentUser || !isPrivilegedUser(currentUser) || !cloudSessionReady()) return;
+  _oldDayCloseDone = true;
+  const linked = new Set();
+  (DB.cashMovements||[]).forEach(m=>{ if(m.type==='shift_close'){ const i = shiftCloseInfo(m)||{}; if(i.dayClose) linked.add(i.dayClose); } });
+  const todo = (DB.dayClosures||[]).filter(c=>c && c.date>='2026-11-01' && c.createdAt && !linked.has(c.id) && !/^أقفله:/.test(c.note||''));
+  if(!todo.length) return;
+  let changed = false;
+  todo.forEach(c=>{
+    (DB.cashierShifts||[]).filter(sh=>!sh.deleted && sh.status==='open' && (sh.openedAt||0) < c.createdAt).forEach(sh=>{
+      let pl = 0, pu = 0;   // صافي حركات الصندوق بعد الإقفال
+      (DB.cashMovements||[]).forEach(m=>{ if(m.deleted || m.shiftId!==sh.id || !((m.createdAt||0) > c.createdAt)) return;
+        const sg = (m.type==='sale' || m.type==='deposit') ? 1 : (m.type==='return' || m.type==='withdraw') ? -1 : 0; const a = sg*Math.abs(Number(m.amount)||0);
+        if(m.currency==='USD') pu += a; else pl += a; });
+      const atL = Math.round((Number(sh.cashLBP)||0) - pl), atU = Math.round(((Number(sh.cashUSD)||0) - pu)*100)/100;
+      if(!(atL>0) && !(atU>0)) return;
+      const by = isCcupClient()? 'omar' : 'إقفال يومية شاملة';
+      const info = { by, user:sh.username, shiftId:sh.id, sysLBP:Math.max(atL,0), sysUSD:Math.max(atU,0), countedLBP:Math.max(atL,0), countedUSD:Math.max(atU,0),
+        keptLBP:0, keptUSD:0, toSafeLBP:Math.max(atL,0), toSafeUSD:Math.max(atU,0), openedAt:sh.openedAt, dayClose:c.id, repaired:true };
+      DB.cashMovements.push({id:uid(), createdAt:c.createdAt, type:'shift_close', currency:'LBP', amount:info.toSafeLBP, note:SHIFT_CLOSE_TAG+JSON.stringify(info), refSaleId:sh.id, date:c.date, shiftId:null});
+      if(atL>0){ sh.cashLBP = (Number(sh.cashLBP)||0) - atL; DB.cashMovements.push({id:uid(), createdAt:c.createdAt, type:'withdraw', currency:'LBP', amount:atL, note:'ترحيل إقفال يومية شاملة على '+MAIN_BOX_NAME+' — '+sh.username, refSaleId:null, date:c.date, shiftId:sh.id}); }
+      if(atU>0){ sh.cashUSD = (Number(sh.cashUSD)||0) - atU; DB.cashMovements.push({id:uid(), createdAt:c.createdAt, type:'withdraw', currency:'USD', amount:atU, note:'ترحيل إقفال يومية شاملة على '+MAIN_BOX_NAME+' — '+sh.username, refSaleId:null, date:c.date, shiftId:sh.id}); }
+      changed = true;
+    });
+    c.note = 'أقفله: '+(isCcupClient()? 'omar' : '—')+' (رُحّل لاحقاً على '+MAIN_BOX_NAME+')'+(c.note? ' — '+c.note : '');
+  });
+  if(!changed) return;
+  Promise.all([save(KEYS.cashMovements, DB.cashMovements), save(KEYS.cashierShifts, DB.cashierShifts), save(KEYS.dayClosures, DB.dayClosures)])
+    .then(r=>{ toast(r.every(Boolean)? '✅ رحّلنا الإقفال الشامل القديم على '+MAIN_BOX_NAME : '⚠️ تعذّر حفظ ترحيل الإقفال'); render(); });
 }
 // الإقفالات القديمة (قبل سجل الإقفال): منسجّلها بالسجل مرة وحدة — أقفلها «محمد»، والمعدود كلو انتقل عالخزنة (بيتعدّل من «✎ تعديل»)
 let _legacyClosesDone = false;
@@ -8854,7 +9211,7 @@ function openEditShiftCloseModal(id){
   </div>`;
   document.body.appendChild(wrap);
   const $ = q=>wrap.querySelector(q), v = q=>{ const e = $(q); return e? (Number(e.value)||0) : 0; };
-  const upd = ()=>{ $('#ec_sum').innerHTML = '🗄 انتقل عالخزنة: <b class="num">'+fmtNum(v('#ec_cl')-v('#ec_kl'))+' '+L+(lbpOnly? '' : ' + $'+(v('#ec_cu')-v('#ec_ku')).toFixed(2))+'</b>'; };
+  const upd = ()=>{ $('#ec_sum').innerHTML = '🗄 انتقل عالصندوق الأساسي: <b class="num">'+fmtNum(v('#ec_cl')-v('#ec_kl'))+' '+L+(lbpOnly? '' : ' + $'+(v('#ec_cu')-v('#ec_ku')).toFixed(2))+'</b>'; };
   ['#ec_cl','#ec_cu','#ec_kl','#ec_ku'].forEach(q=>{ const e = $(q); if(e) e.addEventListener('input', upd); }); upd();
   $('#ec_cancel').addEventListener('click', ()=>wrap.remove());
   $('#ec_ok').addEventListener('click', async ()=>{
@@ -8878,7 +9235,7 @@ function openSafeMoveModal(type){
   const wrap = document.createElement('div');
   wrap.className = 'modal-bg';
   wrap.innerHTML = `<div class="modal" style="max-width:400px;">
-    <h3>${type==='safe_in'? '➕ إيداع بالخزنة' : '➖ سحب من الخزنة'}</h3>
+    <h3>${type==='safe_in'? '➕ إيداع بالصندوق الأساسي' : '➖ سحب من الصندوق الأساسي'}</h3>
     <div style="display:flex; gap:6px;"><input type="number" id="sm_amt" class="num" min="0" style="flex:1; font-size:18px; padding:10px;">
       ${lbpOnly? '' : `<select id="sm_cur" style="width:80px;"><option value="LBP">${escapeHtml(L)}</option><option value="USD">$</option></select>`}</div>
     <div class="field" style="margin-top:8px;"><label>ملاحظة (مين / ليش) *</label><input type="text" id="sm_note"></div>
@@ -10095,7 +10452,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-11-01 · 18:00 · v59';
+const APP_TRADE_BUILD = '2026-11-01 · 20:30 · v60';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 function settingsView(){
   const s = DB.settings;
@@ -10904,6 +11261,8 @@ function bindEvents(){
   if(dayCloseBtn) dayCloseBtn.addEventListener('click', (e)=>{ e.stopPropagation(); openDayCloseModal(); });
   if(currentRoute()[0]==='pos') bindPosEvents();
   if(currentRoute()[0]==='journal') bindJournalEvents();
+  if(currentRoute()[0]==='coa') bindCoaEvents();
+  if(currentRoute()[0]==='coa-account') bindCoaAccountEvents(currentRoute()[1]);
   if(currentRoute()[0]==='reports') bindReportsEvents();
 
   const logoutBtn = document.getElementById('logoutBtn');
@@ -11862,7 +12221,8 @@ function openAddBudgetEntryModal(categoryId){
     ${cat.type!=='income'? `<div class="field"><label>💸 من وين دفعت؟ *</label>
       <div style="display:flex; flex-wrap:wrap; gap:6px;">
         <button type="button" class="btn btn-sm" data-be-src="box" ${currentUserShift()? '' : 'disabled title="ما عندك صندوق مفتوح"'}>💵 صندوقي (${escapeHtml(currentUser.username||'')})</button>
-        ${canUseSafe()? `<button type="button" class="btn btn-sm" data-be-src="safe">🗄 الخزنة</button>` : ''}
+        ${canUseSafe()? `<button type="button" class="btn btn-sm" data-be-src="safe">🗄 الصندوق الأساسي</button>` : ''}
+        ${hasPermission('owner_pay')? `<button type="button" class="btn btn-sm" data-be-src="owner">👤 حساب صاحب المؤسسة</button>` : ''}
         <button type="button" class="btn btn-sm" data-be-src="other">✍️ غير (اكتب من وين)</button>
       </div>
       <input type="text" id="be_src_other" placeholder="مثلاً: من البنك، من جيبي، من محل تاني..." style="display:none; margin-top:6px;">
@@ -11899,7 +12259,7 @@ function openAddBudgetEntryModal(categoryId){
     if(isExp) _paySrcAsked.add(ne.id);   // ما منسأل مرة تانية — الاختيار صار هون
     DB.budgetEntries = [...DB.budgetEntries, ne];
     const ok = await save(KEYS.budgetEntries, DB.budgetEntries);
-    if(ok && isExp && (src==='box' || src==='safe')) await applyPaySource(KEYS.budgetEntries, ne.id, src);
+    if(ok && isExp && (src==='box' || src==='safe' || src==='owner')) await applyPaySource(KEYS.budgetEntries, ne.id, src);
     wrap.remove();
     toast(ok? 'تم حفظ سند الصرف':'حدث خطأ أثناء الحفظ');
     render();
