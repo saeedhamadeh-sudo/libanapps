@@ -675,9 +675,11 @@ function moneyTargetOptions(opts){
   opts = opts || {};
   const sh = currentUserShift();
   const o = [];
-  if(opts.drawer!==false) o.push(`<option value="drawer" ${sh? '' : 'disabled'}>💵 صندوقي${currentUser? ' ('+escapeHtml(currentUser.username)+')' : ''}${sh? '' : ' — مسكّر'}</option>`);
+  if(opts.drawer!==false && !myDrawerIsPersonal()) o.push(`<option value="drawer" ${sh? '' : 'disabled'}>💵 صندوقي${currentUser? ' ('+escapeHtml(currentUser.username)+')' : ''}${sh? '' : ' — مسكّر'}</option>`);
   if(opts.main!==false && canUseSafe()) o.push(`<option value="main">🗄 ${MAIN_BOX_NAME}</option>`);
-  moneyAccounts().forEach(a=>{ if(a.kind==='owner' && !hasPermission('owner_pay')) return; o.push(`<option value="${a.code}">${a.code} — ${escapeHtml(a.name)}</option>`); });
+  moneyAccounts().forEach(a=>{ if(a.kind==='owner' && !hasPermission('owner_pay')) return;
+    if(a.kind==='personal' && opts.drawer===false && myDrawerIsPersonal()) return;   // نفس الصندوق يلي عم نشتغل عليه
+    o.push(`<option value="${a.code}">${a.kind==='personal' && myDrawerIsPersonal()? '💵 ' : ''}${a.code} — ${escapeHtml(a.kind==='personal' && myDrawerIsPersonal()? 'حساب شخصي (صندوقي)' : a.name)}</option>`); });
   if(opts.other) o.push(`<option value="other">✍️ غير (اكتب)</option>`);
   if(opts.none) o.push(`<option value="none">ما تحرّك ولا حساب</option>`);
   return o.join('');
@@ -691,7 +693,8 @@ function pushMoneyMove(target, dir, cur, amt, extra){
   if(extra.rate) base.rate = extra.rate;
   const label = extra.label || '';
   let sh0 = null;
-  if(target==='53103' && (sh0 = personalShift())) target = 'drawer';   // الحساب الشخصي = صندوق admin المفتوح
+  if(target==='53103' && (sh0 = personalShift())) target = 'drawer';   // الحساب الشخصي = صندوق المدير المفتوح
+  else if(target==='drawer' && myDrawerIsPersonal()) sh0 = currentUserShift();
   if(target==='drawer'){
     const sh = sh0 || currentUserShift(); if(!sh) return null;
     Object.assign(base, {type: dir==='in'? 'deposit' : 'withdraw', shiftId:sh.id, note:(extra.doc? DOC_MIRROR_TAG : '')+label+' — '+(currentUser? currentUser.username : '')+(sh0? ' ⟨53103⟩' : '')});
@@ -732,7 +735,7 @@ function nextPaySourceAsk(){
   </div>`;
   document.body.appendChild(wrap);
   const sel = wrap.querySelector('#ps_t');
-  if(currentUserShift()) sel.value = 'drawer';
+  if(currentUserShift()) sel.value = myDrawerIsPersonal()? '53103' : 'drawer';
   wrap.querySelector('#ps_ok').addEventListener('click', async ()=>{
     const t = sel.value; if(!t){ wrap.querySelector('#ps_err').textContent = 'اختار الحساب'; return; }
     wrap.remove(); _paySrcOpen = false;
@@ -8954,7 +8957,7 @@ const COA_FIXED = [   // حسابات ثابتة بأرقام معروفة
   {code:'51601', name:'📱 Whish', group:'516', kind:'whish'},
   {code:'53101', name:MAIN_BOX_NAME+' — ليرة لبنانية', group:'531', kind:'mainLBP', cur:'LBP'},
   {code:'53102', name:MAIN_BOX_NAME+' — دولار', group:'531', kind:'mainUSD', cur:'USD'},
-  {code:'53103', name:'حساب شخصي (صندوق admin)', group:'531', kind:'personal'},
+  {code:'53103', name:'حساب شخصي (صندوق المدير)', group:'531', kind:'personal'},
   {code:'60101', name:'مشتريات البضائع', group:'601', kind:'purchases'},
   {code:'70101', name:'مبيعات البضائع', group:'701', kind:'sales'}
 ];
@@ -8985,7 +8988,8 @@ function coaAccountsBuild(){
   const reg = coaReg();
   const list = []; const used = new Set();
   COA_FIXED.forEach(a=>{ list.push(Object.assign({}, a)); used.add(a.code); });
-  reg.accounts.forEach(a=>{ if(a && a.kind==='drawer' && isPersonalDrawerUser(a.ref)){ used.add(a.code); return; } if(a && a.code && !used.has(a.code)){ list.push(Object.assign({}, a)); used.add(a.code); } });
+  const personalNames = new Set((DB.cashierShifts||[]).filter(isPersonalShift).map(s=>s.username));
+  reg.accounts.forEach(a=>{ if(a && a.kind==='drawer' && (isPersonalDrawerUser(a.ref) || personalNames.has(a.ref))){ used.add(a.code); return; } if(a && a.code && !used.has(a.code)){ list.push(Object.assign({}, a)); used.add(a.code); } });
   let added = false;
   const ensure = (kind, ref, group, name)=>{
     let a = list.find(x=>x.kind===kind && x.ref===ref);
@@ -8998,12 +9002,18 @@ function coaAccountsBuild(){
   (DB.budgetCategories||[]).filter(c=>!c.auto).forEach(c=>ensure('budget', c.id, c.type==='income'? '758' : '610', c.name||''));
   // صناديق الموظفين المفتوحة (رصيدها يلي بالدرج هلق)
   // صندوق «admin» هو نفسو الحساب الشخصي (53103) — ما منفتحلو حساب صندوق لحالو
-  Array.from(new Set((DB.cashierShifts||[]).filter(s=>s.status==='open' && !s.deleted && !isPersonalDrawerUser(s.username)).map(s=>s.username))).forEach(u=>ensure('drawer', u, '531', 'صندوق الموظف '+u));
+  Array.from(new Set((DB.cashierShifts||[]).filter(s=>s.status==='open' && !s.deleted && !isPersonalShift(s)).map(s=>s.username))).forEach(u=>ensure('drawer', u, '531', 'صندوق الموظف '+u));
   if(added && currentUser && isPrivilegedUser(currentUser)) coaSaveReg(reg);
   return list.sort((a,b)=>a.code<b.code?-1:1);
 }
+// صندوق صاحب المؤسسة (المدير / admin) هو نفسو «الحساب الشخصي» 53103
 function isPersonalDrawerUser(u){ return String(u||'').trim().toLowerCase()==='admin'; }
-function personalShift(){ return (DB.cashierShifts||[]).find(s=>s.status==='open' && !s.deleted && isPersonalDrawerUser(s.username)) || null; }
+function isPersonalShift(s){ if(!s) return false; const u = (DB.settings.users||[]).find(x=>x.id===s.userId); return isPrivilegedUser(u) || isPersonalDrawerUser(s.username); }
+function personalShift(){
+  const open = (DB.cashierShifts||[]).filter(s=>s.status==='open' && !s.deleted && isPersonalShift(s));
+  return open.find(s=>currentUser && s.userId===currentUser.id) || open[0] || null;
+}
+function myDrawerIsPersonal(){ const sh = currentUserShift(); return !!(sh && isPersonalShift(sh)); }
 function coaFind(code){ return coaAccounts().find(a=>a.code===String(code)) || null; }
 function coaLabel(code){ const a = coaFind(code); return a? a.code+' — '+a.name : String(code||''); }
 // قيود 'gl' — {dr, cr, desc}: من حساب (دائن) إلى حساب (مدين)
@@ -9093,8 +9103,8 @@ function coaAccountRows(a){
   if(a.kind==='personal'){ const sh = personalShift(); if(sh){
     (DB.cashMovements||[]).filter(m=>!m.deleted && m.shiftId===sh.id && ['sale','deposit','return','withdraw'].includes(m.type)).forEach(m=>{
       const v = m.currency==='LBP'? Math.abs(Number(m.amount)||0)/r : Math.abs(Number(m.amount)||0); const inn = (m.type==='sale' || m.type==='deposit');
-      rows.push({at:m.createdAt, date:m.date, desc:'صندوق admin — '+(m.type==='sale'? 'بيع' : m.type==='return'? 'استرجاع' : String(m.note||'').replace(DOC_MIRROR_TAG,'').replace(ACCT_RE,'').trim()), dr:inn? v : 0, cr:inn? 0 : v}); });
-    const op = (Number(sh.openingLBP)||0)/r + (Number(sh.openingUSD)||0); if(op) rows.push({at:sh.openedAt, date:new Date(sh.openedAt).toISOString().slice(0,10), desc:'رصيد افتتاح صندوق admin', dr:op, cr:0});
+      rows.push({at:m.createdAt, date:m.date, desc:'صندوق '+sh.username+' — '+(m.type==='sale'? 'بيع' : m.type==='return'? 'استرجاع' : String(m.note||'').replace(DOC_MIRROR_TAG,'').replace(ACCT_RE,'').trim()), dr:inn? v : 0, cr:inn? 0 : v}); });
+    const op = (Number(sh.openingLBP)||0)/r + (Number(sh.openingUSD)||0); if(op) rows.push({at:sh.openedAt, date:new Date(sh.openedAt).toISOString().slice(0,10), desc:'رصيد افتتاح صندوق '+sh.username, dr:op, cr:0});
   } }
   if(a.kind==='whish'){
     (DB.cashMovements||[]).forEach(m=>{ if(m.deleted || m.type!=='whish_close') return; const i = whishCloseInfo(m); const v = m.currency==='LBP'? Math.abs(Number(m.amount)||0)/r : Math.abs(Number(m.amount)||0);
@@ -10579,7 +10589,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-11-01 · 23:00 · v66';
+const APP_TRADE_BUILD = '2026-11-01 · 23:15 · v67';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 function settingsView(){
   const s = DB.settings;
@@ -12359,7 +12369,7 @@ function openAddBudgetEntryModal(categoryId){
   wrap.querySelector('#be_cancel').addEventListener('click', ()=>wrap.remove());
   let src = null;
   const beT = wrap.querySelector('#be_t');
-  if(currentUserShift()) beT.value = 'drawer';
+  if(currentUserShift()) beT.value = myDrawerIsPersonal()? '53103' : 'drawer';
   const syncSrc = ()=>{ src = beT.value || null; const o = wrap.querySelector('#be_src_other'); o.style.display = src==='other' ? '' : 'none'; wrap.querySelector('#be_err').textContent = ''; };
   beT.addEventListener('change', ()=>{ syncSrc(); if(src==='other') wrap.querySelector('#be_src_other').focus(); }); syncSrc();
   wrap.querySelector('#be_save').addEventListener('click', async ()=>{
