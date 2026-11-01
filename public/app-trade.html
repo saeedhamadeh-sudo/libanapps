@@ -670,7 +670,7 @@ let _paySrcOpen = false;
 const ACCT_RE = /⟨(\d+)⟩/;
 function moneyAcctOf(m){ const x = String(m && m.note || '').match(ACCT_RE); return x? x[1] : null; }
 // حسابات بتنحط فيها/بتطلع منها مصاري (مش زبائن/موردين/مصاريف)
-function moneyAccounts(){ return coaAccounts().filter(a=>['owner','whish','manual'].includes(a.kind)); }
+function moneyAccounts(){ return coaAccounts().filter(a=>['owner','whish','manual','personal'].includes(a.kind)); }
 function moneyTargetOptions(opts){
   opts = opts || {};
   const sh = currentUserShift();
@@ -690,9 +690,11 @@ function pushMoneyMove(target, dir, cur, amt, extra){
   const base = {id:uid(), createdAt:now, currency:cur, amount:amt, refSaleId:extra.refId||null, date, shiftId:null, deleted:false};
   if(extra.rate) base.rate = extra.rate;
   const label = extra.label || '';
+  let sh0 = null;
+  if(target==='53103' && (sh0 = personalShift())) target = 'drawer';   // الحساب الشخصي = صندوق admin المفتوح
   if(target==='drawer'){
-    const sh = currentUserShift(); if(!sh) return null;
-    Object.assign(base, {type: dir==='in'? 'deposit' : 'withdraw', shiftId:sh.id, note:(extra.doc? DOC_MIRROR_TAG : '')+label+' — '+(currentUser? currentUser.username : '')});
+    const sh = sh0 || currentUserShift(); if(!sh) return null;
+    Object.assign(base, {type: dir==='in'? 'deposit' : 'withdraw', shiftId:sh.id, note:(extra.doc? DOC_MIRROR_TAG : '')+label+' — '+(currentUser? currentUser.username : '')+(sh0? ' ⟨53103⟩' : '')});
     _shiftAdd(sh.id, cur, dir==='in'? amt : -amt);
   } else if(target==='main'){
     Object.assign(base, {type: dir==='in'? 'safe_in' : 'safe_out', note:(extra.doc? DOC_MIRROR_TAG : '')+label+' — '+(currentUser? currentUser.username : '')});
@@ -747,7 +749,7 @@ async function applyPaySource(key, id, src){
   const mv = pushMoneyMove(src, eff.sign>0? 'in' : 'out', eff.currency, eff.amt, {doc:true, label:eff.label, refId:id, date:d.date||todayISO(), rate:eff.rate});
   if(!mv) return;
   const jobs = [save(KEYS.cashMovements, DB.cashMovements)];
-  if(src==='drawer') jobs.push(save(KEYS.cashierShifts, DB.cashierShifts));
+  if(src==='drawer' || mv.shiftId) jobs.push(save(KEYS.cashierShifts, DB.cashierShifts));
   await Promise.all(jobs);
   toast((eff.sign>0? 'دخلت على: ' : 'انخصم من: ')+moneyTargetLabel(src)+' ✅');
   try{ render(); }catch(e){}
@@ -8952,7 +8954,7 @@ const COA_FIXED = [   // حسابات ثابتة بأرقام معروفة
   {code:'51601', name:'📱 Whish', group:'516', kind:'whish'},
   {code:'53101', name:MAIN_BOX_NAME+' — ليرة لبنانية', group:'531', kind:'mainLBP', cur:'LBP'},
   {code:'53102', name:MAIN_BOX_NAME+' — دولار', group:'531', kind:'mainUSD', cur:'USD'},
-  {code:'53103', name:'حساب شخصي', group:'531', kind:'manual'},
+  {code:'53103', name:'حساب شخصي (صندوق admin)', group:'531', kind:'personal'},
   {code:'60101', name:'مشتريات البضائع', group:'601', kind:'purchases'},
   {code:'70101', name:'مبيعات البضائع', group:'701', kind:'sales'}
 ];
@@ -8983,7 +8985,7 @@ function coaAccountsBuild(){
   const reg = coaReg();
   const list = []; const used = new Set();
   COA_FIXED.forEach(a=>{ list.push(Object.assign({}, a)); used.add(a.code); });
-  reg.accounts.forEach(a=>{ if(a && a.code && !used.has(a.code)){ list.push(Object.assign({}, a)); used.add(a.code); } });
+  reg.accounts.forEach(a=>{ if(a && a.kind==='drawer' && isPersonalDrawerUser(a.ref)){ used.add(a.code); return; } if(a && a.code && !used.has(a.code)){ list.push(Object.assign({}, a)); used.add(a.code); } });
   let added = false;
   const ensure = (kind, ref, group, name)=>{
     let a = list.find(x=>x.kind===kind && x.ref===ref);
@@ -8995,10 +8997,13 @@ function coaAccountsBuild(){
   (DB.workers||[]).filter(w=>!w.deleted).forEach(w=>ensure('worker', w.id, '421', w.name||'عامل'));
   (DB.budgetCategories||[]).filter(c=>!c.auto).forEach(c=>ensure('budget', c.id, c.type==='income'? '758' : '610', c.name||''));
   // صناديق الموظفين المفتوحة (رصيدها يلي بالدرج هلق)
-  Array.from(new Set((DB.cashierShifts||[]).filter(s=>s.status==='open' && !s.deleted).map(s=>s.username))).forEach(u=>ensure('drawer', u, '531', 'صندوق الموظف '+u));
+  // صندوق «admin» هو نفسو الحساب الشخصي (53103) — ما منفتحلو حساب صندوق لحالو
+  Array.from(new Set((DB.cashierShifts||[]).filter(s=>s.status==='open' && !s.deleted && !isPersonalDrawerUser(s.username)).map(s=>s.username))).forEach(u=>ensure('drawer', u, '531', 'صندوق الموظف '+u));
   if(added && currentUser && isPrivilegedUser(currentUser)) coaSaveReg(reg);
   return list.sort((a,b)=>a.code<b.code?-1:1);
 }
+function isPersonalDrawerUser(u){ return String(u||'').trim().toLowerCase()==='admin'; }
+function personalShift(){ return (DB.cashierShifts||[]).find(s=>s.status==='open' && !s.deleted && isPersonalDrawerUser(s.username)) || null; }
 function coaFind(code){ return coaAccounts().find(a=>a.code===String(code)) || null; }
 function coaLabel(code){ const a = coaFind(code); return a? a.code+' — '+a.name : String(code||''); }
 // قيود 'gl' — {dr, cr, desc}: من حساب (دائن) إلى حساب (مدين)
@@ -9020,6 +9025,7 @@ function coaBalanceUSD(a){   // موجب = مدين
     case 'mainLBP':  return ((safeBalance().lbp||0) - whishClosedTotals().lbp)/r;   // الكاش بس — الـ Whish إلو حساب لحالو (51601)
     case 'mainUSD':  return (safeBalance().usd||0) - whishClosedTotals().usd;
     case 'whish': { const c = whishClosedTotals(), o = whishOpenTotals(); return glDelta(a.code) + acctDelta(a.code) + (c.lbp+o.lbp)/r + c.usd + o.usd; }
+    case 'personal': { const sh = personalShift(); return glDelta(a.code) + acctDelta(a.code) + (sh? (Number(sh.cashLBP)||0)/r + (Number(sh.cashUSD)||0) : 0); }
     case 'drawer':   return (DB.cashierShifts||[]).filter(s=>s.status==='open' && !s.deleted && s.username===a.ref).reduce((t,s)=>t+(Number(s.cashLBP)||0)/r+(Number(s.cashUSD)||0), 0);
     case 'owner':    return glDelta(a.code) + acctDelta(a.code) - ownerPayMoves().reduce((t,m)=>t+(m.currency==='LBP'? Math.abs(Number(m.amount)||0)/r : Math.abs(Number(m.amount)||0)), 0);
     case 'stock':    return glDelta(a.code) + (DB.warehouseItems||[]).reduce((t,it)=>{ if(isServiceItem(it)) return t; const c = Number(it.costPrice)||0, q = fastStock(it.id); return t + (q>0? q*c : 0); }, 0);
@@ -9084,6 +9090,12 @@ function coaAccountRows(a){
   (DB.cashMovements||[]).forEach(m=>{ if(m.deleted || (m.type!=='acct_in' && m.type!=='acct_out') || moneyAcctOf(m)!==a.code) return;
     const v = m.currency==='LBP'? Math.abs(Number(m.amount)||0)/r : Math.abs(Number(m.amount)||0);
     rows.push({at:m.createdAt, date:m.date, desc:String(m.note||'').replace(DOC_MIRROR_TAG,'').replace('[حساب] ','').replace(ACCT_RE,'').trim(), dr:m.type==='acct_in'? v : 0, cr:m.type==='acct_out'? v : 0}); });
+  if(a.kind==='personal'){ const sh = personalShift(); if(sh){
+    (DB.cashMovements||[]).filter(m=>!m.deleted && m.shiftId===sh.id && ['sale','deposit','return','withdraw'].includes(m.type)).forEach(m=>{
+      const v = m.currency==='LBP'? Math.abs(Number(m.amount)||0)/r : Math.abs(Number(m.amount)||0); const inn = (m.type==='sale' || m.type==='deposit');
+      rows.push({at:m.createdAt, date:m.date, desc:'صندوق admin — '+(m.type==='sale'? 'بيع' : m.type==='return'? 'استرجاع' : String(m.note||'').replace(DOC_MIRROR_TAG,'').replace(ACCT_RE,'').trim()), dr:inn? v : 0, cr:inn? 0 : v}); });
+    const op = (Number(sh.openingLBP)||0)/r + (Number(sh.openingUSD)||0); if(op) rows.push({at:sh.openedAt, date:new Date(sh.openedAt).toISOString().slice(0,10), desc:'رصيد افتتاح صندوق admin', dr:op, cr:0});
+  } }
   if(a.kind==='whish'){
     (DB.cashMovements||[]).forEach(m=>{ if(m.deleted || m.type!=='whish_close') return; const i = whishCloseInfo(m); const v = m.currency==='LBP'? Math.abs(Number(m.amount)||0)/r : Math.abs(Number(m.amount)||0);
       rows.push({at:m.createdAt, date:m.date, desc:'إقفال Whish للموظف '+(i.user||'')+(i.by? ' — أقفله: '+i.by : '')+' (مع '+MAIN_BOX_NAME+')', dr:v, cr:0}); });
@@ -9366,7 +9378,7 @@ function openSafeMoveModal(type){
     DB.cashMovements.push({id:uid(), createdAt:Date.now(), type, currency:cur, amount:amt, note:lbl+' — '+currentUser.username, refSaleId:null, date:todayISO(), shiftId:null});
     // الطرف التاني: يلي طلع من الصندوق الأساسي بيدخل عالحساب، ويلي دخل عليه طالع من الحساب
     if(t!=='other') pushMoneyMove(t, type==='safe_in'? 'out' : 'in', cur, amt, {label:(type==='safe_in'? 'إلى: ' : 'من: ')+MAIN_BOX_NAME+' — '+note});
-    const ok = (await Promise.all([save(KEYS.cashMovements, DB.cashMovements)].concat(t==='drawer'? [save(KEYS.cashierShifts, DB.cashierShifts)] : []))).every(Boolean);
+    const ok = (await Promise.all([save(KEYS.cashMovements, DB.cashMovements)].concat((t==='drawer' || t==='53103')? [save(KEYS.cashierShifts, DB.cashierShifts)] : []))).every(Boolean);
     wrap.remove(); toast(ok? 'تم ✅' : 'حدث خطأ أثناء الحفظ'); render();
   });
 }
@@ -10567,7 +10579,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-11-01 · 22:40 · v65';
+const APP_TRADE_BUILD = '2026-11-01 · 23:00 · v66';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 function settingsView(){
   const s = DB.settings;
