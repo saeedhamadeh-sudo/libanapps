@@ -1833,10 +1833,26 @@ function posSaleReceipt(inv){
   return DB.receipts.find(r=>!r.deleted && re.test(r.details||'') && !isPosRefundReceipt(r)) || null;
 }
 // قبض Whish: إيصال قبض عادي بطريقة «Whish» — ما بيدخل الصندوق النقدي، إلو صندوق لحالو باليومية
-function shiftWhishTotals(shift){
+function shiftWhishTotals(shift, upTo){
   const out = {usd:0, lbp:0}; if(!shift) return out;
   DB.receipts.forEach(r=>{ if(r.deleted || r.shiftId!==shift.id || !isWhishMethod(r.method)) return;
+    if(upTo && (r.createdAt||0) > upTo) return;
     if(/\$/.test(r.method||'')) out.usd += Number(r.amount)||0; else out.lbp += Number(r.amount)||0; });
+  // يلي انقفل (ترحّل على الصندوق الأساسي) ما بيرجع ينحسب
+  (DB.cashMovements||[]).forEach(m=>{ if(m.deleted || m.type!=='whish_close' || m.refSaleId!==shift.id) return;
+    if(m.currency==='USD') out.usd -= Math.abs(Number(m.amount)||0); else out.lbp -= Math.abs(Number(m.amount)||0); });
+  out.usd = Math.round(out.usd*100)/100; out.lbp = Math.round(out.lbp);
+  return out;
+}
+const WHISH_CLOSE_TAG = '[ويش] ';
+function whishCloseInfo(m){ try{ return JSON.parse(String(m.note||'').slice(WHISH_CLOSE_TAG.length)); }catch(e){ return {}; } }
+// إقفال Whish لصندوق موظف: منصفّر رصيد Whish ومنرحّلو على الصندوق الأساسي بقيد «إقفال Whish للموظف فلان»
+function pushWhishClose(shift, by, at, dayCloseId, upTo){
+  const w = shiftWhishTotals(shift, upTo); const out = [];
+  [['LBP', w.lbp], ['USD', w.usd]].forEach(([cur, amt])=>{ if(!(amt>0)) return;
+    const mv = {id:uid(), createdAt:at, type:'whish_close', currency:cur, amount:amt, refSaleId:shift.id, shiftId:null, date:new Date(at).toISOString().slice(0,10),
+      note:WHISH_CLOSE_TAG+JSON.stringify({user:shift.username, by, dayClose:dayCloseId||null, shiftId:shift.id})};
+    DB.cashMovements.push(mv); out.push(mv); });
   return out;
 }
 // رصيد Whish لصندوق (أو مجموعة صناديق) — للصفحة الرئيسية
@@ -6142,6 +6158,7 @@ function closeMyShiftModal(){
       countedLBP:cL, countedUSD:lbpOnly?0:cU, keptLBP:kL, keptUSD:lbpOnly?0:kU, toSafeLBP:cL-kL, toSafeUSD:lbpOnly?0:(cU-kU), openedAt:shift.openedAt };
     // سجل الإقفال + الإيداع بالخزنة: حركة وحدة (ما إلها وردية، فما بتأثر على أي صندوق)
     DB.cashMovements.push({id:uid(), createdAt:now, type:'shift_close', currency:'LBP', amount:info.toSafeLBP, note:SHIFT_CLOSE_TAG+JSON.stringify(info), refSaleId:shift.id, date:todayISO(), shiftId:null});
+    pushWhishClose(shift, by, now, null);
     const res = await Promise.all([save(KEYS.cashierShifts, DB.cashierShifts), save(KEYS.cashMovements, DB.cashMovements)]);
     wrap.remove();
     toast(res.every(Boolean)? 'تم إقفال الصندوق ✅ — بقي فيه '+fmtNum(kL)+' '+L+' وانتقل الباقي عالصندوق الأساسي' : 'حدث خطأ أثناء الحفظ');
@@ -7935,13 +7952,14 @@ function openDayCloseModal(){
     ${openShifts.length? `<p style="font-size:13px; margin:6px 0;">اختار الصناديق يلي بدك تقفلها — المعدود بكل صندوق بينتقل على <b>${MAIN_BOX_NAME}</b> والصندوق بيتصفّر وبيتسكّر:</p>
     <label style="display:flex; gap:6px; align-items:center; font-weight:800; margin-bottom:6px;"><input type="checkbox" id="dc_all" style="width:auto;" checked> الكل</label>
     <div class="table-scroll"><table>
-      <thead><tr><th></th><th>الصندوق</th><th>بالنظام ${L}</th><th>المعدود ${L}</th>${lbpOnly? '' : '<th>بالنظام $</th><th>المعدود $</th>'}</tr></thead>
+      <thead><tr><th></th><th>الصندوق</th><th>بالنظام ${L}</th><th>المعدود ${L}</th>${lbpOnly? '' : '<th>بالنظام $</th><th>المعدود $</th>'}<th>📱 Whish</th></tr></thead>
       <tbody>${openShifts.map(s=>`<tr>
         <td><input type="checkbox" class="dc-sh" value="${s.id}" checked style="width:auto;"></td>
         <td><b>${escapeHtml(s.username)}</b><div style="font-size:11px; color:var(--ink-soft);">مفتوح منذ ${fmtTime12(s.openedAt)}</div></td>
         <td class="num">${fmtNum(s.cashLBP)}</td>
         <td><input type="number" class="num dc-cl" data-id="${s.id}" value="${Math.round(Number(s.cashLBP)||0)}" style="width:120px;"></td>
         ${lbpOnly? '' : `<td class="num">$${(Number(s.cashUSD)||0).toFixed(2)}</td><td><input type="number" step="0.01" class="num dc-cu" data-id="${s.id}" value="${(Number(s.cashUSD)||0).toFixed(2)}" style="width:90px;"></td>`}
+        <td class="num" style="color:#a3174a;">${(()=>{ const w = shiftWhishTotals(s); return (w.lbp||w.usd)? [w.lbp? fmtNum(w.lbp)+' '+L : '', w.usd? '$'+w.usd.toFixed(2) : ''].filter(Boolean).join(' + ') : '—'; })()}</td>
       </tr>`).join('')}</tbody>
     </table></div>
     <div class="field" style="margin-top:10px;"><label>👤 مين عم يعمل الإقفال *</label><input type="text" id="dc_by" value="${escapeHtml(currentUser? currentUser.username : '')}"></div>
@@ -7964,7 +7982,9 @@ function openDayCloseModal(){
     const ids = sel(); let tl = 0, tu = 0;
     ids.forEach(id=>{ tl += cnt('.dc-cl', id); tu += cnt('.dc-cu', id); });
     $('#dc_all').checked = ids.length===openShifts.length;
-    $('#dc_sum').innerHTML = ids.length ? `🗄 بينتقل على ${MAIN_BOX_NAME}: <b class="num">${fmtNum(tl)} ${L}${lbpOnly? '' : ' + $'+tu.toFixed(2)}</b> من ${ids.length} صندوق` : 'ما اخترت ولا صندوق';
+    let wl = 0, wu = 0; ids.forEach(id=>{ const w = shiftWhishTotals(openShifts.find(x=>x.id===id)); wl += Math.max(w.lbp,0); wu += Math.max(w.usd,0); });
+    $('#dc_sum').innerHTML = ids.length ? `🗄 بينتقل على ${MAIN_BOX_NAME}: <b class="num">${fmtNum(tl)} ${L}${lbpOnly? '' : ' + $'+tu.toFixed(2)}</b> من ${ids.length} صندوق`
+      + ((wl||wu)? `<br>📱 Whish بيتصفّر وبيترحّل كمان: <b class="num">${[wl? fmtNum(wl)+' '+L : '', wu? '$'+wu.toFixed(2) : ''].filter(Boolean).join(' + ')}</b>` : '') : 'ما اخترت ولا صندوق';
   };
   $('#dc_all').addEventListener('change', e=>{ wrap.querySelectorAll('.dc-sh').forEach(c=>c.checked = e.target.checked); upd(); });
   wrap.querySelectorAll('.dc-sh, .dc-cl, .dc-cu').forEach(el=>el.addEventListener(el.type==='checkbox'? 'change' : 'input', upd));
@@ -7989,6 +8009,7 @@ function openDayCloseModal(){
       const info = { by, user:shift.username, shiftId:shift.id, sysLBP:sysL, sysUSD:sysU, countedLBP:cL, countedUSD:cU,
         keptLBP:0, keptUSD:0, toSafeLBP:cL, toSafeUSD:cU, openedAt:shift.openedAt, dayClose:closure.id };
       DB.cashMovements.push({id:uid(), createdAt:now, type:'shift_close', currency:'LBP', amount:cL, note:SHIFT_CLOSE_TAG+JSON.stringify(info), refSaleId:shift.id, date:today, shiftId:null});
+      pushWhishClose(shift, by, now, closure.id);
       closed.push(Object.assign({}, shift, {cashLBP:sysL, cashUSD:sysU}));
     });
     closure.note = 'أقفله: '+by+' — الصناديق: '+closed.map(x=>x.username).join('، ')+(note? ' — '+note : '');
@@ -8781,7 +8802,7 @@ document.addEventListener('click', e=>{ const b = e.target.closest && e.target.c
    الصندوق الأساسي = كل يلي انتقل من الصناديق + إيداع يدوي − سحب يدوي */
 const SHIFT_CLOSE_TAG = '[إقفال] ';
 const MAIN_BOX_NAME = 'الصندوق الأساسي';   // كانت «الخزنة»
-const SAFE_MOVE_TYPES = ['shift_close','safe_in','safe_out'];
+const SAFE_MOVE_TYPES = ['shift_close','safe_in','safe_out','whish_close'];
 function shiftCloseInfo(m){ try{ return JSON.parse(String(m.note||'').slice(SHIFT_CLOSE_TAG.length)); }catch(e){ return null; } }
 function shiftCloseRecords(){
   return (DB.cashMovements||[]).filter(m=>!m.deleted && m.type==='shift_close').map(m=>Object.assign({id:m.id, at:m.createdAt, date:m.date}, shiftCloseInfo(m)||{}))
@@ -8792,6 +8813,8 @@ function safeMoves(){
   const out = [];
   (DB.cashMovements||[]).forEach(m=>{
     if(m.deleted || !SAFE_MOVE_TYPES.includes(m.type)) return;
+    if(m.type==='whish_close'){ const i = whishCloseInfo(m)||{}; const a = Math.abs(Number(m.amount)||0);
+      out.push({id:m.id, at:m.createdAt, date:m.date, kind:'in', lbp:m.currency==='LBP'? a : 0, usd:m.currency==='USD'? a : 0, label:'📱 إقفال Whish للموظف '+(i.user||'')+(i.by? ' — أقفله: '+i.by : '')}); return; }
     if(m.type==='shift_close'){ const i = shiftCloseInfo(m)||{}; if(i.legacy) return;   // الإقفالات القديمة بالسجل بس، ما بتحرّك رصيد الصندوق الأساسي
       out.push({id:m.id, at:m.createdAt, date:m.date, kind:'in', lbp:Number(i.toSafeLBP)||0, usd:Number(i.toSafeUSD)||0, label:'إقفال صندوق '+(i.user||'')+' — أقفله: '+(i.by||'')}); }
     else { const sign = m.type==='safe_in'? 1 : -1, a = Math.abs(Number(m.amount)||0);
@@ -9127,9 +9150,23 @@ function openCoaNewAccountModal(){
 // إقفال يومية شاملة انعمل بالطريقة القديمة (كان يسجّل التقرير بس — ما يسكّر الصناديق ولا يرحّل): منرحّل مرة وحدة
 // المبلغ يلي كان بكل صندوق وقت الإقفال على الصندوق الأساسي، ومنصفّر هالمبلغ من الصندوق (المبيعات بعد الإقفال بتضل فيه)
 let _oldDayCloseDone = false;
+// الإقفالات الشاملة يلي صارت قبل (من 1/11): منرحّل Whish كل موظف انقفل صندوقو فيها — مرة وحدة
+function repairDayCloseWhish(){
+  const done = new Set((DB.cashMovements||[]).filter(m=>m.type==='whish_close' && !m.deleted).map(m=>{ const i = whishCloseInfo(m); return i.dayClose+'|'+i.shiftId; }));
+  let n = 0;
+  (DB.dayClosures||[]).filter(c=>c && c.date>='2026-11-01' && !/مكرر/.test(c.note||'')).forEach(c=>{
+    (DB.cashMovements||[]).filter(m=>m.type==='shift_close' && !m.deleted).forEach(m=>{ const i = shiftCloseInfo(m)||{}; if(i.dayClose!==c.id) return;
+      if(done.has(c.id+'|'+i.shiftId)) return;
+      const sh = (DB.cashierShifts||[]).find(x=>x.id===i.shiftId); if(!sh) return;
+      const by = String(c.note||'').match(/^أقفله: ([^ (—]+)/); 
+      n += pushWhishClose(sh, by? by[1] : (i.by||''), c.createdAt, c.id, c.createdAt).length; done.add(c.id+'|'+i.shiftId); });
+  });
+  return n;
+}
 function repairOldDayClosures(){
   if(_oldDayCloseDone || !currentUser || !isPrivilegedUser(currentUser) || !cloudSessionReady()) return;
   _oldDayCloseDone = true;
+  if(repairDayCloseWhish()) save(KEYS.cashMovements, DB.cashMovements).then(ok=>{ if(ok){ toast('📱 رحّلنا Whish الإقفالات الشاملة على '+MAIN_BOX_NAME); render(); } });
   const linked = new Set();
   (DB.cashMovements||[]).forEach(m=>{ if(m.type==='shift_close'){ const i = shiftCloseInfo(m)||{}; if(i.dayClose) linked.add(i.dayClose); } });
   let todo = (DB.dayClosures||[]).filter(c=>c && c.date>='2026-11-01' && c.createdAt && !linked.has(c.id) && !/^أقفله:/.test(c.note||''));
@@ -9157,6 +9194,7 @@ function repairOldDayClosures(){
     });
     c.note = 'أقفله: '+(isCcupClient()? 'omar' : '—')+' (رُحّل لاحقاً على '+MAIN_BOX_NAME+')'+(c.note? ' — '+c.note : '');
   });
+  if(changed) repairDayCloseWhish();
   if(!changed) return;
   Promise.all([save(KEYS.cashMovements, DB.cashMovements), save(KEYS.cashierShifts, DB.cashierShifts), save(KEYS.dayClosures, DB.dayClosures)])
     .then(r=>{ toast(r.every(Boolean)? '✅ رحّلنا الإقفال الشامل القديم على '+MAIN_BOX_NAME : '⚠️ تعذّر حفظ ترحيل الإقفال'); render(); });
@@ -10456,7 +10494,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-11-01 · 20:45 · v61';
+const APP_TRADE_BUILD = '2026-11-01 · 21:20 · v62';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 function settingsView(){
   const s = DB.settings;
