@@ -1063,11 +1063,23 @@ function budgetCategoryFromDb(row){
 function budgetCategoryToDb(c){
   return { id:c.id, key:c.key||null, name:c.name, type:c.type, auto:!!c.auto, builtin:!!c.builtin };
 }
+// فاتورة المصاريف (البنود، الجهة، رقم الفاتورة) بتنحفظ جوّا الملاحظة بعد علامة مخفية — بلا ما نزيد عمود بقاعدة البيانات
+const BILL_MARK = '\u2063BILL';
+function splitBillNote(note){
+  const t = String(note||''); const i = t.indexOf(BILL_MARK);
+  if(i<0) return { note:t, bill:null };
+  let bill = null; try{ bill = JSON.parse(t.slice(i+BILL_MARK.length)); }catch(e){}
+  return { note:t.slice(0,i), bill };
+}
 function budgetEntryFromDb(row){
-  return { id:row.id, categoryId:row.category_id, amount:row.amount||0, date:row.date, note:row.note||'', number:row.number, createdAt:row.created_at||0, deleted:!!row.deleted, deletedAt:row.deleted_at||null };
+  const sp = splitBillNote(row.note);
+  const e = { id:row.id, categoryId:row.category_id, amount:row.amount||0, date:row.date, note:sp.note, number:row.number, createdAt:row.created_at||0, deleted:!!row.deleted, deletedAt:row.deleted_at||null };
+  if(sp.bill) e.bill = sp.bill;
+  return e;
 }
 function budgetEntryToDb(e){
-  return { id:e.id, category_id:e.categoryId||null, amount:Number(e.amount)||0, date:e.date||null, note:e.note||null, number:e.number||null, created_at:e.createdAt||Date.now(), deleted:!!e.deleted, deleted_at:e.deletedAt||null };
+  const note = (e.note||'') + (e.bill? BILL_MARK + JSON.stringify(e.bill) : '');
+  return { id:e.id, category_id:e.categoryId||null, amount:Number(e.amount)||0, date:e.date||null, note:note||null, number:e.number||null, created_at:e.createdAt||Date.now(), deleted:!!e.deleted, deleted_at:e.deletedAt||null };
 }
 // عمود phone موجود بقاعدة البيانات؟ (بعد upgrade-app-wa-login.sql) — قبلها ما منبعتو حتى ما يفشل الحفظ
 let _usersPhoneCol = false;
@@ -4399,7 +4411,7 @@ function budgetCategoryEntries(cat, from, to){
     });
   }
   return DB.budgetEntries.filter(e=>!e.deleted && e.categoryId===cat.id && e.date>=from && e.date<=to)
-    .map(e=>({date:e.date, amount:Number(e.amount)||0, label:e.note||'', ref:'budgetentry', id:e.id}));
+    .map(e=>({date:e.date, amount:Number(e.amount)||0, label:(e.bill? '🧾 ' : '')+(e.note||''), ref:'budgetentry', id:e.id, bill:!!e.bill}));
 }
 function budgetCategoryTotal(cat, from, to){
   return budgetCategoryEntries(cat, from, to).reduce((s,e)=>s+e.amount, 0);
@@ -5592,6 +5604,10 @@ function render(){
     const qs = new URLSearchParams(location.hash.split('?')[1]||'');
     if(!cat) html += emptyState('لم يتم العثور على هذا الحقل');
     else html += crumbs([['الرئيسية','#/'],['الميزانية','#/budget'],[cat.name,null]]) + budgetCategoryView(cat, qs.get('period')||'month', qs.get('a'), qs.get('b'));
+  } else if(parts[0]==='budget-bill' && parts[1]){
+    const e = DB.budgetEntries.find(x=>x.id===parts[1]); const cat = e && DB.budgetCategories.find(c=>c.id===e.categoryId);
+    if(!e || !e.bill) html += emptyState('لم يتم العثور على هذه الفاتورة');
+    else html += crumbs([['الرئيسية','#/'],['الميزانية','#/budget'],[cat? cat.name : 'مصاريف', cat? '#/budget-category/'+cat.id : null],['فاتورة #'+(e.number||''),null]]) + budgetBillView(e, cat);
   } else if(parts[0]==='budget-overview'){
     const qs = new URLSearchParams(location.hash.split('?')[1]||'');
     html += crumbs([['الرئيسية','#/'],['الميزانية','#/budget'],['الميزانية العمومية',null]]) + budgetOverviewView(qs.get('period')||'month', qs.get('a'), qs.get('b'));
@@ -10367,7 +10383,7 @@ function budgetCategoryView(cat, period, a, b){
   const total = entries.reduce((s,e)=>s+e.amount,0);
   const rowsHtml = entries.map(e=>{
     const href = refHref(e.ref, e.id);
-    return `<tr ${e.ref!=='budgetentry'? `data-nav="${href}"`:''}>
+    return `<tr ${e.ref!=='budgetentry'? `data-nav="${href}"` : (e.bill? `data-nav="#/budget-bill/${e.id}" style="cursor:pointer;"` : '')}>
       <td class="num">${fmtDate(e.date)}</td>
       <td>${escapeHtml(e.label)}</td>
       <td class="num">${fmtMoney(e.amount)}</td>
@@ -10384,7 +10400,7 @@ function budgetCategoryView(cat, period, a, b){
     <div class="stat"><div class="k">عدد الحركات</div><div class="v">${entries.length}</div></div>
   </div>
   <div class="card no-print">
-    ${!cat.auto? `<div class="action-row" style="margin-bottom:14px;"><button class="btn btn-primary" id="addBudgetEntryBtn" data-cat="${cat.id}">+ إضافة سند صرف</button></div>` : ''}
+    ${!cat.auto? `<div class="action-row" style="margin-bottom:14px;"><button class="btn btn-primary" id="addBudgetEntryBtn" data-cat="${cat.id}">+ إضافة سند صرف</button>${cat.type!=='income'? `<button class="btn" id="addBudgetBillBtn" data-cat="${cat.id}">🧾 فاتورة ${escapeHtml(cat.name)}</button>` : ''}</div>` : ''}
   </div>
   <div class="doc-actions no-print">
     <button class="btn btn-primary" onclick="printWithFilename('Budget-${safeText(cat.name)}-${from}-${to}')">🖨 طباعة</button>
@@ -11078,7 +11094,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-11-02 · 04:20 · v75';
+const APP_TRADE_BUILD = '2026-11-02 · 05:00 · v76';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 function settingsView(){
   const s = DB.settings;
@@ -12443,6 +12459,8 @@ function bindEvents(){
       openDeleteBudgetCategoryModal(cat);
     });
   });
+  const addBudgetBillBtn = document.getElementById('addBudgetBillBtn');
+  if(addBudgetBillBtn) addBudgetBillBtn.addEventListener('click', ()=>openBudgetBillModal(addBudgetBillBtn.getAttribute('data-cat')));
   const addBudgetEntryBtn = document.getElementById('addBudgetEntryBtn');
   if(addBudgetEntryBtn) addBudgetEntryBtn.addEventListener('click', ()=>openAddBudgetEntryModal(addBudgetEntryBtn.getAttribute('data-cat')));
   bindPeriodFilter('bc', (type,a,b)=>{
@@ -12845,6 +12863,95 @@ function openDeleteBudgetCategoryModal(cat){
     toast('تم حذف الحقل نهائيًا');
     go('#/budget');
   });
+}
+/* ===== فاتورة مصاريف / مشتريات / أي بند مصاريف بالميزانية: بنود (بيان × كمية × سعر) + الجهة + من وين دفعت ===== */
+function openBudgetBillModal(categoryId){
+  const cat = DB.budgetCategories.find(c=>c.id===categoryId); if(!cat) return;
+  const wrap = document.createElement('div'); wrap.className = 'modal-bg';
+  wrap.innerHTML = `<div class="modal" style="max-width:640px;">
+    <h3>🧾 فاتورة ${escapeHtml(cat.name)}</h3>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+      <div class="field" style="margin:0;"><label>من مين (الجهة / المحل)</label><input type="text" id="bb_vendor" placeholder="مثلاً: كهرباء لبنان، محل الخضرة..."></div>
+      <div class="field" style="margin:0;"><label>رقم فاتورتهم (إذا في)</label><input type="text" id="bb_ref"></div>
+      <div class="field" style="margin:0;"><label>التاريخ</label><input type="date" id="bb_date" value="${todayISO()}"></div>
+    </div>
+    <div class="table-scroll" style="margin-top:10px;"><table id="bb_tbl"><thead><tr><th>البيان</th><th style="width:80px;">الكمية</th><th style="width:120px;">السعر ${primSym()}</th><th style="width:120px;">المجموع</th><th style="width:36px;"></th></tr></thead><tbody></tbody></table></div>
+    <button class="btn btn-sm" id="bb_add" style="margin-top:6px;">+ بند</button>
+    <div style="font-size:15px; font-weight:800; margin:10px 0;">المجموع: <span class="num" id="bb_total">0</span> ${primSym()}</div>
+    <div class="field"><label>ملاحظة</label><input type="text" id="bb_note"></div>
+    <div class="field"><label>💸 من وين دفعت؟ *</label>
+      <select id="bb_t"><option value="">— اختار —</option>${moneyTargetOptions({other:true})}</select>
+      <input type="text" id="bb_src_other" placeholder="مثلاً: من البنك، من جيبي..." style="display:none; margin-top:6px;">
+    </div>
+    <div id="bb_err" style="color:var(--debit); font-size:13px; min-height:16px;"></div>
+    <div class="row"><button class="btn" id="bb_cancel">إلغاء</button><button class="btn btn-primary" id="bb_save">💾 حفظ الفاتورة</button></div>
+  </div>`;
+  document.body.appendChild(wrap);
+  const tb = wrap.querySelector('#bb_tbl tbody');
+  const lineTotal = tr=> (Number(tr.querySelector('.bb-q').value)||0) * (Number(tr.querySelector('.bb-p').value)||0);
+  const recalc = ()=>{ let t = 0; tb.querySelectorAll('tr').forEach(tr=>{ const v = lineTotal(tr); t += v; tr.querySelector('.bb-t').textContent = fmtNum(v); }); wrap.querySelector('#bb_total').textContent = fmtNum(t); return t; };
+  const addLine = ()=>{ const tr = document.createElement('tr');
+    tr.innerHTML = `<td><input type="text" class="bb-d" style="min-width:140px;"></td><td><input type="number" class="num bb-q" value="1" step="any" min="0"></td><td><input type="number" class="num bb-p" step="any" min="0"></td><td class="num bb-t">0</td><td><button class="btn btn-sm btn-danger bb-x" type="button">✕</button></td>`;
+    tb.appendChild(tr); tr.querySelectorAll('input').forEach(i=>i.addEventListener('input', recalc));
+    tr.querySelector('.bb-x').addEventListener('click', ()=>{ if(tb.children.length>1){ tr.remove(); recalc(); } });
+    tr.querySelector('.bb-d').focus(); };
+  addLine();
+  wrap.querySelector('#bb_add').addEventListener('click', addLine);
+  wrap.querySelector('#bb_cancel').addEventListener('click', ()=>wrap.remove());
+  const t = wrap.querySelector('#bb_t'); if(currentUserShift()) t.value = myDrawerIsPersonal()? '53103' : 'drawer';
+  const syncSrc = ()=>{ wrap.querySelector('#bb_src_other').style.display = t.value==='other'? '' : 'none'; wrap.querySelector('#bb_err').textContent = ''; };
+  t.addEventListener('change', syncSrc); syncSrc();
+  wrap.querySelector('#bb_save').addEventListener('click', async ()=>{
+    const err = m=>{ wrap.querySelector('#bb_err').textContent = m; };
+    const items = Array.from(tb.querySelectorAll('tr')).map(tr=>({ d:tr.querySelector('.bb-d').value.trim(), q:Number(tr.querySelector('.bb-q').value)||0, p:Number(outPrim(tr.querySelector('.bb-p').value))||0 }))
+      .filter(x=>x.d || x.p);
+    if(!items.length){ err('زيد بند واحد على الأقل'); return; }
+    if(items.some(x=>!x.d)){ err('اكتب البيان لكل بند'); return; }
+    const amount = items.reduce((a,x)=>a + x.q*x.p, 0);
+    if(!(amount>0)){ err('مجموع الفاتورة لازم يكون أكبر من صفر'); return; }
+    const src = t.value || null;
+    if(!src){ err('لازم تحدد من وين دفعت'); return; }
+    let otherTxt = '';
+    if(src==='other'){ otherTxt = wrap.querySelector('#bb_src_other').value.trim(); if(!otherTxt){ err('اكتب من وين دفعت'); return; } }
+    const vendor = wrap.querySelector('#bb_vendor').value.trim(), ref = wrap.querySelector('#bb_ref').value.trim();
+    let note = 'فاتورة'+(vendor? ' '+vendor : '')+(ref? ' #'+ref : '');
+    const extra = wrap.querySelector('#bb_note').value.trim(); if(extra) note += ' — '+extra;
+    if(src==='other') note += ' — مدفوع من: '+otherTxt;
+    const ne = { id:uid(), createdAt:Date.now(), categoryId, amount, date: wrap.querySelector('#bb_date').value || todayISO(), note, number:nextBudgetEntryNumber(),
+      bill:{ vendor, ref, items, by: currentUser? currentUser.username : '', paidFrom: src==='other'? otherTxt : moneyTargetLabel(src), memo: extra } };
+    _paySrcAsked.add(ne.id);
+    DB.budgetEntries = [...DB.budgetEntries, ne];
+    const ok = await save(KEYS.budgetEntries, DB.budgetEntries);
+    if(ok && src!=='other') await applyPaySource(KEYS.budgetEntries, ne.id, src);
+    wrap.remove();
+    toast(ok? 'تم حفظ الفاتورة ✅' : 'حدث خطأ أثناء الحفظ');
+    if(ok) go('#/budget-bill/'+ne.id); else render();
+  });
+}
+function budgetBillView(e, cat){
+  const b = e.bill || {}; const items = b.items || [];
+  return `
+  <div class="doc-actions no-print">
+    <button class="btn btn-primary" onclick="printWithFilename('Bill-${safeText(e.number||'')}')">🖨 طباعة</button>
+    ${cat? `<button class="btn" data-nav="#/budget-category/${cat.id}">↩ رجوع</button>` : ''}
+    <button class="btn btn-danger" data-del-doc="${e.id}" data-doc-kind="budgetentry">🗑 حذف</button>
+  </div>
+  <div class="doc">
+    ${docHead('فاتورة '+(cat? cat.name : 'مصاريف'))}
+    <div class="doc-info">
+      <div class="r"><span>رقم:</span><b class="num">${escapeHtml(String(e.number||''))}</b></div>
+      <div class="r"><span>التاريخ:</span><b class="num">${fmtDate(e.date)}</b></div>
+      ${b.vendor? `<div class="r"><span>من:</span><b>${escapeHtml(b.vendor)}</b></div>` : ''}
+      ${b.ref? `<div class="r"><span>رقم فاتورتهم:</span><b class="num">${escapeHtml(b.ref)}</b></div>` : ''}
+      ${b.paidFrom? `<div class="r"><span>مدفوع من:</span><b>${escapeHtml(b.paidFrom)}</b></div>` : ''}
+      ${b.by? `<div class="r"><span>سجّلها:</span><b>${escapeHtml(b.by)}</b></div>` : ''}
+    </div>
+    <div class="table-scroll"><table><thead><tr><th>#</th><th>البيان</th><th>الكمية</th><th>السعر</th><th>المجموع</th></tr></thead><tbody>
+      ${items.map((x,i)=>`<tr><td class="num">${i+1}</td><td>${escapeHtml(x.d||'')}</td><td class="num">${fmtQty(x.q)}</td><td class="num">${fmtMoney(x.p)}</td><td class="num">${fmtMoney(x.q*x.p)}</td></tr>`).join('')}
+    </tbody><tfoot><tr style="font-weight:800; background:var(--paper)"><td colspan="4">المجموع</td><td class="num">${fmtMoney(e.amount)}</td></tr></tfoot></table></div>
+    ${b.memo? `<div style="margin-top:8px; font-size:13px;">ملاحظة: ${escapeHtml(b.memo)}</div>` : ''}
+    <div class="sig">التوقيع</div>
+  </div>`;
 }
 function openAddBudgetEntryModal(categoryId){
   const cat = DB.budgetCategories.find(c=>c.id===categoryId);
