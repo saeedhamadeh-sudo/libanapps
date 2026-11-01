@@ -1108,6 +1108,7 @@ function settingsToDb(s){
       userScanMethods: (s.userScanMethods && typeof s.userScanMethods==='object')? s.userScanMethods : {},
       barcodeLabel: s.barcodeLabel||null,
       whishEnabled: s.whishEnabled!==false,
+      unitsHosp: (s.unitsHosp===true || s.unitsHosp===false)? s.unitsHosp : null,
       whishQr: s.whishQr||null,
       posLayout: s.posLayout==='old' ? 'old' : 'pro',
       posPrintMode: s.posPrintMode||'auto',
@@ -1162,6 +1163,7 @@ function applySettingsFromDb(row, base){
     userScanMethods: (row.product_lists && row.product_lists._ui && row.product_lists._ui.userScanMethods && typeof row.product_lists._ui.userScanMethods==='object') ? row.product_lists._ui.userScanMethods : (base.userScanMethods||{}),
     barcodeLabel: (row.product_lists && row.product_lists._ui && row.product_lists._ui.barcodeLabel) ? row.product_lists._ui.barcodeLabel : base.barcodeLabel,
     whishEnabled: (row.product_lists && row.product_lists._ui && row.product_lists._ui.whishEnabled!=null) ? !!row.product_lists._ui.whishEnabled : base.whishEnabled,
+    unitsHosp: (row.product_lists && row.product_lists._ui && (row.product_lists._ui.unitsHosp===true || row.product_lists._ui.unitsHosp===false)) ? row.product_lists._ui.unitsHosp : (base.unitsHosp!=null? base.unitsHosp : null),
     whishQr: (row.product_lists && row.product_lists._ui && row.product_lists._ui.whishQr) ? row.product_lists._ui.whishQr : base.whishQr,
     posLayout: (row.product_lists && row.product_lists._ui && row.product_lists._ui.posLayout) ? row.product_lists._ui.posLayout : base.posLayout,
     posPrintMode: (row.product_lists && row.product_lists._ui && row.product_lists._ui.posPrintMode) ? row.product_lists._ui.posPrintMode : base.posPrintMode,
@@ -1238,13 +1240,15 @@ async function loadSettings(defaults){
   const local = await safeGet(KEYS.settings, defaults);
   if(!supabaseClient) return local;
   let merged = local;
+  // الإعدادات والمستخدمين سوا (مش ورا بعض) — أسرع بفتح صفحة الدخول
+  const usersP = (async ()=>{ try{ return await scoped(supabaseClient.from(T('app_users')).select('*')); }catch(e){ return { data:null, error:{ message:'threw: '+(e && e.message) } }; } })();
   try{
     const { data, error } = await scoped(supabaseClient.from(T('app_settings')).select('*')).maybeSingle();
     if(!error && data) merged = applySettingsFromDb(data, merged);
     else if(error){ lastSupabaseError = describeSupabaseError(error); console.error('app_settings load error:', lastSupabaseError); }
   }catch(e){ lastSupabaseError = 'threw: '+(e && e.message); console.error('app_settings load threw:', e && e.message); }
   try{
-    const { data, error } = await scoped(supabaseClient.from(T('app_users')).select('*'));
+    const { data, error } = await usersP;
     if(!error && data && data.length) merged.users = data.map(userFromDb);
     else if(error){ lastSupabaseError = describeSupabaseError(error); console.error('app_users load error:', lastSupabaseError); }
   }catch(e){ lastSupabaseError = 'threw: '+(e && e.message); console.error('app_users load threw:', e && e.message); }
@@ -3983,6 +3987,32 @@ function compressImageFile(file, maxSide=320, quality=0.72){
     reader.readAsDataURL(file);
   });
 }
+// تصغير صورة محفوظة (شعار / QR): الصور الكبيرة كانت تبطّئ فتح صفحة الدخول (بتنزل كل مرة قبل الدخول)
+function shrinkDataUrl(src, maxSide, kind){
+  return new Promise(resolve=>{
+    const img = new Image();
+    img.onerror = ()=>resolve(null);
+    img.onload = ()=>{
+      const sc = Math.min(1, maxSide/Math.max(img.width, img.height));
+      const w = Math.max(1, Math.round(img.width*sc)), h = Math.max(1, Math.round(img.height*sc));
+      const c = document.createElement('canvas'); c.width = w; c.height = h; const ctx = c.getContext('2d');
+      if(kind==='qr'){ ctx.fillStyle = '#fff'; ctx.fillRect(0,0,w,h); ctx.drawImage(img,0,0,w,h); resolve(c.toDataURL('image/jpeg', 0.9)); return; }
+      ctx.drawImage(img,0,0,w,h);   // الشعار: منحافظ عالشفافية
+      let out = c.toDataURL('image/webp', 0.9); if(out.indexOf('data:image/webp')!==0) out = c.toDataURL('image/png');
+      resolve(out);
+    };
+    img.src = src;
+  });
+}
+async function shrinkSettingsImages(){
+  try{
+    if(!authenticated || !currentUser || !isPrivilegedUser(currentUser) || OFFLINE_SESSION) return;
+    const st = DB.settings; let ch = false;
+    if(st.logo && st.logo.length > 150000){ const v = await shrinkDataUrl(st.logo, 480, 'logo'); if(v && v.length < st.logo.length){ st.logo = v; ch = true; } }
+    if(st.whishQr && st.whishQr.length > 150000){ const v = await shrinkDataUrl(st.whishQr, 600, 'qr'); if(v && v.length < st.whishQr.length){ st.whishQr = v; ch = true; } }
+    if(ch) await save(KEYS.settings, st);
+  }catch(e){ console.error('shrinkSettingsImages', e); }
+}
 // صورة مصغّرة لقوائم المنتجات
 function whThumb(it){ return it && it.image ? `<img src="${it.image}" class="wh-thumb" loading="lazy" alt="">` : `<span class="wh-thumb wh-thumb-ph">📦</span>`; }
 // الصور القديمة الكبيرة (قبل التصغير التلقائي) تُصغَّر مرة وحدة بالخلفية وتُحفظ — فيصير تحميل المستودع وشاشة POS أخف
@@ -4635,12 +4665,17 @@ async function bootPlatform(){
   window.__slugFromUrl = slugFromUrl ? slugFromUrl.toLowerCase() : '';
 
   let ses = await supabaseClient.auth.getSession();
+  let firstAccess = null;
 
   if(slugFromUrl && ses.data.session){
     try{
-      const expRes = await fetch('/api/portal-client?slug=' + encodeURIComponent(slugFromUrl) + '&product=trade');
+      // الطلبين سوا بدل ورا بعض
+      const [expRes, check] = await Promise.all([
+        fetch('/api/portal-client?slug=' + encodeURIComponent(slugFromUrl) + '&product=trade'),
+        supabaseClient.rpc('app_access', { p_product: 'trade' })
+      ]);
       const expJson = await expRes.json();
-      const check = await supabaseClient.rpc('app_access', { p_product: 'trade' });
+      if(!check.error) firstAccess = check;
       const currentClientId = check.data && check.data.client_id;
       if(expJson.ok && expJson.client_id && expJson.client_id !== currentClientId){
         const admChk = await supabaseClient.rpc('is_admin');
@@ -4649,7 +4684,7 @@ async function bootPlatform(){
           return { ok:false, reason:'no_session' };
         }
         await supabaseClient.auth.signOut({ scope:'local' });
-        ses = { data: { session: null } };
+        ses = { data: { session: null } }; firstAccess = null;
       }
     }catch(e){ console.error('slug/session mismatch check failed', e && e.message); }
   }
@@ -4692,7 +4727,7 @@ async function bootPlatform(){
 
   let acc;
   try{
-    acc = await supabaseClient.rpc('app_access', { p_product: 'trade' });
+    acc = firstAccess || await supabaseClient.rpc('app_access', { p_product: 'trade' });
   }catch(netErr){
     // ما في إنترنت — إذا عندك رمز تفعيل موقّع فعّال محلياً وآخر هوية مؤسسة محفوظة، منكمل بلا نت
     const cachedClientId = localStorage.getItem('la_last_client_id');
@@ -5192,6 +5227,7 @@ async function finishRpcLogin(res){
           invalidateWarehouseCaches();
           if(seedBudgetCategoriesLocal()) await save(KEYS.budgetCategories, DB.budgetCategories);
           scheduleLiveRender();
+          shrinkSettingsImages();
         }catch(e){ console.error('background load', e); }
       })();
       return;
@@ -5209,6 +5245,7 @@ async function finishRpcLogin(res){
       || { id:a.id, username:a.username, role:a.role, permissions:a.permissions||[], totpEnabled:!!a.totp_enabled };
     if(seedBudgetCategoriesLocal()) await save(KEYS.budgetCategories, DB.budgetCategories);
     if(!DB.settings.trialStartedAt){ DB.settings.trialStartedAt = Date.now(); await save(KEYS.settings, DB.settings); }
+    setTimeout(shrinkSettingsImages, 1500);
   } else if(res.kind==='customer'){
     currentCustomerSession = { id:a.id, customerId:a.customer_id, username:a.username, createdAt:a.created_at||0 };
   } else if(res.kind==='worker'){
@@ -6921,7 +6958,7 @@ function posViewPro(){
       ${tool('pc_split_btn','✂️','تقسيم', !sel)}
       ${whishEnabled()? tool('pos_whish_btn','📱','قبض Whish', !has) : ''}
       ${tool('pos_return_btn','↩','استرجاع')}
-      ${DB.warehouseItems.some(x=>x.hospitality)? `<button type="button" class="pc-tool" data-hosp-open="1"><span>☕</span><b>ضيافة</b></button>` : ''}
+      ${(unitsHospOn() && DB.warehouseItems.some(x=>x.hospitality))? `<button type="button" class="pc-tool" data-hosp-open="1"><span>☕</span><b>ضيافة</b></button>` : ''}
       ${tool('pos_close_shift_btn','🔒','إقفال صندوقي')}
     </footer>
 
@@ -7730,7 +7767,7 @@ function openPosPaymentModal(currency, prefill){
   const namedCust = !!ticket.customerId && DB.customers.some(c=>c.id===ticket.customerId);
   wrap.innerHTML = `<div class="modal">
     <h3>${currency==='USD'?'💵 قبض دولار':'💴 قبض ليرة'}${namedCust? ' — '+escapeHtml(ticket.customerLabel) : ''}</h3>
-    ${(()=>{ const hl = ticket.cart.map((l,i)=>({l,i,it:DB.warehouseItems.find(x=>x.id===l.itemId)})).filter(x=>x.it && x.it.hospitality);
+    ${(()=>{ const hl = !unitsHospOn()? [] : ticket.cart.map((l,i)=>({l,i,it:DB.warehouseItems.find(x=>x.id===l.itemId)})).filter(x=>x.it && x.it.hospitality);
       if(!hl.length) return '';
       return `<div style="background:#f3ece2; border:1px solid var(--line); border-radius:8px; padding:8px 10px; margin-bottom:10px;">
         <div style="font-weight:800; margin-bottom:4px;">☕ ضيافة (ببلاش — مصاريف ضيافة)</div>
@@ -8979,7 +9016,7 @@ function warehouseHubView(){
     <div class="action-row" style="margin-top:10px;">
       <button class="btn" data-nav="#/warehouse-print">🖨 طباعة جرد المستودع</button>
       ${(()=>{ const n = lowStockNoticeItems().length; return `<button class="btn ${n?'btn-debit':''}" data-nav="#/low-stock">⚠️ اشعار نقص ستوك${n? ' ('+n+')' : ''}</button>`; })()}
-      ${(isPrivilegedUser(currentUser) || hasPermission('edit_products'))? `<button class="btn btn-primary" id="whEditPricesBtn">✏️ تعديل الأسعار والكميات</button><button class="btn" data-hosp-open="1">☕ ضيافة</button><button class="btn" id="whWebImagesBtn">🌐 صور من الانترنت</button><button class="btn" id="whRoundPricesBtn">🔢 تقريب الأسعار</button>` : ''}
+      ${(isPrivilegedUser(currentUser) || hasPermission('edit_products'))? `<button class="btn btn-primary" id="whEditPricesBtn">✏️ تعديل الأسعار والكميات</button>${unitsHospOn()? '<button class="btn" data-hosp-open="1">☕ ضيافة</button>' : ''}<button class="btn" id="whWebImagesBtn">🌐 صور من الانترنت</button><button class="btn" id="whRoundPricesBtn">🔢 تقريب الأسعار</button>` : ''}
     </div>
     ${auto? warehouseCatChipsHtml() : ''}
     <div id="whTableWrap" style="margin-top:14px;">
@@ -9833,6 +9870,8 @@ function closeOrphanShifts(){
   empty.forEach(sh=>closeShiftAsOrphan(sh));
   save(KEYS.cashierShifts, DB.cashierShifts).then(ok=>{ if(ok) render(); });
 }
+// تقسيم المنتجات لوحدات (كاس/فنجان…) + الضيافة: شغّالة لـ C Cup، ولباقي الزبائن بس إذا انفعلت من الإعدادات
+function unitsHospOn(){ const v = DB.settings && DB.settings.unitsHosp; if(v===true) return true; if(v===false) return false; return isCcupClient(); }
 function isCcupClient(){ return clientSlug()==='ccup' || /c\s*cup/i.test(String(DB.settings.companyName||'')); }
 function lbpThousands(v){ return Math.round((Number(v)||0)/1000)*1000; }
 function fixCcupLbpV3(){
@@ -10098,8 +10137,8 @@ function warehouseItemView(item){
         <button class="btn btn-debit" data-nav="#/stockout/new?item=${item.id}">📤 أمر سحب</button>
         <button class="btn btn-sm" id="printItemBarcodeBtn" data-item="${item.id}">${item.barcode? '🖨 طباعة باركود' : '🏷 إنشاء باركود'}</button>
         <button class="btn btn-sm" id="editWhItemBtn">✎ تعديل بيانات المنتج</button>
-        ${(hasPermission('edit_products') && !isServiceItem(item))? (item.baseItemId? `<button class="btn btn-sm" data-sub-edit="${item.id}">🧩 تعديل القسمة</button>` : `<button class="btn btn-sm" data-sub-new="${item.id}">🧩 قسّم لوحدات (كاس / فنجان)</button>`) : ''}
-        ${hasPermission('edit_products')? (()=>{ const us = isSoldByUnits(item)? subItemsOf(item.id) : [item]; const on = us.filter(x=>x.hospitality);
+        ${(unitsHospOn() && hasPermission('edit_products') && !isServiceItem(item))? (item.baseItemId? `<button class="btn btn-sm" data-sub-edit="${item.id}">🧩 تعديل القسمة</button>` : `<button class="btn btn-sm" data-sub-new="${item.id}">🧩 قسّم لوحدات (كاس / فنجان)</button>`) : ''}
+        ${(unitsHospOn() && hasPermission('edit_products'))? (()=>{ const us = isSoldByUnits(item)? subItemsOf(item.id) : [item]; const on = us.filter(x=>x.hospitality);
           return `<button class="btn btn-sm" data-hosp-set="${item.id}">☕ متاح للضيافة: ${on.length? (isSoldByUnits(item)? on.map(x=>x.name).join('، ') : 'نعم'+(Number(item.hospLimit)>0? ' (حد '+fmtQty(item.hospLimit)+' باليوم)' : '')) : 'لأ'}</button>`; })() : ''}
         <button class="btn btn-sm btn-danger" id="deleteWhItemBtn">🗑 حذف المنتج نهائيًا</button>
       </div>
@@ -11039,7 +11078,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-11-02 · 03:45 · v74';
+const APP_TRADE_BUILD = '2026-11-02 · 04:20 · v75';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 function settingsView(){
   const s = DB.settings;
@@ -11266,6 +11305,12 @@ function settingsView(){
       <option value="pro" ${s.posLayout!=='old'?'selected':''}>الشكل الجديد (أدوات + لوحة أرقام + قائمة سفلية)</option>
       <option value="old" ${s.posLayout==='old'?'selected':''}>الشكل القديم</option>
     </select>`}
+  </div>
+
+  <div class="card">
+    <h2><span class="dot"></span> 🧩 تقسيم المنتجات والضيافة</h2>
+    <label style="display:flex; gap:8px; align-items:center; font-size:13.5px;"><input type="checkbox" id="s_units_hosp" style="width:auto;" ${unitsHospOn()?'checked':''}> تفعيل تقسيم المنتج لوحدات (كاس / فنجان / حبة / ظرف) و«متاح للضيافة»</label>
+    <div style="font-size:12px; color:var(--ink-soft); margin-top:4px;">بيزيد بالمستودع زر «قسّم لوحدات» و«متاح للضيافة»، وبشاشة الدفع خيار الضيافة (بتنسجّل على مصاريف الضيافة 61801).</div>
   </div>
 
   <div class="card">
@@ -12259,10 +12304,10 @@ function bindEvents(){
   if(logoInput) logoInput.addEventListener('change', async ()=>{
     const file = logoInput.files[0];
     if(!file) return;
-    if(file.size > 800*1024){ toast('الصورة كبيرة، يُفضَّل استخدام صورة أصغر من 800KB'); return; }
+    if(file.size > 15*1024*1024){ toast('الصورة كبيرة كتير'); return; }
     const reader = new FileReader();
     reader.onload = async ()=>{
-      DB.settings.logo = reader.result;
+      DB.settings.logo = (await shrinkDataUrl(reader.result, 480, 'logo')) || reader.result;
       const ok = await save(KEYS.settings, DB.settings);
       toast(ok? 'تمت إضافة الشعار':'حدث خطأ أثناء الحفظ');
       render();
@@ -12285,6 +12330,12 @@ function bindEvents(){
     DB.settings.posLayout = posLayoutSel.value==='old' ? 'old' : 'pro';
     const ok = await save(KEYS.settings, DB.settings);
     toast(ok? 'تم تغيير شكل شاشة POS' : 'حدث خطأ أثناء الحفظ');
+  });
+  const unitsHospCb = document.getElementById('s_units_hosp');
+  if(unitsHospCb) unitsHospCb.addEventListener('change', async ()=>{
+    DB.settings.unitsHosp = unitsHospCb.checked;
+    const ok = await save(KEYS.settings, DB.settings);
+    toast(ok? (unitsHospCb.checked? 'انفعل تقسيم المنتجات والضيافة' : 'انطفى تقسيم المنتجات والضيافة') : 'حدث خطأ أثناء الحفظ');
   });
   const whishEn = document.getElementById('s_whish_enabled');
   if(whishEn) whishEn.addEventListener('change', async ()=>{

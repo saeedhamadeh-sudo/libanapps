@@ -1,5 +1,6 @@
 // LibanApps — تشغيل برامج المحاسبة بلا إنترنت
 // «الشبكة أولاً»: إذا في نت منجيب النسخة الجديدة دايماً (ومنخزّنها)، وإذا ما في نت منستعمل آخر نسخة مخزّنة.
+// وإذا النت بطيء كتير: منفتح المخزّنة بعد 2.5 ثانية والجديدة بتنزل بالخلفية.
 // ما منلمس طلبات قاعدة البيانات (Supabase) ولا أي صفحة تانية بالموقع.
 var CACHE = 'la-app-offline-v1';
 var CDN = [
@@ -33,12 +34,20 @@ self.addEventListener('fetch', function (e) {
     var cache = await caches.open(CACHE);
     // الصفحة نفسها بتتخزّن بلا الـ query (?x=..) حتى تنفتح بلا نت مهما كان الرابط
     var key = (req.mode === 'navigate') ? new Request(url.origin + url.pathname) : req;
-    try {
-      var res = await fetch(req);
-      if (res && (res.ok || res.type === 'opaque')) { try { await cache.put(key, res.clone()); } catch (x) {} }
+    var net = fetch(req).then(function (res) {
+      if (res && (res.ok || res.type === 'opaque')) { var cp = res.clone(); cache.put(key, cp).catch(function () {}); }
       return res;
+    });
+    // إذا النت بطيء (أكتر من 2.5 ثانية) منفتح آخر نسخة مخزّنة فوراً، والجديدة بتكمل تنزل بالخلفية وبتطلع بالفتحة الجاية
+    var hitP = cache.match(key).then(function (h) { return h || cache.match(req, { ignoreSearch: true }); });
+    var timer = new Promise(function (resolve) { setTimeout(function () { hitP.then(resolve); }, 2500); });
+    e.waitUntil(net.catch(function () {}));
+    try {
+      var first = await Promise.race([net, timer]);
+      if (first) return first;
+      return await net;
     } catch (err) {
-      var hit = await cache.match(key) || await cache.match(req, { ignoreSearch: true });
+      var hit = await hitP;
       if (hit) return hit;
       throw err;
     }
