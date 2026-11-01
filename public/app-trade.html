@@ -9843,6 +9843,45 @@ function workerPaymentFormView(p, workerId){ return paymentFormView('workerpay',
 function receiptFormView(rec, customerId){ return paymentFormView('receipt', rec, customerId); }
 function voucherFormView(v, supplierId){ return paymentFormView('voucher', v, supplierId); }
 
+// رصيد الطرف بصفحة السند: قديش حسابه قبل هالسند، وكبسة لتسديد كامل المبلغ، والباقي بعد السند
+function payPartyBalanceInfo(kind, rec, partyId){
+  const fn = kind==='receipt'? customerBalance : kind==='voucher'? supplierBalance : kind==='workerpay'? workerBalance : null;
+  if(!fn || !partyId) return null;
+  let bal = Number(fn(partyId))||0;
+  if(rec && rec.id && !rec.deleted){   // تعديل سند موجود: الرصيد قبل هالسند
+    const a = (kind==='receipt' && typeof receiptAmountUSD==='function') ? receiptAmountUSD(rec) : (Number(rec.amount)||0);
+    bal += Math.abs(a||0);
+  }
+  return { bal };
+}
+function payToInput(usd){ return typeof inPrim==='function' ? inPrim(usd) : Math.round((Number(usd)||0)*100)/100; }
+function payFromInput(v){ return typeof outPrim==='function' ? outPrim(v) : (Number(v)||0); }
+function payFmt(usd){ return typeof fmtPrim==='function' ? fmtPrim(usd) : '$'+(Number(usd)||0).toFixed(2); }
+function payBalLabel(kind, bal){
+  if(Math.abs(bal)<0.000001) return 'الحساب مسكّر (صفر)';
+  if(kind==='receipt') return bal>0 ? 'عليه لنا' : 'إلو رصيد دائن';
+  return bal>0 ? 'إلو علينا' : 'رصيد دائن لصالحنا';
+}
+function payBalanceBox(kind, rec, partyId){
+  const info = payPartyBalanceInfo(kind, rec, partyId); if(!info) return '';
+  const b = info.bal;
+  return `<div id="payBalBox" data-bal="${b}" data-kind="${kind}" style="background:var(--bg-2); border:1px solid var(--line); border-radius:10px; padding:10px 12px; margin-bottom:12px; display:flex; flex-wrap:wrap; gap:10px; align-items:center; justify-content:space-between;">
+    <div><div style="font-size:12px; color:var(--ink-soft);">💰 حسابه الحالي (${payBalLabel(kind, b)})</div>
+      <div class="num" style="font-size:20px; font-weight:800; color:${b>0?'var(--debit)':'var(--credit)'};" dir="ltr">${payFmt(Math.abs(b))}</div>
+      <div style="font-size:12px; color:var(--ink-soft); margin-top:2px;">الباقي بعد هالسند: <b class="num" id="payBalAfter" dir="ltr"></b></div></div>
+    ${b>0.000001? `<button type="button" class="btn btn-sm btn-primary" id="payFullBtn">✔ ${kind==='receipt'?'قبض':'دفع'} كامل الحساب (تصفير)</button>` : ''}
+  </div>`;
+}
+function bindPayBalanceBox(){
+  const box = document.getElementById('payBalBox'), inp = document.getElementById('r_amount');
+  if(!box || !inp) return;
+  const bal = Number(box.getAttribute('data-bal'))||0;
+  const upd = ()=>{ const after = bal - (Number(payFromInput(inp.value))||0); const el = document.getElementById('payBalAfter');
+    if(el){ el.textContent = (after<-0.000001? '(زيادة) ' : '') + payFmt(Math.abs(after)); el.style.color = Math.abs(after)<0.000001 ? 'var(--credit)' : ''; } };
+  inp.addEventListener('input', upd); upd();
+  const full = document.getElementById('payFullBtn');
+  if(full) full.addEventListener('click', ()=>{ inp.value = payToInput(bal); inp.dispatchEvent(new Event('input', {bubbles:true})); inp.focus(); });
+}
 function paymentFormView(kind, rec, partyId){
   const cfg = PAYMENT_CFG[kind];
   const party = DB[cfg.partyArr].find(c=>c.id===partyId);
@@ -9861,6 +9900,7 @@ function paymentFormView(kind, rec, partyId){
       <div class="field"><label>رقم ${cfg.title}</label><input type="text" id="r_number" class="num" value="${escapeHtml(d.number)}"></div>
       <div class="field"><label>التاريخ</label><input type="date" id="r_date" value="${d.date}"></div>
     </div>
+    ${payBalanceBox(kind, rec, partyId)}
     <div class="grid grid-2">
       <div class="field"><label>المبلغ (${primSym()})</label><input type="number" id="r_amount" class="num" value="${inPrim(d.amount)}"></div>
       <div class="field"><label>طريقة الدفع</label>
@@ -10041,7 +10081,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-10-31 · 01:45 · v55';
+const APP_TRADE_BUILD = '2026-11-01 · 17:05 · v56';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 function settingsView(){
   const s = DB.settings;
@@ -12805,6 +12845,7 @@ function bindPaymentFormEvents(){
   el.addEventListener('input', e=>_paymentDraft.number=e.target.value);
   document.getElementById('r_date').addEventListener('input', e=>_paymentDraft.date=e.target.value);
   document.getElementById('r_amount').addEventListener('input', e=>_paymentDraft.amount=outPrim(e.target.value));
+  bindPayBalanceBox();
   document.getElementById('r_details').addEventListener('input', e=>_paymentDraft.details=e.target.value);
   document.querySelectorAll('[data-method]').forEach(btn=>{
     btn.addEventListener('click', ()=>{ _paymentDraft.method = btn.getAttribute('data-method'); render(); });
