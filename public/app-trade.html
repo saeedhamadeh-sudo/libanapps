@@ -9113,7 +9113,13 @@ function lowStockView(){
     </label>
     <button class="btn btn-primary" onclick="printWithFilename('Low-Stock-${todayISO()}')">🖨 طباعة</button>
   </div>
-  <div class="no-print" style="margin:0 0 10px;"><input type="search" id="lowStockSearch" placeholder="🔍 بحث ذكي: اسم، ماركة، باركود، نوع…" value="${escapeHtml(_lowStockQ)}" autocomplete="off" style="width:100%; max-width:460px;"><span id="lowStockSearchN" style="font-size:12.5px; color:var(--ink-soft); margin-inline-start:8px;"></span></div>
+  <div class="card no-print" style="padding-bottom:4px;">
+    <div class="search-row" style="margin-bottom:6px;">
+      <input type="text" id="lowStockSearch" autocomplete="off" value="${escapeHtml(_lowStockQ)}" placeholder="${isAutoShop()? '🔍 بحث ذكي: اسم، باركود، SKU، مقاس (2055516)، لزوجة، أمبير، موديل سيارة، سنة الصنع...' : '🔍 بحث ذكي: اسم، ماركة، نوع، باركود...'}">
+      <button type="button" class="btn btn-sm" id="lowStockScan" title="مسح باركود">📷</button>
+    </div>
+    <div id="lowStockSearchN" style="font-size:12.5px; color:var(--ink-soft); min-height:16px;"></div>
+  </div>
   ${kinds.length>1? `<div class="no-print" style="display:flex; flex-wrap:wrap; gap:6px; margin:0 0 10px;">${chip('الكل','',all.length)}${kinds.map(k=>chip(k, k, all.filter(it=>lowStockKind(it)===k).length)).join('')}</div>` : ''}
   <div class="doc">
     ${docHead('اشعار نقص ستوك')}
@@ -11133,7 +11139,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-11-02 · 17:45 · v78';
+const APP_TRADE_BUILD = '2026-11-02 · 17:50 · v79';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 function settingsView(){
   const s = DB.settings;
@@ -12288,7 +12294,10 @@ function bindEvents(){
   const wipeWarehouseBtn = document.getElementById('wipeWarehouseBtn');
   if(wipeWarehouseBtn) wipeWarehouseBtn.addEventListener('click', openWipeWarehouseModal);
   const lowStockSearch = document.getElementById('lowStockSearch');
-  if(lowStockSearch){ lowStockSearch.addEventListener('input', applyLowStockSearch); if(_lowStockQ) applyLowStockSearch(); }
+  if(lowStockSearch){ lowStockSearch.addEventListener('input', applyLowStockSearch); if(_lowStockQ) applyLowStockSearch();
+    const sc = document.getElementById('lowStockScan');
+    if(sc) sc.addEventListener('click', ()=>openBarcodeScannerModal(code=>{ lowStockSearch.value = code; applyLowStockSearch(); }));
+    if(!('ontouchstart' in window)) setTimeout(()=>lowStockSearch.focus(), 50); }
   const lowStockSort = document.getElementById('lowStockSort');
   if(lowStockSort) lowStockSort.addEventListener('change', ()=>{ const qs = new URLSearchParams(location.hash.split('?')[1]||''); if(lowStockSort.value==='cat') qs.delete('sort'); else qs.set('sort', lowStockSort.value); const t = qs.toString(); go('#/low-stock'+(t? '?'+t : '')); });
   const lowStockThSave = document.getElementById('lowStockThSave');
