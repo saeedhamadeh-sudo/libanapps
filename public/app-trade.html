@@ -9054,6 +9054,19 @@ function lowStockNoticeItems(){
     .sort((a,b)=> (fastStock(a.id)-fastStock(b.id)) || String(a.name||'').localeCompare(String(b.name||''),'ar'));
 }
 // نوع المنتج (الفئة: دواليب، زيت، بطاريات… أو شاي، قهوة…) — لترتيب وفلترة اشعار نقص الستوك
+let _lowStockQ = '';
+// البحث الذكي باشعار نقص الستوك: بيخبّي الأسطر يلي ما بتطابق (بلا ما يعيد رسم الصفحة — بيضل المؤشر بخانة البحث)
+function applyLowStockSearch(){
+  const inp = document.getElementById('lowStockSearch'); if(!inp) return;
+  _lowStockQ = inp.value;
+  const rows = Array.from(document.querySelectorAll('tr[data-ls-id]'));
+  const q = _lowStockQ.trim();
+  const ok = q? new Set(smartSearchWarehouse(q, rows.map(r=>DB.warehouseItems.find(x=>x.id===r.getAttribute('data-ls-id'))).filter(Boolean)).map(x=>x.id)) : null;
+  let n = 0;
+  rows.forEach(r=>{ const show = !ok || ok.has(r.getAttribute('data-ls-id')); r.style.display = show? '' : 'none'; if(show){ n++; const c = r.querySelector('.inv-idx'); if(c) c.textContent = n; } });
+  document.querySelectorAll('tr.ls-group').forEach(g=>{ const k = g.getAttribute('data-ls-kind'); g.style.display = rows.some(r=>r.style.display!=='none' && r.getAttribute('data-ls-kind')===k)? '' : 'none'; });
+  const nEl = document.getElementById('lowStockSearchN'); if(nEl) nEl.textContent = q? n+' نتيجة' : '';
+}
 function lowStockKind(it){ return String(it.category||'').trim() || 'بلا فئة'; }
 function lowStockView(){
   const qs = new URLSearchParams(location.hash.split('?')[1]||'');
@@ -9073,9 +9086,9 @@ function lowStockView(){
   const rows = items.map((it,idx)=>{
     const q = fastStock(it.id);
     const k = lowStockKind(it);
-    const head = (sortBy==='cat' && !catSel && k!==lastKind)? `<tr class="ls-group"><td colspan="${canDelItems()? 7 : 6}" style="background:var(--paper); font-weight:800;">📦 ${escapeHtml(k)} <span class="num" style="font-weight:600; color:var(--ink-soft);">(${items.filter(x=>lowStockKind(x)===k).length})</span></td></tr>` : '';
+    const head = (sortBy==='cat' && !catSel && k!==lastKind)? `<tr class="ls-group" data-ls-kind="${escapeHtml(k)}"><td colspan="${canDelItems()? 7 : 6}" style="background:var(--paper); font-weight:800;">📦 ${escapeHtml(k)} <span class="num" style="font-weight:600; color:var(--ink-soft);">(${items.filter(x=>lowStockKind(x)===k).length})</span></td></tr>` : '';
     lastKind = k;
-    return head + `<tr data-nav="#/warehouse-item/${it.id}" style="cursor:pointer;">
+    return head + `<tr data-nav="#/warehouse-item/${it.id}" data-ls-id="${it.id}" data-ls-kind="${escapeHtml(k)}" style="cursor:pointer;">
       <td class="num inv-idx">${idx+1}</td>
       <td><b>${escapeHtml(it.name)}</b></td>
       <td>${escapeHtml(it.brand||'—')}</td>
@@ -9100,6 +9113,7 @@ function lowStockView(){
     </label>
     <button class="btn btn-primary" onclick="printWithFilename('Low-Stock-${todayISO()}')">🖨 طباعة</button>
   </div>
+  <div class="no-print" style="margin:0 0 10px;"><input type="search" id="lowStockSearch" placeholder="🔍 بحث ذكي: اسم، ماركة، باركود، نوع…" value="${escapeHtml(_lowStockQ)}" autocomplete="off" style="width:100%; max-width:460px;"><span id="lowStockSearchN" style="font-size:12.5px; color:var(--ink-soft); margin-inline-start:8px;"></span></div>
   ${kinds.length>1? `<div class="no-print" style="display:flex; flex-wrap:wrap; gap:6px; margin:0 0 10px;">${chip('الكل','',all.length)}${kinds.map(k=>chip(k, k, all.filter(it=>lowStockKind(it)===k).length)).join('')}</div>` : ''}
   <div class="doc">
     ${docHead('اشعار نقص ستوك')}
@@ -11119,7 +11133,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-11-02 · 17:20 · v77';
+const APP_TRADE_BUILD = '2026-11-02 · 17:45 · v78';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 function settingsView(){
   const s = DB.settings;
@@ -12273,6 +12287,8 @@ function bindEvents(){
 
   const wipeWarehouseBtn = document.getElementById('wipeWarehouseBtn');
   if(wipeWarehouseBtn) wipeWarehouseBtn.addEventListener('click', openWipeWarehouseModal);
+  const lowStockSearch = document.getElementById('lowStockSearch');
+  if(lowStockSearch){ lowStockSearch.addEventListener('input', applyLowStockSearch); if(_lowStockQ) applyLowStockSearch(); }
   const lowStockSort = document.getElementById('lowStockSort');
   if(lowStockSort) lowStockSort.addEventListener('change', ()=>{ const qs = new URLSearchParams(location.hash.split('?')[1]||''); if(lowStockSort.value==='cat') qs.delete('sort'); else qs.set('sort', lowStockSort.value); const t = qs.toString(); go('#/low-stock'+(t? '?'+t : '')); });
   const lowStockThSave = document.getElementById('lowStockThSave');
