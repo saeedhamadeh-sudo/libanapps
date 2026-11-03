@@ -15,6 +15,46 @@ function json(status, body) {
   });
 }
 
+// ============================================================
+//  تحديثات النسخة المحلية — قائمة ملفات البرنامجين مع بصمتها (sha256)
+//  بتنحسب من الملفات المنشورة نفسها، فكل ما ترفع تعديل على GitHub
+//  بيوصل للبرامج المثبّتة عند الزباين بلا أي خطوة زيادة.
+//  (معلومات الـinstaller و minLocal بتنقرا من public/offline-update.json إذا موجود)
+// ============================================================
+async function offlineManifest(env, url) {
+  const hex = async (buf) => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', buf)))
+    .map(b => b.toString(16).padStart(2, '0')).join('');
+  const files = [], seen = new Set();
+  const add = async (p) => {
+    if (seen.has(p)) return null;
+    seen.add(p);
+    const r = await env.ASSETS.fetch(new URL('/' + p, url.origin));
+    if (!r.ok) return null;
+    const buf = await r.arrayBuffer();
+    files.push({ path: p, sha256: await hex(buf), size: buf.byteLength });
+    return buf;
+  };
+  for (const page of ['app-alum.html', 'app-trade.html']) {
+    const buf = await add(page);
+    if (!buf) continue;
+    const html = new TextDecoder().decode(buf);
+    for (const m of html.matchAll(/["'(]\/?(assets\/[A-Za-z0-9_\-./]+\.(?:js|css|json|png|jpe?g|svg|webp|woff2?))/g)) {
+      if (!m[1].includes('..')) await add(m[1]);
+    }
+  }
+  let extra = {};
+  try {
+    const r = await env.ASSETS.fetch(new URL('/offline-update.json', url.origin));
+    if (r.ok) { const j = await r.json(); extra = { minLocal: j.minLocal, installer: j.installer || null }; }
+  } catch (e) {}
+  files.sort((a, b) => a.path < b.path ? -1 : 1);
+  const all = (await hex(new TextEncoder().encode(files.map(f => f.path + ':' + f.sha256).join('\n')))).slice(0, 10);
+  const d = new Date();
+  const stamp = d.getUTCFullYear() + '.' + String(d.getUTCMonth() + 1).padStart(2, '0') + '.' + String(d.getUTCDate()).padStart(2, '0');
+  return json(200, { version: stamp + '-' + all, contentHash: all, builtAt: d.toISOString(),
+    minLocal: extra.minLocal || '2.0.0', installer: extra.installer || null, files });
+}
+
 function b64ToBytes(b64) {
   const bin = atob(b64);
   const out = new Uint8Array(bin.length);
@@ -2793,6 +2833,8 @@ export default {
     // 1) الـAPI — أي مسار تحت /api/ يرجّع JSON دائماً، حتى لو صار خطأ داخلي
     if (url.pathname.startsWith('/api/')) {
       try {
+        // النسخة المحلية (LibanApps Local) بتسأل: شو بصمة آخر نسخة من صفحات البرنامجين؟
+        if (url.pathname === '/api/offline/manifest') return await offlineManifest(env, url);
         if (url.pathname === '/api/addon/pay') {
           if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
           return await addonPay(request, env);
