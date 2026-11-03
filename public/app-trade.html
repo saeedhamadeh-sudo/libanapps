@@ -1707,7 +1707,16 @@ async function loadSyncedArray(localKey, fallback){
           pend.u.forEach(id=>{ if(lmap.has(id) && !remoteRows.some(r=>r.id===id)) remoteRows.push(lmap.get(id)); });
           setTimeout(flushOutbox, 2500);
         }
-        const { merged, localOnly } = mergeLocalOnly(localKey, remoteRows, false);
+        let { merged, localOnly } = mergeLocalOnly(localKey, remoteRows, false);
+        if(localKey===KEYS.budgetCategories){
+          _budgetCatsCloudOk = true;
+          const dd = dedupeAutoBudgetCats(merged, remoteRows);
+          if(dd.dropped.length){
+            merged = dd.list; localOnly = localOnly.filter(r=>!dd.dropped.includes(r.id));
+            const remoteDrop = dd.dropped.filter(id=>remoteRows.some(r=>r.id===id));
+            if(remoteDrop.length) setTimeout(async ()=>{ try{ const r = await scoped(supabaseClient.from(T(cfg.table)).delete()).in('id', remoteDrop); if(r && r.error) console.error('dedupe budget cats', describeSupabaseError(r.error)); else if(_sentSnap[localKey]) remoteDrop.forEach(id=>_sentSnap[localKey].delete(id)); }catch(e){ console.error('dedupe budget cats', e); } }, 1200);
+          }
+        }
         try{ localStorage.setItem(skey(localKey), JSON.stringify(merged)); }catch(e){}
         if(localOnly.length) setTimeout(()=>syncArrayToSupabase(localKey, merged), 1500);
         return merged;
@@ -4554,7 +4563,18 @@ const BUDGET_BUILTIN_DEFS = [
   {key:'maintenance', name:'الصيانة والآليات', type:'expense', auto:false},
   {key:'otherExpenses', name:'مصاريف أخرى', type:'expense', auto:false}
 ];
+// حقول الميزانية التلقائية (مدفوعات العمال، مصاريف الموردين…) لازم تكون وحدة من كل نوع.
+// كانت تنزاد نسخة جديدة كل ما ينفتح البرنامج على جهاز قبل ما توصل الحقول من السحابة — منمحي المكرر ومنمنع تكرارو.
+let _budgetCatsCloudOk = false;
+function dedupeAutoBudgetCats(list, remoteRows){
+  const remoteIds = new Set((remoteRows||[]).map(r=>r.id)); const keep = new Map(); const dropped = [];
+  // الأقدم يلي بالسحابة بيضل (المرتبة حسب الرقم)، والنسخ المحلية الجديدة بتنشال أول شي
+  const ordered = list.slice().sort((a,b)=> (remoteIds.has(b.id)-remoteIds.has(a.id)) || String(a.id).localeCompare(String(b.id)));
+  ordered.forEach(c=>{ if(!c || !c.auto || !c.key) return; if(keep.has(c.key)) dropped.push(c.id); else keep.set(c.key, c.id); });
+  return { list: list.filter(c=>!dropped.includes(c.id)), dropped };
+}
 function seedBudgetCategoriesLocal(){
+  if(supabaseClient && !_budgetCatsCloudOk) return false;   // قبل ما توصل الحقول من السحابة ما منزيد شي (كان يعمل نسخ مكررة)
   if(DB.budgetCategories && DB.budgetCategories.length) return false;
   DB.budgetCategories = BUDGET_BUILTIN_DEFS.map(d=>({id:uid(), key:d.key, name:d.name, type:d.type, auto:d.auto, builtin:true}));
   return true;
@@ -4566,6 +4586,7 @@ function migrateBudgetCategories(){
 // عند تفعيل العمال: حقل ميزانية تلقائي لمدفوعات العمال (مرة واحدة)
 function ensureWorkerBudgetCategory(){
   if(!(DB.settings && DB.settings.workersEnabled)) return false;
+  if(supabaseClient && !_budgetCatsCloudOk) return false;
   if((DB.budgetCategories||[]).some(c=>c.key==='workerPayments')) return false;
   DB.budgetCategories = [...(DB.budgetCategories||[]), {id:uid(), key:'workerPayments', name:'مدفوعات العمال', type:'expense', auto:true, builtin:true}];
   return true;
@@ -11215,7 +11236,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-11-03 · 21:45 · v81';
+const APP_TRADE_BUILD = '2026-11-03 · 22:00 · v82';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 function settingsView(){
   const s = DB.settings;
