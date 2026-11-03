@@ -77,6 +77,17 @@ npm run build
 
 ## الوصول من برّا (Cloudflare Tunnel)
 
+### بكبسة وحدة (الطريقة العادية)
+عند الزبون: **الوصول من برّا** ← اكتب اسم الرابط (مثلاً `shop1`) ← **فعّل الرابط**.
+الموقع (`/api/tunnel/provision`) بيعمل نفق خاص بالمؤسسة + الرابط `shop1.libanapps.com` + بيرجّع الرمز، والبرنامج بيشغّلو لحالو.
+إذا الزبون غيّر الاسم، الرابط القديم بينشال لحالو.
+
+**مرة وحدة عندك بالـWorker** (Cloudflare ← Workers ← libanapps ← Settings ← Variables and Secrets):
+- `CF_API_TOKEN` (Secret) — توكن صلاحياتو: Account › Cloudflare Tunnel › Edit + Zone › DNS › Edit (libanapps.com)
+- `CF_ACCOUNT_ID` = `08e240ed50582459acd86770aff8e187`
+
+### يدوي (إذا بدك)
+
 لكل زبون بتعمل نفق مرة وحدة من حسابك بـ Cloudflare:
 
 1. Cloudflare → **Zero Trust → Networks → Tunnels → Create a tunnel** → اختار **Cloudflared** → الاسم مثلاً `shop1`.
