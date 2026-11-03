@@ -1,0 +1,48 @@
+{
+  "name": "libanapps-local",
+  "productName": "LibanApps",
+  "version": "2.0.0",
+  "description": "LibanApps — نسخة محلية: البيانات على الكمبيوتر، والوصول من برّا عبر Cloudflare Tunnel",
+  "main": "main.js",
+  "author": "LibanApps",
+  "license": "UNLICENSED",
+  "private": true,
+  "scripts": {
+    "prepare-app": "node scripts/prepare.js",
+    "start": "node scripts/prepare.js && electron .",
+    "server": "node server/index.js",
+    "build": "node scripts/prepare.js && electron-builder --win nsis"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.4.1"
+  },
+  "devDependencies": {
+    "electron": "^37.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.libanapps.local",
+    "productName": "LibanApps",
+    "directories": { "output": "dist" },
+    "files": ["main.js", "preload.js", "package.json", "server/**/*", "web/**/*", "build/icon.png"],
+    "extraResources": [
+      { "from": "app", "to": "app-web" },
+      { "from": "bin", "to": "bin" },
+      { "from": "build", "to": "build" }
+    ],
+    "asarUnpack": ["**/node_modules/better-sqlite3/**"],
+    "win": {
+      "target": ["nsis"],
+      "icon": "build/icon.png",
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "LibanApps",
+      "artifactName": "LibanApps-Local-Setup-${version}.exe"
+    }
+  }
+}

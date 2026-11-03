@@ -1,0 +1,474 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LibanApps — النسخة المحلية</title>
+<link href="/vendor/fonts/fonts.css" rel="stylesheet">
+<style>
+:root{ --ink:#12324F; --soft:#6A7C8C; --line:#E3EAF0; --bg:#F4F8FB; --card:#fff; --acc:#E08A2B; --ok:#1E9E62; --bad:#D64545; --warn:#C98A12; }
+*{ box-sizing:border-box; }
+body{ margin:0; font-family:Cairo, Tajawal, "Segoe UI", system-ui, sans-serif; background:var(--bg); color:var(--ink); }
+header{ background:var(--ink); color:#fff; padding:18px 20px; }
+.wrap{ max-width:1000px; margin:0 auto; padding:0 16px; }
+header .wrap{ display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+header h1{ margin:0; font-size:20px; font-weight:800; }
+header .sub{ opacity:.75; font-size:13px; }
+.chip{ display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:99px; font-size:12.5px; font-weight:700; background:rgba(255,255,255,.12); }
+.chip .d{ width:8px; height:8px; border-radius:50%; background:#9AA; }
+.chip.ok .d{ background:#3BD18A; } .chip.bad .d{ background:#FF7A7A; }
+main{ padding:22px 0 60px; }
+.apps{ display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:16px; }
+.app{ background:var(--card); border:1px solid var(--line); border-radius:18px; padding:20px; display:flex; flex-direction:column; gap:10px; }
+.app h2{ margin:0; font-size:19px; }
+.app .st{ font-size:13.5px; color:var(--soft); min-height:20px; }
+.btn{ appearance:none; border:0; border-radius:12px; padding:11px 18px; font:inherit; font-weight:800; cursor:pointer; background:var(--acc); color:#fff; text-decoration:none; text-align:center; }
+.btn.sec{ background:#E9EFF5; color:var(--ink); }
+.btn.sm{ padding:7px 12px; font-size:13px; border-radius:10px; }
+.btn[disabled]{ opacity:.5; cursor:default; }
+nav.tabs{ display:flex; gap:6px; margin:28px 0 12px; flex-wrap:wrap; border-bottom:1px solid var(--line); }
+nav.tabs button{ border:0; background:none; font:inherit; font-weight:700; color:var(--soft); padding:10px 12px; cursor:pointer; border-bottom:3px solid transparent; }
+nav.tabs button.on{ color:var(--ink); border-color:var(--acc); }
+section.panel{ display:none; background:var(--card); border:1px solid var(--line); border-radius:18px; padding:20px; }
+section.panel.on{ display:block; }
+section h3{ margin:0 0 6px; font-size:17px; }
+p.help{ color:var(--soft); font-size:13.5px; line-height:1.8; margin:0 0 14px; }
+.row{ display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; margin-bottom:12px; }
+.f{ display:flex; flex-direction:column; gap:4px; flex:1 1 200px; }
+.f label{ font-size:12.5px; font-weight:700; color:var(--soft); }
+input, select, textarea{ font:inherit; padding:10px 12px; border:1px solid var(--line); border-radius:10px; background:#fff; color:var(--ink); width:100%; }
+input[dir=ltr]{ text-align:left; }
+.msg{ font-size:13.5px; min-height:20px; margin:4px 0; }
+.msg.ok{ color:var(--ok); } .msg.bad{ color:var(--bad); }
+table{ width:100%; border-collapse:collapse; font-size:14px; }
+td, th{ padding:9px 6px; border-bottom:1px solid var(--line); text-align:right; }
+th{ font-size:12.5px; color:var(--soft); }
+.box{ background:#F7FAFC; border:1px dashed var(--line); border-radius:12px; padding:12px 14px; font-size:13.5px; line-height:1.9; margin:10px 0; }
+code, .mono{ font-family:Consolas, "Roboto Mono", monospace; direction:ltr; unicode-bidi:embed; }
+.url{ font-size:16px; font-weight:800; direction:ltr; display:inline-block; }
+.hr{ height:1px; background:var(--line); margin:18px 0; }
+pre.log{ background:#0E2235; color:#BFD3E6; border-radius:10px; padding:10px; font-size:11.5px; max-height:180px; overflow:auto; direction:ltr; text-align:left; white-space:pre-wrap; }
+.remote-note{ display:none; }
+body.remote .local-only{ display:none !important; }
+body.remote .remote-note{ display:block; }
+</style>
+</head>
+<body>
+<header><div class="wrap">
+  <div><h1>LibanApps</h1><div class="sub">النسخة المحلية — بياناتك محفوظة على هالكمبيوتر</div></div>
+  <span style="flex:1"></span>
+  <span class="chip" id="chipRemote"><span class="d"></span><span>الوصول من برّا</span></span>
+  <span class="chip" id="chipBackup"><span class="d"></span><span>النسخ الاحتياطي</span></span>
+</div></header>
+
+<main><div class="wrap">
+  <div class="apps">
+    <div class="app"><h2>محاسبة الألمنيوم</h2><div class="st" id="st_alum">...</div><a class="btn" href="/alum">افتح البرنامج</a></div>
+    <div class="app"><h2>محاسبة التجارة</h2><div class="st" id="st_trade">...</div><a class="btn" href="/trade">افتح البرنامج</a></div>
+  </div>
+  <p class="help remote-note" style="margin-top:18px">أنت فايت من برّا عبر الإنترنت — البيانات محفوظة عالكمبيوتر الأساسي بالمحل. الإعدادات بتنفتح من هيداك الكمبيوتر بس.</p>
+
+  <div class="local-only">
+  <nav class="tabs" id="tabs">
+    <button data-t="license">التفعيل</button>
+    <button data-t="users">المستخدمين</button>
+    <button data-t="remote">الوصول من برّا</button>
+    <button data-t="backup">النسخ الاحتياطي</button>
+    <button data-t="import">نقل من السحابة</button>
+    <button data-t="update" id="tabUpdate">التحديث</button>
+  </nav>
+
+  <!-- ===== التفعيل ===== -->
+  <section class="panel" id="p_license">
+    <h3>تفعيل البرنامج</h3>
+    <p class="help">سجّل دخول مرة وحدة بحساب libanapps.com تبعك. البرنامج بيتأكد من الاشتراك كل فترة إذا في إنترنت، وبيشتغل بلا إنترنت لحد ١٠ أيام من آخر تأكيد.</p>
+    <div class="box" id="licBox">...</div>
+    <div id="licSignin">
+      <div class="row">
+        <div class="f"><label>الإيميل</label><input id="l_email" type="email" dir="ltr" autocomplete="username"></div>
+        <div class="f"><label>كلمة السر</label><input id="l_pass" type="password" dir="ltr" autocomplete="current-password"></div>
+        <button class="btn" id="l_go">تسجيل الدخول</button>
+      </div>
+      <div class="hr"></div>
+      <p class="help">أو بلا إنترنت أبداً: رقم تفعيل من المزوّد (بيبلّش بـHMDH1).</p>
+      <div class="row">
+        <div class="f"><label>رقم التفعيل</label><input id="l_serial" dir="ltr" placeholder="HMDH1...."></div>
+        <button class="btn sec" id="l_serial_go">تفعيل</button>
+      </div>
+    </div>
+    <div class="row" id="licActions" style="display:none">
+      <button class="btn sec sm" id="l_refresh">تحقّق هلق</button>
+      <button class="btn sec sm" id="l_out">فصل الحساب</button>
+    </div>
+    <div class="msg" id="l_msg"></div>
+  </section>
+
+  <!-- ===== المستخدمين ===== -->
+  <section class="panel" id="p_users">
+    <h3>مستخدمين البرامج</h3>
+    <p class="help">هون بتعمل أول مدير لكل برنامج، أو بتعيّن كلمة سر لمستخدم نسيها. باقي المستخدمين والصلاحيات بتنعمل من جوّا البرنامج متل العادة.</p>
+    <div class="row">
+      <div class="f" style="flex:0 1 200px"><label>البرنامج</label><select id="u_prod"><option value="trade">التجارة</option><option value="alum">الألمنيوم</option></select></div>
+    </div>
+    <table><thead><tr><th>المستخدم</th><th>الدور</th><th>كلمة السر</th><th></th></tr></thead><tbody id="u_list"></tbody></table>
+    <div class="hr"></div>
+    <h3 id="u_formTitle">مدير جديد</h3>
+    <div class="row">
+      <input type="hidden" id="u_id">
+      <div class="f"><label>اسم المستخدم</label><input id="u_name" dir="ltr"></div>
+      <div class="f"><label>كلمة السر</label><input id="u_pass" type="password" dir="ltr"></div>
+      <button class="btn" id="u_save">حفظ</button>
+      <button class="btn sec" id="u_cancel" style="display:none">إلغاء</button>
+    </div>
+    <label style="font-size:13.5px; display:none" id="u_2fa_wrap"><input type="checkbox" id="u_2fa" style="width:auto"> إلغاء رمز 2FA لهالمستخدم</label>
+    <div class="msg" id="u_msg"></div>
+  </section>
+
+  <!-- ===== الوصول من برّا ===== -->
+  <section class="panel" id="p_remote">
+    <h3>الفوت عالبرنامج من برّا المحل</h3>
+    <p class="help">بيفتح خط آمن من هالكمبيوتر لـCloudflare، فبتقدر تفوت من التلفون أو من البيت على رابط خاص فيك. البيانات بتضل هون عالكمبيوتر — لازم يكون شغّال ومتصل بالإنترنت لحتى يشتغل الرابط. الدخول بيضل بإسم المستخدم وكلمة السر.</p>
+    <div class="box" id="tunBox">...</div>
+    <div class="row">
+      <div class="f" style="flex:0 1 240px"><label>النوع</label>
+        <select id="t_mode"><option value="token">رابط ثابت</option><option value="quick">رابط مؤقت (تجربة)</option></select></div>
+      <div class="f t_tok"><label>الرابط (Public hostname)</label><input id="t_host" dir="ltr" placeholder="shop1.libanapps.com"></div>
+    </div>
+    <div class="row t_tok">
+      <div class="f"><label>رمز النفق (Tunnel token)</label><input id="t_token" dir="ltr" placeholder="eyJhIjoi..."></div>
+    </div>
+    <div class="row">
+      <button class="btn" id="t_on">تشغيل</button>
+      <button class="btn sec" id="t_off">إيقاف</button>
+    </div>
+    <div class="msg" id="t_msg"></div>
+    <pre class="log" id="t_log" style="display:none"></pre>
+  </section>
+
+  <!-- ===== النسخ الاحتياطي ===== -->
+  <section class="panel" id="p_backup">
+    <h3>النسخ الاحتياطي</h3>
+    <p class="help">نسخة كاملة من البيانات بتنعمل تلقائياً وبتنحفظ بمجلد على الكمبيوتر. إذا حطيت كلمة سر للنسخ، بتنشفّر النسخة وفيك ترفعها عالسحابة كمان — إذا خرب الكمبيوتر بترجّع كل شي على كمبيوتر جديد. <b>احفظ كلمة سر النسخ بمكان آمن: بلاها ما في حدا بيقدر يفتح النسخة، ولا نحن.</b></p>
+    <div class="box" id="bkBox">...</div>
+    <div class="row">
+      <div class="f"><label>كلمة سر النسخ (٨ أحرف أو أكتر)</label><input id="b_pass" type="password" dir="ltr" placeholder="اتركها فاضية إذا ما بدك تغيّرها"></div>
+      <div class="f" style="flex:0 1 160px"><label>كل كم ساعة</label><input id="b_every" type="number" min="1" max="168"></div>
+      <div class="f" style="flex:0 1 160px"><label>كم نسخة نخلّي</label><input id="b_keep" type="number" min="3" max="365"></div>
+    </div>
+    <label style="font-size:14px; display:flex; gap:8px; align-items:center; margin-bottom:12px"><input type="checkbox" id="b_cloud" style="width:auto"> ارفع نسخة مشفّرة عالسحابة (بيحتاج حساب libanapps.com مربوط)</label>
+    <div class="row">
+      <button class="btn" id="b_save">حفظ الإعدادات</button>
+      <button class="btn sec" id="b_now">اعمل نسخة هلق</button>
+      <button class="btn sec" id="b_open">افتح المجلد</button>
+    </div>
+    <div class="msg" id="b_msg"></div>
+    <div class="hr"></div>
+    <h3>استرجاع نسخة</h3>
+    <p class="help">قبل الاسترجاع بتنعمل نسخة من الوضع الحالي تلقائياً.</p>
+    <table><thead><tr><th>النسخة</th><th>الحجم</th><th></th></tr></thead><tbody id="b_list"></tbody></table>
+    <div class="row" style="margin-top:12px">
+      <div class="f"><label>من ملف (.labk / .labz)</label><input id="b_file" type="file" accept=".labk,.labz"></div>
+      <button class="btn sec" id="b_upload">استرجع من الملف</button>
+      <button class="btn sec" id="b_cloudlist">نسخ السحابة</button>
+    </div>
+    <table id="b_cloudtbl" style="display:none"><tbody id="b_clist"></tbody></table>
+    <div class="msg" id="b_rmsg"></div>
+  </section>
+
+  <!-- ===== التحديث ===== -->
+  <section class="panel" id="p_update">
+    <h3>تحديث البرامج</h3>
+    <label style="font-size:14px; display:flex; gap:8px; align-items:center; margin:4px 0 12px"><input type="checkbox" id="up_auto" style="width:auto"> <b>تحديث تلقائي</b> — بيفحص كل ساعة وبيحدّث لحالو (البرنامج نفسو بيتركّب بالليل أو بأول تشغيل)</label>
+    <p class="help">بيجيب آخر نسخة من برنامج الألمنيوم والتجارة من libanapps.com. بينزّل بس يلي تغيّر، وبيتأكد إنو كل ملف وصل سليم قبل ما يبدّل. <b>البيانات ما بتتأثر.</b> إذا التحديث الجديد عمل مشكلة، فيك ترجع للنسخة يلي قبلها.</p>
+    <div class="box" id="upBox">...</div>
+    <div class="row">
+      <button class="btn sec" id="up_check">فحص التحديثات</button>
+      <button class="btn" id="up_apply" style="display:none">حدّث هلق</button>
+      <button class="btn" id="up_installer" style="display:none">نزّل البرنامج الجديد</button>
+      <button class="btn sec" id="up_back" style="display:none">رجوع للنسخة السابقة</button>
+    </div>
+    <div class="msg" id="up_msg"></div>
+  </section>
+
+  <!-- ===== نقل من السحابة ===== -->
+  <section class="panel" id="p_import">
+    <h3>نقل بياناتك من النسخة الأونلاين</h3>
+    <p class="help">إذا كنت شغّال على libanapps.com، هون بتسحب كل البيانات (زباين، فواتير، مخزن، صندوق...) لهالكمبيوتر مرة وحدة. بيحتاج حساب libanapps.com مربوط من «التفعيل»، وتدخل بمستخدم <b>مدير</b> بالبرنامج. <b>البيانات المحلية لهالبرنامج بتنمحى وبتتبدّل باللي بالسحابة.</b></p>
+    <div class="row">
+      <div class="f" style="flex:0 1 180px"><label>البرنامج</label><select id="i_prod"><option value="trade">التجارة</option><option value="alum">الألمنيوم</option></select></div>
+      <div class="f"><label>مستخدم البرنامج</label><input id="i_user" dir="ltr"></div>
+      <div class="f"><label>كلمة السر</label><input id="i_pass" type="password" dir="ltr"></div>
+      <div class="f" style="flex:0 1 130px"><label>رمز 2FA (إذا في)</label><input id="i_totp" dir="ltr" inputmode="numeric"></div>
+    </div>
+    <button class="btn" id="i_go">انقل البيانات</button>
+    <div class="msg" id="i_msg"></div>
+    <div class="box" id="i_res" style="display:none"></div>
+    <p class="help" style="margin-top:12px">بعد النقل: كلمات سر باقي المستخدمين ما بتنقل (مشفّرة بالسحابة) — عيّنها من «المستخدمين».</p>
+  </section>
+  </div>
+</div></main>
+
+<script>
+(function(){
+  var $ = function(id){ return document.getElementById(id); };
+  var LBL = { trade: 'التجارة', alum: 'الألمنيوم' };
+  function api(path, body){
+    var opt = body === undefined ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-LA-Admin': '1' }, body: JSON.stringify(body) };
+    return fetch('/local-api/admin' + path, opt).then(function(r){ return r.json().then(function(j){ if(!r.ok || j.error) throw new Error(j.error || ('HTTP ' + r.status)); return j; }); });
+  }
+  function msg(id, text, ok){ var el = $(id); el.textContent = text || ''; el.className = 'msg' + (text ? (ok ? ' ok' : ' bad') : ''); }
+  function busy(btn, on){ btn.disabled = on; }
+  function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function fmtDate(t){ if(!t) return '—'; var d = new Date(t); return d.toLocaleDateString('ar-LB') + ' ' + d.toLocaleTimeString('ar-LB', { hour: '2-digit', minute: '2-digit' }); }
+  function fmtSize(n){ n = Number(n) || 0; return n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB'; }
+  function accText(a){
+    if(!a) return '—';
+    if(a.ok) return '✅ مفعّل — باقي ' + a.days_left + ' يوم';
+    var r = { expired: '⛔ الاشتراك خلص', suspended: '⛔ الاشتراك موقوف', no_subscription: '⚠️ ما في اشتراك لهالبرنامج', no_client: '⚠️ البرنامج مش مفعّل بعد' }[a.reason];
+    return r || ('⚠️ ' + (a.message || 'تعذّر التحقق'));
+  }
+
+  // ---------- الحالة العامة ----------
+  var ST = null;
+  function loadStatus(){
+    return fetch('/local-api/status').then(function(r){ return r.json(); }).then(function(s){
+      ST = s;
+      document.body.classList.toggle('remote', !s.local);
+      $('st_alum').textContent = accText(s.alum);
+      $('st_trade').textContent = accText(s.trade);
+      var u = s.update, has = !!(u && (u.web || u.installer));
+      $('tabUpdate').textContent = has ? 'التحديث 🔴' : 'التحديث';
+      return s;
+    });
+  }
+
+  // ---------- التبويبات ----------
+  function showTab(t){
+    document.querySelectorAll('#tabs button').forEach(function(b){ b.classList.toggle('on', b.dataset.t === t); });
+    document.querySelectorAll('section.panel').forEach(function(p){ p.classList.toggle('on', p.id === 'p_' + t); });
+    ({ license: loadLicense, users: loadUsers, remote: loadTunnel, backup: loadBackup, import: function(){}, update: loadUpdate })[t]();
+    try{ history.replaceState(null, '', '#' + t); }catch(e){}
+  }
+  document.querySelectorAll('#tabs button').forEach(function(b){ b.onclick = function(){ showTab(b.dataset.t); }; });
+
+  // ---------- التفعيل ----------
+  function renderLicense(s){
+    var html = '';
+    if(s.mode === 'cloud') html += 'مربوط بحساب: <b class="mono">' + esc(s.email) + '</b><br>آخر تحقق: ' + fmtDate(s.checked_at) + '<br>';
+    else if(s.mode === 'serial') html += 'مفعّل برقم تفعيل (بلا إنترنت)<br>';
+    else html += 'البرنامج مش مفعّل بعد.<br>';
+    html += 'الألمنيوم: ' + accText(s.alum) + '<br>التجارة: ' + accText(s.trade);
+    if(s.lastError) html += '<br><span style="color:var(--bad)">' + esc(s.lastError) + '</span>';
+    $('licBox').innerHTML = html;
+    $('licSignin').style.display = s.mode ? 'none' : '';
+    $('licActions').style.display = s.mode ? '' : 'none';
+    $('l_refresh').style.display = s.mode === 'cloud' ? '' : 'none';
+  }
+  function loadLicense(){ return api('/license').then(renderLicense).catch(function(e){ msg('l_msg', e.message); }); }
+  $('l_go').onclick = function(){
+    var b = this; busy(b, true); msg('l_msg', 'عم نتأكد...', true);
+    api('/license/signin', { email: $('l_email').value, password: $('l_pass').value })
+      .then(function(s){ renderLicense(s); msg('l_msg', s.lastError ? '' : 'تم الربط ✅', true); $('l_pass').value = ''; loadStatus(); })
+      .catch(function(e){ msg('l_msg', e.message); }).then(function(){ busy(b, false); });
+  };
+  $('l_serial_go').onclick = function(){
+    api('/license/serial', { serial: $('l_serial').value }).then(function(s){ renderLicense(s); msg('l_msg', 'تم التفعيل ✅', true); loadStatus(); })
+      .catch(function(e){ msg('l_msg', e.message); });
+  };
+  $('l_refresh').onclick = function(){ var b = this; busy(b, true); api('/license/refresh', {}).then(function(s){ renderLicense(s); loadStatus(); msg('l_msg', s.lastError ? '' : 'تم التحقق ✅', true); }).catch(function(e){ msg('l_msg', e.message); }).then(function(){ busy(b, false); }); };
+  $('l_out').onclick = function(){ if(!confirm('أكيد بدك تفصل الحساب؟ البرامج بتوقف لحد ما ترجع تفعّل. البيانات ما بتنمحى.')) return; api('/license/signout', {}).then(function(s){ renderLicense(s); loadStatus(); }); };
+
+  // ---------- المستخدمين ----------
+  var USERS = {};
+  function loadUsers(){
+    return api('/users').then(function(u){
+      USERS = u; var p = $('u_prod').value, list = u[p] || [];
+      $('u_list').innerHTML = list.length ? list.map(function(x){
+        return '<tr><td class="mono">' + esc(x.username) + '</td><td>' + esc(x.role || '') + (x.totp ? ' · 2FA' : '') + '</td><td>' + (x.hasPassword ? '✅' : '<span style="color:var(--bad)">ما في</span>') +
+          '</td><td><button class="btn sec sm" data-id="' + esc(x.id) + '">تعديل</button></td></tr>';
+      }).join('') : '<tr><td colspan="4" style="color:var(--soft)">ما في مستخدمين لهالبرنامج — اعمل أول مدير تحت.</td></tr>';
+      $('u_list').querySelectorAll('button[data-id]').forEach(function(b){ b.onclick = function(){ editUser(b.dataset.id); }; });
+    }).catch(function(e){ msg('u_msg', e.message); });
+  }
+  function editUser(id){
+    var x = (USERS[$('u_prod').value] || []).find(function(y){ return String(y.id) === String(id); }); if(!x) return;
+    $('u_id').value = x.id; $('u_name').value = x.username; $('u_pass').value = '';
+    $('u_formTitle').textContent = 'تعديل: ' + x.username; $('u_cancel').style.display = '';
+    $('u_2fa_wrap').style.display = x.totp ? '' : 'none'; $('u_2fa').checked = false;
+    $('u_pass').placeholder = 'كلمة سر جديدة (اتركها فاضية إذا ما بدك تغيّرها)';
+  }
+  function resetUserForm(){ $('u_id').value = ''; $('u_name').value = ''; $('u_pass').value = ''; $('u_pass').placeholder = ''; $('u_formTitle').textContent = 'مدير جديد'; $('u_cancel').style.display = 'none'; $('u_2fa_wrap').style.display = 'none'; }
+  $('u_prod').onchange = function(){ resetUserForm(); loadUsers(); };
+  $('u_cancel').onclick = resetUserForm;
+  $('u_save').onclick = function(){
+    var id = $('u_id').value;
+    if(!id && !$('u_pass').value){ msg('u_msg', 'حط كلمة سر'); return; }
+    api('/users/save', { product: $('u_prod').value, id: id || null, username: $('u_name').value, password: $('u_pass').value, role: 'admin', disable2fa: $('u_2fa').checked })
+      .then(function(){ msg('u_msg', 'تم الحفظ ✅', true); resetUserForm(); loadUsers(); }).catch(function(e){ msg('u_msg', e.message); });
+  };
+
+  // ---------- الوصول من برّا ----------
+  function renderTunnel(s){
+    var st = { running: '🟢 شغّال', starting: '🟡 عم يشتغل...', stopped: '⚪ موقوف', error: '🔴 في مشكلة' }[s.state] || s.state;
+    var html = 'الحالة: <b>' + st + '</b>';
+    if(s.url && s.state === 'running') html += '<br>الرابط: <a class="url" href="' + esc(s.url) + '" target="_blank">' + esc(s.url) + '</a> <button class="btn sec sm" id="t_copy">نسخ</button>' +
+      '<br>البرامج: <span class="mono">' + esc(s.url) + '/trade</span> · <span class="mono">' + esc(s.url) + '/alum</span>';
+    if(s.error) html += '<br><span style="color:var(--bad)">' + esc(s.error) + '</span>';
+    if(!s.available) html += '<br><span style="color:var(--warn)">ملف cloudflared مش موجود مع هالنسخة.</span>';
+    if(s.mode === 'quick' && s.state === 'running') html += '<br><span style="color:var(--warn)">الرابط المؤقت بيتغيّر كل ما يرجع يشتغل البرنامج — للتجربة بس.</span>';
+    $('tunBox').innerHTML = html;
+    var cp = $('t_copy'); if(cp) cp.onclick = function(){ navigator.clipboard.writeText(s.url); cp.textContent = 'تم ✅'; };
+    if(!renderTunnel.init){ renderTunnel.init = 1; $('t_mode').value = s.mode; $('t_host').value = s.hostname || ''; }
+    $('t_token').placeholder = s.hasToken ? '(محفوظ — حط رمز جديد بس إذا بدك تغيّرو)' : 'eyJhIjoi...';
+    document.querySelectorAll('.t_tok').forEach(function(e){ e.style.display = $('t_mode').value === 'token' ? '' : 'none'; });
+    $('t_log').style.display = s.log && s.log.length ? '' : 'none'; $('t_log').textContent = (s.log || []).join('\n');
+    var c = $('chipRemote'); c.className = 'chip ' + (s.state === 'running' ? 'ok' : (s.enabled ? 'bad' : ''));
+  }
+  var tunTimer = null;
+  function loadTunnel(){
+    clearTimeout(tunTimer);
+    return api('/tunnel').then(function(s){ renderTunnel(s); if(document.getElementById('p_remote').classList.contains('on') && s.state === 'starting') tunTimer = setTimeout(loadTunnel, 1500); }).catch(function(){});
+  }
+  $('t_mode').onchange = function(){ document.querySelectorAll('.t_tok').forEach(function(e){ e.style.display = $('t_mode').value === 'token' ? '' : 'none'; }); };
+  function saveTunnel(enabled){
+    var body = { enabled: enabled, mode: $('t_mode').value, hostname: $('t_host').value };
+    if($('t_token').value.trim()) body.token = $('t_token').value.trim();
+    api('/tunnel/save', body).then(function(s){ $('t_token').value = ''; renderTunnel(s); msg('t_msg', enabled ? 'عم يشتغل...' : 'وقف ✅', true); setTimeout(loadTunnel, 1500); })
+      .catch(function(e){ msg('t_msg', e.message); });
+  }
+  $('t_on').onclick = function(){ saveTunnel(true); };
+  $('t_off').onclick = function(){ saveTunnel(false); };
+
+  // ---------- النسخ الاحتياطي ----------
+  function renderBackup(s){
+    var html = 'آخر نسخة: <b>' + (s.last ? fmtDate(s.last.at) + ' (' + fmtSize(s.last.size) + ')' : 'ما في بعد') + '</b>';
+    html += '<br>التشفير: ' + (s.hasPassphrase ? '🔒 مفعّل' : '<span style="color:var(--warn)">مش مفعّل — حط كلمة سر للنسخ</span>');
+    html += '<br>السحابة: ' + (s.cloud ? ('مفعّلة — آخر رفع: ' + (s.lastCloud ? fmtDate(s.lastCloud.at) : 'ما في بعد')) : 'مش مفعّلة');
+    html += '<br>المجلد: <span class="mono">' + esc(s.dir) + '</span>';
+    if(s.lastError) html += '<br><span style="color:var(--bad)">' + esc(s.lastError) + '</span>';
+    $('bkBox').innerHTML = html;
+    if(!renderBackup.init){ renderBackup.init = 1; $('b_every').value = s.everyHours; $('b_keep').value = s.keepLocal; $('b_cloud').checked = s.cloud; }
+    $('b_list').innerHTML = (s.files || []).map(function(f){
+      return '<tr><td>' + fmtDate(f.at) + ' ' + (/\.labk$/.test(f.name) ? '🔒' : '') + '</td><td>' + fmtSize(f.size) + '</td><td><button class="btn sec sm" data-n="' + esc(f.name) + '">استرجاع</button></td></tr>';
+    }).join('') || '<tr><td colspan="3" style="color:var(--soft)">ما في نسخ بعد</td></tr>';
+    $('b_list').querySelectorAll('button[data-n]').forEach(function(b){ b.onclick = function(){ restoreLocal(b.dataset.n); }; });
+    var c = $('chipBackup'); var fresh = s.last && Date.now() - s.last.at < (s.everyHours * 2 + 1) * 3600000;
+    c.className = 'chip ' + (fresh && !s.lastError ? 'ok' : 'bad');
+  }
+  function loadBackup(){ return api('/backup').then(renderBackup).catch(function(){}); }
+  function askPass(name){ return /\.labk$/.test(name) ? prompt('كلمة سر النسخ (اتركها فاضية إذا نفس الكلمة المحفوظة):') : ''; }
+  function afterRestore(r){
+    var n = (r.counts || []).reduce(function(a, c){ return a + c.n; }, 0);
+    msg('b_rmsg', 'تم الاسترجاع ✅ (' + n + ' سجل). سكّر البرامج المفتوحة وافتحها من جديد.', true); loadBackup();
+  }
+  function restoreLocal(name){
+    if(!confirm('الاسترجاع بيبدّل كل البيانات الحالية بهالنسخة. منكمّل؟')) return;
+    var p = askPass(name); if(p === null) return;
+    msg('b_rmsg', 'عم نسترجع...', true);
+    api('/backup/restore-local', { name: name, passphrase: p || '' }).then(afterRestore).catch(function(e){ msg('b_rmsg', e.message); });
+  }
+  $('b_save').onclick = function(){
+    api('/backup/save', { passphrase: $('b_pass').value, cloud: $('b_cloud').checked, everyHours: $('b_every').value, keepLocal: $('b_keep').value })
+      .then(function(s){ $('b_pass').value = ''; renderBackup(s); msg('b_msg', 'تم الحفظ ✅', true); }).catch(function(e){ msg('b_msg', e.message); });
+  };
+  $('b_now').onclick = function(){ var b = this; busy(b, true); msg('b_msg', 'عم نعمل نسخة...', true);
+    api('/backup/now', {}).then(function(s){ renderBackup(s); msg('b_msg', s.lastError ? s.lastError : 'تمت النسخة ✅', !s.lastError); }).catch(function(e){ msg('b_msg', e.message); }).then(function(){ busy(b, false); }); };
+  $('b_open').onclick = function(){ api('/open-folder', {}); };
+  $('b_upload').onclick = function(){
+    var f = $('b_file').files[0]; if(!f){ msg('b_rmsg', 'اختار ملف'); return; }
+    if(!confirm('الاسترجاع بيبدّل كل البيانات الحالية بهالنسخة. منكمّل؟')) return;
+    var p = askPass(f.name); if(p === null) return;
+    msg('b_rmsg', 'عم نسترجع...', true);
+    fetch('/local-api/admin/backup/upload', { method: 'POST', headers: { 'X-LA-Admin': '1', 'X-LA-Pass': encodeURIComponent(p || ''), 'Content-Type': 'application/octet-stream' }, body: f })
+      .then(function(r){ return r.json(); }).then(function(j){ if(j.error) throw new Error(j.error); afterRestore(j); }).catch(function(e){ msg('b_rmsg', e.message); });
+  };
+  $('b_cloudlist').onclick = function(){
+    msg('b_rmsg', 'عم نجيب اللائحة...', true);
+    api('/backup/cloud-list', {}).then(function(list){
+      msg('b_rmsg', list.length ? '' : 'ما في نسخ عالسحابة', true);
+      $('b_cloudtbl').style.display = list.length ? '' : 'none';
+      $('b_clist').innerHTML = list.map(function(f){ return '<tr><td>☁️ ' + fmtDate(f.at) + '</td><td>' + fmtSize(f.size) + '</td><td><button class="btn sec sm" data-n="' + esc(f.name) + '">استرجاع</button></td></tr>'; }).join('');
+      $('b_clist').querySelectorAll('button[data-n]').forEach(function(b){ b.onclick = function(){
+        if(!confirm('الاسترجاع بيبدّل كل البيانات الحالية بهالنسخة. منكمّل؟')) return;
+        var p = prompt('كلمة سر النسخ (اتركها فاضية إذا نفس الكلمة المحفوظة):'); if(p === null) return;
+        msg('b_rmsg', 'عم ننزّل ونسترجع...', true);
+        api('/backup/restore-cloud', { name: b.dataset.n, passphrase: p || '' }).then(afterRestore).catch(function(e){ msg('b_rmsg', e.message); });
+      }; });
+    }).catch(function(e){ msg('b_rmsg', e.message); });
+  };
+
+  // ---------- التحديث ----------
+  function renderUpdate(s){
+    var l = s.last || {}, html = 'نسخة البرنامج: <b class="mono">' + esc(s.localVersion) + '</b><br>نسخة الصفحات: <b class="mono">' + esc(s.webVersion) + '</b>';
+    if(s.appliedAt) html += ' (تحدّثت ' + fmtDate(s.appliedAt) + ')';
+    html += '<br>آخر فحص: ' + (l.at ? fmtDate(l.at) : 'ما في بعد');
+    if(l.error) html += '<br><span style="color:var(--bad)">' + esc(l.error) + '</span>';
+    else if(l.at){
+      if(l.needsInstaller) html += '<br><span style="color:var(--warn)">⚠️ في تحديث بس بدّو نسخة أحدث من البرنامج نفسو — نزّل البرنامج الجديد.</span>';
+      else if(l.webAvailable) html += '<br>🔴 <b>في تحديث جديد</b> — ' + l.changed.length + ' ملف (' + fmtSize(l.changedSize) + ')';
+      else html += '<br>✅ البرامج محدّثة لآخر نسخة';
+      if(l.installer) html += '<br>🔴 <b>في نسخة جديدة من البرنامج نفسو: ' + esc(l.installer.version) + '</b>' + (l.installer.size ? ' (' + fmtSize(l.installer.size) + ')' : '');
+    }
+    if(s.busy) html += '<br>⏳ ' + esc(s.progress || 'عم يشتغل...');
+    $('upBox').innerHTML = html;
+    $('up_apply').style.display = l.webAvailable && !l.needsInstaller && !l.error ? '' : 'none';
+    $('up_installer').style.display = l.installer && ST && ST.desktop ? '' : 'none';
+    $('up_back').style.display = s.canRollback ? '' : 'none';
+    $('up_auto').checked = s.auto !== false;
+    if(s.pendingInstaller) $('upBox').innerHTML += '<br>⬇️ النسخة ' + esc(s.pendingInstaller) + ' جاهزة — بتتركّب لحالها بالليل أو بأول تشغيل';
+  }
+  $('up_auto').onchange = function(){ api('/update/auto', { on: this.checked }).then(renderUpdate).catch(function(e){ msg('up_msg', e.message); }); };
+  function loadUpdate(){ return api('/update').then(renderUpdate).catch(function(e){ msg('up_msg', e.message); }); }
+  $('up_check').onclick = function(){ var b = this; busy(b, true); msg('up_msg', 'عم نفحص...', true);
+    api('/update/check', {}).then(function(s){ renderUpdate(s); msg('up_msg', ''); loadStatus(); }).catch(function(e){ msg('up_msg', e.message); }).then(function(){ busy(b, false); }); };
+  $('up_apply').onclick = function(){
+    var b = this; busy(b, true); msg('up_msg', 'عم نحدّث...', true);
+    var poll = setInterval(function(){ api('/update').then(renderUpdate).catch(function(){}); }, 1000);
+    api('/update/apply', {}).then(function(r){
+      clearInterval(poll); renderUpdate(r.status || {}); loadStatus();
+      msg('up_msg', r.nothing ? 'ما في شي جديد ✅' : 'تم التحديث ✅ — سكّر البرامج المفتوحة وافتحها من جديد (حتى عالتلفون).', true);
+    }).catch(function(e){ clearInterval(poll); msg('up_msg', e.message); loadUpdate(); }).then(function(){ busy(b, false); });
+  };
+  $('up_back').onclick = function(){
+    if(!confirm('ترجع للنسخة السابقة من البرامج؟ البيانات ما بتتأثر.')) return;
+    api('/update/rollback', {}).then(function(s){ renderUpdate(s); msg('up_msg', 'رجعنا ✅ — سكّر البرامج المفتوحة وافتحها من جديد.', true); }).catch(function(e){ msg('up_msg', e.message); });
+  };
+  $('up_installer').onclick = function(){
+    if(!confirm('رح ينزّل البرنامج الجديد ويفتح التثبيت، والبرنامج الحالي بيتسكّر. البيانات ما بتتأثر. منكمّل؟')) return;
+    var b = this; busy(b, true); msg('up_msg', 'عم ننزّل البرنامج الجديد...', true);
+    api('/update/installer', {}).then(function(r){ msg('up_msg', r.started ? 'عم يفتح التثبيت...' : 'تنزّل ✅', true); }).catch(function(e){ msg('up_msg', e.message); busy(b, false); });
+  };
+
+  // ---------- نقل من السحابة ----------
+  $('i_go').onclick = function(){
+    var prod = $('i_prod').value;
+    if(!confirm('بيانات برنامج ' + LBL[prod] + ' يلي عالكمبيوتر بتنمحى وبتتبدّل باللي بالسحابة. منكمّل؟')) return;
+    var b = this; busy(b, true); $('i_res').style.display = 'none';
+    api('/import', { product: prod, username: $('i_user').value, password: $('i_pass').value, totp: $('i_totp').value }).then(function(j){
+      (function poll(){
+        api('/import/status', { id: j.id }).then(function(s){
+          if(s.state === 'running'){ msg('i_msg', s.msg, true); setTimeout(poll, 800); return; }
+          busy(b, false);
+          if(s.state === 'error'){ msg('i_msg', s.msg); return; }
+          msg('i_msg', 'تم النقل ✅', true); $('i_pass').value = '';
+          var c = s.result.counts; $('i_res').style.display = '';
+          $('i_res').innerHTML = Object.keys(c).filter(function(k){ return c[k]; }).map(function(k){ return '<span class="mono">' + esc(k) + '</span>: ' + c[k]; }).join(' · ') || 'ما في بيانات';
+        }).catch(function(e){ busy(b, false); msg('i_msg', e.message); });
+      })();
+    }).catch(function(e){ busy(b, false); msg('i_msg', e.message); });
+  };
+
+  // ---------- بداية ----------
+  loadStatus().then(function(s){
+    if(!s.local) return;
+    var t = (location.hash || '').slice(1);
+    if(!t) t = s.licensed ? 'users' : 'license';
+    showTab(['license', 'users', 'remote', 'backup', 'import', 'update'].indexOf(t) >= 0 ? t : 'license');
+    api('/tunnel').then(renderTunnel).catch(function(){});
+    api('/backup').then(renderBackup).catch(function(){});
+  });
+  setInterval(function(){ if(ST && ST.local){ api('/tunnel').then(renderTunnel).catch(function(){}); } loadStatus(); }, 20000);
+})();
+</script>
+</body>
+</html>
