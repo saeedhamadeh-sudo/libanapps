@@ -138,6 +138,12 @@ body.remote .remote-note{ display:block; }
     </div>
     <div class="msg" id="t_amsg"></div>
 
+    <div class="box" id="mrBox" style="margin-top:14px">
+      <label style="display:flex; gap:8px; align-items:center; font-weight:700"><input type="checkbox" id="mr_on" style="width:auto"> نسخة «للقراءة بس» للزباين والعمال على السحابة</label>
+      <div style="color:var(--soft); font-size:13px; margin-top:4px">إذا الكمبيوتر مطفي، الزباين والعمال بيضلّو يفوتو عالرابط ويشوفو كشفهن وفواتيرهن (بلا تعديل). بتتحدّث كل ١٠ دقايق.</div>
+      <div id="mrStat" style="margin-top:6px; font-size:13.5px"></div>
+      <button class="btn sec sm" id="mr_now" style="margin-top:8px">ارفع هلق</button>
+    </div>
     <div id="cdWrap" style="display:none; margin-top:14px">
       <h3>دومين خاص (اختياري)</h3>
       <p class="help">إذا عندك دومين، فيك تفوت عليه بدل libanapps.com — مثلاً <span class="mono">app.mybrand.com</span>. استعمل subdomain (متل app.) مش الدومين الأساسي.</p>
@@ -272,7 +278,7 @@ body.remote .remote-note{ display:block; }
   function showTab(t){
     document.querySelectorAll('#tabs button').forEach(function(b){ b.classList.toggle('on', b.dataset.t === t); });
     document.querySelectorAll('section.panel').forEach(function(p){ p.classList.toggle('on', p.id === 'p_' + t); });
-    ({ license: loadLicense, users: loadUsers, remote: loadTunnel, backup: loadBackup, import: function(){}, update: loadUpdate })[t]();
+    ({ license: loadLicense, users: loadUsers, remote: function(){ loadTunnel(); loadMirror(); }, backup: loadBackup, import: function(){}, update: loadUpdate })[t]();
     try{ history.replaceState(null, '', '#' + t); }catch(e){}
   }
   document.querySelectorAll('#tabs button').forEach(function(b){ b.onclick = function(){ showTab(b.dataset.t); }; });
@@ -400,6 +406,17 @@ body.remote .remote-note{ display:block; }
     if(!confirm('أكيد بدك تشيل الدومين الخاص؟ رابط libanapps.com بيضل شغّال.')) return;
     api('/tunnel/domain', { action: 'remove' }).then(function(d){ $('cd_domain').value = ''; renderDomain(d); msg('cd_msg', 'انشال ✅', true); }).catch(function(e){ msg('cd_msg', e.message); });
   };
+  // ---------- نسخة القراءة ----------
+  function renderMirror(m){
+    $('mr_on').checked = !!m.enabled;
+    var t = !m.available ? '<span style="color:var(--warn)">بدها حساب libanapps.com مربوط من «التفعيل»</span>'
+      : m.last ? 'آخر رفع: ' + fmtDate(m.last.at) + ' — ' + m.last.accounts + ' حساب' : 'ما انرفعت بعد';
+    if(m.lastError) t += '<br><span style="color:var(--bad)">' + esc(m.lastError) + '</span>';
+    $('mrStat').innerHTML = t;
+  }
+  function loadMirror(){ return api('/mirror').then(renderMirror).catch(function(){}); }
+  $('mr_on').onchange = function(){ api('/mirror/toggle', { on: this.checked }).then(renderMirror).catch(function(){}); };
+  $('mr_now').onclick = function(){ var b = this; busy(b, true); api('/mirror/now', {}).then(renderMirror).catch(function(){}).then(function(){ busy(b, false); }); };
   $('t_on').onclick = function(){ saveTunnel(true); };
   $('t_off').onclick = function(){ saveTunnel(false); };
 

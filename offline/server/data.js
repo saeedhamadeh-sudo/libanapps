@@ -47,7 +47,10 @@ function pkOf(row){
 const isPriv = s => s && s.kind === 'staff' && (s.role === 'admin' || s.role === 'superuser');
 
 // ---------- كلمات السر ----------
+// bcrypt ($2a$) — نفس شكل السحابة، فبينفحص كمان بقاعدة البيانات للنسخة «للقراءة بس»
+let _bcrypt = null; try{ _bcrypt = require('bcryptjs'); }catch(e){}
 function hashPassword(pw){
+  if(_bcrypt) return _bcrypt.hashSync(String(pw), 10);
   const salt = crypto.randomBytes(16);
   const h = crypto.scryptSync(String(pw), salt, 32, { N: 16384, r: 8, p: 1 });
   return 'scrypt$' + salt.toString('base64') + '$' + h.toString('base64');
@@ -288,8 +291,12 @@ class DataEngine {
   }
   pwOk(tbl, acc, pw){
     const sec = this.store.get('SELECT password_hash FROM secrets WHERE tbl=? AND id=?', tbl, acc.__pk);
-    if(sec && sec.password_hash) return verifyPassword(pw, sec.password_hash);
-    return false;
+    if(!(sec && sec.password_hash)) return false;
+    const ok = verifyPassword(pw, sec.password_hash);
+    // بصمة قديمة (scrypt): منحوّلها لـbcrypt بأول دخول صحيح
+    if(ok && _bcrypt && /^scrypt\$/.test(sec.password_hash))
+      this.store.run('UPDATE secrets SET password_hash=? WHERE tbl=? AND id=?', hashPassword(pw), tbl, acc.__pk);
+    return ok;
   }
   login(product, username, password, totp, sid){
     if(!PRODUCTS.includes(product)) return { ok: false, reason: 'error', message: 'bad product' };

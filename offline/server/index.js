@@ -18,6 +18,7 @@ const { Backup } = require('./backup');
 const { Tunnel } = require('./tunnel');
 const { importFromCloud } = require('./cloud-import');
 const { Updater } = require('./updater');
+const { Mirror } = require('./mirror');
 
 const VERSION = require('../package.json').version;
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'application/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
@@ -38,6 +39,7 @@ function start(opts){
   const backup = new Backup(store, license, { backupDir: opts.backupDir || path.join(dataDir, 'backups'), tmpDir: path.join(dataDir, 'tmp') });
   const tunnel = new Tunnel(store, { port, cloudflaredPath: opts.cloudflaredPath });
   const importJobs = {};
+  const mirror = new Mirror(store, license);
   const htmlCache = new Map();
   const updater = new Updater(store, { appDir, dataDir, version: VERSION, runInstaller: opts.runInstaller, onChange: () => htmlCache.clear() });
 
@@ -124,6 +126,9 @@ function start(opts){
       case '/users/save': return json(res, engine.saveUser(body.product, body));
       case '/tunnel': return json(res, tunnel.status());
       case '/tunnel/save': return json(res, tunnel.setCfg(body));
+      case '/mirror': return json(res, mirror.status());
+      case '/mirror/now': return json(res, await mirror.run(true));
+      case '/mirror/toggle': return json(res, mirror.setEnabled(body.on));
       case '/tunnel/domain': {
         // الدومين الخاص للزبون (app.mydomain.com) — action: add | refresh | remove
         if(license.state.mode !== 'cloud') throw new Error('لازم تسجّل دخول بحساب libanapps.com من «التفعيل» أول');
@@ -243,8 +248,9 @@ function start(opts){
       if(license.state.mode === 'cloud') license.refresh().catch(() => {});
       backup.start();
       updater.start();
+      mirror.start();
       tunnel.start();
-      resolve({ server, port, store, license, backup, tunnel, engine, updater,
+      resolve({ server, port, store, license, backup, tunnel, engine, updater, mirror,
         stop: async () => { tunnel.stop(); server.close(); store.close(); } });
     });
   });

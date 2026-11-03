@@ -79,8 +79,8 @@ async function isLocalTunnelHost(host, env) {
   if (c && c.exp > Date.now()) return c.v;
   let v = false;
   try {
-    const rows = await sbGetTO(env, `local_tunnels?hostname=eq.${encodeURIComponent(host)}&select=hostname&limit=1`, 2500);
-    v = Array.isArray(rows) && rows.length > 0;
+    const rows = await sbGetTO(env, `local_tunnels?hostname=eq.${encodeURIComponent(host)}&select=hostname,client_id&limit=1`, 2500);
+    v = Array.isArray(rows) && rows.length > 0 ? rows[0] : false;
   } catch (e) { v = c ? c.v : false; }
   _ltCache.set(host, { v, exp: Date.now() + (v ? 300000 : 60000) });
   return v;
@@ -165,6 +165,138 @@ async function tunnelProvision(request, env) {
   } catch (e) {
     return json(502, { error: 'Cloudflare: ' + String(e && e.message || e) });
   }
+}
+
+// ============================================================
+//  لما الكمبيوتر الأساسي مطفي: نسخة «للقراءة بس» للزباين والعمال (local_mirror)
+//  نفس صفحة البرنامج، بس طلبات /local-api بتنخدم من السحابة — قراءة بس.
+// ============================================================
+const TUNNEL_DOWN = [502, 503, 504, 520, 521, 522, 523, 524, 530];
+async function localPassthrough(request, env, url) {
+  let bodyText = null;
+  if (request.method === 'POST' && url.pathname.startsWith('/local-api/')) { try { bodyText = await request.clone().text(); } catch (e) {} }
+  let r = null;
+  try { r = await fetch(request); } catch (e) { r = null; }
+  if (r && !TUNNEL_DOWN.includes(r.status)) return r;
+  try { return await localMirror(request, env, url, bodyText); }
+  catch (e) { return r || new Response('غير متاح حالياً', { status: 503, headers: { 'Content-Type': 'text/plain; charset=utf-8' } }); }
+}
+const _lmCache = new Map();
+async function localMirrorFetch(env, host, product, sid) {
+  const k = host + '|' + product + '|' + sid, c = _lmCache.get(k);
+  if (c && c.exp > Date.now()) return c.v;
+  const r = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/local_mirror_fetch`, {
+    method: 'POST', headers: { ...sbHeaders(env), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ p_host: host, p_product: product, p_sid: sid || '' })
+  });
+  const v = r.ok ? await r.json() : null;
+  if (_lmCache.size > 500) _lmCache.clear();
+  _lmCache.set(k, { v, exp: Date.now() + 20000 });
+  return v;
+}
+function mirrorRows(rows, q, clientId) {
+  const norm = v => v === true ? '1' : v === false ? '0' : (v === null || v === undefined ? null : String(v));
+  const val = (r, c) => { const x = r[c]; return x === undefined || x === null ? null : (typeof x === 'boolean' ? (x ? '1' : '0') : String(x)); };
+  let out = rows.slice();
+  for (const f of (q.f || [])) {
+    const [c, op, v] = f;
+    if (c === 'client_id') continue;
+    if (op === 'eq') out = out.filter(r => val(r, c) === norm(v));
+    else if (op === 'neq') out = out.filter(r => val(r, c) !== norm(v));
+    else if (op === 'in') { const set = new Set((v || []).map(norm)); out = out.filter(r => set.has(val(r, c))); }
+    else if (op === 'notin') { const set = new Set((v || []).map(norm)); out = out.filter(r => !set.has(val(r, c))); }
+    else if (op === 'notnull') out = out.filter(r => val(r, c) !== null);
+    else if (op === 'is') out = out.filter(r => v === null ? val(r, c) === null : val(r, c) === norm(v));
+    else if (['gt', 'gte', 'lt', 'lte'].includes(op)) out = out.filter(r => {
+      const a = typeof v === 'number' ? Number(r[c]) : val(r, c); if (a === null) return false;
+      return op === 'gt' ? a > v : op === 'gte' ? a >= v : op === 'lt' ? a < v : a <= v; });
+  }
+  if (q.order && q.order[0]) {
+    const c = q.order[0], asc = q.order[1] !== false;
+    out.sort((a, b) => { const x = a[c], y = b[c]; if (x === y) return 0; if (x === undefined || x === null) return 1; if (y === undefined || y === null) return -1;
+      return (x < y ? -1 : 1) * (asc ? 1 : -1); });
+  }
+  if (q.range) out = out.slice(q.range[0], q.range[1] + 1); else if (q.limit) out = out.slice(0, q.limit);
+  out = out.map(r => Object.assign({}, r, { client_id: clientId }));
+  const cols = String(q.cols || '*').split(',').map(x => x.trim()).filter(Boolean);
+  if (!cols.includes('*')) out = out.map(r => { const o = {}; cols.forEach(c => { o[c] = r[c] === undefined ? null : r[c]; }); return o; });
+  if (q.single) {
+    if (out.length > 1 || (!out.length && q.single === 'one')) return { data: null, error: { code: 'PGRST116', message: 'JSON object requested, multiple (or no) rows returned' } };
+    return { data: out[0] || null, error: null };
+  }
+  return { data: out, error: null };
+}
+async function localMirror(request, env, url, bodyText) {
+  const host = url.hostname.toLowerCase();
+  const p = url.pathname.replace(/\/+$/, '') || '/';
+  const sid = request.headers.get('X-LA-Sid') || '';
+  const html = (h, st) => new Response(h, { status: st || 200, headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' } });
+  const ok = (data, error) => json(200, { data: data === undefined ? null : data, error: error || null });
+
+  // صفحات البرنامجين
+  const pm = p.match(/^\/(?:portal-)?(trade|alum)(?:\/|$)/);
+  if (pm) {
+    if (p !== '/' + pm[1]) return Response.redirect(url.origin + '/' + pm[1], 302);
+    const a = await env.ASSETS.fetch(new URL('/app-' + pm[1] + '.html', url.origin));
+    let page = await a.text();
+    page = page.replace(/<script[^>]+@supabase\/supabase-js[^>]*><\/script>/,
+      '<script>window.LA_LOCAL={mirror:true};</script><script src="/local/supabase-local.js"></script>' +
+      '<script src="/local/local-ui.js" defer></script><script src="/local/mirror-banner.js" defer></script>');
+    return html(page);
+  }
+  if (p === '/') {
+    return html('<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>LibanApps</title>' +
+      '<style>body{margin:0;font-family:Cairo,Tajawal,system-ui,sans-serif;background:#F4F8FB;color:#12324F}.w{max-width:440px;margin:12vh auto;padding:28px 16px;text-align:center}' +
+      'a.b{display:block;margin:10px 0;background:#E08A2B;color:#fff;padding:14px;border-radius:14px;text-decoration:none;font-weight:800}p{color:#6A7C8C;line-height:1.8}</style></head>' +
+      '<body><div class="w"><h2>📴 الكمبيوتر الأساسي بالمحل مطفي</h2><p>فيك تفوت بحساب الزبون أو العامل وتشوف آخر نسخة محفوظة — للقراءة بس.</p>' +
+      '<a class="b" href="/trade">محاسبة التجارة</a><a class="b" href="/alum">محاسبة الألمنيوم</a><p>للدعم اتصل: <b dir="ltr">03/027797</b></p></div>' +
+      '<script src="/local/local-ui.js" defer></script></body></html>');
+  }
+  if (p === '/local-api/status') return json(200, { mirror: true, webVersion: 'mirror', local: false, version: 'mirror' });
+  if (p === '/local-api/live') {
+    if (request.method === 'GET') return new Response('retry: 60000\n\n', { headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store' } });
+    return json(200, { ok: true });
+  }
+  if (p.startsWith('/local-api/rpc/')) {
+    const name = p.slice(15);
+    let args = {}; try { args = bodyText ? JSON.parse(bodyText) : {}; } catch (e) {}
+    const prod = ['trade', 'alum'].includes(args.p_product) ? args.p_product : 'trade';
+    const sbRpc = async (fn, a) => { const r = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/${fn}`, {
+      method: 'POST', headers: { ...sbHeaders(env), 'Content-Type': 'application/json' }, body: JSON.stringify(a) }); return r.ok ? r.json() : null; };
+    if (name === 'app_mode') return ok({ secure: true, mirror: true });
+    if (name === 'is_admin') return ok(false);
+    if (name === 'autolink_my_client') return ok(null);
+    if (name === 'app_access') {
+      const f = await localMirrorFetch(env, host, prod, '');
+      if (!f || !f.ok) return ok({ ok: false, reason: 'error', message: 'رابط غير معروف' });
+      const sub = f.sub;
+      if (!sub) return ok({ ok: false, reason: 'no_subscription', client_id: f.client_id });
+      const exp = new Date(sub.expires_at).getTime(), active = sub.status === 'active' && exp > Date.now();
+      return ok({ ok: active, reason: sub.status !== 'active' ? 'suspended' : (active ? 'active' : 'expired'), client_id: f.client_id,
+        plan: sub.plan, trial: sub.plan === 'trial', expires_at: sub.expires_at, days_left: Math.max(0, Math.ceil((exp - Date.now()) / 86400000)), subscription_id: sub.id });
+    }
+    if (name === 'app_login') {
+      const r = await sbRpc('local_mirror_login', { p_host: host, p_product: prod, p_username: args.p_username, p_password: args.p_password, p_sid: sid });
+      for (const k of Array.from(_lmCache.keys())) if (k.endsWith('|' + sid)) _lmCache.delete(k);
+      return ok(r || { ok: false, reason: 'error', message: 'تعذّر الاتصال' });
+    }
+    if (name === 'app_logout') { await sbRpc('local_mirror_logout', { p_sid: sid, p_product: prod }); return ok(null); }
+    return ok({ ok: false, reason: 'error', message: 'الكمبيوتر الأساسي مطفي — هالشي مش متاح هلق' });
+  }
+  if (p === '/local-api/q') {
+    let q = {}; try { q = bodyText ? JSON.parse(bodyText) : {}; } catch (e) {}
+    if (q.op && q.op !== 'select') return ok(null, { code: '42501', message: 'الكمبيوتر الأساسي مطفي — النسخة هلق للقراءة بس' });
+    const tbl = String(q.t || ''), m = tbl.match(/^(trade|alum)_([a-z_]+)$/);
+    if (!m) return ok(q.single ? null : []);
+    const f = await localMirrorFetch(env, host, m[1], sid);
+    if (!f || !f.ok) return ok(q.single ? null : []);
+    const rows = m[2] === 'app_settings' ? ((f.settings && f.settings.app_settings) || []) : ((f.data && f.data[m[2]]) || []);
+    return json(200, mirrorRows(rows, q, f.client_id));
+  }
+  // ملفات (assets / local / صور...)
+  const a = await env.ASSETS.fetch(new URL(url.pathname, url.origin));
+  if (a.status !== 404) return a;
+  return new Response('غير متاح حالياً — الكمبيوتر الأساسي مطفي', { status: 503, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
 }
 
 // دومين الزبون الخاص — action: add | refresh | remove
@@ -2987,7 +3119,7 @@ export default {
     const url = new URL(request.url);
 
     // 00) رابط نسخة محلية (shop1.libanapps.com أو دومين الزبون): الطلب بيكمّل للنفق على كمبيوتر الزبون
-    if (await isLocalTunnelHost(url.hostname, env)) return fetch(request);
+    if (await isLocalTunnelHost(url.hostname, env)) return await localPassthrough(request, env, url);
 
     // 0) الصور — قبل أي شي، لتنخدم من الكاش
     if (url.pathname.startsWith('/img/')) return imageProxy(request, env, ctx, url);
