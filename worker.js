@@ -59,14 +59,15 @@ async function offlineManifest(env, url) {
 //  رابط الوصول من برّا للنسخة المحلية — بكبسة وحدة من برنامج الزبون
 //  بيعمل (أو بيرجّع) نفق Cloudflare خاص بالمؤسسة، بيربطو بـ <الاسم>.libanapps.com،
 //  وبيرجّع رمز النفق للبرنامج. بيحتاج Secrets بالـWorker:
-//    CF_API_TOKEN  (صلاحيات: Account › Cloudflare Tunnel › Edit  +  Zone › DNS › Edit)
-//    CF_ACCOUNT_ID
-//  واختياري: CF_ZONE_ID و TUNNEL_DOMAIN (الافتراضي libanapps.com)
+//    CF_TUNNEL_TOKEN  (Secret — صلاحيات: Account › Cloudflare Tunnel › Edit  +  Zone › DNS › Edit)
+//    CF_ACCOUNT_ID    (بـwrangler.toml)
+//  (منفصل عن CF_API_TOKEN تبع دومينات المتاجر — ما منلمسو)
+//  واختياري: TUNNEL_ZONE_ID و TUNNEL_DOMAIN (الافتراضي libanapps.com)
 // ============================================================
 const TUNNEL_RESERVED = new Set(['www', 'api', 'admin', 'super', 'mail', 'smtp', 'ftp', 'app', 'apps', 'store', 'stores',
   'libanapps', 'static', 'cdn', 'ns1', 'ns2', 'test', 'dev', 'staging', 'portal', 'login', 'account', 'support', 'help', 'status']);
 async function tunnelProvision(request, env) {
-  if (!env.CF_API_TOKEN || !env.CF_ACCOUNT_ID) return json(503, { error: 'خدمة الرابط مش مفعّلة على الموقع بعد' });
+  if (!env.CF_TUNNEL_TOKEN || !env.CF_ACCOUNT_ID) return json(503, { error: 'خدمة الرابط مش مفعّلة على الموقع بعد' });
   const token = (request.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
   const u = await currentUser(request, env);
   if (!u || !u.id) return json(401, { error: 'سجّل دخول بحساب libanapps.com من «التفعيل» أول' });
@@ -86,13 +87,13 @@ async function tunnelProvision(request, env) {
 
   const cf = async (path, init) => {
     const r = await fetch('https://api.cloudflare.com/client/v4' + path, Object.assign({
-      headers: { Authorization: `Bearer ${env.CF_API_TOKEN}`, 'Content-Type': 'application/json' } }, init || {}));
+      headers: { Authorization: `Bearer ${env.CF_TUNNEL_TOKEN}`, 'Content-Type': 'application/json' } }, init || {}));
     const j = await r.json().catch(() => ({}));
     if (!j.success) throw new Error((j.errors && j.errors[0] && j.errors[0].message) || ('Cloudflare HTTP ' + r.status));
     return j.result;
   };
   try {
-    const zoneId = env.CF_ZONE_ID || ((await cf(`/zones?name=${encodeURIComponent(base)}`))[0] || {}).id;
+    const zoneId = env.TUNNEL_ZONE_ID || ((await cf(`/zones?name=${encodeURIComponent(base)}`))[0] || {}).id;
     if (!zoneId) return json(500, { error: 'الدومين ' + base + ' مش موجود بحساب Cloudflare' });
 
     // نفق واحد لكل مؤسسة — إذا موجود منرجع نستعملو

@@ -83,8 +83,9 @@ npm run build
 إذا الزبون غيّر الاسم، الرابط القديم بينشال لحالو.
 
 **مرة وحدة عندك بالـWorker** (Cloudflare ← Workers ← libanapps ← Settings ← Variables and Secrets):
-- `CF_API_TOKEN` (Secret) — توكن صلاحياتو: Account › Cloudflare Tunnel › Edit + Zone › DNS › Edit (libanapps.com)
-- `CF_ACCOUNT_ID` = `08e240ed50582459acd86770aff8e187`
+- `CF_TUNNEL_TOKEN` (Secret) — توكن صلاحياتو: Account › Cloudflare Tunnel › Edit + Zone › DNS › Edit (libanapps.com)
+  (مش `CF_API_TOKEN` — هيداك تبع دومينات المتاجر)
+- `CF_ACCOUNT_ID` موجود بـ `wrangler.toml`
 
 ### يدوي (إذا بدك)
 
