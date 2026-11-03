@@ -28,6 +28,7 @@ async function importFromCloud(engine, license, product, username, password, tot
   }
 
   const tables = {};
+  let secrets = [];
   try{
     for(const t of TABLES[product]){
       const tbl = product + '_' + t;
@@ -44,17 +45,26 @@ async function importFromCloud(engine, license, product, username, password, tot
       }
       tables[t] = rows;
     }
+    // كلمات سر كل المستخدمين وحسابات الزباين والعمال (مشفّرة) + 2FA — بتحتاج db/upgrade-local-tunnels.sql
+    if(loggedIn){
+      prog('عم ننقل كلمات السر...');
+      const sr = await license.rpc('app_export_secrets', { p_product: product }, tok).catch(() => null);
+      if(sr && sr.ok && sr.data && sr.data.ok) secrets = sr.data.rows || [];
+    }
   } finally {
     if(loggedIn) await license.rpc('app_logout', { p_product: product }, tok).catch(() => {});
   }
 
   prog('عم نحفظ عالكمبيوتر...');
   engine.replaceProductData(product, tables);
-  // كلمات السر بالسحابة مشفّرة وما بتنقرى — منحط كلمة سر المستخدم يلي دخل هلق، والباقي بيتعيّن من «المستخدمين»
+  const secretsCount = engine.importSecrets(product, secrets);
+  // المستخدم يلي دخل هلق: كلمة سرّو أكيد صحيحة — إذا ما إجت بصمتها من السحابة منحطها
   const me = engine.findAccount(product + '_app_users', username);
-  if(me) engine.setPassword(product, me.__pk, password);
+  if(me && !engine.hasPassword(product + '_app_users', me.__pk)) engine.setPassword(product, me.__pk, password);
   const counts = {}; Object.keys(tables).forEach(k => { counts[k] = tables[k].length; });
-  return { ok: true, counts };
+  // مين بعدو بلا كلمة سر (بيتعيّن من «المستخدمين»)
+  const noPw = engine.listUsers(product).filter(u => !u.hasPassword).map(u => u.username);
+  return { ok: true, counts, secrets: secretsCount, usersWithoutPassword: noPw };
 }
 
 module.exports = { importFromCloud };

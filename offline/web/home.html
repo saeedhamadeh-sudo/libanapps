@@ -137,6 +137,21 @@ body.remote .remote-note{ display:block; }
       <button class="btn" id="t_auto">فعّل الرابط</button>
     </div>
     <div class="msg" id="t_amsg"></div>
+
+    <div id="cdWrap" style="display:none; margin-top:14px">
+      <h3>دومين خاص (اختياري)</h3>
+      <p class="help">إذا عندك دومين، فيك تفوت عليه بدل libanapps.com — مثلاً <span class="mono">app.mybrand.com</span>. استعمل subdomain (متل app.) مش الدومين الأساسي.</p>
+      <div class="row">
+        <div class="f" style="flex:1 1 260px"><label>الدومين</label><input id="cd_domain" dir="ltr" placeholder="app.mybrand.com"></div>
+        <button class="btn" id="cd_add">ربط الدومين</button>
+      </div>
+      <div class="box" id="cdBox" style="display:none"></div>
+      <div class="row" id="cdActions" style="display:none">
+        <button class="btn sec sm" id="cd_check">تحقّق</button>
+        <button class="btn sec sm" id="cd_remove">شيل الدومين</button>
+      </div>
+      <div class="msg" id="cd_msg"></div>
+    </div>
     <details style="margin-top:14px"><summary style="cursor:pointer; color:var(--soft); font-size:13.5px; font-weight:700">إعداد يدوي (رمز نفق من Cloudflare)</summary>
     <div style="margin-top:12px">
     <div class="row">
@@ -214,7 +229,7 @@ body.remote .remote-note{ display:block; }
     <button class="btn" id="i_go">انقل البيانات</button>
     <div class="msg" id="i_msg"></div>
     <div class="box" id="i_res" style="display:none"></div>
-    <p class="help" style="margin-top:12px">بعد النقل: كلمات سر باقي المستخدمين ما بتنقل (مشفّرة بالسحابة) — عيّنها من «المستخدمين».</p>
+    <p class="help" style="margin-top:12px">بينقل كل شي: المستخدمين وصلاحياتهن وكلمات سرّهن، حسابات دخول الزباين والعمال، الصناديق المفتوحة وأرصدتها، والإقفالات. <b>اعمل النقل آخر النهار، وبعدو خلّي الزبون يشتغل عالنسخة المحلية بس</b> — يلي بينعمل أونلاين بعد النقل ما بينتقل.</p>
   </section>
   </div>
 </div></main>
@@ -328,6 +343,7 @@ body.remote .remote-note{ display:block; }
     if(!s.available) html += '<br><span style="color:var(--warn)">ملف cloudflared مش موجود مع هالنسخة.</span>';
     if(s.mode === 'quick' && s.state === 'running') html += '<br><span style="color:var(--warn)">الرابط المؤقت بيتغيّر كل ما يرجع يشتغل البرنامج — للتجربة بس.</span>';
     $('tunBox').innerHTML = html;
+    if(s.hostname && /\.libanapps\.com$/.test(s.hostname) && !renderTunnel.cd){ renderTunnel.cd = 1; loadDomain(); }
     var cp = $('t_copy'); if(cp) cp.onclick = function(){ navigator.clipboard.writeText(s.url); cp.textContent = 'تم ✅'; };
     if(!renderTunnel.init){ renderTunnel.init = 1; $('t_mode').value = s.mode; $('t_host').value = s.hostname || ''; if(s.hostname && /\.libanapps\.com$/.test(s.hostname)) $('t_sub').value = s.hostname.replace(/\.libanapps\.com$/, ''); }
     $('t_token').placeholder = s.hasToken ? '(محفوظ — حط رمز جديد بس إذا بدك تغيّرو)' : 'eyJhIjoi...';
@@ -352,8 +368,37 @@ body.remote .remote-note{ display:block; }
     if(!sub){ msg('t_amsg', 'اكتب اسم للرابط'); return; }
     var b = this; busy(b, true); msg('t_amsg', 'عم نعمل الرابط...', true);
     api('/tunnel/auto', { subdomain: sub }).then(function(s){
-      renderTunnel(s); msg('t_amsg', 'تم ✅ — الرابط بيشتغل خلال دقيقة: https://' + s.hostname, true); setTimeout(loadTunnel, 2000);
+      renderTunnel(s); loadDomain(); msg('t_amsg', 'تم ✅ — الرابط بيشتغل خلال دقيقة: https://' + s.hostname, true); setTimeout(loadTunnel, 2000);
     }).catch(function(e){ msg('t_amsg', e.message); }).then(function(){ busy(b, false); });
+  };
+  // ---------- الدومين الخاص ----------
+  function renderDomain(d){
+    $('cdWrap').style.display = '';
+    if(!d || !d.domain){ $('cdBox').style.display = 'none'; $('cdActions').style.display = 'none'; $('cd_domain').disabled = false; $('cd_add').style.display = ''; return; }
+    $('cd_domain').value = d.domain; $('cd_domain').disabled = true; $('cd_add').style.display = 'none';
+    $('cdActions').style.display = '';
+    var st = d.status === 'active' ? '🟢 شغّال' : d.status === 'failed' ? '🔴 في مشكلة (' + esc(d.cf_status || '') + ' / ' + esc(d.ssl_status || '') + ')' : '🟡 بانتظار التحقق';
+    var h = 'الدومين: <b class="mono">' + esc(d.domain) + '</b> — ' + st;
+    if(d.status !== 'active'){
+      var name = d.domain.split('.')[0];
+      h += '<br><br><b>عند الشركة يلي اشتريت منها الدومين (DNS) زيد سجل:</b>' +
+        '<table style="margin-top:6px"><tr><th>Type</th><th>Name</th><th>Value / Target</th></tr>' +
+        '<tr><td class="mono">CNAME</td><td class="mono">' + esc(name) + '</td><td class="mono">' + esc(d.cname_target) + '</td></tr>' +
+        (d.txt_name ? '<tr><td class="mono">TXT</td><td class="mono">' + esc(d.txt_name) + '</td><td class="mono" style="word-break:break-all">' + esc(d.txt_value) + '</td></tr>' : '') +
+        '</table><br>بعدها استنى شي ١٠ دقايق واكبس <b>تحقّق</b>. الشهادة (https) بتنعمل لحالها.';
+    } else h += '<br>البرامج: <span class="mono">https://' + esc(d.domain) + '/trade</span> · <span class="mono">https://' + esc(d.domain) + '/alum</span>';
+    $('cdBox').innerHTML = h; $('cdBox').style.display = '';
+  }
+  function loadDomain(){ return api('/tunnel/domain', { action: 'refresh' }).then(renderDomain).catch(function(){}); }
+  $('cd_add').onclick = function(){
+    var b = this; busy(b, true); msg('cd_msg', 'عم نربط...', true);
+    api('/tunnel/domain', { action: 'add', domain: $('cd_domain').value }).then(function(d){ renderDomain(d); msg('cd_msg', ''); })
+      .catch(function(e){ msg('cd_msg', e.message); }).then(function(){ busy(b, false); });
+  };
+  $('cd_check').onclick = function(){ var b = this; busy(b, true); loadDomain().then(function(){ busy(b, false); }); };
+  $('cd_remove').onclick = function(){
+    if(!confirm('أكيد بدك تشيل الدومين الخاص؟ رابط libanapps.com بيضل شغّال.')) return;
+    api('/tunnel/domain', { action: 'remove' }).then(function(d){ $('cd_domain').value = ''; renderDomain(d); msg('cd_msg', 'انشال ✅', true); }).catch(function(e){ msg('cd_msg', e.message); });
   };
   $('t_on').onclick = function(){ saveTunnel(true); };
   $('t_off').onclick = function(){ saveTunnel(false); };
@@ -471,7 +516,9 @@ body.remote .remote-note{ display:block; }
           if(s.state === 'error'){ msg('i_msg', s.msg); return; }
           msg('i_msg', 'تم النقل ✅', true); $('i_pass').value = '';
           var c = s.result.counts; $('i_res').style.display = '';
+          var np = s.result.usersWithoutPassword || [];
           $('i_res').innerHTML = Object.keys(c).filter(function(k){ return c[k]; }).map(function(k){ return '<span class="mono">' + esc(k) + '</span>: ' + c[k]; }).join(' · ') || 'ما في بيانات';
+          $('i_res').innerHTML += '<br>🔑 كلمات السر انتقلت: ' + (s.result.secrets || 0) + (np.length ? '<br><span style="color:var(--warn)">بلا كلمة سر (عيّنها من «المستخدمين»): ' + np.map(esc).join('، ') + '</span>' : '');
         }).catch(function(e){ busy(b, false); msg('i_msg', e.message); });
       })();
     }).catch(function(e){ busy(b, false); msg('i_msg', e.message); });
@@ -489,5 +536,6 @@ body.remote .remote-note{ display:block; }
   setInterval(function(){ if(ST && ST.local){ api('/tunnel').then(renderTunnel).catch(function(){}); } loadStatus(); }, 20000);
 })();
 </script>
+<script src="/local/local-ui.js" defer></script>
 </body>
 </html>

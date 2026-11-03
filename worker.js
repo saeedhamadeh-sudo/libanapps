@@ -57,68 +57,172 @@ async function offlineManifest(env, url) {
 
 // ============================================================
 //  رابط الوصول من برّا للنسخة المحلية — بكبسة وحدة من برنامج الزبون
-//  بيعمل (أو بيرجّع) نفق Cloudflare خاص بالمؤسسة، بيربطو بـ <الاسم>.libanapps.com،
-//  وبيرجّع رمز النفق للبرنامج. بيحتاج Secrets بالـWorker:
-//    CF_TUNNEL_TOKEN  (Secret — صلاحيات: Account › Cloudflare Tunnel › Edit  +  Zone › DNS › Edit)
-//    CF_ACCOUNT_ID    (بـwrangler.toml)
-//  (منفصل عن CF_API_TOKEN تبع دومينات المتاجر — ما منلمسو)
-//  واختياري: TUNNEL_ZONE_ID و TUNNEL_DOMAIN (الافتراضي libanapps.com)
+//  · /api/tunnel/provision : نفق Cloudflare خاص بالمؤسسة + <الاسم>.libanapps.com
+//  · /api/tunnel/domain    : دومين الزبون الخاص (app.mydomain.com) عبر Cloudflare for SaaS
+//  · كل رابط بيتسجّل بجدول local_tunnels، والـWorker (route */*) بيمرّق طلباتو للنفق
+//  Secrets: CF_TUNNEL_TOKEN (Account › Cloudflare Tunnel › Edit + Zone › DNS › Edit)
+//           CF_API_TOKEN + CF_ZONE_ID (موجودين — تبع دومينات المتاجر، للدومين الخاص)
+//  Vars:    CF_ACCOUNT_ID (wrangler.toml) · اختياري: TUNNEL_ZONE_ID و TUNNEL_DOMAIN
 // ============================================================
 const TUNNEL_RESERVED = new Set(['www', 'api', 'admin', 'super', 'mail', 'smtp', 'ftp', 'app', 'apps', 'store', 'stores',
   'libanapps', 'static', 'cdn', 'ns1', 'ns2', 'test', 'dev', 'staging', 'portal', 'login', 'account', 'support', 'help', 'status']);
-async function tunnelProvision(request, env) {
-  if (!env.CF_TUNNEL_TOKEN || !env.CF_ACCOUNT_ID) return json(503, { error: 'خدمة الرابط مش مفعّلة على الموقع بعد' });
+const TUNNEL_SERVICE = 'http://127.0.0.1:47801';
+
+// هل هالـhost رابط لنسخة محلية؟ (بيتخزّن بالذاكرة دقائق حتى ما نسأل قاعدة البيانات كل طلب)
+const _ltCache = new Map();
+async function isLocalTunnelHost(host, env) {
+  host = String(host || '').toLowerCase();
+  let site = '';
+  try { site = new URL(env.WEBSITE_URL || '').hostname.toLowerCase(); } catch (e) {}
+  if (!host || host === site || host === 'www.' + site || host === 'stores.' + site || host.endsWith('.workers.dev') || host === 'localhost') return false;
+  const c = _ltCache.get(host);
+  if (c && c.exp > Date.now()) return c.v;
+  let v = false;
+  try {
+    const rows = await sbGetTO(env, `local_tunnels?hostname=eq.${encodeURIComponent(host)}&select=hostname&limit=1`, 2500);
+    v = Array.isArray(rows) && rows.length > 0;
+  } catch (e) { v = c ? c.v : false; }
+  _ltCache.set(host, { v, exp: Date.now() + (v ? 300000 : 60000) });
+  return v;
+}
+
+// مشترك: مين الزبون (من رمز دخولو على libanapps.com)
+async function tunnelClient(request, env) {
   const token = (request.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
   const u = await currentUser(request, env);
-  if (!u || !u.id) return json(401, { error: 'سجّل دخول بحساب libanapps.com من «التفعيل» أول' });
+  if (!u || !u.id) return { err: json(401, { error: 'سجّل دخول بحساب libanapps.com من «التفعيل» أول' }) };
   const cr = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/my_client_id`, {
     method: 'POST', headers: { apikey: env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: '{}'
   });
   const clientId = cr.ok ? await cr.json() : null;
-  if (!clientId) return json(403, { error: 'الحساب مش مربوط بمؤسسة' });
-
-  let body; try { body = await request.json(); } catch { return json(400, { error: 'bad json' }); }
-  const sub = String(body.subdomain || '').trim().toLowerCase();
-  if (!/^[a-z0-9](?:[a-z0-9-]{0,28}[a-z0-9])?$/.test(sub)) return json(400, { error: 'الاسم لازم يكون أحرف إنكليزي صغيرة وأرقام و - بس (٢–٣٠ حرف)' });
-  if (sub.length < 2 || TUNNEL_RESERVED.has(sub)) return json(400, { error: 'هالاسم محجوز — اختار اسم تاني' });
-  const base = env.TUNNEL_DOMAIN || 'libanapps.com';
-  const hostname = sub + '.' + base;
-  const acc = env.CF_ACCOUNT_ID;
-
-  const cf = async (path, init) => {
+  if (!clientId) return { err: json(403, { error: 'الحساب مش مربوط بمؤسسة' }) };
+  return { clientId };
+}
+function tunnelCf(env) {
+  return async (path, init) => {
     const r = await fetch('https://api.cloudflare.com/client/v4' + path, Object.assign({
       headers: { Authorization: `Bearer ${env.CF_TUNNEL_TOKEN}`, 'Content-Type': 'application/json' } }, init || {}));
     const j = await r.json().catch(() => ({}));
     if (!j.success) throw new Error((j.errors && j.errors[0] && j.errors[0].message) || ('Cloudflare HTTP ' + r.status));
     return j.result;
   };
+}
+async function ltRows(env, clientId) {
+  return sbGet(env, `local_tunnels?client_id=eq.${clientId}&select=*`);
+}
+async function ltUpsert(env, row) {
+  const r = await fetch(`${env.SUPABASE_URL}/rest/v1/local_tunnels?on_conflict=hostname`, {
+    method: 'POST', headers: { ...sbHeaders(env), 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+    body: JSON.stringify(row)
+  });
+  if (!r.ok) throw new Error('تعذّر حفظ الرابط بقاعدة البيانات (شغّلت db/upgrade-local-tunnels.sql؟)');
+  _ltCache.delete(row.hostname);
+}
+async function ltDelete(env, hostname) {
+  await fetch(`${env.SUPABASE_URL}/rest/v1/local_tunnels?hostname=eq.${encodeURIComponent(hostname)}`, { method: 'DELETE', headers: sbHeaders(env) });
+  _ltCache.delete(hostname);
+}
+// النفق بيوصّل كل روابط المؤسسة (الأساسي + الدومين الخاص) للبرنامج على الكمبيوتر
+async function ltIngress(env, cf, tunnelId, hosts) {
+  const ingress = hosts.filter(Boolean).map(h => ({ hostname: h, service: TUNNEL_SERVICE }));
+  ingress.push({ service: 'http_status:404' });
+  await cf(`/accounts/${env.CF_ACCOUNT_ID}/cfd_tunnel/${tunnelId}/configurations`, { method: 'PUT', body: JSON.stringify({ config: { ingress } }) });
+}
+
+async function tunnelProvision(request, env) {
+  if (!env.CF_TUNNEL_TOKEN || !env.CF_ACCOUNT_ID) return json(503, { error: 'خدمة الرابط مش مفعّلة على الموقع بعد' });
+  const who = await tunnelClient(request, env);
+  if (who.err) return who.err;
+  const clientId = who.clientId;
+  let body; try { body = await request.json(); } catch { return json(400, { error: 'bad json' }); }
+  const sub = String(body.subdomain || '').trim().toLowerCase();
+  if (!/^[a-z0-9](?:[a-z0-9-]{0,28}[a-z0-9])?$/.test(sub)) return json(400, { error: 'الاسم لازم يكون أحرف إنكليزي صغيرة وأرقام و - بس (٢–٣٠ حرف)' });
+  if (sub.length < 2 || TUNNEL_RESERVED.has(sub)) return json(400, { error: 'هالاسم محجوز — اختار اسم تاني' });
+  const base = env.TUNNEL_DOMAIN || 'libanapps.com';
+  const hostname = sub + '.' + base;
+  const acc = env.CF_ACCOUNT_ID, cf = tunnelCf(env);
   try {
     const zoneId = env.TUNNEL_ZONE_ID || ((await cf(`/zones?name=${encodeURIComponent(base)}`))[0] || {}).id;
     if (!zoneId) return json(500, { error: 'الدومين ' + base + ' مش موجود بحساب Cloudflare' });
-
-    // نفق واحد لكل مؤسسة — إذا موجود منرجع نستعملو
     const name = 'la-' + clientId;
     let t = (await cf(`/accounts/${acc}/cfd_tunnel?name=${encodeURIComponent(name)}&is_deleted=false`))[0];
     if (!t) t = await cf(`/accounts/${acc}/cfd_tunnel`, { method: 'POST', body: JSON.stringify({ name, config_src: 'cloudflare' }) });
     const target = `${t.id}.cfargotunnel.com`;
-
-    // الاسم مستعمل لشي تاني؟
     const same = await cf(`/zones/${zoneId}/dns_records?name=${encodeURIComponent(hostname)}`);
     if (same.some(r => !(r.type === 'CNAME' && r.content === target))) return json(409, { error: 'الاسم «' + sub + '» مستعمل — اختار اسم تاني' });
     if (!same.length) await cf(`/zones/${zoneId}/dns_records`, { method: 'POST',
       body: JSON.stringify({ type: 'CNAME', name: hostname, content: target, proxied: true, comment: 'LibanApps Local ' + clientId }) });
-
-    // إذا الزبون غيّر الاسم: منشيل الرابط القديم
+    // الاسم القديم (إذا تغيّر) بينشال
     const mine = await cf(`/zones/${zoneId}/dns_records?type=CNAME&content=${encodeURIComponent(target)}`);
     for (const r of mine) if (r.name !== hostname) await cf(`/zones/${zoneId}/dns_records/${r.id}`, { method: 'DELETE' });
-
-    // الرابط بيوصل للبرنامج المحلي على الكمبيوتر
-    await cf(`/accounts/${acc}/cfd_tunnel/${t.id}/configurations`, { method: 'PUT',
-      body: JSON.stringify({ config: { ingress: [{ hostname, service: 'http://127.0.0.1:47801' }, { service: 'http_status:404' }] } }) });
+    const rows = await ltRows(env, clientId).catch(() => []);
+    for (const r of rows) if (r.kind === 'sub' && r.hostname !== hostname) await ltDelete(env, r.hostname);
+    await ltUpsert(env, { hostname, client_id: clientId, tunnel_id: t.id, kind: 'sub' });
+    const customs = rows.filter(r => r.kind === 'custom').map(r => r.hostname);
+    await ltIngress(env, cf, t.id, [hostname, ...customs]);
     const tunnelToken = await cf(`/accounts/${acc}/cfd_tunnel/${t.id}/token`);
-    return json(200, { ok: true, hostname, token: tunnelToken });
+    return json(200, { ok: true, hostname, token: tunnelToken, customs });
   } catch (e) {
     return json(502, { error: 'Cloudflare: ' + String(e && e.message || e) });
+  }
+}
+
+// دومين الزبون الخاص — action: add | refresh | remove
+async function tunnelDomain(request, env) {
+  if (!env.CF_TUNNEL_TOKEN || !env.CF_ACCOUNT_ID || !env.CF_API_TOKEN || !env.CF_ZONE_ID) return json(503, { error: 'خدمة الدومين الخاص مش مفعّلة على الموقع بعد' });
+  const who = await tunnelClient(request, env);
+  if (who.err) return who.err;
+  const clientId = who.clientId;
+  let body; try { body = await request.json(); } catch { return json(400, { error: 'bad json' }); }
+  const cf = tunnelCf(env);
+  try {
+    const rows = await ltRows(env, clientId);
+    const subRow = rows.find(r => r.kind === 'sub');
+    if (!subRow) return json(400, { error: 'فعّل رابط libanapps.com أول (فوق)، وبعدين اربط الدومين' });
+    const custom = rows.find(r => r.kind === 'custom');
+    const target = subRow.hostname;
+
+    if (body.action === 'add') {
+      const domain = normalizeDomain(body.domain);
+      if (!domain) return json(400, { error: 'الدومين مش صالح — مثال: app.mybrand.com' });
+      if (isPlatformHost(domain, env)) return json(400, { error: 'هالدومين محجوز للمنصة' });
+      if (custom && custom.hostname !== domain) return json(400, { error: 'عندك دومين مربوط (' + custom.hostname + ') — شيلو أول' });
+      const taken = await sbGet(env, `local_tunnels?hostname=eq.${encodeURIComponent(domain)}&select=client_id&limit=1`);
+      if (taken[0] && taken[0].client_id !== clientId) return json(400, { error: 'هالدومين مربوط بحساب تاني' });
+      const used = await sbGet(env, `store_domains?domain=eq.${encodeURIComponent(domain)}&select=id&limit=1`).catch(() => []);
+      if (used.length) return json(400, { error: 'هالدومين مربوط بمتجر' });
+      let ch = (await cfApi(env, 'GET', `/custom_hostnames?hostname=${encodeURIComponent(domain)}`));
+      let res = ch.success && ch.result && ch.result[0];
+      if (!res) {
+        const j = await cfApi(env, 'POST', '/custom_hostnames', { hostname: domain, custom_origin_server: target,
+          ssl: { method: 'http', type: 'dv', settings: { min_tls_version: '1.2' } } });
+        if (!j.success) return json(400, { error: cfError(j) });
+        res = j.result;
+      }
+      await ltUpsert(env, { hostname: domain, client_id: clientId, tunnel_id: subRow.tunnel_id, kind: 'custom', cf_hostname_id: res.id });
+      await ltIngress(env, cf, subRow.tunnel_id, [target, domain]);
+      const ov = res.ownership_verification || {};
+      return json(200, { ok: true, domain, cname_target: target, txt_name: ov.name || null, txt_value: ov.value || null, ...mapCf(res) });
+    }
+    if (!custom) return json(200, { ok: true, domain: null, cname_target: target });
+    if (body.action === 'refresh' || !body.action) {
+      const j = await cfApi(env, 'GET', `/custom_hostnames?hostname=${encodeURIComponent(custom.hostname)}`);
+      const res = j.success && j.result && j.result[0];
+      if (!res) return json(200, { ok: true, domain: custom.hostname, cname_target: target, status: 'failed', cf_status: 'missing', ssl_status: '' });
+      const ov = res.ownership_verification || {};
+      return json(200, { ok: true, domain: custom.hostname, cname_target: target, txt_name: ov.name || null, txt_value: ov.value || null, ...mapCf(res) });
+    }
+    if (body.action === 'remove') {
+      const j = await cfApi(env, 'GET', `/custom_hostnames?hostname=${encodeURIComponent(custom.hostname)}`);
+      const res = j.success && j.result && j.result[0];
+      if (res) await cfApi(env, 'DELETE', `/custom_hostnames/${res.id}`);
+      await ltDelete(env, custom.hostname);
+      await ltIngress(env, cf, subRow.tunnel_id, [target]);
+      return json(200, { ok: true, domain: null, cname_target: target });
+    }
+    return json(400, { error: 'bad action' });
+  } catch (e) {
+    return json(502, { error: String(e && e.message || e) });
   }
 }
 
@@ -2882,6 +2986,9 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
+    // 00) رابط نسخة محلية (shop1.libanapps.com أو دومين الزبون): الطلب بيكمّل للنفق على كمبيوتر الزبون
+    if (await isLocalTunnelHost(url.hostname, env)) return fetch(request);
+
     // 0) الصور — قبل أي شي، لتنخدم من الكاش
     if (url.pathname.startsWith('/img/')) return imageProxy(request, env, ctx, url);
 
@@ -2906,6 +3013,10 @@ export default {
         if (url.pathname === '/api/tunnel/provision') {
           if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
           return await tunnelProvision(request, env);
+        }
+        if (url.pathname === '/api/tunnel/domain') {
+          if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
+          return await tunnelDomain(request, env);
         }
         if (url.pathname === '/api/addon/pay') {
           if (request.method !== 'POST') return json(405, { error: 'method not allowed' });

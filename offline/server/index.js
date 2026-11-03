@@ -49,7 +49,7 @@ function start(opts){
     if(c && c.m === st.mtimeMs) return c.html;
     let html = fs.readFileSync(full, 'utf8');
     html = html.replace(/<script[^>]+@supabase\/supabase-js[^>]*><\/script>/,
-      '<script>window.LA_LOCAL={version:"' + VERSION + '"};</script><script src="/local/supabase-local.js?v=' + VERSION + '"></script><script src="/local/auto-refresh.js?v=' + VERSION + '" defer></script>');
+      '<script>window.LA_LOCAL={version:"' + VERSION + '"};</script><script src="/local/supabase-local.js?v=' + VERSION + '"></script><script src="/local/auto-refresh.js?v=' + VERSION + '" defer></script><script src="/local/local-ui.js?v=' + VERSION + '" defer></script>');
     if(fs.existsSync(path.join(appDir, 'vendor', 'qrcode.min.js')))
       html = html.replace(/https:\/\/cdnjs\.cloudflare\.com\/ajax\/libs\/qrcodejs\/1\.0\.0\/qrcode\.min\.js/g, '/vendor/qrcode.min.js');
     if(fs.existsSync(path.join(appDir, 'vendor', 'fonts', 'fonts.css')))
@@ -124,6 +124,17 @@ function start(opts){
       case '/users/save': return json(res, engine.saveUser(body.product, body));
       case '/tunnel': return json(res, tunnel.status());
       case '/tunnel/save': return json(res, tunnel.setCfg(body));
+      case '/tunnel/domain': {
+        // الدومين الخاص للزبون (app.mydomain.com) — action: add | refresh | remove
+        if(license.state.mode !== 'cloud') throw new Error('لازم تسجّل دخول بحساب libanapps.com من «التفعيل» أول');
+        const tok = await license.token();
+        const r = await fetch((process.env.LA_SITE || 'https://libanapps.com') + '/api/tunnel/domain', {
+          method: 'POST', headers: { Authorization: 'Bearer ' + tok, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: body.action || 'refresh', domain: body.domain || '' }), signal: AbortSignal.timeout(60000) });
+        const j = await r.json().catch(() => ({}));
+        if(!r.ok || !j.ok) throw new Error(j.error || ('HTTP ' + r.status));
+        return json(res, j);
+      }
       case '/tunnel/auto': {
         // كبسة وحدة: libanapps.com بيعمل النفق والرابط، ومنشغّلو هون
         if(license.state.mode !== 'cloud') throw new Error('لازم تسجّل دخول بحساب libanapps.com من «التفعيل» أول');
@@ -210,6 +221,9 @@ function start(opts){
       }
       const clean = p.replace(/\/+$/, '') || '/';
       if(APP_PAGES[clean]) return send(res, 200, appHtml(APP_PAGES[clean]), MIME['.html']);
+      // روابط النسخة الأونلاين القديمة (/portal-trade/اسم-المحل) — بتفتح البرنامج المحلي
+      const pm = clean.match(/^\/portal-(trade|alum)(\/|$)/);
+      if(pm){ res.writeHead(302, { Location: '/' + pm[1] }); return res.end(); }
       if(clean === '/') return serveFile(res, webDir, 'home.html');
       if(['/login', '/account', '/super', '/signup', '/reset'].includes(clean)){ res.writeHead(302, { Location: '/#license' }); return res.end(); }
       if(p.startsWith('/local/')) return serveFile(res, webDir, p.slice(7));

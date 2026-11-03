@@ -54,6 +54,10 @@ function hashPassword(pw){
 }
 function verifyPassword(pw, stored){
   if(!stored) return false;
+  // كلمات سر منقولة من السحابة (bcrypt من pgcrypto) — بتضل شغّالة متل ما هي
+  if(/^\$2[aby]\$/.test(stored)){
+    try{ return require('bcryptjs').compareSync(String(pw || ''), stored); }catch(e){ return false; }
+  }
   const [kind, s, h] = String(stored).split('$');
   if(kind !== 'scrypt') return false;
   const want = Buffer.from(h, 'base64');
@@ -389,6 +393,22 @@ class DataEngine {
     }
     return { ok: true, id };
   }
+  // كلمات السر وأسرار 2FA المنقولة من السحابة (مشفّرة متل ما هي)
+  importSecrets(product, rows){
+    let n = 0;
+    this.store.tx(() => {
+      for(const r of rows || []){
+        if(!r || !r.tbl || !r.id || String(r.tbl).indexOf(product + '_') !== 0) continue;
+        if(!ACCOUNT_TABLES.includes(String(r.tbl).slice(product.length + 1))) continue;
+        this.store.run(`INSERT INTO secrets(tbl,id,password_hash,totp_secret) VALUES(?,?,?,?)
+          ON CONFLICT(tbl,id) DO UPDATE SET password_hash=COALESCE(excluded.password_hash, secrets.password_hash), totp_secret=COALESCE(excluded.totp_secret, secrets.totp_secret)`,
+          r.tbl, String(r.id), r.password_hash || null, r.totp_secret || null);
+        n++;
+      }
+    });
+    return n;
+  }
+  hasPassword(tbl, id){ const r = this.store.get('SELECT password_hash FROM secrets WHERE tbl=? AND id=?', tbl, String(id)); return !!(r && r.password_hash); }
   // ---------- نقل بيانات من السحابة: استبدال جداول برنامج كامل ----------
   replaceProductData(product, tables){
     this.store.tx(() => {
