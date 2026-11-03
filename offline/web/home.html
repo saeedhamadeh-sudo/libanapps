@@ -129,6 +129,16 @@ body.remote .remote-note{ display:block; }
     <h3>الفوت عالبرنامج من برّا المحل</h3>
     <p class="help">بيفتح خط آمن من هالكمبيوتر لـCloudflare، فبتقدر تفوت من التلفون أو من البيت على رابط خاص فيك. البيانات بتضل هون عالكمبيوتر — لازم يكون شغّال ومتصل بالإنترنت لحتى يشتغل الرابط. الدخول بيضل بإسم المستخدم وكلمة السر.</p>
     <div class="box" id="tunBox">...</div>
+    <h3 style="margin-top:6px">فعّل الرابط بكبسة</h3>
+    <p class="help">اكتب اسم للرابط (أحرف إنكليزي وأرقام)، واكبس فعّل — بيصير عندك رابط متل <span class="mono">shop1.libanapps.com</span> خلال دقيقة. بيحتاج حساب libanapps.com مربوط من «التفعيل».</p>
+    <div class="row">
+      <div class="f" style="flex:1 1 260px"><label>اسم الرابط</label>
+        <div style="display:flex; align-items:center; gap:6px; direction:ltr"><input id="t_sub" dir="ltr" placeholder="shop1" style="flex:1"><span class="mono" style="color:var(--soft)">.libanapps.com</span></div></div>
+      <button class="btn" id="t_auto">فعّل الرابط</button>
+    </div>
+    <div class="msg" id="t_amsg"></div>
+    <details style="margin-top:14px"><summary style="cursor:pointer; color:var(--soft); font-size:13.5px; font-weight:700">إعداد يدوي (رمز نفق من Cloudflare)</summary>
+    <div style="margin-top:12px">
     <div class="row">
       <div class="f" style="flex:0 1 240px"><label>النوع</label>
         <select id="t_mode"><option value="token">رابط ثابت</option><option value="quick">رابط مؤقت (تجربة)</option></select></div>
@@ -142,6 +152,7 @@ body.remote .remote-note{ display:block; }
       <button class="btn sec" id="t_off">إيقاف</button>
     </div>
     <div class="msg" id="t_msg"></div>
+    </div></details>
     <pre class="log" id="t_log" style="display:none"></pre>
   </section>
 
@@ -318,7 +329,7 @@ body.remote .remote-note{ display:block; }
     if(s.mode === 'quick' && s.state === 'running') html += '<br><span style="color:var(--warn)">الرابط المؤقت بيتغيّر كل ما يرجع يشتغل البرنامج — للتجربة بس.</span>';
     $('tunBox').innerHTML = html;
     var cp = $('t_copy'); if(cp) cp.onclick = function(){ navigator.clipboard.writeText(s.url); cp.textContent = 'تم ✅'; };
-    if(!renderTunnel.init){ renderTunnel.init = 1; $('t_mode').value = s.mode; $('t_host').value = s.hostname || ''; }
+    if(!renderTunnel.init){ renderTunnel.init = 1; $('t_mode').value = s.mode; $('t_host').value = s.hostname || ''; if(s.hostname && /\.libanapps\.com$/.test(s.hostname)) $('t_sub').value = s.hostname.replace(/\.libanapps\.com$/, ''); }
     $('t_token').placeholder = s.hasToken ? '(محفوظ — حط رمز جديد بس إذا بدك تغيّرو)' : 'eyJhIjoi...';
     document.querySelectorAll('.t_tok').forEach(function(e){ e.style.display = $('t_mode').value === 'token' ? '' : 'none'; });
     $('t_log').style.display = s.log && s.log.length ? '' : 'none'; $('t_log').textContent = (s.log || []).join('\n');
@@ -336,6 +347,14 @@ body.remote .remote-note{ display:block; }
     api('/tunnel/save', body).then(function(s){ $('t_token').value = ''; renderTunnel(s); msg('t_msg', enabled ? 'عم يشتغل...' : 'وقف ✅', true); setTimeout(loadTunnel, 1500); })
       .catch(function(e){ msg('t_msg', e.message); });
   }
+  $('t_auto').onclick = function(){
+    var sub = $('t_sub').value.trim().toLowerCase().replace(/\.libanapps\.com$/, '');
+    if(!sub){ msg('t_amsg', 'اكتب اسم للرابط'); return; }
+    var b = this; busy(b, true); msg('t_amsg', 'عم نعمل الرابط...', true);
+    api('/tunnel/auto', { subdomain: sub }).then(function(s){
+      renderTunnel(s); msg('t_amsg', 'تم ✅ — الرابط بيشتغل خلال دقيقة: https://' + s.hostname, true); setTimeout(loadTunnel, 2000);
+    }).catch(function(e){ msg('t_amsg', e.message); }).then(function(){ busy(b, false); });
+  };
   $('t_on').onclick = function(){ saveTunnel(true); };
   $('t_off').onclick = function(){ saveTunnel(false); };
 

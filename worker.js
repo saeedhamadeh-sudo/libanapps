@@ -55,6 +55,72 @@ async function offlineManifest(env, url) {
     minLocal: extra.minLocal || '2.0.0', installer: extra.installer || null, files });
 }
 
+// ============================================================
+//  رابط الوصول من برّا للنسخة المحلية — بكبسة وحدة من برنامج الزبون
+//  بيعمل (أو بيرجّع) نفق Cloudflare خاص بالمؤسسة، بيربطو بـ <الاسم>.libanapps.com،
+//  وبيرجّع رمز النفق للبرنامج. بيحتاج Secrets بالـWorker:
+//    CF_API_TOKEN  (صلاحيات: Account › Cloudflare Tunnel › Edit  +  Zone › DNS › Edit)
+//    CF_ACCOUNT_ID
+//  واختياري: CF_ZONE_ID و TUNNEL_DOMAIN (الافتراضي libanapps.com)
+// ============================================================
+const TUNNEL_RESERVED = new Set(['www', 'api', 'admin', 'super', 'mail', 'smtp', 'ftp', 'app', 'apps', 'store', 'stores',
+  'libanapps', 'static', 'cdn', 'ns1', 'ns2', 'test', 'dev', 'staging', 'portal', 'login', 'account', 'support', 'help', 'status']);
+async function tunnelProvision(request, env) {
+  if (!env.CF_API_TOKEN || !env.CF_ACCOUNT_ID) return json(503, { error: 'خدمة الرابط مش مفعّلة على الموقع بعد' });
+  const token = (request.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
+  const u = await currentUser(request, env);
+  if (!u || !u.id) return json(401, { error: 'سجّل دخول بحساب libanapps.com من «التفعيل» أول' });
+  const cr = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/my_client_id`, {
+    method: 'POST', headers: { apikey: env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: '{}'
+  });
+  const clientId = cr.ok ? await cr.json() : null;
+  if (!clientId) return json(403, { error: 'الحساب مش مربوط بمؤسسة' });
+
+  let body; try { body = await request.json(); } catch { return json(400, { error: 'bad json' }); }
+  const sub = String(body.subdomain || '').trim().toLowerCase();
+  if (!/^[a-z0-9](?:[a-z0-9-]{0,28}[a-z0-9])?$/.test(sub)) return json(400, { error: 'الاسم لازم يكون أحرف إنكليزي صغيرة وأرقام و - بس (٢–٣٠ حرف)' });
+  if (sub.length < 2 || TUNNEL_RESERVED.has(sub)) return json(400, { error: 'هالاسم محجوز — اختار اسم تاني' });
+  const base = env.TUNNEL_DOMAIN || 'libanapps.com';
+  const hostname = sub + '.' + base;
+  const acc = env.CF_ACCOUNT_ID;
+
+  const cf = async (path, init) => {
+    const r = await fetch('https://api.cloudflare.com/client/v4' + path, Object.assign({
+      headers: { Authorization: `Bearer ${env.CF_API_TOKEN}`, 'Content-Type': 'application/json' } }, init || {}));
+    const j = await r.json().catch(() => ({}));
+    if (!j.success) throw new Error((j.errors && j.errors[0] && j.errors[0].message) || ('Cloudflare HTTP ' + r.status));
+    return j.result;
+  };
+  try {
+    const zoneId = env.CF_ZONE_ID || ((await cf(`/zones?name=${encodeURIComponent(base)}`))[0] || {}).id;
+    if (!zoneId) return json(500, { error: 'الدومين ' + base + ' مش موجود بحساب Cloudflare' });
+
+    // نفق واحد لكل مؤسسة — إذا موجود منرجع نستعملو
+    const name = 'la-' + clientId;
+    let t = (await cf(`/accounts/${acc}/cfd_tunnel?name=${encodeURIComponent(name)}&is_deleted=false`))[0];
+    if (!t) t = await cf(`/accounts/${acc}/cfd_tunnel`, { method: 'POST', body: JSON.stringify({ name, config_src: 'cloudflare' }) });
+    const target = `${t.id}.cfargotunnel.com`;
+
+    // الاسم مستعمل لشي تاني؟
+    const same = await cf(`/zones/${zoneId}/dns_records?name=${encodeURIComponent(hostname)}`);
+    if (same.some(r => !(r.type === 'CNAME' && r.content === target))) return json(409, { error: 'الاسم «' + sub + '» مستعمل — اختار اسم تاني' });
+    if (!same.length) await cf(`/zones/${zoneId}/dns_records`, { method: 'POST',
+      body: JSON.stringify({ type: 'CNAME', name: hostname, content: target, proxied: true, comment: 'LibanApps Local ' + clientId }) });
+
+    // إذا الزبون غيّر الاسم: منشيل الرابط القديم
+    const mine = await cf(`/zones/${zoneId}/dns_records?type=CNAME&content=${encodeURIComponent(target)}`);
+    for (const r of mine) if (r.name !== hostname) await cf(`/zones/${zoneId}/dns_records/${r.id}`, { method: 'DELETE' });
+
+    // الرابط بيوصل للبرنامج المحلي على الكمبيوتر
+    await cf(`/accounts/${acc}/cfd_tunnel/${t.id}/configurations`, { method: 'PUT',
+      body: JSON.stringify({ config: { ingress: [{ hostname, service: 'http://127.0.0.1:47801' }, { service: 'http_status:404' }] } }) });
+    const tunnelToken = await cf(`/accounts/${acc}/cfd_tunnel/${t.id}/token`);
+    return json(200, { ok: true, hostname, token: tunnelToken });
+  } catch (e) {
+    return json(502, { error: 'Cloudflare: ' + String(e && e.message || e) });
+  }
+}
+
 function b64ToBytes(b64) {
   const bin = atob(b64);
   const out = new Uint8Array(bin.length);
@@ -2835,6 +2901,11 @@ export default {
       try {
         // النسخة المحلية (LibanApps Local) بتسأل: شو بصمة آخر نسخة من صفحات البرنامجين؟
         if (url.pathname === '/api/offline/manifest') return await offlineManifest(env, url);
+        // النسخة المحلية: «فعّل الرابط» — بيعمل نفق Cloudflare + رابط subdomain للزبون بكبسة وحدة
+        if (url.pathname === '/api/tunnel/provision') {
+          if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
+          return await tunnelProvision(request, env);
+        }
         if (url.pathname === '/api/addon/pay') {
           if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
           return await addonPay(request, env);

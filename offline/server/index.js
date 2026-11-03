@@ -124,6 +124,17 @@ function start(opts){
       case '/users/save': return json(res, engine.saveUser(body.product, body));
       case '/tunnel': return json(res, tunnel.status());
       case '/tunnel/save': return json(res, tunnel.setCfg(body));
+      case '/tunnel/auto': {
+        // كبسة وحدة: libanapps.com بيعمل النفق والرابط، ومنشغّلو هون
+        if(license.state.mode !== 'cloud') throw new Error('لازم تسجّل دخول بحساب libanapps.com من «التفعيل» أول');
+        const tok = await license.token();
+        const r = await fetch((process.env.LA_SITE || 'https://libanapps.com') + '/api/tunnel/provision', {
+          method: 'POST', headers: { Authorization: 'Bearer ' + tok, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ subdomain: String(body.subdomain || '') }), signal: AbortSignal.timeout(60000) });
+        const j = await r.json().catch(() => ({}));
+        if(!r.ok || !j.ok) throw new Error(j.error || ('HTTP ' + r.status));
+        return json(res, tunnel.setCfg({ enabled: true, mode: 'token', token: j.token, hostname: j.hostname }));
+      }
       case '/backup': return json(res, backup.status());
       case '/backup/save': return json(res, backup.setCfg(body));
       case '/backup/now': return json(res, await backup.run('manual'));
