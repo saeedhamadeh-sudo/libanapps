@@ -604,6 +604,7 @@ function docBoxEffectBase(kind, d){
   if(kind==='budgetEntries'){
     const c = (DB.budgetCategories||[]).find(x=>x.id===d.categoryId);
     if(!c || c.auto) return null;
+    if(d.bill && d.bill.onAccount) return null;   // فاتورة على الحساب: ما بتطلع مصاري — الدفعات بتطلع لحالها
     return { sign: c.type==='income'? 1 : -1, currency:'USD', amt, label:(c.type==='income'?'دخل: ':'مصروف: ')+c.name };
   }
   return null;
@@ -625,6 +626,13 @@ function syncDocsToBox(key, arr){
     let movesChanged = false, shiftsChanged = false;
     const now = Date.now();
     const myShift = currentUserShift();
+    if(key===KEYS.budgetEntries) arr.forEach(d=>{
+      // دفعات فاتورة على الحساب: إذا انمحت الفاتورة بتنمحي دفعاتها، وإذا رجعت بترجع
+      if(!d || !d.bill || !Array.isArray(d.bill.payments)) return;
+      d.bill.payments.forEach(p=>{ const pm = DB.cashMovements.find(x=>x.id===p.moveId); if(!pm || !!pm.deleted===!!d.deleted) return;
+        pm.deleted = !!d.deleted; movesChanged = true;
+        if(pm.shiftId && _shiftAdd(pm.shiftId, pm.currency, (d.deleted? 1 : -1)*Math.abs(Number(pm.amount)||0))) shiftsChanged = true; });
+    });
     arr.forEach(d=>{
       if(!d || !d.id) return;
       const m = byRef[d.id];
@@ -4420,7 +4428,7 @@ function budgetCategoryEntries(cat, from, to){
     });
   }
   return DB.budgetEntries.filter(e=>!e.deleted && e.categoryId===cat.id && e.date>=from && e.date<=to)
-    .map(e=>({date:e.date, amount:Number(e.amount)||0, label:(e.bill? '🧾 ' : '')+(e.note||''), ref:'budgetentry', id:e.id, bill:!!e.bill}));
+    .map(e=>({date:e.date, amount:Number(e.amount)||0, label:(e.bill? '🧾 ' : '')+(e.note||'')+(e.bill && e.bill.onAccount? (billLeftUSD(e)>0.000001? ' — ⏳ بقي '+fmtMoney(billLeftUSD(e)) : ' — ✅ مدفوعة') : ''), ref:'budgetentry', id:e.id, bill:!!e.bill}));
 }
 function budgetCategoryTotal(cat, from, to){
   return budgetCategoryEntries(cat, from, to).reduce((s,e)=>s+e.amount, 0);
@@ -10506,6 +10514,13 @@ function budgetCategoryView(cat, period, a, b){
     <div class="stat"><div class="k">عدد الحركات</div><div class="v">${entries.length}</div></div>
   </div>
   <div class="card no-print">
+    ${(()=>{ const ub = cat.auto? [] : unpaidBills(cat.id); if(!ub.length) return '';
+      return `<div style="border:1px solid var(--bronze); background:#fff7e8; border-radius:10px; padding:8px 10px; margin-bottom:12px;">
+        <div style="font-weight:800; margin-bottom:6px;">⏳ فواتير غير مدفوعة (${ub.length}) — المجموع: <span class="num">${fmtMoney(ub.reduce((a,e)=>a+billLeftUSD(e),0))}</span></div>
+        ${ub.map(e=>`<div style="display:flex; justify-content:space-between; gap:8px; align-items:center; padding:4px 0; border-top:1px dashed var(--line); flex-wrap:wrap;">
+          <span data-nav="#/budget-bill/${e.id}" style="cursor:pointer;">🧾 #${escapeHtml(String(e.number||''))} ${escapeHtml(e.bill.vendor||'')} · <span class="num">${fmtDate(e.date)}</span> · بقي <b class="num">${fmtMoney(billLeftUSD(e))}</b></span>
+          <button class="btn btn-sm btn-credit" data-bill-pay="${e.id}">💸 دفع</button></div>`).join('')}
+      </div>`; })()}
     ${!cat.auto? `<div class="action-row" style="margin-bottom:14px;"><button class="btn btn-primary" id="addBudgetEntryBtn" data-cat="${cat.id}">+ إضافة سند صرف</button>${cat.type!=='income'? `<button class="btn" id="addBudgetBillBtn" data-cat="${cat.id}">🧾 فاتورة ${escapeHtml(cat.name)}</button>` : ''}</div>` : ''}
   </div>
   <div class="doc-actions no-print">
@@ -11200,7 +11215,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-11-02 · 23:05 · v80';
+const APP_TRADE_BUILD = '2026-11-03 · 21:45 · v81';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 function settingsView(){
   const s = DB.settings;
@@ -12572,6 +12587,7 @@ function bindEvents(){
       openDeleteBudgetCategoryModal(cat);
     });
   });
+  document.querySelectorAll('[data-bill-pay]').forEach(b=>b.addEventListener('click', ev=>{ ev.stopPropagation(); openBillPayModal(b.getAttribute('data-bill-pay')); }));
   const addBudgetBillBtn = document.getElementById('addBudgetBillBtn');
   if(addBudgetBillBtn) addBudgetBillBtn.addEventListener('click', ()=>openBudgetBillModal(addBudgetBillBtn.getAttribute('data-cat')));
   const addBudgetEntryBtn = document.getElementById('addBudgetEntryBtn');
@@ -12992,7 +13008,14 @@ function openBudgetBillModal(categoryId){
     <button class="btn btn-sm" id="bb_add" style="margin-top:6px;">+ بند</button>
     <div style="font-size:15px; font-weight:800; margin:10px 0;">المجموع: <span class="num" id="bb_total">0</span> ${primSym()}</div>
     <div class="field"><label>ملاحظة</label><input type="text" id="bb_note"></div>
-    <div class="field"><label>💸 من وين دفعت؟ *</label>
+    <div class="field"><label>طريقة الدفع *</label>
+      <div style="display:flex; gap:14px; flex-wrap:wrap; font-size:14px;">
+        <label style="display:flex; gap:6px; align-items:center;"><input type="radio" name="bb_pay" value="now" checked style="width:auto;"> 💵 مدفوعة هلق</label>
+        <label style="display:flex; gap:6px; align-items:center;"><input type="radio" name="bb_pay" value="account" style="width:auto;"> 📒 على الحساب (دين)</label>
+      </div>
+      <div id="bb_acc_hint" style="display:none; font-size:12px; color:var(--ink-soft); margin-top:4px;">ما رح ينقص شي من الصندوق هلق. بتنسجّل مصروف، ولما تدفعها بتكبس «💸 دفع الفاتورة» من صفحتها.</div>
+    </div>
+    <div class="field" id="bb_src_wrap"><label>💸 من وين دفعت؟ *</label>
       <select id="bb_t"><option value="">— اختار —</option>${moneyTargetOptions({other:true})}</select>
       <input type="text" id="bb_src_other" placeholder="مثلاً: من البنك، من جيبي..." style="display:none; margin-top:6px;">
     </div>
@@ -13014,6 +13037,9 @@ function openBudgetBillModal(categoryId){
   const t = wrap.querySelector('#bb_t'); if(currentUserShift()) t.value = myDrawerIsPersonal()? '53103' : 'drawer';
   const syncSrc = ()=>{ wrap.querySelector('#bb_src_other').style.display = t.value==='other'? '' : 'none'; wrap.querySelector('#bb_err').textContent = ''; };
   t.addEventListener('change', syncSrc); syncSrc();
+  const onAcc = ()=> (wrap.querySelector('input[name="bb_pay"]:checked')||{}).value==='account';
+  wrap.querySelectorAll('input[name="bb_pay"]').forEach(r=>r.addEventListener('change', ()=>{
+    wrap.querySelector('#bb_src_wrap').style.display = onAcc()? 'none' : ''; wrap.querySelector('#bb_acc_hint').style.display = onAcc()? '' : 'none'; wrap.querySelector('#bb_err').textContent = ''; }));
   wrap.querySelector('#bb_save').addEventListener('click', async ()=>{
     const err = m=>{ wrap.querySelector('#bb_err').textContent = m; };
     const items = Array.from(tb.querySelectorAll('tr')).map(tr=>({ d:tr.querySelector('.bb-d').value.trim(), q:Number(tr.querySelector('.bb-q').value)||0, p:Number(outPrim(tr.querySelector('.bb-p').value))||0 }))
@@ -13022,30 +13048,86 @@ function openBudgetBillModal(categoryId){
     if(items.some(x=>!x.d)){ err('اكتب البيان لكل بند'); return; }
     const amount = items.reduce((a,x)=>a + x.q*x.p, 0);
     if(!(amount>0)){ err('مجموع الفاتورة لازم يكون أكبر من صفر'); return; }
-    const src = t.value || null;
-    if(!src){ err('لازم تحدد من وين دفعت'); return; }
+    const account = onAcc();
+    const src = account? null : (t.value || null);
+    if(!account && !src){ err('لازم تحدد من وين دفعت'); return; }
     let otherTxt = '';
     if(src==='other'){ otherTxt = wrap.querySelector('#bb_src_other').value.trim(); if(!otherTxt){ err('اكتب من وين دفعت'); return; } }
     const vendor = wrap.querySelector('#bb_vendor').value.trim(), ref = wrap.querySelector('#bb_ref').value.trim();
+    if(account && !vendor){ err('على الحساب: اكتب من مين الفاتورة (الجهة)'); return; }
     let note = 'فاتورة'+(vendor? ' '+vendor : '')+(ref? ' #'+ref : '');
     const extra = wrap.querySelector('#bb_note').value.trim(); if(extra) note += ' — '+extra;
     if(src==='other') note += ' — مدفوع من: '+otherTxt;
+    if(account) note += ' — على الحساب';
     const ne = { id:uid(), createdAt:Date.now(), categoryId, amount, date: wrap.querySelector('#bb_date').value || todayISO(), note, number:nextBudgetEntryNumber(),
-      bill:{ vendor, ref, items, by: currentUser? currentUser.username : '', paidFrom: src==='other'? otherTxt : moneyTargetLabel(src), memo: extra } };
+      bill: account? { vendor, ref, items, by: currentUser? currentUser.username : '', memo: extra, onAccount:true, payments:[] }
+                   : { vendor, ref, items, by: currentUser? currentUser.username : '', paidFrom: src==='other'? otherTxt : moneyTargetLabel(src), memo: extra } };
     _paySrcAsked.add(ne.id);
     DB.budgetEntries = [...DB.budgetEntries, ne];
     const ok = await save(KEYS.budgetEntries, DB.budgetEntries);
-    if(ok && src!=='other') await applyPaySource(KEYS.budgetEntries, ne.id, src);
+    if(ok && src && src!=='other') await applyPaySource(KEYS.budgetEntries, ne.id, src);
     wrap.remove();
     toast(ok? 'تم حفظ الفاتورة ✅' : 'حدث خطأ أثناء الحفظ');
     if(ok) go('#/budget-bill/'+ne.id); else render();
   });
 }
+// حالة الفاتورة: المدفوع والباقي (بالدولار الداخلي)
+function billPaidUSD(e){ const b = e && e.bill; if(!b) return 0; if(!b.onAccount) return Number(e.amount)||0; return (b.payments||[]).filter(p=>{ const m = DB.cashMovements.find(x=>x.id===p.moveId); return !m || !m.deleted; }).reduce((a,p)=>a+(Number(p.usd)||0), 0); }
+function billLeftUSD(e){ return Math.max(0, (Number(e.amount)||0) - billPaidUSD(e)); }
+function billStatusHtml(e){
+  if(!e.bill || !e.bill.onAccount) return '<span style="color:var(--credit); font-weight:700;">✅ مدفوعة</span>';
+  const left = billLeftUSD(e), paid = billPaidUSD(e);
+  if(left<=0.000001) return '<span style="color:var(--credit); font-weight:700;">✅ مدفوعة</span>';
+  if(paid>0) return '<span style="color:var(--bronze-deep); font-weight:700;">🟠 مدفوعة قسم — بقي '+fmtMoney(left)+'</span>';
+  return '<span style="color:var(--debit); font-weight:700;">⏳ غير مدفوعة</span>';
+}
+function unpaidBills(catId){ return DB.budgetEntries.filter(e=>!e.deleted && e.bill && e.bill.onAccount && (!catId || e.categoryId===catId) && billLeftUSD(e)>0.000001); }
+function openBillPayModal(entryId){
+  const e = DB.budgetEntries.find(x=>x.id===entryId); if(!e || !e.bill) return;
+  const left = billLeftUSD(e); if(!(left>0)){ toast('الفاتورة مدفوعة'); return; }
+  const wrap = document.createElement('div'); wrap.className = 'modal-bg';
+  wrap.innerHTML = `<div class="modal" style="max-width:440px;">
+    <h3>💸 دفع الفاتورة #${escapeHtml(String(e.number||''))}${e.bill.vendor? ' — '+escapeHtml(e.bill.vendor) : ''}</h3>
+    <div style="font-size:13.5px; margin-bottom:8px;">المجموع: <b class="num">${fmtMoney(e.amount)}</b> · بقي: <b class="num" style="color:var(--debit);">${fmtMoney(left)}</b></div>
+    <div class="field"><label>المبلغ ${primSym()} *</label><input type="number" id="bp_amt" class="num" step="any" value="${inPrim(left)}"></div>
+    <div class="field"><label>التاريخ</label><input type="date" id="bp_date" value="${todayISO()}"></div>
+    <div class="field"><label>💸 من وين دفعت؟ *</label><select id="bp_t"><option value="">— اختار —</option>${moneyTargetOptions({})}</select></div>
+    <div style="font-size:12px; color:var(--ink-soft);">الدفعة بتنقص من الصندوق بس، وما بتنحسب مصروف جديد (المصروف محسوب بالفاتورة).</div>
+    <div id="bp_err" style="color:var(--debit); font-size:13px; min-height:16px;"></div>
+    <div class="row"><button class="btn" id="bp_cancel">إلغاء</button><button class="btn btn-primary" id="bp_ok">💾 تسجيل الدفعة</button></div>
+  </div>`;
+  document.body.appendChild(wrap);
+  const t = wrap.querySelector('#bp_t'); if(currentUserShift()) t.value = myDrawerIsPersonal()? '53103' : 'drawer';
+  wrap.querySelector('#bp_cancel').addEventListener('click', ()=>wrap.remove());
+  wrap.querySelector('#bp_ok').addEventListener('click', async ()=>{
+    const err = m=>{ wrap.querySelector('#bp_err').textContent = m; };
+    let usd = Number(outPrim(wrap.querySelector('#bp_amt').value))||0;
+    if(!(usd>0)){ err('يجب إدخال مبلغ أكبر من صفر'); return; }
+    if(usd > left + 1e-6){ err('المبلغ أكبر من الباقي على الفاتورة ('+fmtMoney(left)+')'); return; }
+    if(Math.abs(usd-left) < 1e-6) usd = left;
+    const src = t.value; if(!src){ err('لازم تحدد من وين دفعت'); return; }
+    if(src==='drawer' && !currentUserShift()){ err('ما عندك صندوق مفتوح'); return; }
+    const rate = curRate(); const sec = primIsSec();
+    const cur = sec? 'LBP' : 'USD', amt = sec? Math.round(usd*rate) : usd;
+    const date = wrap.querySelector('#bp_date').value || todayISO();
+    const pid = uid();
+    const mv = pushMoneyMove(src, 'out', cur, amt, { label:'دفع فاتورة #'+(e.number||'')+(e.bill.vendor? ' — '+e.bill.vendor : ''), refId: pid, date, rate: sec? rate : undefined });
+    if(!mv){ err('تعذّر تسجيل الحركة'); return; }
+    e.bill.payments = e.bill.payments || [];
+    e.bill.payments.push({ id:pid, usd, date, moveId: mv.id, from: moneyTargetLabel(src), by: currentUser? currentUser.username : '', at: Date.now() });
+    const jobs = [save(KEYS.cashMovements, DB.cashMovements), save(KEYS.budgetEntries, DB.budgetEntries)];
+    if(mv.shiftId) jobs.push(save(KEYS.cashierShifts, DB.cashierShifts));
+    await Promise.all(jobs);
+    wrap.remove(); toast('تم تسجيل الدفعة — انخصم من: '+moneyTargetLabel(src)+' ✅'); render();
+  });
+}
 function budgetBillView(e, cat){
   const b = e.bill || {}; const items = b.items || [];
+  const pays = (b.payments||[]).map(p=>({p, m: DB.cashMovements.find(x=>x.id===p.moveId)})).filter(x=>!x.m || !x.m.deleted);
   return `
   <div class="doc-actions no-print">
     <button class="btn btn-primary" onclick="printWithFilename('Bill-${safeText(e.number||'')}')">🖨 طباعة</button>
+    ${(b.onAccount && billLeftUSD(e)>0.000001)? `<button class="btn btn-credit" data-bill-pay="${e.id}">💸 دفع الفاتورة</button>` : ''}
     ${cat? `<button class="btn" data-nav="#/budget-category/${cat.id}">↩ رجوع</button>` : ''}
     <button class="btn btn-danger" data-del-doc="${e.id}" data-doc-kind="budgetentry">🗑 حذف</button>
   </div>
@@ -13056,13 +13138,18 @@ function budgetBillView(e, cat){
       <div class="r"><span>التاريخ:</span><b class="num">${fmtDate(e.date)}</b></div>
       ${b.vendor? `<div class="r"><span>من:</span><b>${escapeHtml(b.vendor)}</b></div>` : ''}
       ${b.ref? `<div class="r"><span>رقم فاتورتهم:</span><b class="num">${escapeHtml(b.ref)}</b></div>` : ''}
+      <div class="r"><span>الحالة:</span><b>${billStatusHtml(e)}</b></div>
       ${b.paidFrom? `<div class="r"><span>مدفوع من:</span><b>${escapeHtml(b.paidFrom)}</b></div>` : ''}
+      ${b.onAccount? `<div class="r"><span>الدفع:</span><b>📒 على الحساب</b></div>` : ''}
       ${b.by? `<div class="r"><span>سجّلها:</span><b>${escapeHtml(b.by)}</b></div>` : ''}
     </div>
     <div class="table-scroll"><table><thead><tr><th>#</th><th>البيان</th><th>الكمية</th><th>السعر</th><th>المجموع</th></tr></thead><tbody>
       ${items.map((x,i)=>`<tr><td class="num">${i+1}</td><td>${escapeHtml(x.d||'')}</td><td class="num">${fmtQty(x.q)}</td><td class="num">${fmtMoney(x.p)}</td><td class="num">${fmtMoney(x.q*x.p)}</td></tr>`).join('')}
     </tbody><tfoot><tr style="font-weight:800; background:var(--paper)"><td colspan="4">المجموع</td><td class="num">${fmtMoney(e.amount)}</td></tr></tfoot></table></div>
     ${b.memo? `<div style="margin-top:8px; font-size:13px;">ملاحظة: ${escapeHtml(b.memo)}</div>` : ''}
+    ${b.onAccount? `<h4 style="margin:14px 0 6px;">الدفعات</h4>${pays.length? `<div class="table-scroll"><table><thead><tr><th>التاريخ</th><th>من وين</th><th>المبلغ</th><th>سجّلها</th></tr></thead><tbody>
+      ${pays.map(x=>`<tr><td class="num">${fmtDate(x.p.date)}</td><td>${escapeHtml(x.p.from||'')}</td><td class="num">${fmtMoney(x.p.usd)}</td><td>${escapeHtml(x.p.by||'')}</td></tr>`).join('')}
+    </tbody><tfoot><tr style="font-weight:800; background:var(--paper)"><td colspan="2">المدفوع</td><td class="num">${fmtMoney(billPaidUSD(e))}</td><td class="num" style="color:var(--debit);">بقي ${fmtMoney(billLeftUSD(e))}</td></tr></tfoot></table></div>` : `<div style="font-size:13px; color:var(--ink-soft);">ما في دفعات بعد — بقي ${fmtMoney(billLeftUSD(e))}</div>`}` : ''}
     <div class="sig">التوقيع</div>
   </div>`;
 }
