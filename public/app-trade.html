@@ -990,7 +990,7 @@ function warehouseItemFromDb(row){
 const ITEM_EXTRA_KEYS = ['sku','subCategory','madeIn','uom','location','reorderPoint','costPrice','supplierId',
   'tireSize','dot','loadSpeed','rechargeDate','amperage','oilType','viscosity','compat','weight','dims','msds','status',
   'vatRate','margin','mfgYear','priceSec','costSec',
-  'baseItemId','baseQty','unitsPerBase','contentPerUnit','contentUnit','perUnitContent','hospitality','hospLimit'];
+  'baseItemId','baseQty','unitsPerBase','contentPerUnit','contentUnit','perUnitContent','hospitality','hospLimit','extraBases'];
 function pickItemExtra(src){
   const out = {};
   if(!src || typeof src!=='object') return out;
@@ -2383,6 +2383,12 @@ function openSubUnitModal(baseId, editId){
       </div>
       <div class="field"><label>قديش بياخد كل وحدة؟ *</label><input type="number" id="su_p" class="num" step="any" value="${edit && Number(edit.perUnitContent)>0? edit.perUnitContent : ''}"></div>
     </div>
+    <div style="border:1px dashed var(--line); border-radius:10px; padding:8px 10px; margin-bottom:10px;">
+      <div style="font-weight:800; font-size:13.5px;">➕ مكوّنات تانية (اختياري)</div>
+      <div style="font-size:12px; color:var(--ink-soft); margin-bottom:6px;">إذا الوحدة بتاخد كمان من منتج تاني (مثلاً قهوة مع نسلة، كحول مخلوط) — كل بيعة بتنقص من كل المكوّنات.</div>
+      <div id="su_extras"></div>
+      <button type="button" class="btn btn-sm" id="su_add_extra">➕ زيد مكوّن تاني</button>
+    </div>
     <div class="field"><label>سعر البيع (${escapeHtml(L)})</label><input type="number" id="su_price" class="num" value="${edit? inPrim(edit.price) : ''}"></div>
     <div id="su_sum" style="font-size:13.5px; background:var(--bg-2); border:1px solid var(--line); border-radius:8px; padding:8px 12px;"></div>
     <div id="su_err" style="color:var(--debit); font-size:13px; min-height:18px;"></div>
@@ -2391,9 +2397,29 @@ function openSubUnitModal(baseId, editId){
   document.body.appendChild(wrap);
   const $ = q=>wrap.querySelector(q), num = q=>Number($(q).value)||0;
   const ratio = ()=> $('#su_mode').value==='units' ? (num('#su_n')>0? 1/num('#su_n') : 0) : (num('#su_c')>0 && num('#su_p')>0 ? num('#su_p')/num('#su_c') : 0);
+  // المكوّنات الإضافية: منتج + محتوى الواحد منو + قديش بياخد الوحدة
+  const exOpts = sel=> DB.warehouseItems.filter(x=>x.id!==base.id && !x.baseItemId && !isServiceItem(x)).sort((a,b)=>String(a.name).localeCompare(String(b.name),'ar'))
+    .map(x=>`<option value="${x.id}" ${x.id===sel?'selected':''}>${escapeHtml(x.name)}</option>`).join('');
+  const addExtra = (id, used)=>{ const it0 = id? DB.warehouseItems.find(x=>x.id===id) : null; const row = document.createElement('div');
+    row.className = 'su-ex'; row.style.cssText = 'border-top:1px dashed var(--line); padding:6px 0;';
+    row.innerHTML = `<div style="display:flex; gap:6px; align-items:center;"><select class="su-ex-id" style="flex:1;"><option value="">— اختار المنتج —</option>${exOpts(id)}</select><button type="button" class="btn btn-sm btn-danger su-ex-x">✕</button></div>
+      <div class="grid grid-2" style="margin-top:6px;"><div class="field" style="margin:0;"><label>محتوى الواحد منو</label><div style="display:flex; gap:4px;"><input type="number" class="num su-ex-c" step="any" value="${it0 && Number(it0.contentPerUnit)? it0.contentPerUnit : ''}" placeholder="مثلاً 400"><select class="su-ex-u" style="width:70px;">${['غ','مل','كغ','ل'].map(u=>`<option ${((it0 && it0.contentUnit)||'غ')===u?'selected':''}>${u}</option>`).join('')}</select></div></div>
+      <div class="field" style="margin:0;"><label>قديش بتاخد الوحدة منو</label><input type="number" class="num su-ex-p" step="any" value="${used||''}" placeholder="مثلاً 10"></div></div>`;
+    $('#su_extras').appendChild(row);
+    row.querySelector('.su-ex-x').addEventListener('click', ()=>{ row.remove(); upd(); });
+    row.querySelector('.su-ex-id').addEventListener('change', e=>{ const b2 = DB.warehouseItems.find(x=>x.id===e.target.value); if(b2){ row.querySelector('.su-ex-c').value = Number(b2.contentPerUnit)||''; if(b2.contentUnit) row.querySelector('.su-ex-u').value = b2.contentUnit; } upd(); });
+    row.querySelectorAll('input').forEach(i=>i.addEventListener('input', upd));
+  };
+  const extras = ()=> Array.from(wrap.querySelectorAll('.su-ex')).map(r=>{ const id = r.querySelector('.su-ex-id').value, c = Number(r.querySelector('.su-ex-c').value)||0, pu = Number(r.querySelector('.su-ex-p').value)||0;
+    return { id, c, u: r.querySelector('.su-ex-u').value, p: pu, f: (c>0 && pu>0)? pu/c : 0, base: DB.warehouseItems.find(x=>x.id===id) }; });
   const upd = ()=>{ const cnt = $('#su_mode').value==='content'; $('#su_units').style.display = cnt? 'none' : ''; $('#su_content').style.display = cnt? '' : 'none';
     const f = ratio(), q = fastStock(base.id);
-    $('#su_sum').innerHTML = f>0? `كل «${escapeHtml(base.name)}» = <b class="num">${fmtQty(Math.round(1/f*100)/100)}</b> وحدة · الموجود هلق بيعمل <b class="num">${fmtQty(Math.floor(q/f+1e-9))}</b> وحدة${unitCostOf(base)? ' · تكلفة الوحدة <b class="num">'+fmtPrim(unitCostOf(base)*f)+'</b>' : ''}` : 'حدّد النسبة'; };
+    const ex = extras().filter(x=>x.base && x.f>0);
+    const can = Math.min(f>0? Math.floor(q/f+1e-9) : 0, ...ex.map(x=>Math.floor(fastStock(x.id)/x.f+1e-9)));
+    const cost = (f>0? (Number(base.costPrice)||0)*f : 0) + ex.reduce((a,x)=>a+(Number(x.base.costPrice)||0)*x.f, 0);
+    $('#su_sum').innerHTML = f>0? `كل «${escapeHtml(base.name)}» = <b class="num">${fmtQty(Math.round(1/f*100)/100)}</b> وحدة · الموجود هلق بيعمل <b class="num">${fmtQty(Math.max(0,can))}</b> وحدة${ex.length? ' (بحسب المكوّن يلي بيخلص أول)' : ''}${cost? ' · تكلفة الوحدة <b class="num">'+fmtPrim(cost)+'</b>' : ''}` : 'حدّد النسبة'; };
+  (edit && Array.isArray(edit.extraBases)? edit.extraBases : []).forEach(x=>{ const b2 = DB.warehouseItems.find(y=>y.id===x.id); const c = b2 && Number(b2.contentPerUnit); addExtra(x.id, c? Math.round(x.qty*c*1000)/1000 : ''); });
+  $('#su_add_extra').addEventListener('click', ()=>{ addExtra('', ''); });
   wrap.querySelectorAll('[data-su-w]').forEach(b=>b.addEventListener('click', ()=>{ $('#su_name').value = b.getAttribute('data-su-w')+' '+base.name; }));
   wrap.querySelectorAll('input,select').forEach(e=>e.addEventListener('input', upd)); $('#su_mode').addEventListener('change', upd); upd();
   $('#su_cancel').addEventListener('click', ()=>wrap.remove());
@@ -2401,12 +2427,16 @@ function openSubUnitModal(baseId, editId){
     const name = $('#su_name').value.trim(), f = ratio();
     if(!name){ $('#su_err').textContent = 'اكتب اسم الوحدة'; return; }
     if(!(f>0)){ $('#su_err').textContent = 'حدّد النسبة'; return; }
+    const ex = extras();
+    for(const x of ex){ if(!x.id){ $('#su_err').textContent = 'اختار المنتج لكل مكوّن (أو امحيه)'; return; } if(!(x.f>0)){ $('#su_err').textContent = 'حدّد محتوى «'+(x.base? x.base.name : '')+'» وقديش بتاخد الوحدة منو'; return; } }
+    if(new Set(ex.map(x=>x.id)).size !== ex.length){ $('#su_err').textContent = 'في مكوّن مكرّر'; return; }
     const pr = $('#su_price').value;
     const it = edit || {id:uid(), createdAt:Date.now(), category:base.category||'', brand:base.brand||'', group:base.group};
     it.name = name; it.baseItemId = base.id; it.baseQty = f;
     if($('#su_mode').value==='units'){ it.unitsPerBase = num('#su_n'); delete it.perUnitContent; }
     else { it.perUnitContent = num('#su_p'); delete it.unitsPerBase; base.contentPerUnit = num('#su_c'); base.contentUnit = $('#su_cu').value; }
     if(pr!==''){ const v = Number(pr)||0; if(sec){ it.priceSec = v>0? v : null; it.price = v>0? v/curRate() : 0; } else { it.price = v; it.priceSec = null; } }
+    if(ex.length){ it.extraBases = ex.map(x=>({ id:x.id, qty:x.f })); ex.forEach(x=>{ x.base.contentPerUnit = x.c; x.base.contentUnit = x.u; }); } else delete it.extraBases;
     if(!edit) DB.warehouseItems.push(it);
     invalidateWarehouseCaches();
     const ok = await save(KEYS.warehouseItems, DB.warehouseItems);
@@ -2505,7 +2535,7 @@ function buildStockLedger(itemId){
     const cv = r=>Object.assign({}, r, {from:r.from/f, to:r.to/f, balance:Math.round(r.balance/f*1000)/1000});
     return {rows:L.rows.map(cv), totFrom:L.totFrom/f, totTo:L.totTo/f, finalBalance:Math.floor(L.finalBalance/f + 1e-9)};
   }
-  const kids = subItemsOf(itemId), kidF = new Map(kids.map(k=>[k.id, Number(k.baseQty)])), kidN = new Map(kids.map(k=>[k.id, k.name]));
+  const kids = subItemsOf(itemId), kidF = new Map(kids.map(k=>{ const b = subBasesOf(k).find(x=>x.id===itemId); return [k.id, b? b.f : Number(k.baseQty)]; })), kidN = new Map(kids.map(k=>[k.id, k.name]));
   const mine = id=> id===itemId || kidF.has(id);
   const qf = s=> (Number(s.qty)||0) * (kidF.get(s.itemId)||1);
   const lbl = (s, def)=> (s.note? s.note : def) + (kidF.has(s.itemId)? ' — '+fmtQty(Number(s.qty)||0)+' '+kidN.get(s.itemId) : '');
@@ -3895,11 +3925,12 @@ function stockMap(){
   if(c && c.ins===DB.stockIns && c.outs===DB.stockOuts && c.nIn===DB.stockIns.length && c.nOut===DB.stockOuts.length && c.items===DB.warehouseItems && c.nItems===DB.warehouseItems.length) return c.m;
   const m = new Map();
   // الوحدات الفرعية (كاس من قنينة، فنجان من بن): حركاتها بتنحسب على المنتج الأساسي بالنسبة
-  const sub = new Map(); (DB.warehouseItems||[]).forEach(it=>{ const b = subBaseOf(it); if(b) sub.set(it.id, b); });
-  const add = (id, q)=>{ const b = sub.get(id); if(b){ m.set(b.id, (m.get(b.id)||0) + q*b.f); } else m.set(id, (m.get(id)||0) + q); };
+  // منتج من أكتر من أساسي (قهوة + نسلة، كحول مخلوط…): كل حركة بتنقص من كل الأساسيات بنسبها
+  const sub = new Map(); (DB.warehouseItems||[]).forEach(it=>{ const bs = subBasesOf(it); if(bs.length) sub.set(it.id, bs); });
+  const add = (id, q)=>{ const bs = sub.get(id); if(bs){ bs.forEach(b=>m.set(b.id, (m.get(b.id)||0) + q*b.f)); } else m.set(id, (m.get(id)||0) + q); };
   DB.stockIns.forEach(x=>{ if(!x.deleted) add(x.itemId, Number(x.qty)||0); });
   DB.stockOuts.forEach(x=>{ if(!x.deleted) add(x.itemId, -(Number(x.qty)||0)); });
-  sub.forEach((b, id)=>{ m.set(id, Math.floor((m.get(b.id)||0)/b.f + 1e-9)); });   // الوحدات الكاملة يلي فينا نبيعها
+  sub.forEach((bs, id)=>{ m.set(id, Math.max(0, Math.min(...bs.map(b=>Math.floor((m.get(b.id)||0)/b.f + 1e-9))))); });   // الوحدات الكاملة يلي فينا نعملها (بحسب المكوّن يلي بيخلص أول)
   _stockMapCache = {m, ins:DB.stockIns, outs:DB.stockOuts, nIn:DB.stockIns.length, nOut:DB.stockOuts.length, items:DB.warehouseItems, nItems:DB.warehouseItems.length};
   return m;
 }
@@ -3910,10 +3941,21 @@ function subBaseOf(it){
   if(!base || base.baseItemId) return null;   // مستوى واحد بس
   return { id:base.id, f:Number(it.baseQty), base };
 }
-function subOfHint(it){ const b = subBaseOf(it); return b? `<div style="font-size:11px; color:var(--ink-soft);">🧩 من: ${escapeHtml(b.base.name)}</div>` : ''; }
-// المنتج الأساسي يلي إلو وحدات (قنينة، علبة شاي، كيلو بن) ما بينباع لحالو — البيع والضيافة من الوحدات بس
-function isSoldByUnits(it){ return !!(it && !it.baseItemId && (DB.warehouseItems||[]).some(x=>x.baseItemId===it.id && Number(x.baseQty)>0)); }
-function subItemsOf(baseId){ return (DB.warehouseItems||[]).filter(x=>x.baseItemId===baseId && Number(x.baseQty)>0); }
+// كل الأساسيات يلي بياخد منها المنتج: الأساسي الأول + المكوّنات الإضافية [{id, f, base}]
+function subBasesOf(it){
+  const b = subBaseOf(it); if(!b) return [];
+  const out = [b];
+  (Array.isArray(it.extraBases)? it.extraBases : []).forEach(x=>{ const base = (DB.warehouseItems||[]).find(y=>y.id===x.id);
+    if(base && !base.baseItemId && base.id!==b.id && Number(x.qty)>0 && !out.some(o=>o.id===base.id)) out.push({ id:base.id, f:Number(x.qty), base }); });
+  return out;
+}
+function usesBase(x, baseId){ return !!(x && Number(x.baseQty)>0 && x.baseItemId && (x.baseItemId===baseId || (Array.isArray(x.extraBases) && x.extraBases.some(e=>e.id===baseId && Number(e.qty)>0)))); }
+function subBaseAmountTxt(b){ const c = Number(b.base.contentPerUnit)||0; return c? fmtQty(Math.round(b.f*c*100)/100)+(b.base.contentUnit||'غ') : fmtQty(Math.round(b.f*1000)/1000); }
+function subOfHint(it){ const bs = subBasesOf(it); if(!bs.length) return '';
+  return `<div style="font-size:11px; color:var(--ink-soft);">🧩 من: ${bs.map(b=>escapeHtml(b.base.name)+(bs.length>1? ' '+subBaseAmountTxt(b) : '')).join(' + ')}</div>`; }
+// المنتج الأساسي يلي إلو وحدات (قنينة، علبة شاي، كيلو بن، علبة نسلة) ما بينباع لحالو — البيع والضيافة من الوحدات بس
+function isSoldByUnits(it){ return !!(it && !it.baseItemId && (DB.warehouseItems||[]).some(x=>usesBase(x, it.id))); }
+function subItemsOf(baseId){ return (DB.warehouseItems||[]).filter(x=>usesBase(x, baseId)); }
 // عرض كمية منتج أساسي إلو وحدات فرعية: «4 قناني + 5 كاسات» أو بالغرام
 function subStockHint(it){
   const kids = subItemsOf(it.id); if(!kids.length && !it.contentPerUnit) return '';
@@ -3923,7 +3965,7 @@ function subStockHint(it){
   return parts.length? `<div style="font-size:11.5px; color:var(--ink-soft);">${parts.join(' · ')}</div>` : '';
 }
 // تكلفة الوحدة (بالدولار الداخلي) — الوحدة الفرعية = تكلفة الأساسي × النسبة
-function unitCostOf(it){ const b = subBaseOf(it); const src = b? b.base : it; const c = Number(src && src.costPrice)||0; return b? c*b.f : c; }
+function unitCostOf(it){ const bs = subBasesOf(it); if(!bs.length) return Number(it && it.costPrice)||0; return bs.reduce((a,b)=>a + (Number(b.base.costPrice)||0)*b.f, 0); }
 function fastStock(id){ return stockMap().get(id) || 0; }
 function warehouseItemHaystack(it){
   const cached = _whHayCache.get(it);
@@ -10168,8 +10210,9 @@ function autoRoundSellPrices(){
 let _whOpenSubs = new Set();
 function whNestSubItems(items){
   const inList = new Set(items.map(x=>x.id)), out = [], kids = new Map();
-  items.forEach(it=>{ if(it.baseItemId && inList.has(it.baseItemId)){ (kids.get(it.baseItemId) || kids.set(it.baseItemId, []).get(it.baseItemId)).push(it); } });
-  items.forEach(it=>{ if(it.baseItemId && inList.has(it.baseItemId)) return; out.push(it); (kids.get(it.id)||[]).forEach(k=>out.push(Object.assign(Object.create(Object.getPrototypeOf(k)), k, {__subOf:it.id}))); });
+  const basesIn = it=> subBasesOf(it).map(b=>b.id).filter(id=>inList.has(id));
+  items.forEach(it=>{ basesIn(it).forEach(bid=>{ (kids.get(bid) || kids.set(bid, []).get(bid)).push(it); }); });
+  items.forEach(it=>{ if(basesIn(it).length) return; out.push(it); (kids.get(it.id)||[]).forEach(k=>out.push(Object.assign(Object.create(Object.getPrototypeOf(k)), k, {__subOf:it.id}))); });
   return out;
 }
 function whSubRowAttrs(it){ if(!it.__subOf) return ''; return `data-sub-of="${it.__subOf}" class="wh-sub-row" style="${_whOpenSubs.has(it.__subOf)? '' : 'display:none;'} background:var(--bg-2);"`; }
@@ -11236,7 +11279,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-11-03 · 22:00 · v82';
+const APP_TRADE_BUILD = '2026-11-04 · 02:30 · v83';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 function settingsView(){
   const s = DB.settings;
