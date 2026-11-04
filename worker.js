@@ -3078,6 +3078,226 @@ async function trackPush(request, env, url) {
   return json(200, { result });
 }
 
+// META-ADS-BEGIN
+// ============================================================
+//  إعلانات Meta — ربط حساب الإعلانات وعرض التقارير (ads_read)
+//  التوكن مشفّر بقاعدة البيانات وما بيوصل للمتصفح أبداً
+// ============================================================
+function metaGraph(env) { return 'https://graph.facebook.com/' + (env.META_GRAPH_VERSION || 'v26.0'); }
+function metaReady(env) { return !!(env.META_APP_ID && env.META_APP_SECRET); }
+function metaRedirect(env) { return (env.WEBSITE_URL || 'https://libanapps.com') + '/api/meta-ads/callback'; }
+function metaB64(bytes) {
+  return btoa(String.fromCharCode(...new Uint8Array(bytes))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+function metaUnb64(s) {
+  const b = atob(String(s).replace(/-/g, '+').replace(/_/g, '/'));
+  return Uint8Array.from(b, c => c.charCodeAt(0));
+}
+async function metaHmac(secret, msg) {
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  return new Uint8Array(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(msg)));
+}
+function metaSame(a, b) {
+  if (a.length !== b.length) return false;
+  let d = 0;
+  for (let i = 0; i < a.length; i++) d |= a[i] ^ b[i];
+  return d === 0;
+}
+async function metaAesKey(env) {
+  const raw = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(env.META_APP_SECRET + ':meta-ads-token'));
+  return crypto.subtle.importKey('raw', raw, 'AES-GCM', false, ['encrypt', 'decrypt']);
+}
+async function metaEncrypt(env, text) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, await metaAesKey(env), new TextEncoder().encode(text));
+  return metaB64(iv) + '.' + metaB64(ct);
+}
+async function metaDecrypt(env, enc) {
+  const [iv, ct] = String(enc).split('.');
+  const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: metaUnb64(iv) }, await metaAesKey(env), metaUnb64(ct));
+  return new TextDecoder().decode(pt);
+}
+// نداء Graph — الخطأ الحقيقي من Meta بيوصل للواجهة، ما بينبلع
+async function metaCall(env, path, params, token) {
+  const u = new URL(metaGraph(env) + path);
+  for (const k in (params || {})) u.searchParams.set(k, params[k]);
+  if (token) {
+    u.searchParams.set('access_token', token);
+    u.searchParams.set('appsecret_proof', Array.from(await metaHmac(env.META_APP_SECRET, token)).map(b => b.toString(16).padStart(2, '0')).join(''));
+  }
+  const r = await fetch(u.toString());
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || j.error) {
+    const e = new Error((j.error && j.error.message) || ('Meta ' + r.status));
+    e.metaCode = j.error && j.error.code;
+    throw e;
+  }
+  return j;
+}
+function metaFail(e) {
+  // 190 = التوكن انتهى أو انلغى — لازم يعيد الربط
+  if (e.metaCode === 190) return json(401, { error: 'انتهى ربط حساب فيسبوك — أعد الربط', reconnect: true });
+  return json(502, { error: 'Meta: ' + e.message, meta_code: e.metaCode || null });
+}
+async function metaConnection(env, userId) {
+  const rows = await sbGet(env, `meta_ads_connections?user_id=eq.${encodeURIComponent(userId)}&select=fb_name,token_enc,token_expires_at&limit=1`);
+  return rows[0] || null;
+}
+async function metaToken(env, conn) {
+  try { return await metaDecrypt(env, conn.token_enc); }
+  catch { const e = new Error('token'); e.metaCode = 190; throw e; }
+}
+async function metaAdsConnect(request, env) {
+  if (!metaReady(env)) return json(503, { error: 'ربط Meta غير مفعّل بعد على الخادم' });
+  const me = await currentUser(request, env);
+  if (!me) return json(401, { error: 'سجّل الدخول أولًا' });
+  const nonce = metaB64(crypto.getRandomValues(new Uint8Array(18)));
+  const payload = metaB64(new TextEncoder().encode(JSON.stringify({ u: me.id, n: nonce, e: Date.now() + 600000 })));
+  const state = payload + '.' + metaB64(await metaHmac(env.META_APP_SECRET, payload));
+  const u = new URL('https://www.facebook.com/' + (env.META_GRAPH_VERSION || 'v26.0') + '/dialog/oauth');
+  u.searchParams.set('client_id', env.META_APP_ID);
+  u.searchParams.set('redirect_uri', metaRedirect(env));
+  u.searchParams.set('state', state);
+  u.searchParams.set('response_type', 'code');
+  u.searchParams.set('scope', 'ads_read');
+  // الكوكي بيربط الموافقة بنفس المتصفح اللي بدأ الربط — حتى ما حدا يبعت رابط ربط لغيرو
+  return new Response(JSON.stringify({ url: u.toString() }), {
+    status: 200,
+    headers: {
+      'Content-Type': 'application/json', 'Cache-Control': 'no-store',
+      'Set-Cookie': `la_meta_nonce=${nonce}; Path=/api/meta-ads; Max-Age=600; HttpOnly; Secure; SameSite=Lax`
+    }
+  });
+}
+async function metaAdsCallback(request, env, url) {
+  const back = (q) => new Response(null, { status: 302, headers: {
+    Location: '/account?ads=1&' + q + '#adsCard', 'Cache-Control': 'no-store',
+    'Set-Cookie': 'la_meta_nonce=; Path=/api/meta-ads; Max-Age=0; HttpOnly; Secure; SameSite=Lax'
+  } });
+  const fail = (reason) => back('meta_error=' + encodeURIComponent(reason));
+  if (!metaReady(env)) return fail('not_configured');
+  if (url.searchParams.get('error')) return fail('denied');
+  const [payload, sig] = String(url.searchParams.get('state') || '').split('.');
+  if (!payload || !sig) return fail('bad_state');
+  let st;
+  try {
+    if (!metaSame(metaUnb64(sig), await metaHmac(env.META_APP_SECRET, payload))) return fail('bad_state');
+    st = JSON.parse(new TextDecoder().decode(metaUnb64(payload)));
+  } catch { return fail('bad_state'); }
+  const cookie = (request.headers.get('Cookie') || '').match(/(?:^|;\s*)la_meta_nonce=([^;]+)/);
+  if (!st.e || st.e < Date.now() || !cookie || cookie[1] !== st.n) return fail('bad_state');
+  const code = url.searchParams.get('code');
+  if (!code) return fail('denied');
+  try {
+    const short = await metaCall(env, '/oauth/access_token', {
+      client_id: env.META_APP_ID, client_secret: env.META_APP_SECRET, redirect_uri: metaRedirect(env), code
+    });
+    const long = await metaCall(env, '/oauth/access_token', {
+      grant_type: 'fb_exchange_token', client_id: env.META_APP_ID, client_secret: env.META_APP_SECRET, fb_exchange_token: short.access_token
+    });
+    const who = await metaCall(env, '/me', { fields: 'id,name' }, long.access_token);
+    const r = await sbPost(env, 'meta_ads_connections?on_conflict=user_id', {
+      user_id: st.u, fb_user_id: who.id, fb_name: who.name || '',
+      token_enc: await metaEncrypt(env, long.access_token),
+      token_expires_at: long.expires_in ? new Date(Date.now() + long.expires_in * 1000).toISOString() : null,
+      updated_at: new Date().toISOString()
+    }, 'resolution=merge-duplicates,return=minimal');
+    if (!r.ok) {
+      console.error('meta_ads save', r.status, await r.text());
+      return fail('db');
+    }
+  } catch (e) {
+    console.error('meta_ads callback', e.message);
+    return fail('meta');
+  }
+  return back('meta=connected');
+}
+async function metaAdsStatus(request, env) {
+  const me = await currentUser(request, env);
+  if (!me) return json(401, { error: 'سجّل الدخول أولًا' });
+  const base = { configured: metaReady(env), public: env.META_ADS_PUBLIC === '1' };
+  let conn;
+  try { conn = await metaConnection(env, me.id); }
+  catch { return json(500, { ...base, error: 'تعذّرت قراءة بيانات الربط — تأكد من تشغيل ملف upgrade-meta-ads.sql' }); }
+  if (!conn) return json(200, { ...base, connected: false });
+  return json(200, { ...base, connected: true, name: conn.fb_name || '' });
+}
+async function metaAdsAccounts(request, env) {
+  if (!metaReady(env)) return json(503, { error: 'ربط Meta غير مفعّل بعد على الخادم' });
+  const me = await currentUser(request, env);
+  if (!me) return json(401, { error: 'سجّل الدخول أولًا' });
+  const conn = await metaConnection(env, me.id);
+  if (!conn) return json(409, { error: 'حساب فيسبوك غير مربوط', reconnect: true });
+  try {
+    const token = await metaToken(env, conn);
+    const j = await metaCall(env, '/me/adaccounts', { fields: 'account_id,name,currency,account_status', limit: '100' }, token);
+    return json(200, { accounts: (j.data || []).map(a => ({ id: a.account_id, name: a.name || a.account_id, currency: a.currency || '', status: a.account_status })) });
+  } catch (e) { return metaFail(e); }
+}
+const META_RANGES = { today: 1, yesterday: 1, last_7d: 1, last_30d: 1, this_month: 1, last_month: 1 };
+async function metaAdsInsights(request, env) {
+  if (!metaReady(env)) return json(503, { error: 'ربط Meta غير مفعّل بعد على الخادم' });
+  const me = await currentUser(request, env);
+  if (!me) return json(401, { error: 'سجّل الدخول أولًا' });
+  const body = await request.json().catch(() => ({}));
+  const id = String(body.account_id || '');
+  const range = META_RANGES[body.range] ? body.range : 'last_30d';
+  if (!/^\d{1,30}$/.test(id)) return json(400, { error: 'حساب إعلانات غير صالح' });
+  const conn = await metaConnection(env, me.id);
+  if (!conn) return json(409, { error: 'حساب فيسبوك غير مربوط', reconnect: true });
+  try {
+    const token = await metaToken(env, conn);
+    const fields = 'spend,reach,impressions,clicks,ctr,cpc';
+    // صلاحية الوصول للحساب بتتحقق منها Meta نفسها عبر توكن المستخدم
+    const total = await metaCall(env, `/act_${id}/insights`, { level: 'account', date_preset: range, fields }, token);
+    const rows = await metaCall(env, `/act_${id}/insights`, {
+      level: 'campaign', date_preset: range, fields: 'campaign_id,campaign_name,' + fields, limit: '200', sort: 'spend_descending'
+    }, token);
+    return json(200, {
+      range, total: (total.data && total.data[0]) || null, campaigns: rows.data || [],
+      truncated: !!(rows.paging && rows.paging.next)
+    });
+  } catch (e) { return metaFail(e); }
+}
+async function metaAdsDisconnect(request, env) {
+  const me = await currentUser(request, env);
+  if (!me) return json(401, { error: 'سجّل الدخول أولًا' });
+  const conn = await metaConnection(env, me.id);
+  if (!conn) return json(200, { ok: true });
+  // منسحب الإذن من Meta كمان؛ إذا فشل (توكن منتهي مثلاً) منكمّل الحذف عنا
+  let revoked = false;
+  if (metaReady(env)) {
+    try {
+      const token = await metaToken(env, conn);
+      const u = new URL(metaGraph(env) + '/me/permissions');
+      u.searchParams.set('access_token', token);
+      revoked = (await fetch(u.toString(), { method: 'DELETE' })).ok;
+    } catch { revoked = false; }
+  }
+  const r = await fetch(`${env.SUPABASE_URL}/rest/v1/meta_ads_connections?user_id=eq.${encodeURIComponent(me.id)}`, { method: 'DELETE', headers: sbHeaders(env) });
+  if (!r.ok) return json(500, { error: 'تعذّر حذف بيانات الربط' });
+  return json(200, { ok: true, revoked });
+}
+// Meta بتنادي هالمسارين لما المستخدم يشيل التطبيق أو يطلب حذف بياناتو
+async function metaAdsPlatformDelete(request, env, isDeletion) {
+  if (!metaReady(env)) return json(503, { error: 'not configured' });
+  const form = await request.formData().catch(() => null);
+  const [sig, payload] = String((form && form.get('signed_request')) || '').split('.');
+  if (!sig || !payload) return json(400, { error: 'bad signed_request' });
+  let data;
+  try {
+    if (!metaSame(metaUnb64(sig), await metaHmac(env.META_APP_SECRET, payload))) return json(400, { error: 'bad signature' });
+    data = JSON.parse(new TextDecoder().decode(metaUnb64(payload)));
+  } catch { return json(400, { error: 'bad signed_request' }); }
+  if (!/^\d+$/.test(String(data.user_id || ''))) return json(400, { error: 'bad user' });
+  const r = await fetch(`${env.SUPABASE_URL}/rest/v1/meta_ads_connections?fb_user_id=eq.${data.user_id}`, { method: 'DELETE', headers: sbHeaders(env) });
+  if (!r.ok) return json(500, { error: 'delete failed' });
+  if (!isDeletion) return json(200, { ok: true });
+  const code = await sha256Hex('meta-del:' + data.user_id + ':' + Date.now());
+  return json(200, { url: (env.WEBSITE_URL || 'https://libanapps.com') + '/privacy#data-deletion', confirmation_code: code.slice(0, 16) });
+}
+// META-ADS-END
+
 // ---------- أي صفحة نعرض لأي مسار ----------
 function pageFor(pathname) {
   var p = pathname.replace(/\/+$/, '') || '/';
@@ -3237,6 +3457,18 @@ export default {
           if (url.pathname === '/api/app-wa/send') return await appWaSend(request, env);
           if (url.pathname === '/api/app-wa/verify') return await appWaVerify(request, env);
           if (url.pathname === '/api/app-wa/own-verify') return await appWaOwnVerify(request, env);
+          return json(404, { error: 'not found' });
+        }
+        if (url.pathname.startsWith('/api/meta-ads/')) {
+          if (url.pathname === '/api/meta-ads/callback') return await metaAdsCallback(request, env, url);
+          if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
+          if (url.pathname === '/api/meta-ads/status') return await metaAdsStatus(request, env);
+          if (url.pathname === '/api/meta-ads/connect') return await metaAdsConnect(request, env);
+          if (url.pathname === '/api/meta-ads/accounts') return await metaAdsAccounts(request, env);
+          if (url.pathname === '/api/meta-ads/insights') return await metaAdsInsights(request, env);
+          if (url.pathname === '/api/meta-ads/disconnect') return await metaAdsDisconnect(request, env);
+          if (url.pathname === '/api/meta-ads/deauthorize') return await metaAdsPlatformDelete(request, env, false);
+          if (url.pathname === '/api/meta-ads/data-deletion') return await metaAdsPlatformDelete(request, env, true);
           return json(404, { error: 'not found' });
         }
         if (url.pathname === '/api/phone/status' || url.pathname === '/api/phone/send' || url.pathname === '/api/phone/link' || url.pathname === '/api/account/password') {

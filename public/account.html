@@ -933,6 +933,50 @@ window.dbMsg=function(m){ var M={
         <div class="msg" id="waMsg"></div>
       </div>
 
+      <div class="card hidden" style="margin-bottom:18px" id="adsCard">
+        <h3 style="font-size:19px">📣 إعلانات فيسبوك وإنستغرام</h3>
+        <p style="color:var(--muted);font-size:14px;margin:4px 0 14px">اربط حساب إعلاناتك لمتابعة الإنفاق والنتائج من لوحتك. نقرأ التقارير فقط ولا نغيّر إعلاناتك.</p>
+        <div id="adsOff" class="hidden">
+          <button class="btn btn-o" id="adsConnect">ربط حساب فيسبوك</button>
+        </div>
+        <div id="adsOn" class="hidden">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+            <span style="font-size:14.5px"><b style="color:var(--ok)">مربوط ✓</b> <span id="adsName" style="font-weight:700"></span></span>
+            <button class="btn btn-g sm" id="adsDisconnect" style="margin-inline-start:auto">إلغاء الربط</button>
+          </div>
+          <div class="grid2" style="gap:12px">
+            <div><label>حساب الإعلانات</label><select id="adsAccount"></select></div>
+            <div><label>الفترة</label><select id="adsRange">
+              <option value="today">اليوم</option>
+              <option value="yesterday">أمس</option>
+              <option value="last_7d">آخر 7 أيام</option>
+              <option value="last_30d" selected>آخر 30 يومًا</option>
+              <option value="this_month">هذا الشهر</option>
+              <option value="last_month">الشهر الماضي</option>
+            </select></div>
+          </div>
+          <button class="btn btn-g sm" id="adsRefresh" style="margin-top:12px">تحديث التقرير</button>
+          <div id="adsReport" class="hidden" style="margin-top:14px">
+            <div id="adsTotals" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:14px"></div>
+            <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--line);border-radius:10px">
+              <table style="width:100%;border-collapse:collapse;font-size:13.5px;white-space:nowrap">
+                <thead><tr style="background:var(--bg)">
+                  <th style="padding:9px 10px;text-align:start">الحملة</th>
+                  <th style="padding:9px 10px;text-align:start">الإنفاق</th>
+                  <th style="padding:9px 10px;text-align:start">الوصول</th>
+                  <th style="padding:9px 10px;text-align:start">مرات الظهور</th>
+                  <th style="padding:9px 10px;text-align:start">النقرات</th>
+                  <th style="padding:9px 10px;text-align:start">نسبة النقر</th>
+                  <th style="padding:9px 10px;text-align:start">تكلفة النقرة</th>
+                </tr></thead>
+                <tbody id="adsRows"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        <div class="msg" id="adsMsg"></div>
+      </div>
+
       <div class="card" style="margin-bottom:18px" id="pwCard">
         <h3 style="font-size:19px">🔑 تغيير كلمة المرور</h3>
         <div id="pwCurWrap"><label>كلمة المرور الحالية</label><input type="password" id="pwCur" autocomplete="current-password"></div>
@@ -1767,6 +1811,101 @@ function laWaForce(sb, opts){
 
   $('#out').addEventListener('click',async function(){ await sb.auth.signOut(); location.href='/'; });
   boot();
+})();
+</script>
+
+<script>
+// بطاقة إعلانات Meta — تظهر برابط ?ads=1 أو للي رابط حسابو، ولكل الزبائن بعد موافقة Meta
+(function(){
+  if(!sb) return;
+  var q=new URLSearchParams(location.search), card=document.getElementById('adsCard');
+  function el(id){ return document.getElementById(id); }
+  function msg(t,ok){ var m=el('adsMsg'); m.className='msg'+(ok===true?' s':ok===false?' e':''); m.textContent=t||''; }
+  async function api(path,body){
+    var s=await sb.auth.getSession(); var tok=s.data.session&&s.data.session.access_token;
+    if(!tok) return {error:'سجّل الدخول أولًا',__status:401};
+    try{
+      var r=await fetch('/api/meta-ads/'+path,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok},body:JSON.stringify(body||{})});
+      var j={}; try{ j=await r.json(); }catch(e){}
+      if(!r.ok&&!j.error) j.error='خطأ ('+r.status+')';
+      return j;
+    }catch(e){ return {error:'لا يوجد اتصال بالإنترنت'}; }
+  }
+  var CUR='';
+  function num(v,d){ var n=Number(v); return isFinite(n)?n.toLocaleString('en-US',{minimumFractionDigits:d||0,maximumFractionDigits:d||0}):'—'; }
+  function money(v){ return v==null?'—':num(v,2)+(CUR?' '+CUR:''); }
+  function pct(v){ return v==null?'—':num(v,2)+'%'; }
+  function showOff(){ el('adsOff').classList.remove('hidden'); el('adsOn').classList.add('hidden'); }
+  function fail(j){ msg(j.error,false); if(j.reconnect) showOff(); }
+  function tile(label,val){
+    var d=document.createElement('div');
+    d.setAttribute('style','background:var(--bg);border-radius:10px;padding:10px 12px');
+    var a=document.createElement('div'); a.setAttribute('style','color:var(--muted);font-size:12.5px'); a.textContent=label;
+    var b=document.createElement('div'); b.setAttribute('style','font-weight:800;font-size:16.5px;direction:ltr;text-align:start'); b.textContent=val;
+    d.appendChild(a); d.appendChild(b); return d;
+  }
+  async function report(){
+    var acc=el('adsAccount').value; if(!acc) return;
+    var o=el('adsAccount').selectedOptions[0]; CUR=o?o.getAttribute('data-cur')||'':'';
+    msg('جارٍ تحميل التقرير…'); el('adsRefresh').disabled=true;
+    var j=await api('insights',{account_id:acc,range:el('adsRange').value});
+    el('adsRefresh').disabled=false;
+    if(j.error){ el('adsReport').classList.add('hidden'); return fail(j); }
+    var t=j.total||{}, box=el('adsTotals'), body=el('adsRows');
+    box.textContent=''; body.textContent='';
+    box.appendChild(tile('إجمالي الإنفاق',money(t.spend||0)));
+    box.appendChild(tile('الوصول',num(t.reach||0)));
+    box.appendChild(tile('مرات الظهور',num(t.impressions||0)));
+    box.appendChild(tile('النقرات',num(t.clicks||0)));
+    (j.campaigns||[]).forEach(function(c){
+      var tr=document.createElement('tr'); tr.setAttribute('style','border-top:1px solid var(--line)');
+      [c.campaign_name,money(c.spend),num(c.reach),num(c.impressions),num(c.clicks),pct(c.ctr),money(c.cpc)].forEach(function(v,i){
+        var td=document.createElement('td'); td.setAttribute('style','padding:9px 10px'+(i?';direction:ltr;text-align:start':''));
+        td.setAttribute('translate','no'); td.textContent=v; tr.appendChild(td);
+      });
+      body.appendChild(tr);
+    });
+    el('adsReport').classList.remove('hidden');
+    if(!(j.campaigns||[]).length) msg('لا توجد نتائج لهذه الفترة');
+    else if(j.truncated) msg('يعرض التقرير أول 200 حملة فقط');
+    else msg('');
+  }
+  async function accounts(){
+    msg('جارٍ تحميل حسابات الإعلانات…');
+    var j=await api('accounts'); if(j.error) return fail(j);
+    var s=el('adsAccount'); s.textContent='';
+    (j.accounts||[]).forEach(function(a){
+      var o=document.createElement('option'); o.value=a.id; o.textContent=a.name+' ('+a.id+')'; o.setAttribute('data-cur',a.currency||''); s.appendChild(o);
+    });
+    if(!s.options.length){ el('adsReport').classList.add('hidden'); return msg('لا توجد حسابات إعلانات لهذا المستخدم',false); }
+    await report();
+  }
+  var ERR={denied:'لم تتم الموافقة على الربط',bad_state:'انتهت صلاحية طلب الربط — حاول مرة أخرى',db:'تعذّر حفظ الربط — تأكد من تشغيل ملف upgrade-meta-ads.sql',meta:'رفضت Meta طلب الربط — حاول مرة أخرى',not_configured:'ربط Meta غير مفعّل بعد على الخادم'};
+  async function start(){
+    var st=await api('status');
+    if(!(q.get('ads')==='1'||st.public||st.connected)) return;
+    card.classList.remove('hidden');
+    if(st.error&&st.connected===undefined){ msg(st.error,false); return; }
+    if(q.get('meta_error')) msg(ERR[q.get('meta_error')]||q.get('meta_error'),false);
+    if(!st.connected){ showOff(); if(!st.configured) msg(ERR.not_configured,false); return; }
+    el('adsName').textContent=st.name||''; el('adsOff').classList.add('hidden'); el('adsOn').classList.remove('hidden');
+    await accounts();
+    if(q.get('meta')==='connected'&&!el('adsMsg').classList.contains('e')) msg('تم ربط الحساب بنجاح',true);
+  }
+  el('adsConnect').addEventListener('click',async function(){
+    this.disabled=true; msg('جارٍ التحويل إلى فيسبوك…');
+    var j=await api('connect'); this.disabled=false;
+    if(j.url) location.href=j.url; else msg(j.error||'خطأ غير معروف',false);
+  });
+  el('adsRange').addEventListener('change',report);
+  el('adsAccount').addEventListener('change',report);
+  el('adsRefresh').addEventListener('click',report);
+  el('adsDisconnect').addEventListener('click',async function(){
+    if(!confirm('إلغاء ربط حساب فيسبوك وحذف بيانات الربط؟')) return;
+    var j=await api('disconnect'); if(j.error) return msg(j.error,false);
+    showOff(); el('adsReport').classList.add('hidden'); msg('تم إلغاء الربط',true);
+  });
+  sb.auth.getSession().then(function(r){ if(r.data.session) start(); });
 })();
 </script>
 
