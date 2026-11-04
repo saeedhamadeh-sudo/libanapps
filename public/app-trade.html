@@ -693,6 +693,7 @@ function moneyTargetOptions(opts){
   if(opts.drawer!==false && !myDrawerIsPersonal()) o.push(`<option value="drawer" ${sh? '' : 'disabled'}>💵 صندوقي${currentUser? ' ('+escapeHtml(currentUser.username)+')' : ''}${sh? '' : ' — مسكّر'}</option>`);
   if(opts.main!==false && canUseSafe()) o.push(`<option value="main">🗄 ${MAIN_BOX_NAME}</option>`);
   moneyAccounts().forEach(a=>{ if(a.kind==='owner' && !hasPermission('owner_pay')) return;
+    if(a.kind==='whish'){ if(opts.whish!==false) o.push(`<option value="${a.code}">📱 Whish (${a.code})</option>`); return; }
     if(a.kind==='personal' && opts.drawer===false && myDrawerIsPersonal()) return;   // نفس الصندوق يلي عم نشتغل عليه
     o.push(`<option value="${a.code}">${a.kind==='personal' && myDrawerIsPersonal()? '💵 ' : ''}${a.code} — ${escapeHtml(a.kind==='personal' && myDrawerIsPersonal()? 'حساب شخصي (صندوقي)' : a.name)}</option>`); });
   if(opts.other) o.push(`<option value="other">✍️ غير (اكتب)</option>`);
@@ -2285,6 +2286,13 @@ function nextVoucherNumber(){
 }
 
 /* ============================= WORKERS (عمال) ============================= */
+// معاش شهري: بينحفظ كـ«يومية» مبلغها المعاش، ومعلّمة بالتفاصيل (بلا عمود جديد)
+const SALARY_TAG = '💼 معاش شهر ';
+function isSalaryEntry(e){ return !!(e && String(e.details||'').indexOf(SALARY_TAG)===0); }
+function salaryMonthOf(e){ const m = String(e.details||'').slice(SALARY_TAG.length).match(/^(\d{4}-\d{2})/); return m? m[1] : ''; }
+function salaryExtraOf(e){ return String(e.details||'').slice(SALARY_TAG.length).replace(/^\d{4}-\d{2}/,'').replace(/^\s*—\s*/,''); }
+function fmtMonthAr(ym){ if(!ym) return ''; const [y,m] = ym.split('-'); return m+'/'+y; }
+function lastSalaryOf(workerId){ const l = DB.workEntries.filter(e=>!e.deleted && e.workerId===workerId && isSalaryEntry(e)).sort((a,b)=>(b.createdAt||0)-(a.createdAt||0))[0]; return l? Number(l.dailyWage)||0 : 0; }
 function computeWorkEntryTotal(e){
   const daily = Number(e.dailyWage)||0;
   const ot = (Number(e.overtimeHours)||0) * (Number(e.overtimeRate)||0);
@@ -2293,7 +2301,7 @@ function computeWorkEntryTotal(e){
 }
 function buildWorkerLedger(workerId){
   const entries = DB.workEntries.filter(e=>e.workerId===workerId && !e.deleted).map(e=>({
-    date:e.date, type:'يومية', label:e.details? e.details : 'يومية عمل', number:e.number,
+    date:e.date, type:isSalaryEntry(e)? 'معاش' : 'يومية', label:isSalaryEntry(e)? 'معاش شهر '+fmtMonthAr(salaryMonthOf(e))+(salaryExtraOf(e)? ' — '+salaryExtraOf(e) : '') : (e.details? e.details : 'يومية عمل'), number:e.number,
     from:0, to:computeWorkEntryTotal(e), ref:'workentry', id:e.id, sortKey:e.createdAt||0
   }));
   const pay = DB.workerPayments.filter(p=>p.workerId===workerId && !p.deleted).map(p=>({
@@ -6291,6 +6299,7 @@ function workerView(wk){
       </div>
       <div class="action-row">
         <button class="btn btn-debit" data-nav="#/workentry/new?worker=${wk.id}">+ يومية جديدة</button>
+        <button class="btn btn-debit" data-nav="#/workentry/new?worker=${wk.id}&salary=1">💼 + معاش شهري</button>
         <button class="btn btn-credit" data-nav="#/workerpay/new?worker=${wk.id}">+ دفعة</button>
         <button class="btn" data-nav="#/worker-statement/${wk.id}">🖨 طباعة كشف حساب</button>
         <button class="btn btn-sm" id="editWkBtn">✎ تعديل بيانات العامل</button>
@@ -6313,15 +6322,39 @@ function workEntryFormView(e, workerId){
   if(!_workEntryDraft || _workEntryDraft.__editId !== (e?e.id:'new-'+workerId)){
     if(e){ _workEntryDraft = JSON.parse(JSON.stringify(e)); _workEntryDraft.__editId = e.id; }
     else{
+      const wantSal = new URLSearchParams(location.hash.split('?')[1]||'').get('salary')==='1';
       _workEntryDraft = {id:null, workerId, number:nextWorkEntryNumber(), date:todayISO(),
-        dailyWage:0, overtimeHours:0, overtimeRate:0, weightKg:0, kgRate:0, details:'', __editId:'new-'+workerId};
+        dailyWage: wantSal? lastSalaryOf(workerId) : 0, overtimeHours:0, overtimeRate:0, weightKg:0, kgRate:0, details:'', __editId:'new-'+workerId};
+      if(wantSal){ _workEntryDraft.__salary = true; _workEntryDraft.__month = todayISO().slice(0,7); _workEntryDraft.__extra = ''; }
     }
+    if(e && isSalaryEntry(e)){ _workEntryDraft.__salary = true; _workEntryDraft.__month = salaryMonthOf(e) || e.date.slice(0,7); _workEntryDraft.__extra = salaryExtraOf(e); }
   }
   const d = _workEntryDraft;
   const total = computeWorkEntryTotal(d);
+  if(d.__salary) return `
+  <div class="card">
+    <h2><span class="dot"></span> 💼 ${e?'تعديل معاش':'معاش شهري'} ${wk?'— '+escapeHtml(wk.name):''}</h2>
+    <div style="display:flex; gap:8px; margin-bottom:10px;"><button type="button" class="btn btn-sm" id="w_mode_daily">يومية</button><button type="button" class="btn btn-sm btn-primary">💼 معاش شهري</button></div>
+    <div class="grid grid-2">
+      <div class="field"><label>رقم القيد</label><input type="text" id="w_number" class="num" value="${escapeHtml(d.number)}"></div>
+      <div class="field"><label>الشهر *</label><input type="month" id="w_month" value="${d.__month||''}"></div>
+    </div>
+    <div class="grid grid-2">
+      <div class="field"><label>المعاش الشهري ${primSym()} *</label><input type="number" id="w_salary" class="num" value="${d.dailyWage? inPrim(d.dailyWage) : ''}"></div>
+      <div class="field"><label>تاريخ الاستحقاق</label><input type="date" id="w_date" value="${d.date}"></div>
+    </div>
+    <div class="field"><label>ملاحظة (اختياري)</label><input type="text" id="w_details" value="${escapeHtml(d.__extra||'')}" placeholder="مثلاً: ناقص يومين غياب"></div>
+    <div style="font-size:12px; color:var(--ink-soft);">المعاش بينزل عحساب العامل كمستحق إلو، ولما تدفعلو بتعمل «دفعة» متل العادة.</div>
+    <div class="totals-box"><div class="row big"><span>المعاش ${primSym()}</span><span class="v" id="wTotal">${fmtMoney(total)}</span></div></div>
+    <div class="action-row" style="margin-top:16px">
+      <button class="btn btn-primary" id="saveWorkEntryBtn">💾 حفظ المعاش</button>
+      <button class="btn" data-nav="#/worker/${workerId}">إلغاء</button>
+    </div>
+  </div>`;
   return `
   <div class="card">
     <h2><span class="dot"></span> ${e?'تعديل يومية':'يومية جديدة'} ${wk?'— '+escapeHtml(wk.name):''}</h2>
+    ${e? '' : `<div style="display:flex; gap:8px; margin-bottom:10px;"><button type="button" class="btn btn-sm btn-primary">يومية</button><button type="button" class="btn btn-sm" id="w_mode_salary">💼 معاش شهري</button></div>`}
     <div class="grid grid-2">
       <div class="field"><label>رقم اليومية</label><input type="text" id="w_number" class="num" value="${escapeHtml(d.number)}"></div>
       <div class="field"><label>التاريخ</label><input type="date" id="w_date" value="${d.date}"></div>
@@ -6352,6 +6385,35 @@ function workEntryFormView(e, workerId){
 function bindWorkEntryFormEvents(){
   const el = document.getElementById('w_number');
   if(!el || !_workEntryDraft) return;
+  const mS = document.getElementById('w_mode_salary'), mD = document.getElementById('w_mode_daily');
+  if(mS) mS.addEventListener('click', ()=>{ Object.assign(_workEntryDraft, {__salary:true, __month: todayISO().slice(0,7), __extra:'', dailyWage: lastSalaryOf(_workEntryDraft.workerId) || 0, overtimeHours:0, overtimeRate:0}); render(); });
+  if(mD) mD.addEventListener('click', ()=>{ Object.assign(_workEntryDraft, {__salary:false, dailyWage:0, details:''}); render(); });
+  if(_workEntryDraft.__salary){
+    const refreshS = ()=>{ const t = document.getElementById('wTotal'); if(t) t.textContent = fmtMoney(computeWorkEntryTotal(_workEntryDraft)); };
+    el.addEventListener('input', e=>_workEntryDraft.number=e.target.value);
+    document.getElementById('w_month').addEventListener('input', e=>_workEntryDraft.__month=e.target.value);
+    document.getElementById('w_date').addEventListener('input', e=>_workEntryDraft.date=e.target.value);
+    document.getElementById('w_salary').addEventListener('input', e=>{ _workEntryDraft.dailyWage=Number(outPrim(e.target.value))||0; refreshS(); });
+    document.getElementById('w_details').addEventListener('input', e=>_workEntryDraft.__extra=e.target.value);
+    document.getElementById('saveWorkEntryBtn').addEventListener('click', async ()=>{
+      const d = _workEntryDraft;
+      if(!d.number){ toast('رقم القيد مطلوب'); return; }
+      if(!/^\d{4}-\d{2}$/.test(d.__month||'')){ toast('اختار الشهر'); return; }
+      if(!(Number(d.dailyWage)>0)){ toast('اكتب المعاش'); return; }
+      const dup = DB.workEntries.find(x=>!x.deleted && x.workerId===d.workerId && x.id!==d.id && isSalaryEntry(x) && salaryMonthOf(x)===d.__month);
+      if(dup && !confirm('في معاش مسجّل لهالعامل عن شهر '+fmtMonthAr(d.__month)+' — بدك تسجّل كمان واحد؟')) return;
+      const details = SALARY_TAG + d.__month + (String(d.__extra||'').trim()? ' — '+String(d.__extra).trim() : '');
+      let savedId;
+      if(d.id){ const idx = DB.workEntries.findIndex(x=>x.id===d.id); const old = DB.workEntries[idx];
+        DB.workEntries[idx] = Object.assign({}, old, {number:d.number, date:d.date||todayISO(), dailyWage:Number(d.dailyWage)||0, overtimeHours:0, overtimeRate:0, weightKg:0, kgRate:0, details}); savedId = d.id; }
+      else { const clean = {id:uid(), createdAt:Date.now(), workerId:d.workerId, number:d.number, date:d.date||todayISO(), dailyWage:Number(d.dailyWage)||0, overtimeHours:0, overtimeRate:0, weightKg:0, kgRate:0, details};
+        DB.workEntries.push(clean); savedId = clean.id; }
+      const ok = await save(KEYS.workEntries, DB.workEntries);
+      toast(ok? 'تم حفظ المعاش ✅' : 'حدث خطأ أثناء الحفظ');
+      _workEntryDraft = null; go(`#/workentry/${savedId}`);
+    });
+    return;
+  }
   const refresh = ()=>{
     const t = document.getElementById('wTotal');
     if(t) t.textContent = fmtMoney(computeWorkEntryTotal(_workEntryDraft));
@@ -6392,7 +6454,9 @@ function workEntryPrintView(e){
   const total = computeWorkEntryTotal(e);
   const readOnly = !!currentCustomerSession || !!currentWorkerSession;
   const lines = [];
-  if(Number(e.dailyWage)>0) lines.push(['يومية ثابتة', fmtMoney(e.dailyWage)]);
+  const sal = isSalaryEntry(e);
+  if(sal) lines.push(['💼 معاش شهر '+fmtMonthAr(salaryMonthOf(e))+(salaryExtraOf(e)? ' — '+escapeHtml(salaryExtraOf(e)) : ''), fmtMoney(e.dailyWage)]);
+  else if(Number(e.dailyWage)>0) lines.push(['يومية ثابتة', fmtMoney(e.dailyWage)]);
   if(Number(e.overtimeHours)>0) lines.push([`ساعات إضافية (${e.overtimeHours} × ${fmtMoney(e.overtimeRate)})`, fmtMoney(e.overtimeHours*e.overtimeRate)]);
   if(Number(e.weightKg)>0) lines.push([`أجرة بالكيلو (${e.weightKg} كغ × ${fmtMoney(e.kgRate)})`, fmtMoney(e.weightKg*e.kgRate)]);
   return `
@@ -6402,7 +6466,7 @@ function workEntryPrintView(e){
     <button class="btn btn-primary" onclick="printWithFilename('WorkEntry-${safeText(e.number)}')">🖨 طباعة</button>
   </div>
   <div class="doc">
-    ${docHead('يومية عمل')}
+    ${docHead(sal? 'معاش شهري' : 'يومية عمل')}
     <div class="doc-info">
       <div class="r"><span>العامل:</span><b>${escapeHtml(wk?wk.name:'')}</b></div>
       <div class="r"><span>رقم الحساب:</span><b class="num">${escapeHtml(wk?wk.accountNumber||'—':'')}</b></div>
@@ -9518,6 +9582,13 @@ function safeMoves(){
     else { const sign = m.type==='safe_in'? 1 : -1, a = Math.abs(Number(m.amount)||0);
       out.push({id:m.id, at:m.createdAt, date:m.date, kind:m.type==='safe_in'?'in':'out', lbp: m.currency==='LBP'? sign*a : 0, usd: m.currency==='USD'? sign*a : 0, label: isDocMirrorMove(m)? (m.type==='safe_in'? 'قبض: ' : 'صرف: ')+String(m.note).slice(DOC_MIRROR_TAG.length) : (m.type==='safe_in'?'إيداع بالصندوق الأساسي':'سحب من الصندوق الأساسي')+(m.note? ' — '+m.note : '')}); }
   });
+  // Whish جزء من الصندوق الأساسي: الدفع منو أو السحب لبرّا بينقّص المجموع (السحب كاش عالصندوق الأساسي ما بيغيّر المجموع)
+  (DB.cashMovements||[]).forEach(m=>{ if(!isWhishAcctMove(m) || String(m.note||'').includes(WHISH_TO_MAIN)) return;
+    const sign = m.type==='acct_in'? 1 : -1, a = Math.abs(Number(m.amount)||0);
+    out.push({id:m.id, at:m.createdAt, date:m.date, kind:sign>0?'in':'out', lbp:m.currency==='LBP'? sign*a : 0, usd:m.currency==='USD'? sign*a : 0,
+      label:'📱 '+(isDocMirrorMove(m)? (sign>0? 'قبض عـ Whish: ' : 'دفع من Whish: ')+String(m.note).slice(DOC_MIRROR_TAG.length) : String(m.note||'').replace(/^\[حساب\] /,'')).replace(/\s*⟨\d+⟩/,'')}); });
+  (DB.cashMovements||[]).forEach(m=>{ if(!isWhishAcctMove(m) || !String(m.note||'').includes(WHISH_TO_MAIN)) return; const a = Math.abs(Number(m.amount)||0);
+    out.push({id:m.id, at:m.createdAt, date:m.date, kind:'in', lbp:0, usd:0, label:'📱→💵 '+String(m.note||'').replace(/^\[حساب\] /,'').replace(WHISH_TO_MAIN,'').replace(/\s*⟨\d+⟩/,'')+' ('+(m.currency==='USD'? '$'+a.toFixed(2) : fmtNum(a)+' '+secCurLabel())+')'}); });
   // القيود اليدوية على الصندوق الأساسي (53101 ليرة / 53102 دولار)
   (DB.cashMovements||[]).forEach(m=>{ if(m.deleted || m.type!=='gl') return; const i = glInfo(m)||{}; const a = Math.abs(Number(m.amount)||0);
     ['53101','53102'].forEach(code=>{ if(i.dr!==code && i.cr!==code) return; const sg = i.dr===code? 1 : -1; const isL = code==='53101';
@@ -9540,12 +9611,13 @@ function safeView(){
     <h2><span class="dot"></span> 🗄 الصندوق الأساسي</h2>
     <div class="stats" style="margin:8px 0 12px;">
       <div class="stat"><div class="k">الموجود بالصندوق الأساسي ${L}</div><div class="v num">${fmtNum(bal.lbp)}</div></div>
-      ${(()=>{ const w = whishClosedTotals(); return (w.lbp||w.usd)? `<div class="stat"><div class="k">📱 منها Whish</div><div class="v num" style="color:#a3174a;">${[w.lbp? fmtNum(w.lbp)+' '+L : '', w.usd? '$'+w.usd.toFixed(2) : ''].filter(Boolean).join(' + ')}</div></div><div class="stat"><div class="k">💵 منها كاش ${L}</div><div class="v num">${fmtNum(bal.lbp - w.lbp)}</div></div>` : ''; })()}
+      ${(()=>{ const w = whishBalanceParts(); return (Math.abs(w.lbp)>=1||Math.abs(w.usd)>=0.005)? `<div class="stat"><div class="k">📱 منها Whish</div><div class="v num" style="color:#a3174a;">${[w.lbp? fmtNum(w.lbp)+' '+L : '', w.usd? '$'+w.usd.toFixed(2) : ''].filter(Boolean).join(' + ')}</div></div><div class="stat"><div class="k">💵 منها كاش ${L}</div><div class="v num">${fmtNum(bal.lbp - w.lbp)}</div></div>` : ''; })()}
       ${(lbpOnly && Math.abs(bal.usd)<0.005)? '' : `<div class="stat"><div class="k">الموجود بالصندوق الأساسي $</div><div class="v num">$${bal.usd.toFixed(2)}</div></div>`}
     </div>
     ${canUseSafe()? `<div class="action-row" style="margin-bottom:10px;">
       <button class="btn btn-credit" data-safe-move="safe_in">➕ إيداع بالصندوق الأساسي</button>
       <button class="btn btn-debit" data-safe-move="safe_out">➖ سحب من الصندوق الأساسي</button>
+      <button class="btn" data-whish-withdraw="1" style="background:#fdeef3; border-color:#e7a3bb; color:#a3174a; font-weight:800;">📱 سحب من Whish</button>
     </div>` : ''}
     <div class="table-scroll"><table>
       <thead><tr><th>التاريخ والساعة</th><th>الحركة</th><th>المبلغ</th><th>الرصيد بعدها</th></tr></thead>
@@ -10012,6 +10084,52 @@ function openEditShiftCloseModal(id){
   });
 }
 document.addEventListener('click', e=>{ const b = e.target.closest && e.target.closest('[data-edit-close]'); if(b){ e.preventDefault(); openEditShiftCloseModal(b.getAttribute('data-edit-close')); } });
+/* ===== Whish كجزء من الصندوق الأساسي: سحب منو ودفع منو ===== */
+const WHISH_CODE = '51601';
+const WHISH_TO_MAIN = '⟪main⟫';   // سحب من Whish كاش عالصندوق الأساسي: المجموع ما بيتغيّر، بس بيتحوّل من Whish لكاش
+function isWhishAcctMove(m){ return m && !m.deleted && (m.type==='acct_in' || m.type==='acct_out') && moneyAcctOf(m)===WHISH_CODE; }
+// رصيد Whish (يلي انقفل من الصناديق + الحركات عليه) بالعملتين
+function whishBalanceParts(){ const c = whishClosedTotals(); const o = {lbp:c.lbp, usd:c.usd};
+  (DB.cashMovements||[]).forEach(m=>{ if(!isWhishAcctMove(m)) return; const a = Math.abs(Number(m.amount)||0)*(m.type==='acct_in'? 1 : -1); if(m.currency==='USD') o.usd += a; else o.lbp += a; });
+  return o; }
+function openWhishWithdrawModal(){
+  const L = secCurLabel(), lbpOnly = currencyMode()==='SEC';
+  const w = whishBalanceParts();
+  const wrap = document.createElement('div'); wrap.className = 'modal-bg';
+  wrap.innerHTML = `<div class="modal" style="max-width:420px;">
+    <h3>📱 سحب من Whish</h3>
+    <div style="font-size:13.5px; margin-bottom:8px;">الموجود على Whish: <b class="num" style="color:#a3174a;">${[fmtNum(w.lbp)+' '+escapeHtml(L), (lbpOnly && Math.abs(w.usd)<0.005)? '' : '$'+w.usd.toFixed(2)].filter(Boolean).join(' + ')}</b></div>
+    <div style="display:flex; gap:6px;"><input type="number" id="ww_amt" class="num" min="0" style="flex:1; font-size:18px; padding:10px;">
+      ${lbpOnly? '' : `<select id="ww_cur" style="width:80px;"><option value="LBP">${escapeHtml(L)}</option><option value="USD">$</option></select>`}</div>
+    <div class="field" style="margin-top:8px;"><label>لوين راحت المصاري؟ *</label>
+      <select id="ww_t"><option value="">— اختار —</option>${canUseSafe()? `<option value="main">💵 كاش عالصندوق الأساسي</option>` : ''}${moneyTargetOptions({main:false, whish:false, other:true})}</select></div>
+    <div class="field"><label>ملاحظة *</label><input type="text" id="ww_note" placeholder="مثلاً: سحبت من محل Whish"></div>
+    <div id="ww_err" style="color:var(--debit); font-size:13px; min-height:18px;"></div>
+    <div class="row"><button class="btn" id="ww_cancel">إلغاء</button><button class="btn btn-primary" id="ww_ok">✅ حفظ</button></div>
+  </div>`;
+  document.body.appendChild(wrap);
+  const $ = q=>wrap.querySelector(q);
+  setTimeout(()=>$('#ww_amt').focus(), 50);
+  $('#ww_cancel').addEventListener('click', ()=>wrap.remove());
+  $('#ww_ok').addEventListener('click', async ()=>{
+    const amt = Number($('#ww_amt').value)||0, note = $('#ww_note').value.trim(), cur = $('#ww_cur')? $('#ww_cur').value : 'LBP', t = $('#ww_t').value;
+    if(!(amt>0)){ $('#ww_err').textContent = 'اكتب مبلغ صحيح'; return; }
+    const have = cur==='USD'? w.usd : w.lbp;
+    if(amt > have + (cur==='USD'? 0.005 : 1)){ $('#ww_err').textContent = 'المبلغ أكبر من الموجود على Whish'; return; }
+    if(!t){ $('#ww_err').textContent = 'اختار لوين راحت المصاري'; return; }
+    if(!note){ $('#ww_err').textContent = 'اكتب ملاحظة'; return; }
+    if(t==='drawer' && !currentUserShift()){ $('#ww_err').textContent = 'ما عندك صندوق مفتوح'; return; }
+    if(t==='main'){
+      pushMoneyMove(WHISH_CODE, 'out', cur, amt, {label:'سحب Whish كاش إلى: '+MAIN_BOX_NAME+' — '+note+' '+WHISH_TO_MAIN});
+    } else {
+      pushMoneyMove(WHISH_CODE, 'out', cur, amt, {label:'سحب Whish إلى: '+(t==='other'? 'غير' : moneyTargetLabel(t))+' — '+note});
+      if(t!=='other') pushMoneyMove(t, 'in', cur, amt, {label:'من: Whish — '+note});
+    }
+    const ok = (await Promise.all([save(KEYS.cashMovements, DB.cashMovements)].concat((t==='drawer' || t==='53103')? [save(KEYS.cashierShifts, DB.cashierShifts)] : []))).every(Boolean);
+    wrap.remove(); toast(ok? 'تم السحب من Whish ✅' : 'حدث خطأ أثناء الحفظ'); render();
+  });
+}
+document.addEventListener('click', e=>{ const b = e.target.closest && e.target.closest('[data-whish-withdraw]'); if(b){ e.preventDefault(); openWhishWithdrawModal(); } });
 function openSafeMoveModal(type){
   const L = secCurLabel(), lbpOnly = currencyMode()==='SEC';
   const wrap = document.createElement('div');
@@ -11279,7 +11397,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-11-04 · 02:30 · v83';
+const APP_TRADE_BUILD = '2026-11-04 · 22:30 · v84';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 function settingsView(){
   const s = DB.settings;
