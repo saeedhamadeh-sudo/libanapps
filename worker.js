@@ -3088,6 +3088,7 @@ function pageFor(pathname) {
   if (p === '/trade-info')    return '/product-trade.html';
   if (p === '/signup')        return '/signup.html';
   if (p === '/login')         return '/login.html';
+  if (p === '/privacy' || p === '/privacy-policy') return '/privacy.html';
   if (p === '/reset')         return '/reset.html';
   if (p === '/account')       return '/account.html';
   if (p === '/alum')          return '/app-alum.html';
