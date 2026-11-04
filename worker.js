@@ -908,7 +908,7 @@ function normPhone(p) {
 }
 function validPhone(d) {
   if (!/^\d{9,15}$/.test(d)) return false;
-  if (d.startsWith('961')) return /^961(3\d{6}|7[0169]\d{6}|8[01]\d{6}|[1-9]\d{6})$/.test(d);
+  if (d.startsWith('961')) return /^961(3\d{6}|7\d{7}|8[01]\d{6}|[1-9]\d{6})$/.test(d);
   return true;
 }
 function waCode() {
