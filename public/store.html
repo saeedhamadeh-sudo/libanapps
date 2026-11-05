@@ -1419,6 +1419,13 @@ function renderRich(s){
   flushP(); flushL(); return out.join('');
 }
 
+/* وصف قصير: نص عادي بدون وسوم HTML ولا علامات Markdown */
+function richText(s){
+  if(!s) return '';
+  var h=renderRich(s).replace(/<\/(p|li|h[1-6]|tr|blockquote|div)>|<br\s*\/?>/gi,' ');
+  var d=document.createElement('div'); d.innerHTML=h;
+  return (d.textContent||'').replace(/\s+/g,' ').trim();
+}
 function slugFromUrl(){
   if(window.__STORE_SLUG__) return String(window.__STORE_SLUG__).toLowerCase();
   var seg=location.pathname.split('/').filter(Boolean);
@@ -2044,7 +2051,7 @@ function renderPV(){
   var stockNote=so?'<div class="stock-n">'+esc(T.sold)+'</div>':(isFinite(max)&&max<=5&&max>0?'<div class="stock-n">'+esc(fillT(T.left,{n:max}))+'</div>':'<div class="stock-n ok">✓ '+esc(T.inStockN)+'</div>');
   var perks=(S.usps||[]).filter(function(x){return x&&x.t}).slice(0,3).map(function(x){return '<div>'+(IC[x.i]||IC.truck)+'<span>'+esc(x.t)+'</span></div>'}).join('');
   var keySpecs=(S.store_type==='electronics'&&p.specs&&p.specs.length)?'<div class="chips-s" style="margin:12px 0">'+p.specs.slice(0,4).map(function(s){return '<span>'+esc((s.k?s.k+' ':'')+s.v)+'</span>'}).join('')+'</div>':'';
-  var short=d.replace(/\s+/g,' ').slice(0,170)+(d.length>170?'…':'');
+  var dp=richText(d), short=dp.slice(0,170)+(dp.length>170?'…':'');
   var se=saleEndText(p), wa=String(S.whatsapp||'').replace(/\D/g,'');
   var pc0=pcats(p), rel=PRODS.filter(function(x){return x.id!==p.id&&pcats(x).some(function(c){return pc0.indexOf(c)>=0})}).slice(0,4);
   if(rel.length<4) rel=rel.concat(PRODS.filter(function(x){return x.id!==p.id&&rel.indexOf(x)<0}).slice(0,4-rel.length));
