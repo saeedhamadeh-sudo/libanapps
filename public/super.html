@@ -1462,18 +1462,20 @@ $('#restTbl').addEventListener('click',async function(e){
       TPL.map(function(x,i){return (i+1)+'. '+x.name+' ('+x.cats+' أقسام)'}).join('\n')+'\n\nاكتب الرقم:','1');
     if(pickT===null) return;
     var tp=TPL[parseInt(pickT,10)-1]; if(!tp){ alert('رقم غير صحيح'); return; }
-    var mode=prompt('"'+tp.name+'" → "'+r.name_ar+'"\n\n'+
-      '1 = زيد الأقسام فوق المنيو الموجود\n2 = امسح أقسام ومنتجات المنيو الحالي وحط هيدا مكانهن\n\nاكتب الرقم:','1');
+    var mode=prompt('"'+tp.name+'" → "'+r.name_ar+'"\n\n'+(r.vendors_mode
+      ? '🏍️ هيدا منيو مطاعم/محلات — القالب رح ينضاف كمطعم/محل لحالو.\n\n1 = زيد (إذا المطعم/المحل موجود بنفس الاسم، بيرجّعو ظاهر وبيزيد عليه)\n2 = امسح منيو هالمطعم/المحل بس وحط القالب من جديد (باقي المحلات ما بتنلمس)'
+      : '1 = زيد الأقسام فوق المنيو الموجود\n2 = امسح أقسام ومنتجات المنيو الحالي وحط هيدا مكانهن')+'\n\nاكتب الرقم:','1');
     if(mode===null) return; mode=String(mode).trim();
     if(mode!=='1'&&mode!=='2'){ alert('رقم غير صحيح'); return; }
-    if(mode==='2'){
+    if(mode==='2' && !r.vendors_mode){
       var typed2=prompt('رح تنمسح كل أقسام ومنتجات "'+r.name_ar+'" (الطلبات القديمة بتضل).\nاكتب رابط المطعم للتأكيد: '+r.slug,'');
       if(typed2===null) return;
       if(typed2.trim()!==r.slug){ alert('الرابط غير مطابق — ما تغيّر شي'); return; }
     }
     var ap=await sb.rpc('super_apply_menu_template',{p_rid:id,p_code:tp.code,p_replace:mode==='2'});
     if(ap.error){ alert('لم ينجح: '+ap.error.message); return; }
-    alert('تم ✓ انضاف '+ap.data.categories+' قسم و'+ap.data.items+' منتج لـ"'+r.name_ar+'"');
+    alert('تم ✓ انضاف '+ap.data.categories+' قسم و'+ap.data.items+' منتج لـ"'+r.name_ar+'"'+
+      (ap.data.vendor?'\n🏪 تحت المطعم/المحل: '+ap.data.vendor.name+(ap.data.vendor['new']?' (جديد)':''):''));
 
   }else if(b.dataset.vmode){
     var vm=!r.vendors_mode;
