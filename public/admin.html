@@ -1676,7 +1676,7 @@ function paintLock(){
 $('#lockBtn').addEventListener('click',function(){
   SORTLOCK=!SORTLOCK;
   try{ localStorage.setItem('la_sortlock', SORTLOCK?'1':'0'); }catch(e){}
-  paintLock(); paintItems(); paintCatList();
+  paintLock(); paintItems(); loadCats();
 });
 
 /* ---------- تعديل الأسعار السريع ---------- */
@@ -2163,43 +2163,319 @@ var ADMIN_EN = {"لوحة المطعم": "Restaurant dashboard", "البريد �
 };
 
 // ترجمة اللوحة — بتبدّل النصوص الظاهرة فقط، وبيانات المطعم بتضل متل ما هي
-var ADMIN_LANG='ar';
-// t(ar) — بتستخدم بـ JS الـ dynamic لترجمة أي نص عربي لإنكليزي
-function t(ar){ return (ADMIN_LANG==='en' && ADMIN_EN[ar]) ? ADMIN_EN[ar] : ar; }
-var ORIG = (typeof WeakMap!=='undefined') ? new WeakMap() : null;
+// ---------- ترجمات إضافية (كل الواجهة: التوصيل، الفروع/المحلات، ركّب وجبتك، الرسائل) ----------
+Object.assign(ADMIN_EN, {
+  "لوحة المطعم — LibanApps": "Restaurant dashboard — LibanApps",
+  "إخفاء/إظهار القائمة": "Show/hide menu",
+  "عم نتحقق من دخولك…": "Checking your sign-in…",
+  "لازم تسجّل دخولك أولاً — عم نحوّلك…": "Please sign in first — redirecting…",
+  "هذا الحساب مش مربوط بأي مطعم.": "This account is not linked to any restaurant.",
+  "ما قدرنا نجيب بيانات المطعم": "Couldn't load the restaurant data",
+  "أنت داخل كمشرف منصة · التعديلات بتنطبق على هذا المطعم": "You are signed in as platform admin · changes apply to this restaurant",
+  "رجوع للوحتك": "Back to your panel",
+  "تسجيل الدخول": "Sign in",
+  // التبويبات
+  "📦 المنتجات": "📦 Products", "🗂️ الأقسام": "🗂️ Categories", "🧾 الطلبات": "🧾 Orders", "🏍️ التوصيل": "🏍️ Delivery",
+  "🖼️ صور وعروض": "🖼️ Media & offers", "🎟️ قسائم الخصم": "🎟️ Discount coupons", "⚙️ الإعدادات": "⚙️ Settings",
+  "💳 الدفع": "💳 Payment", "📱 رمز QR": "📱 QR code", "🏪 الفروع": "🏪 Branches", "⭐ الاشتراك": "⭐ Subscription",
+  "الاشتراك": "Subscription", "التوصيل": "Delivery", "قسائم الخصم": "Discount coupons", "الفروع": "Branches",
+  // عام
+  "إلغاء": "Cancel", "إغلاق": "Close", "إيقاف": "Stop", "تفعيل": "Activate", "نسخ": "Copy", "نسخ الرابط": "Copy link",
+  "نسخ ID": "Copy ID", "حفظ التعديل": "Save changes", "تم ✓": "Done ✓", "تم الحفظ": "Saved", "تم الحفظ ✓": "Saved ✓",
+  "تم الحذف": "Deleted", "انحفظ": "Saved", "تم حفظ": "Saved", "تمت الإضافة": "Added", "خطأ": "Error", "فشل": "Failed",
+  "لم ينجح": "Didn't work", "ما نجح": "Didn't work", "لم يُحفظ": "Not saved", "عم نحفظ": "Saving", "عم نحفظ…": "Saving…",
+  "عم نرفع…": "Uploading…", "عم نرقّم…": "Numbering…", "عم نغيّر…": "Changing…", "ما نجح الرفع": "Upload failed",
+  "ما نجح رفع الشعار": "Logo upload failed", "ما نجح الحذف": "Delete failed", "الاسم": "Name", "الاسم مطلوب": "Name is required",
+  "الاسم بالعربي مطلوب": "Arabic name is required", "النوع": "Type", "السعر": "Price", "سعر": "Price", "سعر…": "Price…",
+  "السعر (ل.ل.)": "Price (LBP)", "ل.ل.": "LBP", "سعر معدّل": "Price changed", "طلب": "Order", "من": "of", "و": "and",
+  "على": "on", "منذ": "ago", "الآن": "now", "حتى": "until", "يوم": "days", "د": "min", "س": "h", "كم/س": "km/h",
+  "رقم الهاتف": "Phone number", "الهاتف": "Phone", "تواصل معنا": "Contact us", "افتح صفحة حسابي": "Open my account page",
+  "إنستغرام": "Instagram", "فيسبوك": "Facebook", "تيك توك": "TikTok", "username أو رابط": "username or link",
+  "اختار صورة": "Choose image", "الصورة الحالية": "Current image", "ما في صور": "No images", "ما في عروض": "No offers",
+  "بدون تعليق": "No caption", "هدية": "Gift", "نقدًا": "Cash", "اكتب اسم المنتج": "Type the product name",
+  // أيام
+  "الأحد": "Sunday", "الإثنين": "Monday", "الثلاثاء": "Tuesday", "الأربعاء": "Wednesday", "الخميس": "Thursday",
+  "الجمعة": "Friday", "السبت": "Saturday", "فتح": "Open", "غلق": "Close", "مغلق": "Closed",
+  // الثيمات
+  "Aurora — كحلي وشفق": "Aurora — navy & aurora", "Noir — أبيض وأسود": "Noir — black & white",
+  "Terra — طيني وزيتوني": "Terra — clay & olive", "Elegant — عاجي وأخضر داكن": "Elegant — ivory & dark green",
+  "Cyber — ليموني وماجنتا": "Cyber — lime & magenta", "Minimal — أبيض صافٍ": "Minimal — pure white",
+  "Showcase — صور كبيرة": "Showcase — large photos", "Shop Board — شبكة مربعات": "Shop Board — square grid",
+  "Pastaria — عاجي وطماطم": "Pastaria — ivory & tomato",
+  // المنتجات والأقسام
+  "قسم أب (اختياري)": "Parent category (optional)", "— بدون أب (رئيسي) —": "— No parent (main) —",
+  "منتج غير متوفر": "Unavailable product", "غير متوفر": "Unavailable", "ما في سعر تغيّر": "No price changed",
+  "ضيف قسم أولاً": "Add a category first", "الترتيب أصلاً مرتّب": "The order is already tidy",
+  "تم حفظ ترتيب القسم": "Category order saved", "النقل بين الأقسام من زر «تعديل» مش بالسحب": "Move between categories with «Edit», not by dragging",
+  "ترقيم كل المنتجات داخل أقسامها (1، 2، 3…)؟": "Number all products inside their categories (1, 2, 3…)?",
+  "بيثبّت الترتيب الحالي وبيمنع الخربطة. ما بيغيّر أي شي تاني.": "This locks in the current order and prevents mix-ups. Nothing else changes.",
+  "حذف المنتج؟": "Delete the product?",
+  "🔒 الترتيب مقفول": "🔒 Order locked", "🔓 الترتيب مفتوح": "🔓 Order unlocked",
+  // ركّب وجبتك
+  "🧩 اعمله قسم تركيب": "🧩 Make it a build-your-meal category", "اعمله قسم تركيب": "Make it a build-your-meal category",
+  "🧩 خيارات التركيب": "🧩 Build options", "خيارات التركيب": "Build options", "ركّب وجبتك": "Build your meal",
+  "ركّب وجبتك على ذوقك": "Build it your way", "ركّب وجبتك — خطوات وخيارات بأسعار": "Build your meal — steps and priced options",
+  "اختار الخبز": "Choose your base", "اختار الصنف": "Choose your item",
+  "الزبون بيمشي بالخطوات بالترتيب، وكل خيار بيختارو بينضاف سعرو على سعر المنتج.": "The customer goes through the steps in order, and every option they pick adds its price to the product price.",
+  "هالخطوة هي منتجات القسم نفسه (الزبون بيختار واحد)": "This step is the category's own products (the customer picks one)",
+  "ضيف منتجات لهالقسم من تبويب المنتجات": "Add products to this category from the Products tab",
+  "اسم الخطوة عربي": "Step name (Arabic)", "الخيار عربي": "Option (Arabic)", "لفوق": "Move up",
+  "أقل عدد": "Min", "أكثر عدد": "Max", "أقل 1 وأكثر 1 = إجباري يختار واحد · أقل 0 = اختياري": "Min 1 & max 1 = required, pick one · min 0 = optional",
+  "+ زيد خيار": "+ Add option", "زيد خيار": "Add option", "+ زيد خطوة": "+ Add step", "زيد خطوة": "Add step",
+  "رجّعو قسم عادي": "Make it a normal category", "حذف هالخطوة مع خياراتها؟": "Delete this step and its options?",
+  "القسم بيرجع عادي ومنتجاتو بتبين لحالها بالمنيو. متأكد؟": "The category goes back to normal and its products show on their own in the menu. Sure?",
+  "كل خطوة لازم يكون إلها اسم": "Every step needs a name", "» ما فيها خيارات": "» has no options",
+  "الخطوة «": "Step «", "أقل عدد أكبر من أكثر عدد بخطوة «": "Min is bigger than max in step «",
+  // الفروع / المحلات
+  "إضافة فرع": "Add branch", "تعديل الفرع": "Edit branch", "اسم الفرع (عربي)": "Branch name (Arabic)",
+  "اسم الفرع (إنكليزي)": "Branch name (English)", "العنوان (عربي)": "Address (Arabic)", "العنوان (إنكليزي)": "Address (English)",
+  "ساعات العمل": "Opening hours", "(اتركها فاضية للراحة)": "(leave empty for a day off)", "صورة الفرع (اختيارية)": "Branch image (optional)",
+  "🏍️ إعدادات التوصيل لهذا الفرع": "🏍️ Delivery settings for this branch", "الحد الأدنى للطلب ($)": "Minimum order ($)",
+  "ملاحظة التوصيل (اختيارية — تظهر للزبون)": "Delivery note (optional — shown to the customer)",
+  "مثال: التوصيل خلال 45 دقيقة": "e.g. Delivery within 45 minutes", "الفرع الرئيسي": "Main branch",
+  "مثال: بيتزا الضيعة": "e.g. Village Pizza", "⚡ إغلاق": "⚡ Close", "⚡ فتح": "⚡ Open", "مغلق طارئ": "Emergency closed",
+  "إغلاق طارئ": "Emergency close", "إلغاء الإغلاق الطارئ": "Cancel emergency close", "نشط": "Active", "غير نشط": "Inactive",
+  "مجاني": "free", "توصيل": "Delivery",
+  "سبب الإغلاق الطارئ (اختياري — يظهر للزبائن):": "Emergency closure reason (optional — shown to customers):",
+  "حذف هذا الفرع؟": "Delete this branch?", "حذف هذا الفرع نهائياً؟": "Delete this branch permanently?",
+  "حذف هذا المطعم / المحل نهائياً؟": "Delete this restaurant / shop permanently?",
+  "حذف هذا المطعم / المحل؟ أقسامه بتضل بس ما بتظهر.": "Delete this restaurant / shop? Its categories stay but are hidden.",
+  "🏍️ التوصيل من هالمطعم / المحل": "🏍️ Delivery from this restaurant / shop",
+  "رسوم وحد أدنى خاصين فيه (إذا مش مفعّل بياخد إعدادات المنيو)": "Its own fee and minimum (if off, the menu settings apply)",
+  "كل مطعم أو محل بتضيفه هون إلو منيو خاص فيه: من تبويب": "Every restaurant or shop you add here has its own menu: in the",
+  "اختار لكل قسم لأي مطعم/محل بينتمي، وحط المنتجات تحت أقسامه.": "tab pick which restaurant/shop each category belongs to, and put the products under its categories.",
+  "الزبون بيفتح منيوك، بيختار المطعم أو المحل، وبيطلب منه.": "The customer opens your menu, picks the restaurant or shop, and orders from it.",
+  "لكل مطعم/محل في": "Each restaurant/shop has a",
+  "— ابعتلو ياه، بيوصلو الطلب عليه ليوافق أو يرفض ويجهّزو للشوفير.": "— send it to them: orders arrive there to accept or reject and prepare for the driver.",
+  "بيفتح منيو هالمحل مباشرة للزبون.": "opens this shop's menu directly for the customer.",
+  "🔗 رابط لوحة الطلبات": "🔗 Orders panel link", "📋 رابط المنيو": "📋 Menu link",
+  "رابط لوحة الطلبات لهالمطعم/المحل": "Orders panel link for this restaurant/shop", "رابط لوحة الطلبات لـ": "Orders panel link for",
+  "نسخ الرابط ": "Copy link", "إرسال واتساب للمحل": "Send WhatsApp to the shop", "توليد رابط جديد (القديم بيوقف)": "Generate a new link (the old one stops)",
+  "الرابط القديم رح يوقف يشتغل. متأكد؟": "The old link will stop working. Sure?",
+  "تأكد إنو db/upgrade-vendors.sql مشغّل": "Make sure db/upgrade-vendors.sql has been run",
+  "⚠️ بدون مطعم/محل — مش ظاهر": "⚠️ No restaurant/shop — hidden",
+  // الطلبات
+  "رفض الطلب": "Reject order", "حدد سبب الرفض": "Choose a reason", "حدد سبب الرفض — سيُرسل للزبون على واتساب": "Choose the reason — it is sent to the customer on WhatsApp",
+  "اكتب السبب هنا…": "Type the reason here…", "اكتب السبب": "Type the reason", "سبب آخر": "Other reason",
+  "رفض وإرسال للزبون": "Reject and notify the customer", "الطلب مغلق الآن": "Ordering is closed now",
+  "الطلب مغلق الآن ونعتذر": "Ordering is closed now, sorry", "خارج نطاق التوصيل": "Outside delivery area",
+  "التوصيل لمنطقتك غير متاح حالياً": "Delivery to your area isn't available right now",
+  "أحد المنتجات المطلوبة غير متوفر": "One of the ordered products is unavailable",
+  "خارج الدوام": "Outside working hours", "كل الطلبات": "All orders", "الطلبات الجديدة": "New orders",
+  "لم يتم قبوله.": "It was not accepted.", "السبب:": "Reason:", "شكراً لتفهمك 🙏": "Thank you for understanding 🙏",
+  // القسائم
+  "إضافة قسيمة خصم جديدة": "Add a new discount coupon", "الكود": "Code", "مثال: WELCOME10": "e.g. WELCOME10",
+  "نوع الخصم": "Discount type", "نسبة %": "Percent %", "مبلغ ثابت $": "Fixed amount $", "قيمة الخصم": "Discount value",
+  "أقصى عدد استخدام (اختياري)": "Max uses (optional)", "بلا حد": "No limit", "تاريخ الانتهاء (اختياري)": "Expiry date (optional)",
+  "إضافة القسيمة": "Add coupon", "قسائم الخصم الحالية": "Current coupons", "بدون نهاية": "No end date",
+  // الإعدادات / الحساب
+  "محفوظ — اتركه فاضي إذا ما بدك تغيّره": "Saved — leave empty to keep it", "تغيير كلمة المرور": "Change password",
+  "كلمة المرور الجديدة": "New password", "تأكيد كلمة المرور": "Confirm password",
+  "غيّرها متى ما بدك — ٦ أحرف على الأقل.": "Change it any time — at least 6 characters.",
+  "كلمة المرور قصيرة — ٦ أحرف على الأقل": "Password too short — at least 6 characters",
+  "الكلمتان غير متطابقتين": "The passwords don't match", "تم تغيير كلمة المرور": "Password changed",
+  "ما فيك تغيّر كلمة مرور صاحب المطعم من هون": "You can't change the owner's password from here",
+  "اشتراكك": "Your subscription", "حسابك على LibanApps": "Your LibanApps account",
+  "من صفحة حسابك بتشوف كل اشتراكاتك وفواتيرك وبتشتري برامج تانية.": "From your account page you can see all your subscriptions and invoices and buy other programs.",
+  "الاشتراك منتهي": "Subscription expired", "اشتراكك منتهي": "Your subscription has expired", "باقي": "left",
+  "إذا قصدك دولار، بدّل «العملة الأساسية» من الإعدادات أولاً.": "If you meant dollars, change the «base currency» in settings first.",
+  "إذا قصدك ليرة، بدّل «العملة الأساسية» من الإعدادات أولاً.": "If you meant lira, change the «base currency» in settings first.",
+  "بدك تكمّل بالليرة؟": "Continue in lira?", "بدك تكمّل بالدولار؟": "Continue in dollars?",
+  "ل.ل. — هيدا رقم صغير للّيرة.": "LBP — that's a small number for lira.", "$ — هيدا رقم كبير للدولار.": "$ — that's a big number for dollars.",
+  "السعر غير محدد — تواصل معنا": "Price not set — contact us", "امسح الكود لعرض القائمة": "Scan the code to see the menu",
+  "انسخ:": "Copy:", "المبلغ:": "Amount:",
+  // التوصيل
+  "🏍️ نظام التوصيل": "🏍️ Delivery system", "نظام التوصيل والتتبع المباشر": "Delivery system & live tracking",
+  "ماذا تحصل مع نظام التوصيل؟": "What do you get with the delivery system?",
+  "موظفو توصيل يستلمون الطلبات على هواتفهم، ويتابع زبونك الدراجة النارية على الخريطة حتى وصولها.": "Delivery staff get orders on their phones, and your customer follows the motorcycle on the map until it arrives.",
+  "📲 صفحة لكل موظف": "📲 A page for every rider", "رابط خاص على هاتفه، بلا تطبيق ولا كلمة سر. يصله تنبيه صوتي مع كل طلب.": "A private link on their phone — no app, no password. A sound alert comes with every order.",
+  "✋ الطلب لأول من يأخذه": "✋ First to take it gets the order", "«استلمت الطلب» ← «في الطريق إليك» ← «تم التوصيل». لا يضيع أي طلب ولا يتكرر.": "«Picked up» → «On the way» → «Delivered». No order gets lost or duplicated.",
+  "🗺️ تتبع مباشر للزبون": "🗺️ Live tracking for the customer", "يرى الزبون الدراجة النارية وهي تقترب على الخريطة مع الوقت التقريبي، وبعد التسليم يتوقف التتبع.": "The customer sees the motorcycle approaching on the map with an ETA; tracking stops after delivery.",
+  "👀 خريطة لكل الدراجات النارية": "👀 A map of all motorcycles", "تعرف أين كل موظف، وما الطلبات التي معه، وكم طلبًا وصّل اليوم.": "See where every rider is, which orders they carry, and how many they delivered today.",
+  "🛰️ أجهزة GPS": "🛰️ GPS devices", "GPS الهاتف، تطبيق Traccar في الخلفية، أو جهاز GPS مركّب على الدراجة النارية.": "Phone GPS, the Traccar app in the background, or a GPS tracker on the motorcycle.",
+  "🧭 ملاحة بضغطة": "🧭 One-tap navigation", "Google Maps أو Waze إلى عنوان الزبون مباشرة، واتصال وواتساب مع الزبون.": "Google Maps or Waze straight to the customer, plus call and WhatsApp.",
+  "اشترك الآن": "Subscribe now", "جدّد الآن": "Renew now", "اشتراك التوصيل": "Delivery subscription",
+  "اشتراك التوصيل منتهٍ": "Delivery subscription expired",
+  "اشتراك التوصيل منتهٍ — جدّده ليعود وصول الطلبات إلى الموظفين.": "Delivery subscription expired — renew it so orders reach your riders again.",
+  "جدّد الاشتراك لتعود الطلبات إلى موظفي التوصيل ويتابع زبائنك الدراجة النارية على الخريطة.": "Renew so orders go back to your riders and customers can follow the motorcycle on the map.",
+  "في السنة · يشمل موظف توصيل واحدًا": "per year · includes one rider", "في السنة لكل موظف إضافي": "per year for each extra rider",
+  "الدفع الإلكتروني عبر Whish والتفعيل فوري": "Online payment via Whish, instant activation", "ادفع نقدًا عبر واتساب": "Pay cash via WhatsApp",
+  "أو": "or", "سنويًا": "per year", "يشمل موظفًا واحدًا": "includes one rider", "كل موظف إضافي": "each extra rider",
+  "اشتراك نظام التوصيل لسنة": "Delivery system subscription for a year", "تجديد التوصيل وكل المقاعد لسنة": "Renew delivery and all seats for a year",
+  "تجديد مقعد موظف لسنة": "Renew a rider seat for a year", "مقعد موظف توصيل إضافي لسنة": "Extra rider seat for a year",
+  "🏍️ مقعد أساسي (مع الاشتراك)": "🏍️ Base seat (with the subscription)", "➕ مقعد موظف إضافي": "➕ Extra rider seat",
+  "اشتراك هذا الموظف منتهٍ": "This rider's seat has expired", "منتهي": "Expired",
+  "جارٍ تجهيز الدفع…": "Preparing payment…", "سننقلك إلى صفحة Whish للدفع.": "We'll take you to the Whish payment page.",
+  "تعذّر بدء الدفع": "Couldn't start the payment", "تم الدفع والتفعيل ✓": "Paid and activated ✓",
+  "لم تتم عملية الدفع. يمكنك المحاولة مرة أخرى أو التواصل معنا.": "The payment didn't go through. You can try again or contact us.",
+  "تلقّينا عودتك من صفحة الدفع، لكن الدفع لم يتأكد بعد. إذا خُصم المبلغ فتواصل معنا.": "You're back from the payment page, but the payment isn't confirmed yet. If you were charged, contact us.",
+  "دراجة نارية نشطة": "Active motorcycles", "بانتظار موظف": "Waiting for a rider", "على الطريق": "On the road", "وصل اليوم": "Delivered today",
+  "طلبات التوصيل المفتوحة": "Open delivery orders", "لا توجد طلبات توصيل مفتوحة": "No open delivery orders",
+  "— اختر موظفًا —": "— Choose a rider —", "لم يُرسل للتوصيل": "Not sent for delivery", "بانتظار دراجة نارية": "Waiting for a motorcycle",
+  "تم تكليف سائق": "Rider assigned", "السائق بانتظار الطلب": "Rider waiting for the order", "في الطريق": "On the way",
+  "وصل": "Delivered", "وصل ✓": "Delivered ✓", "رابط التتبع": "Tracking link", "أرسل الرابط": "Send link", "سحب": "Take back",
+  "أرسل للتوصيل": "Send for delivery", "إلغاء توصيل هذا الطلب؟": "Cancel delivery for this order?",
+  "الخريطة المباشرة": "Live map", "تتحدّث كل 5 ثوانٍ · 🏍️ ملوّن = يعمل · باهت = موقعه قديم": "Updates every 5 seconds · 🏍️ coloured = active · faded = old position",
+  "موظفو التوصيل": "Delivery riders", "أضف أول موظف توصيل": "Add your first rider", "إضافة موظف": "Add rider",
+  "اكتب اسم الموظف": "Type the rider's name", "الفرع (اختياري)": "Branch (optional)", "— كل الفروع —": "— All branches —",
+  "لكل موظف رابط خاص — يفتحه على هاتفه ويستلم الطلبات منه. لا يحتاج إلى بريد إلكتروني ولا كلمة سر.": "Every rider gets a private link — they open it on their phone and receive orders. No email or password needed.",
+  "🔗 رابط الموظف": "🔗 Rider link", "في الدوام": "On duty", "خارج الدوام ": "Off duty", "لا يوجد موقع بعد": "No position yet",
+  "آخر موقع": "Last position", "حذف الموظف؟ ستبقى طلباته القديمة محفوظة.": "Delete the rider? Their past orders are kept.",
+  "تمت إضافة الموظف ✓": "Rider added ✓", "هذا الرقم مسجّل من قبل": "This number is already registered",
+  "لا يوجد مقعد شاغر — أوقف موظفًا آخر أو اشترِ مقعدًا إضافيًا": "No free seat — stop another rider or buy an extra seat",
+  "وصلت إلى الحد — اشترِ مقعد موظف إضافي": "Limit reached — buy an extra rider seat", "وصلت للحد:": "Limit reached:",
+  "أضف موظفًا إضافيًا — $25 سنويًا": "Add an extra rider — $25 per year", "أضف موظفًا إضافيًا": "Add an extra rider",
+  "يجب الاشتراك في نظام التوصيل أولًا": "Subscribe to the delivery system first",
+  "سنويًا. هل تريد إضافة مقعد موظف الآن؟": "per year. Add a rider seat now?",
+  "إذا حذفت موظفًا يمكنك وضع بديل عنه في المقعد نفسه.": "If you delete a rider you can put a replacement in the same seat.",
+  "أجهزة التتبع": "Tracking devices", "إضافة جهاز": "Add device", "تمت إضافة الجهاز ✓": "Device added ✓", "حذف الجهاز؟": "Delete the device?",
+  "لا توجد أجهزة بعد — يمكن للموظفين استخدام GPS هواتفهم بدون أي جهاز": "No devices yet — riders can use their phone GPS without any device",
+  "اسم / رقم الدراجة النارية": "Motorcycle name / number", "دراجة 1": "Bike 1",
+  "جهاز GPS للدراجة النارية": "GPS tracker for the motorcycle", "تطبيق Traccar على هاتف": "Traccar app on a phone",
+  "جهاز آخر (HTTP)": "Other device (HTTP)", "جهاز آخر": "Other device", "جهاز GPS": "GPS tracker", "تطبيق Traccar": "Traccar app",
+  "GPS الهاتف": "Phone GPS", "رقم الجهاز (IMEI / ID)": "Device number (IMEI / ID)", "اكتب رقم الجهاز (IMEI / ID)": "Type the device number (IMEI / ID)",
+  "اتركه فارغًا لتطبيق Traccar": "Leave empty for the Traccar app", "— غير مربوط —": "— Not linked —",
+  "لم يصل منه أي موقع بعد": "No position received yet", "رابط الجهاز": "Device link", "للأجهزة التي ترسل HTTP مباشرة": "For devices that send HTTP directly",
+  "الإعدادات والربط": "Settings & integration", "إرسال الطلبات للموظفين": "Sending orders to riders",
+  "تلقائي — يصل كل طلب توصيل فوراً (Whish: بعد الدفع)": "Automatic — every delivery order arrives instantly (Whish: after payment)",
+  "يدوي — أضغط «أرسل للتوصيل» بنفسي على كل طلب": "Manual — I press «Send for delivery» myself on each order",
+  "رابط استقبال المواقع (لتطبيق Traccar وأجهزة الـGPS)": "Position receiving URL (for the Traccar app and GPS trackers)",
+  "رابط التحويل من خادم Traccar (forward.url) — لأجهزة GPS القديمة": "Traccar server forward URL (forward.url) — for older GPS trackers",
+  "تغيير المفتاح": "Change key", "تغيير المفتاح يوقف أي خادم Traccar مربوط حتى تضع الرابط الجديد. هل أنت متأكد؟": "Changing the key stops any linked Traccar server until you set the new URL. Are you sure?",
+  "سيتوقف الرابط القديم عن العمل. هل أنت متأكد؟": "The old link will stop working. Are you sure?", "رابط جديد": "New link",
+  "أسهل حل:": "Easiest option:", "تطبيق Traccar Client المجاني على هاتف الموظف — يجهّزه الموظف من صفحته بضغطة واحدة.": "The free Traccar Client app on the rider's phone — the rider sets it up from their page with one tap.",
+  "جهاز GPS على الدراجة النارية:": "GPS tracker on the motorcycle:",
+  "إذا كان الجهاز يدعم إرسال HTTP (OsmAnd) فضع الرابط أعلاه مباشرة.": "If the device supports HTTP (OsmAnd), enter the URL above directly.",
+  "معظم الأجهزة الصينية (GT06 / Sinotrack / Concox) تتواصل فقط مع خادم Traccar، وهو يحوّل البيانات إلينا عبر رابط التحويل.": "Most Chinese devices (GT06 / Sinotrack / Concox) only talk to a Traccar server, which forwards the data to us via the forward URL.",
+  "إذا كان الجهاز يدعم إرسال HTTP (OsmAnd) فضع الرابط أعلاه مباشرة. معظم الأجهزة الصينية (GT06 / Sinotrack / Concox) تتواصل فقط مع خادم Traccar، وهو يحوّل البيانات إلينا عبر رابط التحويل.": "If the device supports HTTP (OsmAnd), enter the URL above directly. Most Chinese devices (GT06 / Sinotrack / Concox) only talk to a Traccar server, which forwards the data to us via the forward URL.",
+  "Apple لا تسمح لأي برنامج بقراءة موقعه (سوى تطبيق Find My) — لذلك لا يمكننا استخدامه هنا.": "Apple doesn't let any app read its location (except Find My) — so we can't use it here.",
+  "كل طلب توصيل يصل فوراً إلى موظفي التوصيل على هواتفهم. أول من يضغط «استلمت الطلب» يأخذه،": "Every delivery order reaches your riders' phones instantly. The first to press «Picked up» takes it,",
+  "ويصل إلى الزبون رابط يرى فيه الدراجة النارية على الخريطة حتى باب المنزل. وأنت ترى جميع الدراجات النارية من هنا.": "and the customer gets a link to watch the motorcycle on the map up to their door. You see all motorcycles from here.",
+  ". افتحه على هاتفك واضغط «بدء الدوام»:": ". Open it on your phone and press «Start shift»:",
+  "، هذا رابط صفحة التوصيل الخاصة بك لدى": ", this is your delivery page link at", "مرحبا": "Hello", "مرحباً": "Hello"
+});
 
+// ---------- محرّك الترجمة ----------
+var AR_RE=/[؀-ۿ]/;
+var TR_PATTERNS=[
+  [/^(\d+) منتج$/, '$1 products'], [/^(\d+) قسم فرعي$/, '$1 subcategories'], [/^(\d+) جديد$/, '$1 new'],
+  [/^منذ (\d+) د$/, '$1 min ago'], [/^منذ (\d+) س$/, '$1 h ago'], [/^منذ (\d+) يوم$/, '$1 days ago'],
+  [/^(?:باقي|متبقٍّ) (\d+) يوم$/, '$1 days left'], [/^ينتهي بتاريخ (.+)$/, 'Expires on $1'], [/^حتى (.+)$/, 'until $1'],
+  [/^الموظفين: (.+) من (.+)$/, 'Riders: $1 of $2'], [/^معه (.+)$/, 'carrying $1'], [/^اليوم (\d+)$/, 'today $1'],
+  [/^جدّد سنة — (.+)$/, 'Renew 1 year — $1'], [/^جدّد (.+)$/, 'Renew $1'], [/^تم ترقيم (\d+) منتج$/, 'Numbered $1 products'],
+  [/^الاشتراك الأساسي يشمل (\d+) موظف$/, 'The base subscription includes $1 rider(s)'],
+  [/^كل موظف إضافي (.+) سنويًا$/, 'each extra rider $1 per year'],
+  [/^تم حفظ (\d+) سعر$/, 'Saved $1 prices'], [/^(\d+) منتج و(\d+) فشل$/, '$1 products, $2 failed'],
+  [/^حذف قسم "(.*)"$/, 'Delete category "$1"'], [/^رح ينحذف معه (\d+) منتج و(\d+) قسم فرعي$/, '$1 products and $2 subcategories will be deleted with it'],
+  [/^رح ينحذف معه (\d+) منتج$/, '$1 products will be deleted with it'],
+  [/^وصلت للحد: (.+) من (.+) موظف$/, 'Limit reached: $1 of $2 riders'],
+  [/^كل موظف إضافي (.+) سنويًا\. هل تريد إضافة مقعد موظف الآن$/, 'Each extra rider is $1 per year. Add a rider seat now'],
+  [/^انحفظ (\d+) وفشل (\d+)$/, 'Saved $1, $2 failed'], [/^حذف "(.*)"$/, 'Delete "$1"'],
+  [/^رابط لوحة الطلبات لـ (.+)$/, 'Orders panel link for $1'],
+  [/^(\d+) = (.+)$/, function(m,a,b){ return a+' = '+(trCore(b)||b); }],
+];
+function trCore(k){
+  if(!k) return null;
+  if(Object.prototype.hasOwnProperty.call(ADMIN_EN,k)) return ADMIN_EN[k];
+  var m=k.match(/^([^؀-ۿA-Za-z0-9(«"]*)([\s\S]*?)([\s:،.…!?؟]*)$/);
+  if(m && (m[1]||m[3]) && m[2] && Object.prototype.hasOwnProperty.call(ADMIN_EN,m[2]))
+    return m[1]+ADMIN_EN[m[2]]+(m[3]||'').replace(/؟/g,'?').replace(/،/g,',');
+  for(var i=0;i<TR_PATTERNS.length;i++){
+    var p=TR_PATTERNS[i]; if(!p[1]) continue;
+    var body=m?m[2]:k;
+    if(p[0].test(body)) return (m?m[1]:'')+body.replace(p[0],p[1])+(m?m[3].replace(/؟/g,'?').replace(/،/g,','):'');
+  }
+  return null;
+}
+// النص كامل؛ وإذا ما لقينا، منقسمه (أسطر، « · »، « — »، «: ») ومنترجم كل قطعة
+function trAr(s){
+  if(s==null) return s;
+  var str=String(s); if(!AR_RE.test(str)) return str;
+  var k=str.trim(), lead=str.slice(0,str.indexOf(k)), tail=str.slice(str.indexOf(k)+k.length);
+  var w=trCore(k);
+  if(w!=null) return lead+w+tail;
+  // الأسطر أول، وبعدين « · » و« — » و«: » جوّا السطر
+  var parts=k.indexOf('\n')>=0 ? k.split(/(\n+)/) : k.split(/( · | — |: )/);
+  if(parts.length<2) return str;
+  var changed=false;
+  for(var i=0;i<parts.length;i+=2){
+    var pt=parts[i], pk=pt.trim(); if(!pk||!AR_RE.test(pk)) continue;
+    var tw=trCore(pk);
+    if(tw==null){ var sub=trAr(pk); if(sub!==pk) tw=sub; }
+    if(tw!=null){ parts[i]=pt.replace(pk,tw); changed=true; }
+  }
+  if(!changed) return str;
+  for(var j=1;j<parts.length;j+=2){ if(parts[j]==='، ') parts[j]=', '; }
+  return lead+parts.join('')+tail;
+}
+
+var ADMIN_LANG='ar';
+function t(ar){ return ADMIN_LANG==='en' ? trAr(ar) : ar; }
+var ORIG = (typeof WeakMap!=='undefined') ? new WeakMap() : null;
+var TR_ATTRS=['placeholder','title','aria-label'];
+function trText(n){
+  var p=n.parentNode&&n.parentNode.nodeName;
+  if(p==='SCRIPT'||p==='STYLE'||p==='TEXTAREA') return;
+  if(n.parentNode&&n.parentNode.id==='langBtn') return;
+  var v=n.nodeValue; if(!v||!v.trim()) return;
+  if(!ORIG) return;
+  if(AR_RE.test(v)) ORIG.set(n,v);
+  var ar=ORIG.get(n); if(ar==null) return;
+  // البرنامج غيّر النص لقيمة جديدة مش عربي (رقم مثلاً) — منتركها
+  if(!AR_RE.test(v) && v!==trAr(ar) && v!==ar){ ORIG.delete(n); return; }
+  var want=ADMIN_LANG==='en'?trAr(ar):ar;
+  if(n.nodeValue!==want) n.nodeValue=want;
+}
+function trAttrs(el){
+  if(!el.getAttribute) return;
+  TR_ATTRS.forEach(function(a){
+    var v=el.getAttribute(a); if(v==null) return;
+    var key='trAr_'+a.replace('-','_');
+    if(AR_RE.test(v)) el.dataset[key]=v;
+    var ar=el.dataset[key]; if(ar==null) return;
+    var want=ADMIN_LANG==='en'?trAr(ar):ar;
+    if(v!==want) el.setAttribute(a,want);
+  });
+}
+function trTree(root){
+  if(!root) return;
+  if(root.nodeType===3){ trText(root); return; }
+  if(root.nodeType!==1) return;
+  trAttrs(root);
+  var w=document.createTreeWalker(root,NodeFilter.SHOW_TEXT), n;
+  while((n=w.nextNode())) trText(n);
+  Array.prototype.forEach.call(root.querySelectorAll('[placeholder],[title],[aria-label]'),trAttrs);
+}
+var TITLE_AR=document.title;
 function applyAdminLang(l){
   ADMIN_LANG = l;
-  var w=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT,{
-    acceptNode:function(n){
-      if(!n.nodeValue||!n.nodeValue.trim()) return NodeFilter.FILTER_REJECT;
-      var p=n.parentNode&&n.parentNode.nodeName;
-      if(p==='SCRIPT'||p==='STYLE') return NodeFilter.FILTER_REJECT;
-      return NodeFilter.FILTER_ACCEPT;
-    }});
-  var n;
-  while((n=w.nextNode())){
-    // النص العربي الأصلي بينحفظ مرة وحدة لكل عقدة
-    if(ORIG && !ORIG.has(n)) ORIG.set(n, n.nodeValue);
-    var ar = ORIG ? ORIG.get(n) : n.nodeValue;
-    var key = ar.trim();
-    var want = (l==='en' && ADMIN_EN[key]) ? ar.replace(key, ADMIN_EN[key]) : ar;
-    if(n.nodeValue !== want) n.nodeValue = want;   // ما منلمس العقدة إذا مش لازم
-  }
-  Array.prototype.forEach.call(document.querySelectorAll('[placeholder]'),function(el){
-    if(!el.dataset.phAr) el.dataset.phAr=el.placeholder;
-    var k=el.dataset.phAr.trim();
-    var want=(l==='en'&&ADMIN_EN[k])?ADMIN_EN[k]:el.dataset.phAr;
-    if(el.placeholder!==want) el.placeholder=want;
-  });
+  trTree(document.body);
+  if(AR_RE.test(document.title)) TITLE_AR=document.title;
+  document.title=l==='en'?trAr(TITLE_AR):TITLE_AR;
   document.documentElement.lang=l;
   document.documentElement.dir=(l==='ar')?'rtl':'ltr';
   var b=document.getElementById('langBtn');
   if(b) b.textContent=(l==='ar')?'English':'عربي';
   try{ localStorage.setItem('la_admin_lang',l); }catch(e){}
 }
-// تُستدعى بعد كل إعادة رسم — بدون مراقب وبدون حلقات
+// أي محتوى جديد (التوصيل بيتحدّث كل ٥ ثواني، القوائم، النوافذ…) بيترجم لحالو
+if(window.MutationObserver){
+  new MutationObserver(function(muts){
+    if(ADMIN_LANG!=='en') return;
+    muts.forEach(function(m){
+      if(m.type==='childList') Array.prototype.forEach.call(m.addedNodes,trTree);
+      else if(m.type==='characterData') trText(m.target);
+      else if(m.type==='attributes') trAttrs(m.target);
+    });
+  }).observe(document.body,{childList:true,subtree:true,characterData:true,attributes:true,attributeFilter:TR_ATTRS});
+}
+// رسائل alert / confirm / prompt
+['alert','confirm','prompt'].forEach(function(k){
+  var orig=window[k]; if(!orig) return;
+  window[k]=function(msg,def){ return orig.call(window, ADMIN_LANG==='en'?trAr(msg):msg, def); };
+});
 function relang(){ if(ADMIN_LANG==='en') applyAdminLang('en'); }
+
 
 $('#langBtn').addEventListener('click',function(){
   applyAdminLang(ADMIN_LANG==='ar'?'en':'ar');
