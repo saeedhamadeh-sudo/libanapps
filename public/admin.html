@@ -914,55 +914,72 @@ var DEFAULT_HOURS={sun:[],mon:[{open:'09:00',close:'22:00'}],tue:[{open:'09:00',
   wed:[{open:'09:00',close:'22:00'}],thu:[{open:'09:00',close:'22:00'}],
   fri:[{open:'09:00',close:'22:00'}],sat:[{open:'09:00',close:'22:00'}]};
 
+// وقت بنظام 12 ساعة (AM/PM) — بينحفظ "HH:MM" (24 ساعة)
+function hm(v){ var a=String(v||'00:00').split(':'); return {h:parseInt(a[0]||0,10)||0, m:parseInt(a[1]||0,10)||0}; }
+function timeSel(val,field){
+  var t=hm(val), h12=t.h%12===0?12:t.h%12, pm=t.h>=12, m=Math.round(t.m/5)*5; if(m===60) m=55;
+  var hs='', ms='';
+  for(var h=1;h<=12;h++) hs+='<option value="'+h+'"'+(h===h12?' selected':'')+'>'+h+'</option>';
+  for(var x=0;x<60;x+=5) ms+='<option value="'+x+'"'+(x===m?' selected':'')+'>'+(x<10?'0':'')+x+'</option>';
+  return '<span class="tsel" data-field="'+field+'" style="display:inline-flex;align-items:center;gap:3px;direction:ltr">'+
+    '<select data-p="h" style="width:62px;padding:8px 4px">'+hs+'</select><b>:</b>'+
+    '<select data-p="m" style="width:62px;padding:8px 4px">'+ms+'</select>'+
+    '<select data-p="ap" style="width:66px;padding:8px 4px"><option value="am"'+(pm?'':' selected')+'>AM</option><option value="pm"'+(pm?' selected':'')+'>PM</option></select></span>';
+}
+function readTime(el){
+  var h=+el.querySelector('[data-p="h"]').value, m=+el.querySelector('[data-p="m"]').value, pm=el.querySelector('[data-p="ap"]').value==='pm';
+  var H=(h%12)+(pm?12:0);
+  return (H<10?'0':'')+H+':'+(m<10?'0':'')+m;
+}
+function mins(t){ var x=hm(t); return x.h*60+x.m; }
 function buildHoursUI(hours){
   var box=$('#brHours'); box.innerHTML='';
   DAYS_KEY.forEach(function(d,i){
     var slots=(hours&&hours[d])||[];
     var row=document.createElement('div');
-    row.style.cssText='display:flex;align-items:center;gap:8px;flex-wrap:wrap';
+    row.style.cssText='display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:6px 0;border-bottom:1px dashed var(--line)';
     row.dataset.day=d;
-    var lbl=document.createElement('span');
-    lbl.style.cssText='min-width:72px;font-size:13px';
-    lbl.textContent=DAYS_AR[i];
-    row.appendChild(lbl);
-    if(slots.length===0){
-      var cb=document.createElement('span');
-      cb.className='muted'; cb.style.fontSize='12px'; cb.textContent='مغلق';
-      row.appendChild(cb);
-    } else {
-      slots.forEach(function(s){
-        var op=document.createElement('input'); op.type='time'; op.value=s.open||'09:00';
-        op.style.cssText='width:100px'; op.dataset.field='open';
-        var dash=document.createElement('span'); dash.textContent='—';
-        var cl=document.createElement('input'); cl.type='time'; cl.value=s.close||'22:00';
-        cl.style.cssText='width:100px'; cl.dataset.field='close';
-        row.appendChild(op); row.appendChild(dash); row.appendChild(cl);
-      });
-    }
-    var togBtn=document.createElement('button');
-    togBtn.className='btn alt sm'; togBtn.style.marginRight='auto';
-    togBtn.textContent=slots.length===0?t('فتح'):t('غلق');
-    togBtn.onclick=function(){
-      var cur=collectHours();
-      if(cur[d].length===0) cur[d]=[{open:'09:00',close:'22:00'}];
-      else cur[d]=[];
-      buildHoursUI(cur);
-    };
-    row.appendChild(togBtn);
+    var html='<span style="min-width:72px;font-size:13px">'+t(DAYS_AR[i])+'</span>';
+    if(!slots.length) html+='<span class="muted" style="font-size:12px">'+t('مغلق')+'</span>';
+    slots.forEach(function(s,si){
+      var night=mins(s.close)<=mins(s.open);
+      html+='<span class="slot" style="display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap">'+
+        (si?'<span class="muted">+</span>':'')+
+        timeSel(s.open||'09:00','open')+'<span>—</span>'+timeSel(s.close||'22:00','close')+
+        (night?'<span class="muted" style="font-size:12px">🌙 '+t('بيسكّر تاني يوم')+'</span>':'')+
+        (slots.length>1?'<button type="button" class="btn dg sm" data-hdel="'+d+':'+si+'">✕</button>':'')+'</span>';
+    });
+    html+='<span style="margin-inline-start:auto;display:inline-flex;gap:6px">'+
+      (slots.length&&slots.length<3?'<button type="button" class="btn alt sm" data-hadd="'+d+'" title="'+t('فترة تانية بنفس اليوم')+'">+ '+t('فترة')+'</button>':'')+
+      '<button type="button" class="btn alt sm" data-htog="'+d+'">'+(slots.length?t('غلق'):t('فتح'))+'</button>'+
+      (i===0?'':'<button type="button" class="btn alt sm" data-hcopy="'+d+'" title="'+t('متل اليوم اللي قبلو')+'">⧉</button>')+'</span>';
+    row.innerHTML=html;
     box.appendChild(row);
   });
 }
+// أزرار الدوام (مرة وحدة)
+(function(){
+  var box=$('#brHours');
+  box.addEventListener('change',function(){ buildHoursUI(collectHours()); });
+  box.addEventListener('click',function(e){
+    var b=e.target.closest('button'); if(!b) return;
+    var cur=collectHours();
+    if(b.dataset.htog){ var d=b.dataset.htog; cur[d]=cur[d].length?[]:[{open:'09:00',close:'22:00'}]; }
+    else if(b.dataset.hadd){ var d2=b.dataset.hadd; var last=cur[d2][cur[d2].length-1]; cur[d2].push({open:(last&&last.close)||'17:00',close:'23:00'}); }
+    else if(b.dataset.hdel){ var p=b.dataset.hdel.split(':'); cur[p[0]].splice(+p[1],1); }
+    else if(b.dataset.hcopy){ var k=DAYS_KEY.indexOf(b.dataset.hcopy); cur[b.dataset.hcopy]=JSON.parse(JSON.stringify(cur[DAYS_KEY[k-1]])); }
+    else return;
+    buildHoursUI(cur);
+  });
+})();
 
 function collectHours(){
   var h={};
   $$('#brHours>[data-day]').forEach(function(row){
-    var d=row.dataset.day;
-    var opens=row.querySelectorAll('[data-field="open"]');
-    var closes=row.querySelectorAll('[data-field="close"]');
-    h[d]=[];
-    for(var i=0;i<opens.length;i++){
-      h[d].push({open:opens[i].value||'09:00',close:closes[i].value||'22:00'});
-    }
+    var d=row.dataset.day; h[d]=[];
+    row.querySelectorAll('.slot').forEach(function(sl){
+      h[d].push({open:readTime(sl.querySelector('[data-field="open"]')),close:readTime(sl.querySelector('[data-field="close"]'))});
+    });
   });
   return h;
 }
@@ -2194,6 +2211,8 @@ Object.assign(ADMIN_EN, {
   "اختار صورة": "Choose image", "الصورة الحالية": "Current image", "ما في صور": "No images", "ما في عروض": "No offers",
   "بدون تعليق": "No caption", "هدية": "Gift", "نقدًا": "Cash", "اكتب اسم المنتج": "Type the product name",
   // أيام
+  "بيسكّر تاني يوم": "closes next day", "فترة تانية بنفس اليوم": "Second period on the same day", "فترة": "Period",
+  "متل اليوم اللي قبلو": "Same as the day before",
   "الأحد": "Sunday", "الإثنين": "Monday", "الثلاثاء": "Tuesday", "الأربعاء": "Wednesday", "الخميس": "Thursday",
   "الجمعة": "Friday", "السبت": "Saturday", "فتح": "Open", "غلق": "Close", "مغلق": "Closed",
   // الثيمات

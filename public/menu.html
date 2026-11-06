@@ -747,7 +747,7 @@ function branchIsOpen(branch){
   var now=new Date();
   // استخدم timezone المطعم لو موجود
   var tz=branch.timezone||'Asia/Beirut';
-  var localStr=now.toLocaleString('en-US',{timeZone:tz,hour12:false,
+  var localStr=now.toLocaleString('en-US',{timeZone:tz,hourCycle:'h23',
     weekday:'short',hour:'2-digit',minute:'2-digit'});
   // parse: "Mon, 14:30" أو "Mon 14:30"
   var parts=localStr.replace(',','').split(/\s+/);
@@ -755,13 +755,18 @@ function branchIsOpen(branch){
   var dayKey=dayMap[parts[0]]||DAYS[now.getDay()];
   var timeParts=(parts[1]||'00:00').split(':');
   var curMin=parseInt(timeParts[0]||0)*60+parseInt(timeParts[1]||0);
-  var slots=wh[dayKey]||[];
-  if(!slots.length) return false; // مغلق هالنهار
-  return slots.some(function(s){
-    var o=s.open||'00:00', c=s.close||'23:59';
-    var om=parseInt(o.split(':')[0])*60+parseInt(o.split(':')[1]);
-    var cm=parseInt(c.split(':')[0])*60+parseInt(c.split(':')[1]);
-    return curMin>=om && curMin<cm;
+  // فترة بتسكّر بعد نص الليل (مثلاً 12:00 → 01:00) بتكمّل على اليوم التاني
+  function mins(t){ var a=String(t||'00:00').split(':'); return parseInt(a[0]||0)*60+parseInt(a[1]||0); }
+  var prevKey=DAYS[(DAYS.indexOf(dayKey)+6)%7];
+  var today=(wh[dayKey]||[]).some(function(s){
+    var om=mins(s.open||'00:00'), cm=mins(s.close||'23:59');
+    if(cm>om) return curMin>=om && curMin<cm;
+    return curMin>=om;                       // بيسكّر بعد نص الليل
+  });
+  if(today) return true;
+  return (wh[prevKey]||[]).some(function(s){
+    var om=mins(s.open||'00:00'), cm=mins(s.close||'23:59');
+    return cm<=om && curMin<cm;              // تكملة فترة مبارح بعد نص الليل
   });
 }
 
