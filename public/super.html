@@ -1412,6 +1412,7 @@ function paintRests(){
           '<button class="btn alt sm" data-editslug="'+r.id+'">تعديل الرابط</button> '+
           '<button class="btn alt sm" data-link="'+r.id+'">ربط بزبون</button> '+
           '<button class="btn alt sm" data-branches="'+r.id+'" data-rname="'+esc(r.name_ar)+'">'+(r.vendors_mode?'المطاعم/المحلات':'الفروع')+'</button> '+
+          '<button class="btn alt sm" data-tpl="'+r.id+'" title="عبّي المنيو من قالب جاهز (مثلاً Route 66)">📋 منيو جاهز</button> '+
           '<button class="btn alt sm" data-vmode="'+r.id+'" title="بدّل الفروع بأسماء المطاعم/المحلات (منيو شركات التوصيل)">'+
             (r.vendors_mode?'↩ رجّع الفروع':'🏍️ وضع المحلات')+'</button> '+
           '<button class="btn alt sm" data-toggle="'+r.id+'" data-on="'+(r.is_active!==false)+'">'+
@@ -1425,7 +1426,7 @@ function paintRests(){
 });
 $('#restTbl').addEventListener('click',async function(e){
   var b=e.target.closest('button'); if(!b) return;
-  var id=b.dataset.link||b.dataset.toggle||b.dataset.delrest||b.dataset.editslug||b.dataset.vmode;
+  var id=b.dataset.link||b.dataset.toggle||b.dataset.delrest||b.dataset.editslug||b.dataset.vmode||b.dataset.tpl;
   var r=RESTS.find(function(x){return x.id===id}); if(!r) return;
 
   if(b.dataset.editslug){
@@ -1451,6 +1452,28 @@ $('#restTbl').addEventListener('click',async function(e){
     if(!(idx>=0&&idx<CLIENTS.length)){ alert('رقم غير صحيح'); return; }
     var up=await sb.from('restaurants').update({client_id:CLIENTS[idx].id}).eq('id',id);
     if(up.error){ alert('لم ينجح: '+up.error.message); return; }
+
+  }else if(b.dataset.tpl){
+    var tl=await sb.rpc('super_menu_templates');
+    if(tl.error){ alert('لم ينجح: '+tl.error.message); return; }
+    var TPL=tl.data||[];
+    if(!TPL.length){ alert('ما في منيوهات جاهزة بعد'); return; }
+    var pickT=prompt('أي منيو جاهز بدك تعطي لـ"'+r.name_ar+'"؟\n\n'+
+      TPL.map(function(x,i){return (i+1)+'. '+x.name+' ('+x.cats+' أقسام)'}).join('\n')+'\n\nاكتب الرقم:','1');
+    if(pickT===null) return;
+    var tp=TPL[parseInt(pickT,10)-1]; if(!tp){ alert('رقم غير صحيح'); return; }
+    var mode=prompt('"'+tp.name+'" → "'+r.name_ar+'"\n\n'+
+      '1 = زيد الأقسام فوق المنيو الموجود\n2 = امسح أقسام ومنتجات المنيو الحالي وحط هيدا مكانهن\n\nاكتب الرقم:','1');
+    if(mode===null) return; mode=String(mode).trim();
+    if(mode!=='1'&&mode!=='2'){ alert('رقم غير صحيح'); return; }
+    if(mode==='2'){
+      var typed2=prompt('رح تنمسح كل أقسام ومنتجات "'+r.name_ar+'" (الطلبات القديمة بتضل).\nاكتب رابط المطعم للتأكيد: '+r.slug,'');
+      if(typed2===null) return;
+      if(typed2.trim()!==r.slug){ alert('الرابط غير مطابق — ما تغيّر شي'); return; }
+    }
+    var ap=await sb.rpc('super_apply_menu_template',{p_rid:id,p_code:tp.code,p_replace:mode==='2'});
+    if(ap.error){ alert('لم ينجح: '+ap.error.message); return; }
+    alert('تم ✓ انضاف '+ap.data.categories+' قسم و'+ap.data.items+' منتج لـ"'+r.name_ar+'"');
 
   }else if(b.dataset.vmode){
     var vm=!r.vendors_mode;
