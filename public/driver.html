@@ -260,6 +260,27 @@ function paintDuty(){
   b.className='btn duty '+(on?'alt':'ok');
 }
 
+/* ---------- المطعم/المحل (وضع المحلات) ---------- */
+var VI={};
+function vInfo(o){ return VI[String(o.id)]||null; }
+function vendorBox(o){
+  var v=vInfo(o); if(!v) return '';
+  var st=v.branch_status==='accepted'?'<span class="chip p">✅ المطعم وافق — عم يجهّز الطلب</span>'
+        :v.branch_status==='rejected'?'<span class="chip" style="background:#3a0d0d;color:#f87171">❌ المطعم رفض الطلب'+(v.reason?' — '+esc(v.reason):'')+'</span>'
+        :'<span class="chip w">⏳ بانتظار موافقة المطعم</span>';
+  return '<div class="meta" style="margin-top:8px;padding:8px 10px;border-radius:10px;background:var(--bg-2);border:1px solid var(--line)">'+
+    '🏪 <b style="color:var(--text)">'+esc(v.name_ar)+'</b>'+
+    (v.address_ar?' · 📍 '+esc(v.address_ar):'')+
+    (v.phone?' · <a href="tel:'+esc(v.phone)+'" style="color:var(--accent)">'+esc(v.phone)+'</a>':'')+
+    '<div style="margin-top:6px">'+st+'</div></div>';
+}
+function departBtn(o){
+  return vendorBlocks(o)
+    ?'<button class="btn go full" disabled style="opacity:.5">🏍️ في الطريق إليك — بعد موافقة المطعم</button>'
+    :'<button class="btn go full" data-act="depart" data-id="'+o.id+'">🏍️ في الطريق إليك</button>';
+}
+function vendorBlocks(o){ var v=vInfo(o); return !!(v && v.branch_status!=='accepted'); }
+
 /* ---------- الطلبات ---------- */
 function paintOrders(){
   var mine=S.mine||[], w=S.waiting||[];
@@ -276,7 +297,7 @@ function paintOrders(){
        '<a class="btn alt" target="_blank" rel="noopener" href="https://waze.com/ul?ll='+o.lat+','+o.lng+'&navigate=yes">🚗 Waze</a>':'';
     var d=km(ME.lat,ME.lng,o.lat,o.lng);
     return '<div class="card">'+
-      '<div class="row"><span class="no">'+esc(o.order_no)+'</span>'+st+'</div>'+
+      '<div class="row"><span class="no">'+esc(o.order_no)+'</span>'+st+'</div>'+vendorBox(o)+
       '<div class="meta"><b style="color:var(--text)">'+esc(o.customer_name)+'</b> · '+
         '<a href="tel:'+esc(o.customer_phone)+'" style="color:var(--accent)">'+esc(o.customer_phone)+'</a>'+
         (o.address_text?'<br>📍 '+esc(o.address_text):'')+(d!=null?' · '+d.toFixed(1)+' كم':'')+
@@ -292,10 +313,10 @@ function paintOrders(){
               ' أصبح معي.\nيمكنك متابعة موقع الدراجة النارية على الخريطة من هنا:\n'+trackUrl(o))+'">💬 أرسل رابط التتبع للزبون</a>'+
         (o.dispatch==='claimed'
           ?'<button class="btn full" style="background:#F59E0B;color:#111" data-act="wait" data-id="'+o.id+'">⏳ بانتظار أن يصبح الطلب جاهزًا</button>'+
-           '<button class="btn go full" data-act="depart" data-id="'+o.id+'">🏍️ في الطريق إليك</button>'+
+           departBtn(o)+
            '<button class="btn alt full" data-act="release" data-id="'+o.id+'">أعِد الطلب لباقي الموظفين</button>'
           :o.dispatch==='ready_wait'
-          ?'<button class="btn go full" data-act="depart" data-id="'+o.id+'">🏍️ في الطريق إليك</button>'+
+          ?departBtn(o)+
            '<button class="btn alt full" data-act="release" data-id="'+o.id+'">أعِد الطلب لباقي الموظفين</button>'
           :'<button class="btn ok full" data-act="deliver" data-id="'+o.id+'">✅ تم توصيل الطلب</button>')+
       '</div></div>';
@@ -305,7 +326,7 @@ function paintOrders(){
     var d=km(ME.lat,ME.lng,o.lat,o.lng);
     var isNew=!seen[o.id]&&!first;
     return '<div class="card'+(isNew?' new':'')+'">'+
-      '<div class="row"><span class="no">'+esc(o.order_no)+'</span><span class="meta" style="margin:0">'+ago(o.created_at)+'</span></div>'+
+      '<div class="row"><span class="no">'+esc(o.order_no)+'</span><span class="meta" style="margin:0">'+ago(o.created_at)+'</span></div>'+vendorBox(o)+
       '<div class="meta">'+(o.address_text?'📍 '+esc(o.address_text):'📍 موقع على الخريطة')+
         (d!=null?' · <b style="color:var(--text)">'+d.toFixed(1)+' كم</b> منك':'')+
         '<br>'+o.items+' صنف · '+(o.payment_method==='whish'?'Whish':'نقداً')+'</div>'+
@@ -394,6 +415,7 @@ async function load(){
   if(busy) return; busy=true;
   try{
     S=await rpc('driver_session');
+    try{ VI=(await rpc('driver_vendor_info'))||{}; }catch(e2){ VI={}; }
     if($('#app').classList.contains('hidden')){
       document.documentElement.dataset.theme=S.restaurant.theme||'flame';
       $('#logo').src=S.restaurant.logo_url||''; if(!S.restaurant.logo_url) $('#logo').style.display='none';

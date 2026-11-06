@@ -101,7 +101,12 @@ var TX={
    cancelled:'تم إلغاء التوصيل',cancelledS:'تواصل مع المطعم للتفاصيل',
    stale:'آخر موقع للدراجة النارية قديم قليلاً — قد تكون الإشارة ضعيفة',
    noPos:'بانتظار موقع الدراجة النارية…', driver:'الموظف',
-   steps:['استلام','تكليف سائق','تجهيز','في الطريق'], notFound:'رابط التتبع غير صالح'},
+   steps:['موافقة المطعم','تكليف سائق','تجهيز','في الطريق'], notFound:'رابط التتبع غير صالح',
+   vWait:'بانتظار موافقة المطعم ⏳',vWaitS:'وصل طلبك على {v} — ناطرين يوافق عليه ويبلّش يجهّزو',
+   vOk:'وافق المطعم على طلبك ✅',vOkS:'{v} عم يجهّز طلبك — ناطرين شوفير ياخدو',
+   vClaim:'وافق المطعم والشوفير متجه لأخذ الطلب 🏍️',vClaimS:'{d} متجه لعند {v} ليستلم طلبك ويجيبلك ياه',
+   vClaimWait:'تم تكليف سائق',vClaimWaitS:'بانتظار موافقة {v} على الطلب',
+   vRej:'نأسف، المطعم رفض الطلب',vRejS:'تواصل معنا لتفاصيل أكثر',reason:'السبب',theRest:'المطعم'},
  en:{order:'Order',call:'Call restaurant',waDrv:'Chat with your rider',waMsg:'Hello, this is the customer for order',inv:'Invoice',min:'min approx.',km:'km',
    new:'The restaurant received your order',newS:'Being prepared — the rider will appear here once assigned',
    waiting:'Your order is ready for delivery',waitingS:'Waiting for a rider to pick it up',
@@ -112,8 +117,14 @@ var TX={
    cancelled:'Delivery cancelled',cancelledS:'Please contact the restaurant',
    stale:'Last rider position is a bit old — signal may be weak',
    noPos:'Waiting for the rider position…', driver:'Your rider',
-   steps:['Received','Rider assigned','Preparing','On the way'], notFound:'This tracking link is not valid'}
+   steps:['Restaurant approval','Rider assigned','Preparing','On the way'], notFound:'This tracking link is not valid',
+   vWait:'Waiting for the restaurant to accept ⏳',vWaitS:'Your order reached {v} — waiting for them to accept it',
+   vOk:'The restaurant accepted your order ✅',vOkS:'{v} is preparing your order — waiting for a rider',
+   vClaim:'Accepted — your rider is heading to pick it up 🏍️',vClaimS:'{d} is heading to {v} to collect your order',
+   vClaimWait:'A rider has been assigned',vClaimWaitS:'Waiting for {v} to accept the order',
+   vRej:'Sorry, the restaurant declined the order',vRejS:'Please contact us for details',reason:'Reason',theRest:'the restaurant'}
 };
+var VI=null;   // حالة موافقة المطعم/المحل (order_vendor_info)
 var L='ar', T=TX.ar, D=null, MAP=null, mMoto=null, mDest=null, line=null, fitted=false, timer=null;
 
 function icon(html,cls,sz){ return L_.divIcon({html:html,className:cls||'',iconSize:[sz||34,sz||34],iconAnchor:[(sz||34)/2,(sz||34)/2]}); }
@@ -141,6 +152,19 @@ function slide(marker,to){
     if(k<1) requestAnimationFrame(step); })(t0);
 }
 
+function approval(){
+  if(!VI) return 'accepted';                      // ما في معلومات → السلوك القديم
+  if(VI.has_vendor) return VI.branch_status||'pending';
+  // منيو عادي: إذا الشوفير استلم، المطعم أكيد ماشي بالطلب
+  if(D && ['claimed','ready_wait','on_the_way','delivered'].indexOf(D.dispatch)>=0) return 'accepted';
+  if(VI.status==='rejected') return 'rejected';
+  if(VI.status==='pending'||VI.status==='awaiting_payment') return 'pending';
+  return 'accepted';
+}
+function vendorName(){
+  var v=VI&&VI.vendor; if(!v) return '';
+  return L==='en'?(v.name_en||v.name_ar):v.name_ar;
+}
 function paint(){
   var r=D.restaurant, st=D.dispatch, dn=(D.driver&&D.driver.name)||T.driver;
   $('#rName').textContent=L==='en'?(r.name_en||r.name_ar):r.name_ar;
@@ -161,9 +185,21 @@ function paint(){
   $('#stSub').textContent=(T[key+'S']||'').replace('{d}',dn);
   $('#doneIcon').classList.toggle('hidden',st!=='delivered');
 
+  // موافقة المطعم: قبل ما يوافق ما منقول «طلبك جاهز»
+  var acc=approval(), vn=vendorName()||T.theRest, ov=null;
+  if(VI && VI.has_vendor) $('#oNo').textContent=T.order+' '+D.order_no+' · 🏪 '+vendorName();
+  if(acc==='rejected') ov=['vRej', VI&&VI.reason?(T.reason+': '+VI.reason):T.vRejS, 0, 0];
+  else if(!st||st==='new'||st==='waiting') ov=acc==='accepted'?['vOk',null,1,1]:['vWait',null,0,0];
+  else if(st==='claimed') ov=acc==='accepted'?['vClaim',null,2,2]:['vClaimWait',null,1,0];
+  if(ov){
+    $('#stTitle').textContent=T[ov[0]];
+    $('#stSub').textContent=(ov[1]!=null?ov[1]:(T[ov[0]+'S']||'')).replace('{d}',dn).replace('{v}',vn);
+  }
+
   // الشريط: استلام · تكليف سائق · تجهيز · بالطريق
   var on={new:0,waiting:1,claimed:2,ready_wait:2,on_the_way:3,delivered:4,cancelled:0}[st]||0;
   var now={new:0,waiting:1,claimed:2,ready_wait:2,on_the_way:3}[st];
+  if(ov){ on=ov[2]; now=acc==='rejected'?-1:ov[3]; }
   var ii=$('#steps').children;
   for(var i=0;i<4;i++){ ii[i].className=i<on?'on':(i===now?'now':''); }
   $('#lbls').innerHTML=T.steps.map(function(s){return '<span>'+s+'</span>'}).join('');
@@ -200,7 +236,10 @@ function paint(){
 }
 
 async function load(){
-  var r=await sb.rpc('track_order',{p_token:TOKEN});
+  var both=await Promise.all([sb.rpc('track_order',{p_token:TOKEN}),
+    sb.rpc('order_vendor_info',{p_token:TOKEN}).then(function(x){return x},function(){return {}})]);
+  var r=both[0];
+  if(both[1] && !both[1].error && both[1].data) VI=both[1].data;
   if(r.error||!r.data){
     if(!D){ $('#boot').innerHTML='<div style="font-size:42px">🔍</div><b>'+T.notFound+'</b>'; }
     return;
@@ -216,7 +255,7 @@ async function load(){
   document.title=T.order+' '+D.order_no;
   paint();
   // بعد التوصيل أو الإلغاء منوقف التحديث — الاتصال انقطع
-  if(D.dispatch==='delivered'||D.dispatch==='cancelled'){ clearInterval(timer); timer=null; }
+  if(D.dispatch==='delivered'||D.dispatch==='cancelled'||approval()==='rejected'){ clearInterval(timer); timer=null; }
 }
 $('#langBtn').addEventListener('click',function(){ L=L==='ar'?'en':'ar'; T=TX[L]; if(D) paint(); });
 

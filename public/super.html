@@ -1372,7 +1372,7 @@ $('#buyTbl').addEventListener('click',async function(e){
 var RESTS=[];
 async function loadRestTable(){
   var r=await sb.from('restaurants')
-    .select('id,slug,name_ar,client_id,is_active,created_at')
+    .select('*')
     .order('created_at',{ascending:false});
   RESTS=r.data||[];
   // حالة الترخيص لكل مطعم
@@ -1401,7 +1401,8 @@ function paintRests(){
       else if(d<=15){ cls='warn'; txt='متبقٍّ '+d+' يوم'; }
       else { cls='ok'; txt='متبقٍّ '+d+' يوم'; }
       return '<tr'+(r.is_active===false?' style="opacity:.5"':'')+'>'+
-        '<td>'+esc(r.name_ar)+(r.is_active===false?' <span class="tag bad">موقوف</span>':'')+'</td>'+
+        '<td>'+esc(r.name_ar)+(r.is_active===false?' <span class="tag bad">موقوف</span>':'')+
+          (r.vendors_mode?' <span class="tag warn">🏍️ مطاعم/محلات</span>':'')+'</td>'+
         '<td><a href="/'+esc(r.slug)+'" target="_blank" style="color:var(--accent)">/'+esc(r.slug)+'</a></td>'+
         '<td>'+(c?esc(c.name):'<span class="tag bad">بلا زبون</span>')+'</td>'+
         '<td><span class="tag '+cls+'">'+txt+'</span></td>'+
@@ -1410,7 +1411,9 @@ function paintRests(){
             'href="/admin?r='+encodeURIComponent(r.slug)+'">افتح لوحته</a> '+
           '<button class="btn alt sm" data-editslug="'+r.id+'">تعديل الرابط</button> '+
           '<button class="btn alt sm" data-link="'+r.id+'">ربط بزبون</button> '+
-          '<button class="btn alt sm" data-branches="'+r.id+'" data-rname="'+esc(r.name_ar)+'">الفروع</button> '+
+          '<button class="btn alt sm" data-branches="'+r.id+'" data-rname="'+esc(r.name_ar)+'">'+(r.vendors_mode?'المطاعم/المحلات':'الفروع')+'</button> '+
+          '<button class="btn alt sm" data-vmode="'+r.id+'" title="بدّل الفروع بأسماء المطاعم/المحلات (منيو شركات التوصيل)">'+
+            (r.vendors_mode?'↩ رجّع الفروع':'🏍️ وضع المحلات')+'</button> '+
           '<button class="btn alt sm" data-toggle="'+r.id+'" data-on="'+(r.is_active!==false)+'">'+
             (r.is_active===false?'تشغيل':'إيقاف')+'</button> '+
           '<button class="btn dg sm" data-delrest="'+r.id+'">حذف</button>'+
@@ -1422,7 +1425,7 @@ function paintRests(){
 });
 $('#restTbl').addEventListener('click',async function(e){
   var b=e.target.closest('button'); if(!b) return;
-  var id=b.dataset.link||b.dataset.toggle||b.dataset.delrest||b.dataset.editslug;
+  var id=b.dataset.link||b.dataset.toggle||b.dataset.delrest||b.dataset.editslug||b.dataset.vmode;
   var r=RESTS.find(function(x){return x.id===id}); if(!r) return;
 
   if(b.dataset.editslug){
@@ -1448,6 +1451,14 @@ $('#restTbl').addEventListener('click',async function(e){
     if(!(idx>=0&&idx<CLIENTS.length)){ alert('رقم غير صحيح'); return; }
     var up=await sb.from('restaurants').update({client_id:CLIENTS[idx].id}).eq('id',id);
     if(up.error){ alert('لم ينجح: '+up.error.message); return; }
+
+  }else if(b.dataset.vmode){
+    var vm=!r.vendors_mode;
+    if(!confirm(vm
+      ? 'تفعيل وضع «أسماء المطاعم / المحلات» لـ"'+r.name_ar+'"؟\n\nالفروع بتصير مطاعم ومحلات، كل واحد إلو منيو ورابط لوحة لاستقبال الطلبات — للي بيشتغلوا توصيل بس.'
+      : 'إرجاع "'+r.name_ar+'" لوضع الفروع العادي؟')) return;
+    var upV=await sb.from('restaurants').update({vendors_mode:vm}).eq('id',id);
+    if(upV.error){ alert('لم ينجح: '+upV.error.message+'\n\nتأكد إنك شغّلت db/upgrade-vendors.sql'); return; }
 
   }else if(b.dataset.toggle){
     var next = b.dataset.on!=='true';

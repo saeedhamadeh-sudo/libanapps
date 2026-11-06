@@ -341,7 +341,7 @@ body.login-page .credit .credit-tel{color:#E08A2B}
       <button class="tab" data-t="set" aria-pressed="false">⚙️ الإعدادات</button>
       <button class="tab" data-t="pay" aria-pressed="false">💳 الدفع</button>
       <button class="tab" data-t="qr" aria-pressed="false">📱 رمز QR</button>
-      <button class="tab" data-t="branches" aria-pressed="false">🏪 الفروع</button>
+      <button class="tab" data-t="branches" aria-pressed="false" id="brTab">🏪 الفروع</button>
       <button class="tab" data-t="sub" aria-pressed="false">⭐ الاشتراك</button>
     </div>
   </nav>
@@ -404,6 +404,9 @@ body.login-page .credit .credit-tel{color:#E08A2B}
         <div><label>إنكليزي</label><input type="text" id="cEn"></div>
         <div><label>قسم أب (اختياري)</label><select id="cParent"><option value="">— بدون أب (رئيسي) —</option></select></div>
       </div>
+      <div class="hidden" id="cVendorBox" style="margin-top:8px"><label>🏪 المطعم / المحل</label>
+        <select id="cVendor"><option value="">— اختر المطعم أو المحل —</option></select>
+        <p class="muted" style="font-size:12px;margin:4px 0 0">القسم الفرعي بياخد مطعم/محل القسم الأب تلقائياً.</p></div>
       <div style="display:flex;gap:8px;margin-top:8px">
         <button class="btn" id="addCat">إضافة</button>
         <button class="btn alt hidden" id="cancelEditCat">إلغاء</button>
@@ -657,8 +660,8 @@ body.login-page .credit .credit-tel{color:#E08A2B}
       <h3 id="brTitle">إضافة فرع</h3>
       <input type="hidden" id="brId">
       <div class="g2">
-        <div><label>اسم الفرع (عربي)</label><input type="text" id="brNameAr" placeholder="الفرع الرئيسي"></div>
-        <div><label>اسم الفرع (إنكليزي)</label><input type="text" id="brNameEn"></div>
+        <div><label id="brLblAr">اسم الفرع (عربي)</label><input type="text" id="brNameAr" placeholder="الفرع الرئيسي"></div>
+        <div><label id="brLblEn">اسم الفرع (إنكليزي)</label><input type="text" id="brNameEn"></div>
       </div>
       <div class="g2">
         <div><label>رقم الهاتف</label><input type="text" id="brPhone" placeholder="961…" dir="ltr"></div>
@@ -672,16 +675,16 @@ body.login-page .credit .credit-tel{color:#E08A2B}
       <div id="brHours" style="display:grid;gap:6px">
         <!-- يتولد تلقائياً -->
       </div>
-      <div style="margin:12px 0 6px"><label>صورة الفرع (اختيارية)</label>
+      <div style="margin:12px 0 6px"><label id="brLblImg">صورة الفرع (اختيارية)</label>
         <input type="file" id="brImg" accept="image/*" style="margin-top:4px">
         <div id="brImgPreview" style="margin-top:8px"></div>
       </div>
       <div style="margin-top:8px">
-        <div class="sw"><input type="checkbox" id="brActive" checked><label for="brActive" style="margin:0">الفرع نشط</label></div>
+        <div class="sw"><input type="checkbox" id="brActive" checked><label for="brActive" style="margin:0" id="brLblActive">الفرع نشط</label></div>
       </div>
       <div style="margin-top:14px;border-top:1px solid var(--border-color,#eee);padding-top:12px">
-        <b style="font-size:14px">🏍️ إعدادات التوصيل لهذا الفرع</b>
-        <div class="sw" style="margin-top:8px"><input type="checkbox" id="brDelivery"><label for="brDelivery" style="margin:0">استقبال طلبات توصيل من هذا الفرع</label></div>
+        <b style="font-size:14px" id="brLblDlv">🏍️ إعدادات التوصيل لهذا الفرع</b>
+        <div class="sw" style="margin-top:8px"><input type="checkbox" id="brDelivery"><label for="brDelivery" style="margin:0" id="brLblDlv2">استقبال طلبات توصيل من هذا الفرع</label></div>
         <div class="g2" style="margin-top:8px" id="brDeliveryFields">
           <div><label>رسوم التوصيل ($)</label><input type="number" id="brFee" min="0" step="0.5" placeholder="0" style="width:100%"></div>
           <div><label>الحد الأدنى للطلب ($)</label><input type="number" id="brMin" min="0" step="0.5" placeholder="0" style="width:100%"></div>
@@ -696,8 +699,15 @@ body.login-page .credit .credit-tel{color:#E08A2B}
       <div class="msg" id="brMsg"></div>
     </div>
 
+    <div class="panel hidden" id="vendorHelp">
+      <h3>🏍️ وضع المطاعم / المحلات</h3>
+      <p class="muted" style="line-height:1.9">كل مطعم أو محل بتضيفه هون إلو منيو خاص فيه: من تبويب <b>الأقسام</b> اختار لكل قسم لأي مطعم/محل بينتمي، وحط المنتجات تحت أقسامه.
+      الزبون بيفتح منيوك، بيختار المطعم أو المحل، وبيطلب منه.<br>
+      لكل مطعم/محل في <b>🔗 رابط لوحة الطلبات</b> — ابعتلو ياه، بيوصلو الطلب عليه ليوافق أو يرفض ويجهّزو للشوفير.
+      و<b>📋 رابط المنيو</b> بيفتح منيو هالمحل مباشرة للزبون.</p>
+    </div>
     <div class="panel">
-      <h3>الفروع</h3>
+      <h3 id="brListTitle">الفروع</h3>
       <div id="brList"><p class="muted">جاري التحميل…</p></div>
     </div>
   </section>
@@ -804,6 +814,7 @@ async function boot(){
   }
   document.documentElement.dataset.theme=R.theme||'flame';
   $('#rName').textContent=R.name_ar;
+  applyVendorLabels();
   $('#viewLink').href='/'+R.slug;
   $('#staffOrdersLink').href='/orders.html?r='+R.slug;
   await licBadge(); siteHelp();
@@ -966,8 +977,14 @@ function branchRow(b){
     '<div class="t" style="flex:1"><b>'+esc(b.name_ar)+'</b>'+closedBadge+'<span>'+esc(b.name_en)+' · '+esc(b.phone||'')+'</span>'+dlvBadge+'</div>'+
     activeLabel+
     '<button class="btn alt sm" data-brfc="'+b.id+'" title="'+(b.force_closed?t('إلغاء الإغلاق الطارئ'):t('إغلاق طارئ'))+'">⚡ '+(b.force_closed?t('فتح'):t('إغلاق'))+'</button>'+
+    (VM()?'<button class="btn sm" data-vlink="'+b.id+'" title="'+t('رابط لوحة الطلبات لهالمطعم/المحل')+'">🔗 '+t('رابط الطلبات')+'</button> '+
+          '<button class="btn alt sm" data-vmenu="'+b.id+'">📋 '+t('رابط المنيو')+'</button> ':'')+
     '<button class="btn alt sm" data-bren="'+b.id+'">'+t('تعديل')+'</button> '+
     '<button class="btn dg sm" data-brdel="'+b.id+'">'+t('حذف')+'</button></div>';
+}
+async function copyOrShow(url,label){
+  try{ await navigator.clipboard.writeText(url); alert(label+'\n\n'+url+'\n\n'+t('تم النسخ ✓')); }
+  catch(e){ prompt(label,url); }
 }
 
 async function loadBranches(){
@@ -975,12 +992,12 @@ async function loadBranches(){
   BRANCHES=r.data||[];
   $('#brList').innerHTML=BRANCHES.length
     ? BRANCHES.map(branchRow).join('')
-    : '<p class="muted">'+t('ما في فروع بعد — أضف أول فرع من الأعلى')+'</p>';
+    : '<p class="muted">'+(VM()?t('ما في مطاعم أو محلات بعد — أضف أول واحد من الأعلى'):t('ما في فروع بعد — أضف أول فرع من الأعلى'))+'</p>';
 }
 
 function clearBranchForm(){
   $('#brId').value='';
-  $('#brTitle').textContent='إضافة فرع';
+  $('#brTitle').textContent=VM()?'إضافة مطعم / محل':'إضافة فرع';
   $('#brNameAr').value=''; $('#brNameEn').value='';
   $('#brPhone').value=''; $('#brWa').value='';
   $('#brAddrAr').value=''; $('#brAddrEn').value='';
@@ -1055,20 +1072,48 @@ $('#saveBranch').addEventListener('click',async function(){
 
 $('#delBranch').addEventListener('click',async function(){
   var id=$('#brId').value; if(!id) return;
-  if(!confirm('حذف هذا الفرع؟')) return;
+  if(!confirm(VM()?'حذف هذا المطعم / المحل؟ أقسامه بتضل بس ما بتظهر.':'حذف هذا الفرع؟')) return;
   await sb.from('restaurant_branches').delete().eq('id',id);
   clearBranchForm();
   await loadBranches();
 });
 
 $('#brList').addEventListener('click',async function(e){
+  var vl=e.target.closest('[data-vlink]');
+  if(vl){
+    var vb=BRANCHES.find(function(x){return x.id===vl.dataset.vlink}); if(!vb) return;
+    var lr=await sb.rpc('vendor_link',{p_branch:vb.id,p_new:false});
+    if(lr.error){ alert('خطأ: '+lr.error.message+'\n\nتأكد إنو db/upgrade-vendors.sql مشغّل'); return; }
+    var url=location.origin+'/v/'+lr.data;
+    var wa=(vb.whatsapp||vb.phone||'').replace(/\D/g,'');
+    var act=prompt(t('رابط لوحة الطلبات لـ')+' "'+vb.name_ar+'"\n\n'+
+      '1 = '+t('نسخ الرابط')+'\n2 = '+t('إرسال واتساب للمحل')+'\n3 = '+t('توليد رابط جديد (القديم بيوقف)'),'1');
+    if(act===null) return;
+    act=String(act).trim();
+    if(act==='3'){
+      if(!confirm(t('الرابط القديم رح يوقف يشتغل. متأكد؟'))) return;
+      var nr=await sb.rpc('vendor_link',{p_branch:vb.id,p_new:true});
+      if(nr.error){ alert('خطأ: '+nr.error.message); return; }
+      url=location.origin+'/v/'+nr.data; act='1';
+    }
+    if(act==='2'){
+      var txt='مرحبا 👋\nهيدا رابط لوحة الطلبات لـ '+vb.name_ar+' على '+(R.name_ar||'')+':\n'+url+
+        '\n\nخلّي الرابط مفتوح — كل طلب جديد بيوصلك عليه، وافق عليه وجهّزو للشوفير.';
+      window.open('https://wa.me/'+wa+'?text='+encodeURIComponent(txt),'_blank');
+      return;
+    }
+    await copyOrShow(url,t('رابط لوحة الطلبات'));
+    return;
+  }
+  var vm=e.target.closest('[data-vmenu]');
+  if(vm){ await copyOrShow(location.origin+'/'+R.slug+'?branch='+vm.dataset.vmenu,t('رابط المنيو المباشر لهالمطعم/المحل')); return; }
   // edit
   var ren=e.target.closest('[data-bren]');
   if(ren){
     var b=BRANCHES.find(function(x){return x.id===ren.dataset.bren});
     if(!b) return;
     $('#brId').value=b.id;
-    $('#brTitle').textContent='تعديل الفرع';
+    $('#brTitle').textContent=VM()?'تعديل المطعم / المحل':'تعديل الفرع';
     $('#brNameAr').value=b.name_ar||''; $('#brNameEn').value=b.name_en||'';
     $('#brPhone').value=b.phone||''; $('#brWa').value=b.whatsapp||'';
     $('#brAddrAr').value=b.address_ar||''; $('#brAddrEn').value=b.address_en||'';
@@ -1108,7 +1153,7 @@ $('#brList').addEventListener('click',async function(e){
   // delete
   var del=e.target.closest('[data-brdel]');
   if(del){
-    if(!confirm('حذف هذا الفرع نهائياً؟')) return;
+    if(!confirm(VM()?'حذف هذا المطعم / المحل نهائياً؟':'حذف هذا الفرع نهائياً؟')) return;
     await sb.from('restaurant_branches').delete().eq('id',del.dataset.brdel);
     await loadBranches();
   }
@@ -1125,14 +1170,50 @@ $('#brList').addEventListener('click',async function(e){
 })();
 
 /* ---------- categories ---------- */
+/* ---------- وضع المطاعم / المحلات ---------- */
+var VENDORS=[];
+function VM(){ return !!(R&&R.vendors_mode); }
+function applyVendorLabels(){
+  if(!VM()) return;
+  var set=function(id,txt){ var e=document.getElementById(id); if(e) e.textContent=txt; };
+  set('brTab','🏪 المطاعم / المحلات');
+  set('brTitle','إضافة مطعم / محل');
+  set('brLblAr','اسم المطعم / المحل (عربي)');
+  set('brLblEn','اسم المطعم / المحل (إنكليزي)');
+  set('brLblImg','صورة أو لوغو المطعم / المحل');
+  set('brLblActive','ظاهر بالمنيو');
+  set('brLblDlv','🏍️ التوصيل من هالمطعم / المحل');
+  set('brLblDlv2','رسوم وحد أدنى خاصين فيه (إذا مش مفعّل بياخد إعدادات المنيو)');
+  set('saveBranch','حفظ المطعم / المحل');
+  set('delBranch','حذف المطعم / المحل');
+  set('brListTitle','المطاعم / المحلات');
+  var h=document.getElementById('vendorHelp'); if(h) h.classList.remove('hidden');
+  var bx=document.getElementById('cVendorBox'); if(bx) bx.classList.remove('hidden');
+  var na=document.getElementById('brNameAr'); if(na) na.placeholder='مثال: بيتزا الضيعة';
+}
+function vendorName(id){ var v=VENDORS.find(function(x){return x.id===id}); return v?v.name_ar:''; }
+function catVendor(c){
+  // القسم الفرعي بياخد مطعم/محل الجذر
+  var seen=0; while(c && c.parent_id && seen++<10){ c=CATS.find(function(x){return x.id===c.parent_id}); }
+  return c?c.vendor_id:null;
+}
+async function loadVendors(){
+  if(!VM()) return;
+  var r=await sb.from('restaurant_branches').select('id,name_ar').eq('restaurant_id',R.id).order('sort');
+  VENDORS=r.data||[];
+  $('#cVendor').innerHTML='<option value="">— اختر المطعم أو المحل —</option>'+
+    VENDORS.map(function(v){return '<option value="'+v.id+'">'+esc(v.name_ar)+'</option>'}).join('');
+}
+
 async function loadCats(){
   var r=await sb.from('categories').select('*').eq('restaurant_id',R.id).order('sort');
   CATS=r.data||[];
+  await loadVendors();
 
   // fill القسم الأب select
   var roots=CATS.filter(function(c){return !c.parent_id});
   $('#cParent').innerHTML='<option value="">— بدون أب (رئيسي) —</option>'+
-    roots.map(function(c){return '<option value="'+c.id+'">'+esc(c.name_ar)+'</option>'}).join('');
+    roots.map(function(c){return '<option value="'+c.id+'">'+(VM()&&c.vendor_id?esc(vendorName(c.vendor_id))+' › ':'')+esc(c.name_ar)+'</option>'}).join('');
 
   // fill product form category select (flat with indent)
   $('#fCat').innerHTML=buildCatOptions(CATS,'');
@@ -1145,7 +1226,7 @@ async function loadCats(){
     var idx=CATS.indexOf(c);
     var html='<div class="row" data-cid="'+c.id+'" style="padding-right:'+(depth>0?'4px':'8px')+'">'+
       indent+
-      '<div class="t"><b>'+esc(c.name_ar)+'</b><span>'+esc(c.name_en)+' · '+n+' '+t('منتج')+(subs.length?' · '+subs.length+' '+t('قسم فرعي'):'')+' </span></div>'+
+      '<div class="t"><b>'+esc(c.name_ar)+(VM()&&depth===0?(c.vendor_id?' <span style="font-size:12px;color:var(--accent,#E08A2B)">🏪 '+esc(vendorName(c.vendor_id))+'</span>':' <span style="font-size:12px;color:#c00">⚠️ '+t('بدون مطعم/محل — مش ظاهر')+'</span>'):'')+'</b><span>'+esc(c.name_en)+' · '+n+' '+t('منتج')+(subs.length?' · '+subs.length+' '+t('قسم فرعي'):'')+' </span></div>'+
       '<button class="btn alt sm" data-ren="'+c.id+'">'+t('تعديل')+'</button> '+
       '<button class="btn dg sm" data-delcat="'+c.id+'">'+t('حذف')+'</button></div>';
     subs.forEach(function(s){html+=catRowHtml(s,depth+1);});
@@ -1161,7 +1242,8 @@ function buildCatOptions(cats,parentId,depth){
   depth=depth||0;
   return cats.filter(function(c){return (c.parent_id||'')===parentId;}).map(function(c){
     var prefix=depth>0?Array(depth+1).join('— '):'';
-    return '<option value="'+c.id+'">'+prefix+esc(c.name_ar)+'</option>'+buildCatOptions(cats,c.id,depth+1);
+    if(depth===0 && VM() && c.vendor_id) prefix=vendorName(c.vendor_id)+' › ';
+    return '<option value="'+c.id+'">'+esc(prefix)+esc(c.name_ar)+'</option>'+buildCatOptions(cats,c.id,depth+1);
   }).join('');
 }
 async function saveCatOrder(){
@@ -1209,20 +1291,30 @@ $('#addCat').addEventListener('click',async function(){
   var ar=$('#cAr').value.trim(); if(!ar){ $('#cMsg').textContent='الاسم مطلوب'; return; }
   var editId=$('#cEditId').value;
   var parentVal=$('#cParent').value||null;
+  var vend=null;
+  if(VM()){
+    vend=parentVal?catVendor(CATS.find(function(x){return x.id===parentVal})):($('#cVendor').value||null);
+    if(!vend){ $('#cMsg').textContent=t('اختر المطعم أو المحل لهالقسم'); return; }
+  }
+  var vPatch=VM()?{vendor_id:vend}:{};
   if(editId){
-    await sb.from('categories').update({
+    var cu=await sb.from('categories').update(Object.assign({
       name_ar:ar, name_en:$('#cEn').value.trim()||ar, parent_id:parentVal
-    }).eq('id',editId);
+    },vPatch)).eq('id',editId);
+    if(cu.error){ $('#cMsg').textContent='خطأ: '+cu.error.message; return; }
+    // الأقسام الفرعية بتلحق الأب
+    if(VM()) await sb.from('categories').update({vendor_id:vend}).eq('parent_id',editId);
     $('#cEditId').value='';
     $('#addCat').textContent='إضافة';
     $('#cancelEditCat').classList.add('hidden');
   } else {
-    await sb.from('categories').insert({
+    var ci=await sb.from('categories').insert(Object.assign({
       restaurant_id:R.id, name_ar:ar,
       name_en:$('#cEn').value.trim()||ar,
       parent_id:parentVal,
       sort:CATS.length+1
-    });
+    },vPatch));
+    if(ci.error){ $('#cMsg').textContent='خطأ: '+ci.error.message; return; }
   }
   $('#cAr').value=''; $('#cEn').value=''; $('#cParent').value=''; $('#cMsg').textContent='';
   await loadCats();
@@ -1245,6 +1337,7 @@ $('#cList').addEventListener('click',async function(e){
     var c=CATS.find(function(x){return x.id===b.dataset.ren});
     $('#cAr').value=c.name_ar; $('#cEn').value=c.name_en;
     $('#cParent').value=c.parent_id||'';
+    if(VM()) $('#cVendor').value=c.vendor_id||'';
     $('#cEditId').value=c.id;
     $('#addCat').textContent='حفظ التعديل';
     $('#cancelEditCat').classList.remove('hidden');
@@ -1916,6 +2009,15 @@ var ADMIN_EN = {"لوحة المطعم": "Restaurant dashboard", "البريد �
   "قبول ✓": "Accept ✓", "رفض": "Reject",
   "الفاتورة": "Invoice",
   "ما في طلبات جديدة": "No new orders", "ما في طلبات": "No orders",
+  "🏪 المطاعم / المحلات": "🏪 Restaurants / shops", "إضافة مطعم / محل": "Add restaurant / shop", "تعديل المطعم / المحل": "Edit restaurant / shop",
+  "اسم المطعم / المحل (عربي)": "Restaurant / shop name (Arabic)", "اسم المطعم / المحل (إنكليزي)": "Restaurant / shop name (English)",
+  "صورة أو لوغو المطعم / المحل": "Restaurant / shop image or logo", "ظاهر بالمنيو": "Visible in menu",
+  "حفظ المطعم / المحل": "Save restaurant / shop", "حذف المطعم / المحل": "Delete restaurant / shop", "المطاعم / المحلات": "Restaurants / shops",
+  "🏍️ وضع المطاعم / المحلات": "🏍️ Restaurants / shops mode", "🏪 المطعم / المحل": "🏪 Restaurant / shop", "— اختر المطعم أو المحل —": "— Pick a restaurant or shop —",
+  "القسم الفرعي بياخد مطعم/محل القسم الأب تلقائياً.": "A subcategory takes its parent's restaurant/shop automatically.",
+  "رابط الطلبات": "Orders link", "رابط المنيو": "Menu link", "اختر المطعم أو المحل لهالقسم": "Pick the restaurant or shop for this category",
+  "بدون مطعم/محل — مش ظاهر": "No restaurant/shop — hidden", "ما في مطاعم أو محلات بعد — أضف أول واحد من الأعلى": "No restaurants or shops yet — add the first one above",
+  "تم النسخ ✓": "Copied ✓", "رابط لوحة الطلبات": "Orders panel link", "رابط المنيو المباشر لهالمطعم/المحل": "Direct menu link for this restaurant/shop",
   "إضافة فرع": "Add branch", "تعديل الفرع": "Edit branch", "حفظ الفرع": "Save branch", "تفريغ": "Clear", "حذف الفرع": "Delete branch",
   "إضافة منتج": "Add product", "تعديل منتج": "Edit product",
   "إضافة": "Add", "حفظ التعديل": "Save edit", "إلغاء": "Cancel",

@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#111111">
+<title>لوحة الطلبات</title>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#0f0f10;--card:#1a1a1c;--line:#2b2b2f;--text:#f2f2f2;--muted:#8d8d95;--ok:#22c55e;--okbg:#0d3320;--bad:#f87171;--badbg:#3a0d0d;--warn:#fbbf24;--warnbg:#2e2408;--acc:#E08A2B}
+body{font-family:'Cairo',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;padding-bottom:40px}
+.top{position:sticky;top:0;z-index:5;background:rgba(15,15,16,.94);backdrop-filter:blur(8px);border-bottom:1px solid var(--line);
+  padding:calc(10px + env(safe-area-inset-top,0)) 14px 10px;display:flex;align-items:center;gap:10px}
+.top img{width:42px;height:42px;border-radius:12px;object-fit:cover}
+.top .n{flex:1;min-width:0}
+.top b{display:block;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.top small{color:var(--muted);font-size:12px}
+.pill{border:1px solid var(--line);background:var(--card);color:var(--text);border-radius:10px;padding:7px 11px;font:700 12.5px 'Cairo';cursor:pointer}
+.pill.on{background:var(--okbg);color:var(--ok);border-color:transparent}
+.pill.off{background:var(--badbg);color:var(--bad);border-color:transparent}
+.banner{margin:12px 14px 0;padding:12px 14px;border-radius:14px;font-size:14px;font-weight:700;display:flex;align-items:center;gap:10px}
+.banner.sound{background:var(--warnbg);color:var(--warn);cursor:pointer}
+.banner.closed{background:var(--badbg);color:var(--bad)}
+.tabs{display:flex;gap:8px;padding:12px 14px 0;max-width:680px;margin:0 auto}
+.tabs button{flex:1;border:1px solid var(--line);background:var(--card);color:var(--muted);border-radius:12px;padding:9px;font:800 13.5px 'Cairo';cursor:pointer}
+.tabs button[aria-pressed="true"]{color:var(--text);border-color:var(--acc)}
+.tabs i{font-style:normal;background:var(--acc);color:#fff;border-radius:999px;padding:0 7px;margin-inline-start:4px;font-size:12px}
+.list{display:grid;gap:12px;padding:12px 14px;max-width:680px;margin:0 auto}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px}
+.card.pending{border-color:var(--warn);box-shadow:0 0 0 1px var(--warn) inset}
+.row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.no{font-weight:800;font-size:16px}
+.time{color:var(--muted);font-size:12px;margin-inline-start:auto}
+.st{font-size:12px;font-weight:800;padding:3px 10px;border-radius:999px}
+.st.pending{background:var(--warnbg);color:var(--warn)}
+.st.accepted{background:var(--okbg);color:var(--ok)}
+.st.rejected{background:var(--badbg);color:var(--bad)}
+.who{margin-top:6px;font-size:14px;color:var(--muted)}
+.items{margin-top:10px;background:#111113;border-radius:12px;padding:8px 12px}
+.items div{display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-bottom:1px dashed var(--line);font-size:15px}
+.items div:last-child{border-bottom:0}
+.items b{color:var(--acc)}
+.tot{display:flex;justify-content:space-between;margin-top:8px;font-size:14px;color:var(--muted)}
+.tot b{color:var(--text);font-size:16px}
+.note{margin-top:8px;font-size:13.5px;color:var(--warn)}
+.drv{margin-top:10px;padding:10px 12px;border-radius:12px;background:#111113;font-size:13.5px;display:flex;align-items:center;gap:8px}
+.drv a{margin-inline-start:auto;color:#25D366;font-weight:800;text-decoration:none}
+.acts{display:flex;gap:8px;margin-top:12px}
+.btn{flex:1;border:0;border-radius:12px;padding:13px;font:800 15px 'Cairo';cursor:pointer}
+.btn.ok{background:var(--ok);color:#052e14}
+.btn.no{background:var(--badbg);color:var(--bad)}
+.btn.gray{background:#26262a;color:var(--text)}
+.btn:disabled{opacity:.5}
+.rej{display:none;margin-top:10px}
+.rej textarea{width:100%;min-height:64px;border-radius:12px;border:1px solid var(--line);background:#111113;color:var(--text);padding:10px;font:14px 'Cairo';resize:vertical}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.chips button{border:1px solid var(--line);background:#111113;color:var(--muted);border-radius:999px;padding:5px 10px;font:600 12.5px 'Cairo';cursor:pointer}
+.empty{text-align:center;color:var(--muted);padding:60px 20px}
+.center{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center;padding:20px;color:var(--muted)}
+.hidden{display:none!important}
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#333;color:#fff;padding:10px 16px;border-radius:12px;font-size:14px;z-index:20;opacity:0;transition:opacity .2s;pointer-events:none}
+.toast.on{opacity:1}
+</style>
+</head>
+<body>
+<div class="center" id="boot">…</div>
+
+<div id="app" class="hidden">
+  <div class="top">
+    <img id="vImg" alt="" class="hidden">
+    <div class="n"><b id="vName">—</b><small id="vCo"></small></div>
+    <button class="pill" id="openBtn">…</button>
+  </div>
+  <div class="banner sound" id="soundBanner">🔔 اضغط هون لتشغيل صوت تنبيه الطلبات الجديدة</div>
+  <div class="banner closed hidden" id="closedBanner">🔒 المحل مغلق — الزبائن ما بيقدروا يطلبوا منك هلق</div>
+  <div class="tabs">
+    <button data-tab="new" aria-pressed="true">طلبات جديدة<i id="cntNew" class="hidden">0</i></button>
+    <button data-tab="work" aria-pressed="false">قيد التجهيز</button>
+    <button data-tab="done" aria-pressed="false">المنتهية</button>
+  </div>
+  <div class="list" id="list"></div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.0/dist/umd/supabase.min.js"></script>
+<script src="/assets/config.js"></script>
+<script>
+(function(){
+"use strict";
+var $=function(s){return document.querySelector(s)};
+var CFG=window.LIBANAPPS||{};
+var sb=window.supabase.createClient(CFG.SUPABASE_URL,CFG.SUPABASE_ANON_KEY,{auth:{persistSession:false}});
+var TOKEN=decodeURIComponent(location.pathname.split('/').filter(Boolean)[1]||'');
+var D=null, TAB='new', SEEN={}, first=true, SOUND=false, ac=null, busy=false, timer=null, openRej={};
+
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
+function money(n){n=Number(n)||0;return (n%1===0?n.toFixed(0):n.toFixed(2))+' $'}
+function ago(ts){var m=Math.round((Date.now()-new Date(ts))/60000);
+  if(m<1) return 'هلق'; if(m<60) return 'من '+m+' دقيقة';
+  var d=new Date(ts); return d.toLocaleTimeString('ar-LB',{hour:'2-digit',minute:'2-digit'});}
+function waNum(p){var d=String(p||'').replace(/\D/g,''); if(d.indexOf('00')===0) d=d.slice(2);
+  if(d.indexOf('961')===0) return d; if(d.charAt(0)==='0') d=d.slice(1); return d.length<=8?'961'+d:d;}
+var tt; function toast(m){var t=$('#toast');t.textContent=m;t.classList.add('on');clearTimeout(tt);tt=setTimeout(function(){t.classList.remove('on')},2200)}
+
+function beep(){
+  if(!SOUND) return;
+  try{
+    if(!ac) ac=new (window.AudioContext||window.webkitAudioContext)();
+    [0,0.25,0.5].forEach(function(t,i){
+      var o=ac.createOscillator(), g=ac.createGain(); o.connect(g); g.connect(ac.destination);
+      o.frequency.value=i===1?1100:880; g.gain.value=.35; o.start(ac.currentTime+t); o.stop(ac.currentTime+t+.18);
+    });
+  }catch(e){}
+  if(navigator.vibrate) navigator.vibrate([200,100,200]);
+}
+$('#soundBanner').addEventListener('click',function(){
+  SOUND=true; try{ ac=ac||new (window.AudioContext||window.webkitAudioContext)(); ac.resume(); }catch(e){}
+  beep(); this.classList.add('hidden');
+});
+
+function driverLine(o){
+  if(o.order_type!=='delivery'||o.branch_status!=='accepted') return '';
+  var d=o.driver, ds=o.dispatch, txt;
+  if(ds==='delivered') txt='✅ تم توصيل الطلب للزبون';
+  else if(ds==='on_the_way') txt='🏍️ '+(d?esc(d.name):'الشوفير')+' استلم الطلب وبالطريق للزبون';
+  else if(ds==='ready_wait') txt='📍 '+(d?esc(d.name):'الشوفير')+' وصل لعندك وعم ينطر الطلب';
+  else if(ds==='claimed') txt='🏍️ '+(d?esc(d.name):'الشوفير')+' جايي ياخد الطلب — جهّزو';
+  else if(ds==='cancelled') txt='❌ تم إلغاء التوصيل';
+  else txt='⏳ عم ننتظر شوفير — جهّز الطلب';
+  var wa=d&&d.phone&&(ds==='claimed'||ds==='ready_wait')?'<a target="_blank" rel="noopener" href="https://wa.me/'+waNum(d.phone)+'">💬 واتساب</a>':'';
+  return '<div class="drv">'+txt+wa+'</div>';
+}
+function card(o){
+  var st=o.branch_status||'pending';
+  var stTxt={pending:'بانتظار موافقتك',accepted:'وافقت عليه',rejected:'مرفوض'}[st]||st;
+  var items=(o.items||[]).map(function(i){
+    return '<div><span><b>'+esc(i.qty)+'×</b> '+esc(i.name_ar||i.name_en)+'</span><span>'+money(i.line_usd)+'</span></div>'}).join('');
+  var acts='';
+  if(st==='pending'){
+    acts='<div class="acts"><button class="btn ok" data-acc="'+o.id+'">✓ موافقة وتجهيز</button>'+
+         '<button class="btn no" data-rej="'+o.id+'">✗ رفض</button></div>'+
+         '<div class="rej" id="rej-'+o.id+'" style="'+(openRej[o.id]?'display:block':'')+'">'+
+           '<div class="chips">'+['خلص الصنف','المحل مضغوط هلق','المحل عم يسكّر'].map(function(r){
+             return '<button data-reason="'+o.id+'">'+r+'</button>'}).join('')+'</div>'+
+           '<textarea id="rr-'+o.id+'" placeholder="سبب الرفض (بيوصل للزبون)"></textarea>'+
+           '<div class="acts"><button class="btn no" data-rejok="'+o.id+'">تأكيد الرفض</button>'+
+           '<button class="btn gray" data-rejx="'+o.id+'">رجوع</button></div></div>';
+  }
+  return '<div class="card '+st+'">'+
+    '<div class="row"><span class="no">#'+esc(o.order_no)+'</span><span class="st '+st+'">'+stTxt+'</span><span class="time">'+ago(o.created_at)+'</span></div>'+
+    '<div class="who">👤 '+esc(o.customer_name)+' · '+(o.order_type==='delivery'?'🏍️ توصيل':'🍽️ بالمحل')+
+      (o.payment_method==='whish'?' · 💳 مدفوع Whish':'')+'</div>'+
+    '<div class="items">'+items+'</div>'+
+    '<div class="tot"><span>مجموع الأصناف</span><b>'+money(o.subtotal_usd)+'</b></div>'+
+    (o.customer_note?'<div class="note">📝 '+esc(o.customer_note)+'</div>':'')+
+    (st==='rejected'&&o.reason?'<div class="note" style="color:var(--bad)">السبب: '+esc(o.reason)+'</div>':'')+
+    driverLine(o)+acts+'</div>';
+}
+function bucket(o){
+  if(o.branch_status==='pending') return 'new';
+  if(o.branch_status==='accepted' && ['delivered','cancelled'].indexOf(o.dispatch)<0 &&
+     !(o.order_type!=='delivery' && Date.now()-new Date(o.created_at)>3*3600e3)) return 'work';
+  return 'done';
+}
+function paint(){
+  var v=D.vendor, c=D.company;
+  $('#vName').textContent=v.name_ar||'—';
+  $('#vCo').textContent='طلبات من '+(c.name_ar||'');
+  if(v.image_url){ $('#vImg').src=v.image_url; $('#vImg').classList.remove('hidden'); }
+  var ob=$('#openBtn');
+  ob.textContent=v.force_closed?'🔒 مغلق — افتح':'🟢 مفتوح';
+  ob.className='pill '+(v.force_closed?'off':'on');
+  $('#closedBanner').classList.toggle('hidden',!v.force_closed);
+  var list=D.orders||[];
+  var nNew=list.filter(function(o){return bucket(o)==='new'}).length;
+  var cn=$('#cntNew'); cn.textContent=nNew; cn.classList.toggle('hidden',!nNew);
+  document.title=(nNew?'('+nNew+') ':'')+'لوحة الطلبات — '+(v.name_ar||'');
+  var rows=list.filter(function(o){return bucket(o)===TAB});
+  // ما منعيد الرسم إذا في فورم رفض مفتوح وعم يكتب
+  var typing=document.activeElement&&document.activeElement.tagName==='TEXTAREA';
+  if(typing) return;
+  $('#list').innerHTML=rows.length?rows.map(card).join(''):
+    '<div class="empty">'+({new:'ما في طلبات جديدة هلق — خلّي الصفحة مفتوحة، بس يوصل طلب بتسمع تنبيه 🔔',
+      work:'ما في طلبات قيد التجهيز',done:'ما في طلبات منتهية آخر يوم ونص'}[TAB])+'</div>';
+}
+
+async function load(){
+  if(busy) return; busy=true;
+  try{
+    var r=await sb.rpc('vendor_panel',{p_token:TOKEN});
+    if(r.error) throw r.error;
+    D=r.data;
+    var fresh=(D.orders||[]).filter(function(o){return o.branch_status==='pending'&&!SEEN[o.id]});
+    (D.orders||[]).forEach(function(o){SEEN[o.id]=1});
+    if(!first&&fresh.length){ beep(); toast('🔔 وصل طلب جديد'); if(TAB!=='new') setTab('new'); }
+    if(first){ $('#boot').classList.add('hidden'); $('#app').classList.remove('hidden'); first=false; }
+    paint();
+  }catch(e){
+    if(first) $('#boot').innerHTML='<div style="font-size:42px">🔗</div><b style="color:var(--text)">الرابط مش صالح</b><span>اطلب رابط جديد من شركة التوصيل</span>';
+  }finally{ busy=false; }
+}
+function setTab(t){ TAB=t;
+  Array.prototype.forEach.call(document.querySelectorAll('.tabs button'),function(b){b.setAttribute('aria-pressed',b.dataset.tab===t)});
+  if(D) paint(); }
+document.querySelector('.tabs').addEventListener('click',function(e){var b=e.target.closest('button'); if(b) setTab(b.dataset.tab)});
+
+$('#openBtn').addEventListener('click',async function(){
+  if(!D) return;
+  var closing=!D.vendor.force_closed, msg='';
+  if(closing){ msg=prompt('سكّر المحل؟ الزبائن ما بيعودوا يقدروا يطلبوا منك.\nسبب (اختياري — بيبين للزبون):',''); if(msg===null) return; }
+  var r=await sb.rpc('vendor_set_closed',{p_token:TOKEN,p_closed:closing,p_msg:msg||''});
+  if(r.error) return toast('ما زبط: '+r.error.message);
+  D.vendor.force_closed=closing; paint();
+});
+
+$('#list').addEventListener('click',async function(e){
+  var b=e.target.closest('button'); if(!b) return;
+  if(b.dataset.rej){ openRej[b.dataset.rej]=1; $('#rej-'+b.dataset.rej).style.display='block'; return; }
+  if(b.dataset.rejx){ delete openRej[b.dataset.rejx]; $('#rej-'+b.dataset.rejx).style.display='none'; return; }
+  if(b.dataset.reason){ $('#rr-'+b.dataset.reason).value=b.textContent; return; }
+  var id=b.dataset.acc||b.dataset.rejok; if(!id) return;
+  var accept=!!b.dataset.acc;
+  var reason=accept?'':(($('#rr-'+id)||{}).value||'').trim();
+  b.disabled=true;
+  var r=await sb.rpc('vendor_respond',{p_token:TOKEN,p_order:Number(id),p_accept:accept,p_reason:reason});
+  b.disabled=false;
+  if(r.error) return toast('ما زبط: '+r.error.message);
+  if(r.data&&r.data.ok===false) toast('الطلب انجاوب عليه من قبل');
+  else toast(accept?'✓ وافقت — جهّز الطلب للشوفير':'تم رفض الطلب');
+  delete openRej[id];
+  if(document.activeElement) document.activeElement.blur();
+  await load();
+});
+
+if(!TOKEN){ $('#boot').textContent='الرابط مش صالح'; return; }
+load();
+timer=setInterval(load,8000);   // حتى لو الصفحة بالخلفية — ليوصل التنبيه
+document.addEventListener('visibilitychange',function(){ if(document.visibilityState==='visible') load(); });
+})();
+</script>
+</body>
+</html>

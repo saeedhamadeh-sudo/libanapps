@@ -3324,6 +3324,7 @@ function pageFor(pathname) {
   if (p.startsWith('/i/'))    return '/invoice.html';
   if (p === '/t' || p.startsWith('/t/')) return '/track.html';    // رابط تتبع الطلب للزبون
   if (p === '/d' || p.startsWith('/d/')) return '/driver.html';   // صفحة موظف التوصيل
+  if (p.startsWith('/v/'))     return '/vendor.html';   // لوحة طلبات المطعم/المحل (وضع المحلات)
   // رابط لوحة تحكم مطعم محدد: /اسم-المحل/admin
   if (/^\/[^/]+\/admin\/?$/.test(p)) return '/admin.html';
   // رابط برنامج ألمنيوم مخصص لزبون معيّن: /portal/اسم-محله
