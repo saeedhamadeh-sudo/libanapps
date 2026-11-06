@@ -1421,6 +1421,52 @@ function paintRests(){
         '</td></tr>';
     }).join('') : '<tr><td colspan="5" class="muted" style="padding:20px">لا توجد نتائج</td></tr>');
 }
+/* ---------- 📋 منيو جاهز: اختار منيو وزيدو لأي زبون ---------- */
+async function openMenuPicker(r){
+  var src=await sb.rpc('super_menu_sources');
+  if(src.error){ alert('لم ينجح: '+src.error.message); return; }
+  var S=src.data||{}, opt=function(x,label){ return '<option value="'+esc(x.src)+'">'+esc(label)+' — '+x.items+' منتج</option>'; };
+  var sel='<option value="">— اختار المنيو —</option>'+
+    ((S.templates||[]).length?'<optgroup label="📋 منيوهات جاهزة">'+S.templates.map(function(x){return opt(x,x.name)}).join('')+'</optgroup>':'')+
+    ((S.restaurants||[]).filter(function(x){return x.src!=='rest:'+r.id}).length?'<optgroup label="🍽️ منيوهات المطاعم عالمنصة">'+
+      S.restaurants.filter(function(x){return x.src!=='rest:'+r.id}).map(function(x){return opt(x,x.name+' (/'+x.slug+')')}).join('')+'</optgroup>':'')+
+    ((S.vendors||[]).length?'<optgroup label="🏍️ مطاعم/محلات جوّا منيوهات التوصيل">'+S.vendors.map(function(x){return opt(x,x.name+' ← '+x.parent)}).join('')+'</optgroup>':'');
+  var d=document.createElement('div');
+  d.style.cssText='position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:16px';
+  d.innerHTML='<div class="panel" style="width:100%;max-width:520px;margin:0">'+
+    '<div style="display:flex;align-items:center;gap:10px"><h3 style="flex:1;margin:0">📋 زيد منيو لـ «'+esc(r.name_ar)+'»</h3>'+
+      '<button class="btn alt sm" data-mx>✕</button></div>'+
+    (r.vendors_mode?'<p class="muted" style="font-size:13px">🏍️ هيدا منيو مطاعم/محلات — المنيو اللي بتختارو بينضاف كمطعم/محل لحالو (مع اللوغو والقسم).</p>':'')+
+    '<label style="margin-top:12px;display:block">المنيو</label><select id="mpSrc" style="width:100%">'+sel+'</select>'+
+    '<div style="margin-top:12px;display:grid;gap:8px">'+
+      '<label style="display:flex;gap:8px;align-items:flex-start;margin:0"><input type="radio" name="mpMode" value="add" checked style="width:auto;margin-top:4px"> <span><b>زيد</b><br><span class="muted" style="font-size:12.5px">'+
+        (r.vendors_mode?'إذا المطعم/المحل موجود بنفس الاسم بيرجّعو ظاهر وبيزيد عليه، وإلا بيعملو جديد':'الأقسام بتنزاد فوق المنيو الموجود')+'</span></span></label>'+
+      '<label style="display:flex;gap:8px;align-items:flex-start;margin:0"><input type="radio" name="mpMode" value="replace" style="width:auto;margin-top:4px"> <span><b>امسح وحط</b><br><span class="muted" style="font-size:12.5px">'+
+        (r.vendors_mode?'بيمسح منيو هالمطعم/المحل بس وبيحط المنيو من جديد — باقي المحلات ما بتنلمس':'بيمسح كل أقسام ومنتجات المنيو الحالي (الطلبات القديمة بتضل)')+'</span></span></label>'+
+    '</div>'+
+    '<div class="acts"><button class="btn" data-mgo>زيد المنيو</button><button class="btn alt" data-mx>إلغاء</button></div>'+
+    '<div class="msg" id="mpMsg"></div></div>';
+  document.body.appendChild(d);
+  d.addEventListener('click',async function(e){
+    if(e.target===d||e.target.closest('[data-mx]')){ d.remove(); return; }
+    var go=e.target.closest('[data-mgo]'); if(!go) return;
+    var v=d.querySelector('#mpSrc').value, rep=d.querySelector('[name="mpMode"]:checked').value==='replace';
+    if(!v){ d.querySelector('#mpMsg').textContent='اختار المنيو أول'; return; }
+    if(rep && !r.vendors_mode){
+      var typed2=prompt('رح تنمسح كل أقسام ومنتجات "'+r.name_ar+'" (الطلبات القديمة بتضل).\nاكتب رابط المطعم للتأكيد: '+r.slug,'');
+      if(typed2===null) return;
+      if(typed2.trim()!==r.slug){ d.querySelector('#mpMsg').textContent='الرابط غير مطابق — ما تغيّر شي'; return; }
+    }
+    go.disabled=true; d.querySelector('#mpMsg').textContent='عم نزيد…';
+    var ap=await sb.rpc('super_add_menu',{p_rid:r.id,p_src:v,p_replace:rep});
+    go.disabled=false;
+    if(ap.error){ d.querySelector('#mpMsg').textContent='لم ينجح: '+ap.error.message; return; }
+    d.remove();
+    alert('تم ✓ انضاف '+ap.data.categories+' قسم و'+ap.data.items+' منتج لـ"'+r.name_ar+'"'+
+      (ap.data.vendor?'\n🏪 تحت المطعم/المحل: '+ap.data.vendor.name+(ap.data.vendor['new']?' (جديد)':''):''));
+    await loadRestTable();
+  });
+}
 ['#rq','#rFilter'].forEach(function(x){
   $(x).addEventListener('input',paintRests); $(x).addEventListener('change',paintRests);
 });
@@ -1454,28 +1500,8 @@ $('#restTbl').addEventListener('click',async function(e){
     if(up.error){ alert('لم ينجح: '+up.error.message); return; }
 
   }else if(b.dataset.tpl){
-    var tl=await sb.rpc('super_menu_templates');
-    if(tl.error){ alert('لم ينجح: '+tl.error.message); return; }
-    var TPL=tl.data||[];
-    if(!TPL.length){ alert('ما في منيوهات جاهزة بعد'); return; }
-    var pickT=prompt('أي منيو جاهز بدك تعطي لـ"'+r.name_ar+'"؟\n\n'+
-      TPL.map(function(x,i){return (i+1)+'. '+x.name+' ('+x.cats+' أقسام)'}).join('\n')+'\n\nاكتب الرقم:','1');
-    if(pickT===null) return;
-    var tp=TPL[parseInt(pickT,10)-1]; if(!tp){ alert('رقم غير صحيح'); return; }
-    var mode=prompt('"'+tp.name+'" → "'+r.name_ar+'"\n\n'+(r.vendors_mode
-      ? '🏍️ هيدا منيو مطاعم/محلات — القالب رح ينضاف كمطعم/محل لحالو.\n\n1 = زيد (إذا المطعم/المحل موجود بنفس الاسم، بيرجّعو ظاهر وبيزيد عليه)\n2 = امسح منيو هالمطعم/المحل بس وحط القالب من جديد (باقي المحلات ما بتنلمس)'
-      : '1 = زيد الأقسام فوق المنيو الموجود\n2 = امسح أقسام ومنتجات المنيو الحالي وحط هيدا مكانهن')+'\n\nاكتب الرقم:','1');
-    if(mode===null) return; mode=String(mode).trim();
-    if(mode!=='1'&&mode!=='2'){ alert('رقم غير صحيح'); return; }
-    if(mode==='2' && !r.vendors_mode){
-      var typed2=prompt('رح تنمسح كل أقسام ومنتجات "'+r.name_ar+'" (الطلبات القديمة بتضل).\nاكتب رابط المطعم للتأكيد: '+r.slug,'');
-      if(typed2===null) return;
-      if(typed2.trim()!==r.slug){ alert('الرابط غير مطابق — ما تغيّر شي'); return; }
-    }
-    var ap=await sb.rpc('super_apply_menu_template',{p_rid:id,p_code:tp.code,p_replace:mode==='2'});
-    if(ap.error){ alert('لم ينجح: '+ap.error.message); return; }
-    alert('تم ✓ انضاف '+ap.data.categories+' قسم و'+ap.data.items+' منتج لـ"'+r.name_ar+'"'+
-      (ap.data.vendor?'\n🏪 تحت المطعم/المحل: '+ap.data.vendor.name+(ap.data.vendor['new']?' (جديد)':''):''));
+    openMenuPicker(r);
+    return;
 
   }else if(b.dataset.vmode){
     var vm=!r.vendors_mode;

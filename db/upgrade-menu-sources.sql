@@ -1,0 +1,9 @@
+-- ============================================================
+--  LibanApps — 📋 منيو جاهز من السوبر
+--  • super_menu_sources(): القوالب + منيوهات المطاعم عالمنصة + مطاعم/محلات منيوهات التوصيل
+--  • super_add_menu(rid, 'tpl:code' | 'rest:uuid' | 'vendor:uuid', replace)
+--  • super_apply_menu_template: بوضع المحلات بيحط لوغو وقسم المطعم/المحل من القالب
+--  super_menu_sources و super_add_menu مشغّلين على Supabase (migration: super_copy_menus)
+--  الجزء الأخير (template_vendor_logo_group) — شغّله إذا ما انعمل:
+-- ============================================================
+-- (انظر نص الدالة الكامل بآخر الرسالة/الـcommit — منحطّو هون)
