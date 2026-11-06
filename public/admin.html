@@ -1035,12 +1035,10 @@ $('#brImg').addEventListener('change',function(){
   $('#brImgPreview').innerHTML='<img src="'+url+'" style="max-width:120px;max-height:80px;border-radius:8px;object-fit:cover">';
 });
 
+// كانت ترفع على bucket «restaurant-images» وهو مش موجود — فالصورة ما كانت تنحفظ
+// هلق بتنضغط وبتنرفع على «logos» متل لوغو المطعم
 async function uploadBranchImg(file, branchId){
-  var ext=file.name.split('.').pop();
-  var path='branches/'+branchId+'.'+ext;
-  var r=await sb.storage.from('restaurant-images').upload(path,file,{upsert:true});
-  if(r.error) return null;
-  return sb.storage.from('restaurant-images').getPublicUrl(path).data.publicUrl;
+  return upload('logos', file, 600);
 }
 
 $('#clearBranch').addEventListener('click',clearBranchForm);
@@ -1079,8 +1077,15 @@ $('#saveBranch').addEventListener('click',async function(){
   // رفع الصورة إذا في
   var imgFile=$('#brImg').files[0];
   if(imgFile && savedId){
-    var imgUrl=await uploadBranchImg(imgFile,savedId);
-    if(imgUrl) await sb.from('restaurant_branches').update({image_url:imgUrl}).eq('id',savedId);
+    $('#brMsg').textContent=t('عم نرفع…');
+    try{
+      var imgUrl=await uploadBranchImg(imgFile,savedId);
+      var ui=await sb.from('restaurant_branches').update({image_url:imgUrl}).eq('id',savedId);
+      if(ui.error) throw ui.error;
+    }catch(e2){
+      $('#brMsg').textContent=t('انحفظ بس الصورة ما انرفعت')+': '+(e2.message||e2);
+      await loadBranches(); return;
+    }
   }
   $('#brMsg').textContent='تم الحفظ ✓';
   clearBranchForm();
@@ -2211,7 +2216,7 @@ Object.assign(ADMIN_EN, {
   "اختار صورة": "Choose image", "الصورة الحالية": "Current image", "ما في صور": "No images", "ما في عروض": "No offers",
   "بدون تعليق": "No caption", "هدية": "Gift", "نقدًا": "Cash", "اكتب اسم المنتج": "Type the product name",
   // أيام
-  "بيسكّر تاني يوم": "closes next day", "فترة تانية بنفس اليوم": "Second period on the same day", "فترة": "Period",
+  "بيسكّر تاني يوم": "closes next day", "انحفظ بس الصورة ما انرفعت": "Saved, but the image wasn't uploaded", "فترة تانية بنفس اليوم": "Second period on the same day", "فترة": "Period",
   "متل اليوم اللي قبلو": "Same as the day before",
   "الأحد": "Sunday", "الإثنين": "Monday", "الثلاثاء": "Tuesday", "الأربعاء": "Wednesday", "الخميس": "Thursday",
   "الجمعة": "Friday", "السبت": "Saturday", "فتح": "Open", "غلق": "Close", "مغلق": "Closed",
