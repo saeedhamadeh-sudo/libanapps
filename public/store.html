@@ -239,6 +239,8 @@ svg.i{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.6;stro
 .slides::-webkit-scrollbar{display:none}
 .slide{flex:0 0 100%;scroll-snap-align:start;position:relative;min-width:0}
 .s-img,.s-img img{width:100%;height:100%}
+.s-img picture{display:contents}
+@media(max-width:760px){[data-theme] .slide.hasm.notxt{height:auto!important;min-height:0!important;aspect-ratio:4/5}}
 .s-img img{object-fit:cover;object-position:center}
 .s-img.fb{background:linear-gradient(135deg,var(--brand),color-mix(in srgb,var(--brand) 40%,var(--surface)))}
 .s-txt h2{font-family:var(--font-display);margin:0 0 14px;line-height:1.05}
@@ -1667,7 +1669,7 @@ function renderHero(){
   box.innerHTML=sl.map(function(s,i){
     var hasTxt=!!(s.title||s.subtitle||s.cta), go=slideGo(s);
     var cta=s.cta?(go?'<span class="btn">'+esc(s.cta)+'</span>':'<a class="btn" href="#shop" data-cat="all">'+esc(s.cta)+'</a>'):'';
-    return '<div class="slide'+(hasTxt?'':' notxt')+(go?' lk':'')+'"'+(go?' data-slk="'+esc(go)+'" role="link" tabindex="0"':'')+'><div class="s-img'+(s.image_url?'':' fb')+'">'+(s.image_url?'<img alt="'+esc(s.title||'')+'" '+(i?'loading="lazy" ':'fetchpriority="high" ')+imgs(s.image_url,[640,1024,1600],'100vw')+'>':'')+'</div>'+
+    return '<div class="slide'+(hasTxt?'':' notxt')+(s.mobile_image_url?' hasm':'')+(go?' lk':'')+'"'+(go?' data-slk="'+esc(go)+'" role="link" tabindex="0"':'')+'><div class="s-img'+(s.image_url?'':' fb')+'">'+(s.image_url?'<picture>'+(s.mobile_image_url?'<source media="(max-width:760px)"'+imgs(s.mobile_image_url,[640,1080],'100vw').replace(/ src="[^"]*"/,'').replace(' srcset=',' srcset=')+'>':'')+'<img alt="'+esc(s.title||'')+'" '+(i?'loading="lazy" ':'fetchpriority="high" ')+imgs(s.image_url,[640,1024,1600],'100vw')+'></picture>':'')+'</div>'+
       (hasTxt?'<div class="s-txt">'+(s.title?'<h2>'+esc(s.title)+'</h2>':'')+(s.subtitle?'<p>'+esc(s.subtitle)+'</p>':'')+cta+'</div>':'')+
       (n>1?'<div class="s-idx"><span dir="ltr">'+String(i+1).padStart(2,'0')+' / '+String(n).padStart(2,'0')+'</span></div>':'')+'</div>';
   }).join('');
@@ -1681,12 +1683,13 @@ function renderHero(){
   fitHeroMobile();
 }
 function fitHeroMobile(){
-  if(S.theme!=='electro') return;
   var mob=window.matchMedia('(max-width:760px)').matches;
   $$('#slides .slide').forEach(function(sl){
     var im=sl.querySelector('.s-img img');
-    if(!mob||!im){ sl.style.aspectRatio=''; return; }
-    var go=function(){ if(im.naturalWidth&&im.naturalHeight) sl.style.aspectRatio=im.naturalWidth+'/'+im.naturalHeight; };
+    if(sl.classList.contains('hasm')) return;
+    if(S.theme!=='electro'&&!sl.classList.contains('notxt')) return;
+    if(!mob||!im){ sl.style.aspectRatio=''; sl.style.height=''; sl.style.minHeight=''; return; }
+    var go=function(){ if(im.naturalWidth&&im.naturalHeight){ sl.style.aspectRatio=im.naturalWidth+'/'+im.naturalHeight; sl.style.height='auto'; sl.style.minHeight='0'; } };
     if(im.complete) go(); else im.addEventListener('load',go,{once:true});
   });
 }
