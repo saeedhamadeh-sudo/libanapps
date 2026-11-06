@@ -663,6 +663,10 @@ body.login-page .credit .credit-tel{color:#E08A2B}
         <div><label id="brLblAr">اسم الفرع (عربي)</label><input type="text" id="brNameAr" placeholder="الفرع الرئيسي"></div>
         <div><label id="brLblEn">اسم الفرع (إنكليزي)</label><input type="text" id="brNameEn"></div>
       </div>
+      <div class="g2 hidden" id="brGroupBox" style="margin-top:8px">
+        <div><label>القسم (عربي) — مثلاً: مطاعم، محلات، صيدليات</label><input type="text" id="brGroupAr" list="brGroupsAr" placeholder="مطاعم"><datalist id="brGroupsAr"></datalist></div>
+        <div><label>القسم (إنكليزي)</label><input type="text" id="brGroupEn" list="brGroupsEn" placeholder="Restaurants" dir="ltr"><datalist id="brGroupsEn"></datalist></div>
+      </div>
       <div class="g2">
         <div><label>رقم الهاتف</label><input type="text" id="brPhone" placeholder="961…" dir="ltr"></div>
         <div><label>واتساب الطلبات (961…)</label><input type="text" id="brWa" placeholder="961…" dir="ltr"></div>
@@ -988,10 +992,10 @@ function branchRow(b){
   var activeLabel=b.is_active?'<span style="color:var(--ok-color,#1a7a4a);font-size:12px">● '+t('نشط')+'</span>':'<span style="color:#999;font-size:12px">○ '+t('غير نشط')+'</span>';
   var closedBadge=b.force_closed?'<span style="color:#c00;font-size:12px;font-weight:700"> — '+t('مغلق طارئ')+'</span>':'';
   var dlvBadge=b.delivery_enabled?'<span style="font-size:11px;color:#555;margin-right:4px">🏍️ '+t('توصيل')+(b.delivery_fee_usd?'('+b.delivery_fee_usd+'$)':t('مجاني'))+'</span>':'';
-  var thumb=b.image_url?'<img src="'+esc(b.image_url)+'" style="width:38px;height:38px;border-radius:8px;object-fit:cover;margin-left:10px;flex-shrink:0">':'';
+  var thumb=b.image_url?'<img src="'+esc(b.image_url)+'" style="width:42px;height:42px;border-radius:8px;object-fit:contain;background:#fff;padding:2px;margin-left:10px;flex-shrink:0">':'';
   return '<div class="row" data-bid="'+b.id+'" style="display:flex;align-items:center;gap:0">'+
     thumb+
-    '<div class="t" style="flex:1"><b>'+esc(b.name_ar)+'</b>'+closedBadge+'<span>'+esc(b.name_en)+' · '+esc(b.phone||'')+'</span>'+dlvBadge+'</div>'+
+    '<div class="t" style="flex:1"><b>'+esc(b.name_ar)+'</b>'+(VM()&&b.group_ar?' <span style="font-size:12px;color:var(--accent,#E08A2B)">📂 '+esc(b.group_ar)+'</span>':'')+closedBadge+'<span>'+esc(b.name_en)+' · '+esc(b.phone||'')+'</span>'+dlvBadge+'</div>'+
     activeLabel+
     '<button class="btn alt sm" data-brfc="'+b.id+'" title="'+(b.force_closed?t('إلغاء الإغلاق الطارئ'):t('إغلاق طارئ'))+'">⚡ '+(b.force_closed?t('فتح'):t('إغلاق'))+'</button>'+
     (VM()?'<button class="btn sm" data-vlink="'+b.id+'" title="'+t('رابط لوحة الطلبات لهالمطعم/المحل')+'">🔗 '+t('رابط الطلبات')+'</button> '+
@@ -1007,6 +1011,10 @@ async function copyOrShow(url,label){
 async function loadBranches(){
   var r=await sb.from('restaurant_branches').select('*').eq('restaurant_id',R.id).order('sort');
   BRANCHES=r.data||[];
+  var ga=[], ge=[];
+  BRANCHES.forEach(function(b){ if(b.group_ar&&ga.indexOf(b.group_ar)<0) ga.push(b.group_ar); if(b.group_en&&ge.indexOf(b.group_en)<0) ge.push(b.group_en); });
+  $('#brGroupsAr').innerHTML=ga.map(function(g){return '<option value="'+esc(g)+'">'}).join('');
+  $('#brGroupsEn').innerHTML=ge.map(function(g){return '<option value="'+esc(g)+'">'}).join('');
   $('#brList').innerHTML=BRANCHES.length
     ? BRANCHES.map(branchRow).join('')
     : '<p class="muted">'+(VM()?t('ما في مطاعم أو محلات بعد — أضف أول واحد من الأعلى'):t('ما في فروع بعد — أضف أول فرع من الأعلى'))+'</p>';
@@ -1022,6 +1030,7 @@ function clearBranchForm(){
   $('#brDelivery').checked=false;
   $('#brFee').value=''; $('#brMin').value='';
   $('#brDeliveryNote').value='';
+  $('#brGroupAr').value=''; $('#brGroupEn').value='';
   $('#delBranch').classList.add('hidden');
   $('#brImg').value='';
   $('#brImgPreview').innerHTML='';
@@ -1061,6 +1070,8 @@ $('#saveBranch').addEventListener('click',async function(){
     delivery_fee_usd:Number($('#brFee').value)||0,
     min_order_usd:Number($('#brMin').value)||0,
     delivery_note_ar:$('#brDeliveryNote').value.trim(),
+    group_ar:$('#brGroupAr').value.trim(),
+    group_en:$('#brGroupEn').value.trim()||$('#brGroupAr').value.trim(),
     sort:BRANCHES.length+1
   };
   var id=$('#brId').value;
@@ -1144,6 +1155,7 @@ $('#brList').addEventListener('click',async function(e){
     $('#brFee').value=b.delivery_fee_usd||'';
     $('#brMin').value=b.min_order_usd||'';
     $('#brDeliveryNote').value=b.delivery_note_ar||'';
+    $('#brGroupAr').value=b.group_ar||''; $('#brGroupEn').value=b.group_en||'';
     $('#delBranch').classList.remove('hidden');
     $('#brImg').value='';
     $('#brImgPreview').innerHTML=b.image_url
@@ -1211,6 +1223,7 @@ function applyVendorLabels(){
   set('brListTitle','المطاعم / المحلات');
   var h=document.getElementById('vendorHelp'); if(h) h.classList.remove('hidden');
   var bx=document.getElementById('cVendorBox'); if(bx) bx.classList.remove('hidden');
+  var gb=document.getElementById('brGroupBox'); if(gb) gb.classList.remove('hidden');
   var na=document.getElementById('brNameAr'); if(na) na.placeholder='مثال: بيتزا الضيعة';
 }
 function vendorName(id){ var v=VENDORS.find(function(x){return x.id===id}); return v?v.name_ar:''; }
@@ -2216,7 +2229,8 @@ Object.assign(ADMIN_EN, {
   "اختار صورة": "Choose image", "الصورة الحالية": "Current image", "ما في صور": "No images", "ما في عروض": "No offers",
   "بدون تعليق": "No caption", "هدية": "Gift", "نقدًا": "Cash", "اكتب اسم المنتج": "Type the product name",
   // أيام
-  "بيسكّر تاني يوم": "closes next day", "انحفظ بس الصورة ما انرفعت": "Saved, but the image wasn't uploaded", "فترة تانية بنفس اليوم": "Second period on the same day", "فترة": "Period",
+  "بيسكّر تاني يوم": "closes next day", "القسم (عربي) — مثلاً: مطاعم، محلات، صيدليات": "Section (Arabic) — e.g. restaurants, shops, pharmacies",
+  "القسم (إنكليزي)": "Section (English)", "مطاعم": "Restaurants", "انحفظ بس الصورة ما انرفعت": "Saved, but the image wasn't uploaded", "فترة تانية بنفس اليوم": "Second period on the same day", "فترة": "Period",
   "متل اليوم اللي قبلو": "Same as the day before",
   "الأحد": "Sunday", "الإثنين": "Monday", "الثلاثاء": "Tuesday", "الأربعاء": "Wednesday", "الخميس": "Thursday",
   "الجمعة": "Friday", "السبت": "Saturday", "فتح": "Open", "غلق": "Close", "مغلق": "Closed",
