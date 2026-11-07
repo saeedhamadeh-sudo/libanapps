@@ -219,6 +219,7 @@ button{cursor:pointer;border:0;background:0}
 :focus-visible{outline:3px solid var(--accent);outline-offset:2px;border-radius:6px}
 .wrap{max-width:980px;margin:0 auto;padding:0 16px}
 .hidden{display:none!important}
+#tLogo,#tName,#hLogo,#hName{cursor:pointer}
 /* ===== لايحة المطاعم / المحلات ===== */
 .vp-chips{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;margin:0 -16px 6px;padding:0 16px 6px}
 .vp-chips button{flex-shrink:0;border:1px solid var(--line);background:var(--card);color:var(--text);border-radius:999px;padding:7px 14px;font:700 13px inherit;font-family:inherit;cursor:pointer}
@@ -931,8 +932,8 @@ function showVendorPicker(){
   else if(VP_GROUP!==null && VP_GROUP!=='' && groups.indexOf(VP_GROUP)<0 && VP_GROUP!=='__other') VP_GROUP=null;
   d.innerHTML='<div style="max-width:640px;margin:0 auto">'+
     '<div style="display:flex;align-items:center;gap:12px;margin-bottom:6px">'+
-      (R.logo_url?'<img src="'+esc(img(R.logo_url))+'" alt="" style="width:46px;height:46px;border-radius:12px;object-fit:contain;background:#fff;padding:3px">':'')+
-      '<div style="flex:1"><b style="font-size:19px;display:block">'+esc(tx(R,'name'))+'</b><small style="color:var(--muted)">'+esc(tx(R,'tagline'))+'</small></div>'+
+      (R.logo_url?'<img data-vhome src="'+esc(img(R.logo_url))+'" alt="" style="width:46px;height:46px;border-radius:12px;object-fit:contain;background:#fff;padding:3px;cursor:pointer">':'')+
+      '<div style="flex:1;cursor:pointer" data-vhome><b style="font-size:19px;display:block">'+esc(tx(R,'name'))+'</b><small style="color:var(--muted)">'+esc(tx(R,'tagline'))+'</small></div>'+
       '<button type="button" data-vlang style="border:1px solid var(--line);background:var(--bg-2);color:var(--text);border-radius:10px;padding:6px 10px;font:700 12px inherit">'+T.other+'</button>'+
       (BRANCH?'<button type="button" data-vclose style="border:0;background:var(--bg-2);color:var(--text);border-radius:10px;width:36px;height:36px;font-size:18px">✕</button>':'')+
     '</div>'+
@@ -977,7 +978,7 @@ function showVendorPicker(){
   d.addEventListener('click',function(e){
     if(e.target.closest('[data-vclose]')){ d.remove(); return; }
     if(e.target.closest('[data-vlang]')){ setLang(L==='ar'?'en':'ar'); showVendorPicker(); return; }
-    if(e.target.closest('[data-vtypes]')){ VP_GROUP=null; paintList(); d.scrollTop=0; return; }
+    if(e.target.closest('[data-vtypes]')||e.target.closest('[data-vhome]')){ VP_GROUP=null; d.querySelector('[data-vq]').value=''; paintList(); d.scrollTop=0; return; }
     if(e.target.closest('[data-vfree]')){
       if(dlvPaused()){ toast(pauseText()); return; }
       d.remove(); startFree(); return; }
@@ -1950,6 +1951,17 @@ function showPromo(){
     try{ sessionStorage.setItem('la_promo_'+p.id,'1'); }catch(e){}
   });
 }
+
+/* ---------- اللوغو / الإسم → الصفحة الأساسية ---------- */
+function goHome(){
+  if($('#drawer').classList.contains('on')) openCart(false);
+  if(VMODE){ VP_GROUP=null; showVendorPicker(); return; }   // صفحة الأنواع
+  filter='all'; query=''; $('#q').value=''; paintChips(); paintMenu();
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+['#tLogo','#tName','#hLogo','#hName'].forEach(function(sel){
+  var el=$(sel); if(el) el.addEventListener('click',goHome);
+});
 
 /* ---------- boot ---------- */
 (async function(){
