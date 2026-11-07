@@ -580,6 +580,35 @@ body.login-page .credit .credit-tel{color:#E08A2B}
       <div class="msg" id="pMsg"></div>
     </div>
 
+    <div class="panel" id="dlvPricePanel">
+      <h3>🏍️ سعر التوصيل</h3>
+      <div style="display:grid;gap:8px">
+        <label style="margin:0;display:flex;gap:8px;align-items:flex-start;cursor:pointer"><input type="radio" style="width:auto;margin-top:5px" name="dpMode" value="fixed"> <span><b>سعر ثابت شامل</b> — نفس السعر لكل الطلبات («رسوم التوصيل» فوق)</span></label>
+        <label style="margin:0;display:flex;gap:8px;align-items:flex-start;cursor:pointer"><input type="radio" style="width:auto;margin-top:5px" name="dpMode" value="zones"> <span><b>حسب المنطقة</b> — الزبون بيختار منطقتو وإنت بتحط سعر كل منطقة</span></label>
+        <label style="margin:0;display:flex;gap:8px;align-items:flex-start;cursor:pointer"><input type="radio" style="width:auto;margin-top:5px" name="dpMode" value="distance"> <span><b>حسب المسافة</b> — سعر أساسي + سعر لكل كيلومتر</span></label>
+      </div>
+      <div id="dpZones" class="hidden" style="margin-top:12px">
+        <b>المناطق</b>
+        <div id="dpZoneList" style="display:grid;gap:6px;margin-top:8px"></div>
+        <button class="btn alt sm" id="dpZoneAdd" style="margin-top:8px">+ زيد منطقة</button>
+      </div>
+      <div id="dpDist" class="hidden" style="margin-top:12px">
+        <div class="g3">
+          <div><label>سعر أساسي ($)</label><input type="number" id="dpBase" step="0.25" min="0"></div>
+          <div><label>لكل كيلومتر ($)</label><input type="number" id="dpKm" step="0.05" min="0"></div>
+          <div><label>أبعد مسافة (كم) — اختياري</label><input type="number" id="dpMax" step="0.5" min="0" placeholder="بلا حد"></div>
+        </div>
+        <label style="margin-top:8px">موقع الانطلاق (المطعم) — الصق رابط Google Maps أو «lat, lng»</label>
+        <div style="display:flex;gap:6px"><input type="text" id="dpOrigin" dir="ltr" placeholder="https://maps.google.com/…  أو  33.67, 35.55">
+          <button class="btn alt sm" id="dpHere" type="button">📍 موقعي هلق</button></div>
+        <p class="muted" style="font-size:12.5px;margin:6px 0 0" id="dpHint">المسافة بالطريق تقريباً (الخط المستقيم × 1.3)، والسعر بيتدوّر لأقرب ربع دولار لفوق. مثال: أساسي 1$ + 0.5$ للكيلو → 6 كم = 4$.</p>
+        <p class="muted hidden" style="font-size:12.5px;margin:4px 0 0" id="dpVmHint">🏍️ بوضع المطاعم/المحلات المسافة بتنحسب من موقع كل مطعم/محل (إذا حطّيتلو موقع)، وإلا من هالموقع.</p>
+      </div>
+      <p class="muted" style="font-size:12.5px">المطعم/المحل اللي مفعّل عندو «رسوم خاصة» بياخد رسمو الخاص دايماً.</p>
+      <div class="acts"><button class="btn" id="dpSave">حفظ سعر التوصيل</button></div>
+      <div class="msg" id="dpMsg"></div>
+    </div>
+
     <div class="panel">
       <h3>كلمة المرور</h3>
       <p class="muted" style="margin-top:0">غيّرها متى ما بدك — ٦ أحرف على الأقل.</p>
@@ -663,6 +692,14 @@ body.login-page .credit .credit-tel{color:#E08A2B}
         <div><label id="brLblAr">اسم الفرع (عربي)</label><input type="text" id="brNameAr" placeholder="الفرع الرئيسي"></div>
         <div><label id="brLblEn">اسم الفرع (إنكليزي)</label><input type="text" id="brNameEn"></div>
       </div>
+      <div class="hidden" id="brVendorBox" style="margin-top:10px;border:1px dashed var(--line);border-radius:12px;padding:10px">
+        <b style="font-size:14px">🔑 شو بيقدر يعمل من رابط لوحتو</b>
+        <div class="sw" style="margin-top:6px"><input type="checkbox" id="brCanEdit"><label for="brCanEdit" style="margin:0">يعدّل الأسعار ويوقّف صنف خلص</label></div>
+        <div class="sw"><input type="checkbox" id="brCanAdd"><label for="brCanAdd" style="margin:0">يزيد منتجات جديدة</label></div>
+        <p class="muted" style="font-size:12px;margin:2px 0 8px">حذف أي منتج من رابطو بيوصلك كطلب لتوافق عليه.</p>
+        <label>📍 موقع المطعم/المحل (للتوصيل حسب المسافة) — رابط Google Maps أو «lat, lng»</label>
+        <div style="display:flex;gap:6px"><input type="text" id="brLoc" dir="ltr" placeholder="https://maps.google.com/…"><button class="btn alt sm" type="button" id="brHere">📍 موقعي هلق</button></div>
+      </div>
       <div class="g2 hidden" id="brGroupBox" style="margin-top:8px">
         <div><label>القسم (عربي) — مثلاً: مطاعم، محلات، صيدليات</label><input type="text" id="brGroupAr" list="brGroupsAr" placeholder="مطاعم"><datalist id="brGroupsAr"></datalist></div>
         <div><label>القسم (إنكليزي)</label><input type="text" id="brGroupEn" list="brGroupsEn" placeholder="Restaurants" dir="ltr"><datalist id="brGroupsEn"></datalist></div>
@@ -713,6 +750,10 @@ body.login-page .credit .credit-tel{color:#E08A2B}
     <div class="panel">
       <h3 id="brListTitle">الفروع</h3>
       <div id="brList"><p class="muted">جاري التحميل…</p></div>
+    </div>
+    <div class="panel hidden" id="vendorReqPanel">
+      <h3>🗑 طلبات حذف منتجات من المطاعم/المحلات</h3>
+      <div id="vReqList"><p class="muted">…</p></div>
     </div>
   </section>
 
@@ -823,7 +864,7 @@ async function boot(){
   $('#staffOrdersLink').href='/orders.html?r='+R.slug;
   await licBadge(); siteHelp();
   paintLock();
-  await loadCats(); await loadItems(); fillSettings(); loadSub(); loadPay(); loadBanners(); loadPromos();
+  await loadCats(); await loadItems(); fillSettings(); loadSub(); loadPay(); loadBanners(); loadPromos(); loadDp();
 }
 async function siteHelp(){
   var r=await sb.rpc('public_settings');
@@ -998,6 +1039,10 @@ function branchRow(b){
     '<div class="t" style="flex:1"><b>'+esc(b.name_ar)+'</b>'+(VM()&&b.group_ar?' <span style="font-size:12px;color:var(--accent,#E08A2B)">📂 '+esc(b.group_ar)+'</span>':'')+closedBadge+'<span>'+esc(b.name_en)+' · '+esc(b.phone||'')+'</span>'+dlvBadge+'</div>'+
     activeLabel+
     '<button class="btn alt sm" data-brfc="'+b.id+'" title="'+(b.force_closed?t('إلغاء الإغلاق الطارئ'):t('إغلاق طارئ'))+'">⚡ '+(b.force_closed?t('فتح'):t('إغلاق'))+'</button>'+
+    (VM()?(b.panel_seen_at&&(Date.now()-new Date(b.panel_seen_at))<60000
+        ?'<span style="font-size:12px;color:#1a7a4a;margin-inline-end:6px" title="'+t('لوحة الطلبات مفتوحة عندو')+'">🟢 '+t('لوحتو مفتوحة')+'</span>'
+        :'<span style="font-size:12px;color:#999;margin-inline-end:6px">⚪ '+t('لوحتو مسكّرة')+'</span>')+
+      (b.can_edit_prices||b.can_add_items?'<span style="font-size:12px;margin-inline-end:6px" title="'+t('صلاحيات من رابطو')+'">🔑</span>':''):'')+
     (VM()?'<button class="btn sm" data-vlink="'+b.id+'" title="'+t('رابط لوحة الطلبات لهالمطعم/المحل')+'">🔗 '+t('رابط الطلبات')+'</button> '+
           '<button class="btn alt sm" data-vmenu="'+b.id+'">📋 '+t('رابط المنيو')+'</button> ':'')+
     '<button class="btn alt sm" data-bren="'+b.id+'">'+t('تعديل')+'</button> '+
@@ -1008,6 +1053,29 @@ async function copyOrShow(url,label){
   catch(e){ prompt(label,url); }
 }
 
+async function loadVendorReqs(){
+  if(!VM()) return;
+  var r=await sb.from('vendor_requests').select('*').eq('restaurant_id',R.id).order('created_at',{ascending:false}).limit(40);
+  var L=r.data||[], pend=L.filter(function(q){return q.status==='pending'});
+  var nm=function(id){ var b=BRANCHES.find(function(x){return x.id===id}); return b?b.name_ar:''; };
+  $('#vReqList').innerHTML=(pend.length?pend.map(function(q){
+      return '<div class="row" style="display:flex;align-items:center;gap:8px"><div class="t" style="flex:1"><b>'+esc(q.item_name)+'</b>'+
+        '<span>🏪 '+esc(nm(q.branch_id))+(q.reason?' · '+esc(q.reason):'')+'</span></div>'+
+        '<button class="btn sm" data-rqok="'+q.id+'">'+t('وافق واحذف')+'</button> '+
+        '<button class="btn dg sm" data-rqno="'+q.id+'">'+t('رفض')+'</button></div>';
+    }).join(''):'<p class="muted">'+t('ما في طلبات حذف')+'</p>')+
+    (L.length>pend.length?'<p class="muted" style="font-size:12px;margin-top:8px">'+L.filter(function(q){return q.status!=='pending'}).slice(0,8).map(function(q){
+      return (q.status==='approved'?'✅ ':'❌ ')+esc(q.item_name)+' — '+esc(nm(q.branch_id)); }).join('<br>')+'</p>':'');
+  var tab=document.getElementById('brTab'); if(tab) tab.dataset.badge=pend.length;
+}
+$('#vReqList').addEventListener('click',async function(e){
+  var b=e.target.closest('[data-rqok],[data-rqno]'); if(!b) return;
+  var ok=!!b.dataset.rqok, id=Number(b.dataset.rqok||b.dataset.rqno);
+  if(ok&&!confirm(t('حذف المنتج نهائياً من المنيو؟'))) return;
+  var r=await sb.rpc('admin_vendor_request',{p_id:id,p_approve:ok});
+  if(r.error) return alert(t('ما نجح')+': '+r.error.message);
+  await loadVendorReqs(); await loadItems();
+});
 async function loadBranches(){
   var r=await sb.from('restaurant_branches').select('*').eq('restaurant_id',R.id).order('sort');
   BRANCHES=r.data||[];
@@ -1018,6 +1086,7 @@ async function loadBranches(){
   $('#brList').innerHTML=BRANCHES.length
     ? BRANCHES.map(branchRow).join('')
     : '<p class="muted">'+(VM()?t('ما في مطاعم أو محلات بعد — أضف أول واحد من الأعلى'):t('ما في فروع بعد — أضف أول فرع من الأعلى'))+'</p>';
+  loadVendorReqs();
 }
 
 function clearBranchForm(){
@@ -1031,6 +1100,7 @@ function clearBranchForm(){
   $('#brFee').value=''; $('#brMin').value='';
   $('#brDeliveryNote').value='';
   $('#brGroupAr').value=''; $('#brGroupEn').value='';
+  $('#brCanEdit').checked=false; $('#brCanAdd').checked=false; $('#brLoc').value='';
   $('#delBranch').classList.add('hidden');
   $('#brImg').value='';
   $('#brImgPreview').innerHTML='';
@@ -1051,10 +1121,12 @@ async function uploadBranchImg(file, branchId){
 }
 
 $('#clearBranch').addEventListener('click',clearBranchForm);
+$('#brHere').addEventListener('click',function(){ hereInto($('#brLoc')); });
 
 $('#saveBranch').addEventListener('click',async function(){
   var ar=$('#brNameAr').value.trim();
   if(!ar){ $('#brMsg').textContent='الاسم بالعربي مطلوب'; return; }
+  if($('#brLoc').value.trim() && !parseLatLng($('#brLoc').value)){ $('#brMsg').textContent=t('رابط الموقع مش مفهوم — الصق رابط Google Maps فيه الإحداثيات أو اكتب lat, lng'); return; }
   var hours=collectHours();
   var payload={
     restaurant_id:R.id,
@@ -1071,6 +1143,8 @@ $('#saveBranch').addEventListener('click',async function(){
     min_order_usd:Number($('#brMin').value)||0,
     delivery_note_ar:$('#brDeliveryNote').value.trim(),
     group_ar:$('#brGroupAr').value.trim(),
+    can_edit_prices:$('#brCanEdit').checked, can_add_items:$('#brCanAdd').checked,
+    lat:(parseLatLng($('#brLoc').value)||[null])[0], lng:(parseLatLng($('#brLoc').value)||[null,null])[1],
     group_en:$('#brGroupEn').value.trim()||$('#brGroupAr').value.trim(),
     sort:BRANCHES.length+1
   };
@@ -1156,6 +1230,8 @@ $('#brList').addEventListener('click',async function(e){
     $('#brMin').value=b.min_order_usd||'';
     $('#brDeliveryNote').value=b.delivery_note_ar||'';
     $('#brGroupAr').value=b.group_ar||''; $('#brGroupEn').value=b.group_en||'';
+    $('#brCanEdit').checked=!!b.can_edit_prices; $('#brCanAdd').checked=!!b.can_add_items;
+    $('#brLoc').value=fmtLL(b.lat,b.lng);
     $('#delBranch').classList.remove('hidden');
     $('#brImg').value='';
     $('#brImgPreview').innerHTML=b.image_url
@@ -1224,6 +1300,8 @@ function applyVendorLabels(){
   var h=document.getElementById('vendorHelp'); if(h) h.classList.remove('hidden');
   var bx=document.getElementById('cVendorBox'); if(bx) bx.classList.remove('hidden');
   var gb=document.getElementById('brGroupBox'); if(gb) gb.classList.remove('hidden');
+  var vbx=document.getElementById('brVendorBox'); if(vbx) vbx.classList.remove('hidden');
+  var rq=document.getElementById('vendorReqPanel'); if(rq) rq.classList.remove('hidden');
   var na=document.getElementById('brNameAr'); if(na) na.placeholder='مثال: بيتزا الضيعة';
 }
 function vendorName(id){ var v=VENDORS.find(function(x){return x.id===id}); return v?v.name_ar:''; }
@@ -2051,6 +2129,94 @@ $('#saveLook').addEventListener('click',async function(){
     document.documentElement.dataset.theme=R.theme;
 });
 
+/* ---------- 🏍️ سعر التوصيل: ثابت / مناطق / مسافة ---------- */
+function parseLatLng(v){
+  v=String(v||'').trim(); if(!v) return null; var m;
+  if((m=v.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/))) return [+m[1],+m[2]];
+  if((m=v.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/))) return [+m[1],+m[2]];
+  if((m=v.match(/[?&](?:q|query|ll|destination)=(-?\d+\.\d+)(?:,|%2C)\s*(-?\d+\.\d+)/i))) return [+m[1],+m[2]];
+  if((m=v.match(/^(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)$/))) return [+m[1],+m[2]];
+  return null;
+}
+function fmtLL(a,b){ return (a==null||b==null)?'':(Number(a).toFixed(6)+', '+Number(b).toFixed(6)); }
+function hereInto(inp){
+  if(!navigator.geolocation) return alert(t('المتصفح ما بيدعم تحديد الموقع'));
+  navigator.geolocation.getCurrentPosition(function(p){ inp.value=fmtLL(p.coords.latitude,p.coords.longitude); },
+    function(){ alert(t('ما قدرنا نجيب موقعك — الصق رابط Google Maps')); },{enableHighAccuracy:true,timeout:15000});
+}
+var ZONES=[], ZDEL=[];
+function dpMode(){ var r=document.querySelector('[name="dpMode"]:checked'); return r?r.value:'fixed'; }
+function paintDp(){
+  var m=dpMode();
+  $('#dpZones').classList.toggle('hidden',m!=='zones');
+  $('#dpDist').classList.toggle('hidden',m!=='distance');
+  $('#dpVmHint').classList.toggle('hidden',!VM());
+  $('#dpZoneList').innerHTML=ZONES.length?ZONES.map(function(z,i){
+    return '<div style="display:grid;grid-template-columns:1fr 1fr 90px auto auto;gap:6px;align-items:center">'+
+      '<input data-zi="'+i+'" data-zf="name_ar" value="'+esc(z.name_ar||'')+'" placeholder="'+t('المنطقة عربي')+'">'+
+      '<input data-zi="'+i+'" data-zf="name_en" value="'+esc(z.name_en||'')+'" placeholder="English" dir="ltr">'+
+      '<input data-zi="'+i+'" data-zf="fee_usd" type="number" step="0.25" min="0" value="'+(z.fee_usd==null?'':z.fee_usd)+'" placeholder="$">'+
+      '<label style="margin:0;font-size:12px;white-space:nowrap"><input type="checkbox" data-zi="'+i+'" data-zf="is_active"'+(z.is_active!==false?' checked':'')+'> '+t('ظاهرة')+'</label>'+
+      '<button class="btn dg sm" data-zdel="'+i+'">✕</button></div>';
+  }).join(''):'<p class="muted" style="margin:0">'+t('ما في مناطق بعد — زيد أول منطقة')+'</p>';
+}
+async function loadDp(){
+  var r=await sb.from('delivery_zones').select('*').eq('restaurant_id',R.id).order('sort');
+  ZONES=r.data||[]; ZDEL=[];
+  var m=R.delivery_pricing||'fixed';
+  Array.prototype.forEach.call(document.querySelectorAll('[name="dpMode"]'),function(x){ x.checked=x.value===m; });
+  $('#dpBase').value=R.dlv_base_usd||''; $('#dpKm').value=R.dlv_per_km_usd||''; $('#dpMax').value=R.dlv_max_km==null?'':R.dlv_max_km;
+  $('#dpOrigin').value=fmtLL(R.origin_lat,R.origin_lng);
+  paintDp();
+}
+$('#dlvPricePanel').addEventListener('change',function(e){
+  var el=e.target;
+  if(el.name==='dpMode'){ paintDp(); return; }
+  if(el.dataset.zi!=null){ var z=ZONES[+el.dataset.zi], f=el.dataset.zf;
+    z[f]=el.type==='checkbox'?el.checked:(f==='fee_usd'?(el.value===''?null:Number(el.value)):el.value); }
+});
+$('#dlvPricePanel').addEventListener('input',function(e){
+  var el=e.target; if(el.dataset.zi==null||el.type==='checkbox') return;
+  var z=ZONES[+el.dataset.zi], f=el.dataset.zf; z[f]=f==='fee_usd'?(el.value===''?null:Number(el.value)):el.value;
+});
+$('#dpZoneAdd').addEventListener('click',function(){ ZONES.push({name_ar:'',name_en:'',fee_usd:null,is_active:true}); paintDp(); });
+$('#dpZoneList').addEventListener('click',function(e){
+  var b=e.target.closest('[data-zdel]'); if(!b) return;
+  var z=ZONES.splice(+b.dataset.zdel,1)[0]; if(z&&z.id) ZDEL.push(z.id); paintDp();
+});
+$('#dpHere').addEventListener('click',function(){ hereInto($('#dpOrigin')); });
+$('#dpSave').addEventListener('click',async function(){
+  var m=dpMode(), o={delivery_pricing:m};
+  if(m==='zones'){
+    var zs=ZONES.filter(function(z){return (z.name_ar||'').trim()});
+    if(!zs.length) return msg('#dpMsg',t('زيد منطقة وحدة على الأقل'),false);
+    if(zs.some(function(z){return z.fee_usd==null||isNaN(z.fee_usd)})) return msg('#dpMsg',t('حط سعر لكل منطقة'),false);
+  }
+  if(m==='distance'){
+    var ll=parseLatLng($('#dpOrigin').value);
+    if(!ll && !VM()) return msg('#dpMsg',t('حط موقع المطعم (رابط Google Maps أو lat, lng)'),false);
+    o.dlv_base_usd=Number($('#dpBase').value)||0; o.dlv_per_km_usd=Number($('#dpKm').value)||0;
+    o.dlv_max_km=$('#dpMax').value===''?null:Number($('#dpMax').value);
+    o.origin_lat=ll?ll[0]:null; o.origin_lng=ll?ll[1]:null;
+  }
+  this.disabled=true;
+  try{
+    if(m==='zones'){
+      for(var i=0;i<ZDEL.length;i++){ var d=await sb.from('delivery_zones').delete().eq('id',ZDEL[i]); if(d.error) throw d.error; }
+      ZDEL=[];
+      var k=0;
+      for(var j=0;j<ZONES.length;j++){
+        var z=ZONES[j]; if(!(z.name_ar||'').trim()) continue; k++;
+        var row={restaurant_id:R.id,name_ar:z.name_ar.trim(),name_en:(z.name_en||'').trim()||z.name_ar.trim(),fee_usd:Number(z.fee_usd)||0,is_active:z.is_active!==false,sort:k};
+        var q=z.id?await sb.from('delivery_zones').update(row).eq('id',z.id):await sb.from('delivery_zones').insert(row).select('id').single();
+        if(q.error) throw q.error; if(!z.id&&q.data) z.id=q.data.id;
+      }
+    }
+    if(await patch(o,'#dpMsg')) await loadDp();
+  }catch(err){ msg('#dpMsg',t('ما نجح')+': '+(err.message||err),false); }
+  finally{ this.disabled=false; }
+});
+
 /* ---------- تغيير كلمة المرور ---------- */
 $('#savePw').addEventListener('click',async function(){
   var a=$('#pw1').value, b=$('#pw2').value;
@@ -2229,7 +2395,25 @@ Object.assign(ADMIN_EN, {
   "اختار صورة": "Choose image", "الصورة الحالية": "Current image", "ما في صور": "No images", "ما في عروض": "No offers",
   "بدون تعليق": "No caption", "هدية": "Gift", "نقدًا": "Cash", "اكتب اسم المنتج": "Type the product name",
   // أيام
-  "بيسكّر تاني يوم": "closes next day", "القسم (عربي) — مثلاً: مطاعم، محلات، صيدليات": "Section (Arabic) — e.g. restaurants, shops, pharmacies",
+  "بيسكّر تاني يوم": "closes next day",
+  "🏍️ سعر التوصيل": "🏍️ Delivery price", "https://maps.google.com/…  أو  33.67, 35.55": "https://maps.google.com/…  or  33.67, 35.55", "سعر ثابت شامل": "Flat fee", "— نفس السعر لكل الطلبات («رسوم التوصيل» فوق)": "— the same fee for every order («Delivery fee» above)",
+  "حسب المنطقة": "By area", "— الزبون بيختار منطقتو وإنت بتحط سعر كل منطقة": "— the customer picks their area and you set each area's price",
+  "حسب المسافة": "By distance", "— سعر أساسي + سعر لكل كيلومتر": "— base fee + price per kilometre", "المناطق": "Areas", "+ زيد منطقة": "+ Add area",
+  "سعر أساسي ($)": "Base fee ($)", "لكل كيلومتر ($)": "Per km ($)", "أبعد مسافة (كم) — اختياري": "Max distance (km) — optional",
+  "موقع الانطلاق (المطعم) — الصق رابط Google Maps أو «lat, lng»": "Starting point (restaurant) — paste a Google Maps link or «lat, lng»",
+  "📍 موقعي هلق": "📍 My location now", "المسافة بالطريق تقريباً (الخط المستقيم × 1.3)، والسعر بيتدوّر لأقرب ربع دولار لفوق. مثال: أساسي 1$ + 0.5$ للكيلو → 6 كم = 4$.": "Road distance is estimated (straight line × 1.3) and the fee rounds up to the nearest quarter dollar. Example: base $1 + $0.5/km → 6 km = $4.",
+  "🏍️ بوضع المطاعم/المحلات المسافة بتنحسب من موقع كل مطعم/محل (إذا حطّيتلو موقع)، وإلا من هالموقع.": "🏍️ In restaurants/shops mode the distance is measured from each shop's location (if set), otherwise from this point.",
+  "المطعم/المحل اللي مفعّل عندو «رسوم خاصة» بياخد رسمو الخاص دايماً.": "A restaurant/shop with its own fee enabled always uses that fee.",
+  "حفظ سعر التوصيل": "Save delivery price", "المنطقة عربي": "Area (Arabic)", "ظاهرة": "Visible", "ما في مناطق بعد — زيد أول منطقة": "No areas yet — add the first one",
+  "زيد منطقة وحدة على الأقل": "Add at least one area", "حط سعر لكل منطقة": "Set a price for every area", "حط موقع المطعم (رابط Google Maps أو lat, lng)": "Set the restaurant location (Google Maps link or lat, lng)",
+  "المتصفح ما بيدعم تحديد الموقع": "This browser can't get your location", "ما قدرنا نجيب موقعك — الصق رابط Google Maps": "Couldn't get your location — paste a Google Maps link",
+  "🔑 شو بيقدر يعمل من رابط لوحتو": "🔑 What they can do from their panel link", "يعدّل الأسعار ويوقّف صنف خلص": "Edit prices and mark items sold out",
+  "يزيد منتجات جديدة": "Add new products", "حذف أي منتج من رابطو بيوصلك كطلب لتوافق عليه.": "Deleting any product from their link comes to you as a request to approve.",
+  "📍 موقع المطعم/المحل (للتوصيل حسب المسافة) — رابط Google Maps أو «lat, lng»": "📍 Restaurant/shop location (for distance pricing) — Google Maps link or «lat, lng»",
+  "رابط الموقع مش مفهوم — الصق رابط Google Maps فيه الإحداثيات أو اكتب lat, lng": "Location link not understood — paste a Google Maps link with coordinates or type lat, lng",
+  "لوحتو مفتوحة": "panel open", "لوحتو مسكّرة": "panel closed", "لوحة الطلبات مفتوحة عندو": "Their orders panel is open", "صلاحيات من رابطو": "Permissions from their link",
+  "🗑 طلبات حذف منتجات من المطاعم/المحلات": "🗑 Product delete requests from restaurants/shops", "وافق واحذف": "Approve & delete", "رفض": "Reject",
+  "ما في طلبات حذف": "No delete requests", "حذف المنتج نهائياً من المنيو؟": "Delete the product from the menu permanently?", "القسم (عربي) — مثلاً: مطاعم، محلات، صيدليات": "Section (Arabic) — e.g. restaurants, shops, pharmacies",
   "القسم (إنكليزي)": "Section (English)", "مطاعم": "Restaurants", "انحفظ بس الصورة ما انرفعت": "Saved, but the image wasn't uploaded", "فترة تانية بنفس اليوم": "Second period on the same day", "فترة": "Period",
   "متل اليوم اللي قبلو": "Same as the day before",
   "الأحد": "Sunday", "الإثنين": "Monday", "الثلاثاء": "Tuesday", "الأربعاء": "Wednesday", "الخميس": "Thursday",

@@ -60,6 +60,19 @@ body{font-family:'Cairo',system-ui,sans-serif;background:var(--bg);color:var(--t
 .empty{text-align:center;color:var(--muted);padding:60px 20px}
 .center{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center;padding:20px;color:var(--muted)}
 .hidden{display:none!important}
+.mcat{margin:18px 0 8px;font-size:16px;display:flex;align-items:center;gap:8px}
+.mcat i{flex:1;height:1px;background:var(--line)}
+.mrow{display:flex;align-items:center;gap:8px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px;margin-bottom:8px;flex-wrap:wrap}
+.mrow.off{opacity:.55}
+.mrow .nm{flex:1;min-width:140px;font-size:14.5px}
+.mrow .nm small{display:block;color:var(--muted);font-size:12px}
+.mrow input[type=number]{width:84px;border-radius:10px;border:1px solid var(--line);background:#111113;color:var(--text);padding:8px;font:700 14px 'Cairo';text-align:center}
+.mbtn{border:1px solid var(--line);background:#26262a;color:var(--text);border-radius:10px;padding:8px 10px;font:700 12.5px 'Cairo';cursor:pointer}
+.mbtn.ok{background:var(--ok);color:#052e14;border-color:transparent}
+.mbtn.dg{background:var(--badbg);color:var(--bad);border-color:transparent}
+.mwait{font-size:12px;color:var(--warn)}
+.addf{background:var(--card);border:1px dashed var(--line);border-radius:12px;padding:10px;margin-bottom:8px;display:grid;gap:6px}
+.addf input{border-radius:10px;border:1px solid var(--line);background:#111113;color:var(--text);padding:9px;font:14px 'Cairo'}
 .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#333;color:#fff;padding:10px 16px;border-radius:12px;font-size:14px;z-index:20;opacity:0;transition:opacity .2s;pointer-events:none}
 .toast.on{opacity:1}
 </style>
@@ -79,6 +92,7 @@ body{font-family:'Cairo',system-ui,sans-serif;background:var(--bg);color:var(--t
     <button data-tab="new" aria-pressed="true">طلبات جديدة<i id="cntNew" class="hidden">0</i></button>
     <button data-tab="work" aria-pressed="false">قيد التجهيز</button>
     <button data-tab="done" aria-pressed="false">المنتهية</button>
+    <button data-tab="menu" aria-pressed="false" id="menuTab" class="hidden">🍽️ المنيو</button>
   </div>
   <div class="list" id="list"></div>
 </div>
@@ -177,6 +191,8 @@ function paint(){
   var nNew=list.filter(function(o){return bucket(o)==='new'}).length;
   var cn=$('#cntNew'); cn.textContent=nNew; cn.classList.toggle('hidden',!nNew);
   document.title=(nNew?'('+nNew+') ':'')+'لوحة الطلبات — '+(v.name_ar||'');
+  $('#menuTab').classList.toggle('hidden',!(v.can_edit||v.can_add));
+  if(TAB==='menu') return;
   var rows=list.filter(function(o){return bucket(o)===TAB});
   // ما منعيد الرسم إذا في فورم رفض مفتوح وعم يكتب
   var typing=document.activeElement&&document.activeElement.tagName==='TEXTAREA';
@@ -194,7 +210,7 @@ async function load(){
     D=r.data;
     var fresh=(D.orders||[]).filter(function(o){return o.branch_status==='pending'&&!SEEN[o.id]});
     (D.orders||[]).forEach(function(o){SEEN[o.id]=1});
-    if(!first&&fresh.length){ beep(); toast('🔔 وصل طلب جديد'); if(TAB!=='new') setTab('new'); }
+    if(!first&&fresh.length){ beep(); toast('🔔 وصل طلب جديد'); if(TAB!=='new'&&TAB!=='menu') setTab('new'); }
     if(first){ $('#boot').classList.add('hidden'); $('#app').classList.remove('hidden'); first=false; }
     paint();
   }catch(e){
@@ -203,7 +219,85 @@ async function load(){
 }
 function setTab(t){ TAB=t;
   Array.prototype.forEach.call(document.querySelectorAll('.tabs button'),function(b){b.setAttribute('aria-pressed',b.dataset.tab===t)});
+  if(t==='menu'){ loadMenu(); return; }
   if(D) paint(); }
+
+/* ---------- المنيو: تعديل الأسعار / زيادة منتج / طلب حذف (حسب صلاحيات الإدارة) ---------- */
+var M=null, addOpen={};
+async function loadMenu(){
+  var r=await sb.rpc('vendor_menu',{p_token:TOKEN});
+  if(r.error){ $('#list').innerHTML='<div class="empty">ما قدرنا نجيب المنيو</div>'; return; }
+  M=r.data; paintMenu();
+}
+function pendingFor(id){ return (M.requests||[]).some(function(q){return q.item_id===id&&q.status==='pending'}); }
+function paintMenu(){
+  if(TAB!=='menu'||!M) return;
+  var P=M.perms||{}, h='';
+  h+='<div class="note" style="color:var(--muted)">'+
+    (P.edit?'✏️ فيك تعدّل الأسعار وتوقّف صنف خلص. ':'')+(P.add?'➕ فيك تزيد منتجات. ':'')+
+    '🗑 حذف المنتج بيحتاج موافقة الإدارة.</div>';
+  (M.categories||[]).forEach(function(c){
+    var its=(M.items||[]).filter(function(i){return i.category_id===c.id});
+    h+='<div class="mcat"><b>'+esc(c.name_ar)+'</b><i></i>'+
+      (P.add&&!c.builder?'<button class="mbtn" data-addopen="'+c.id+'">+ زيد منتج</button>':'')+'</div>';
+    if(addOpen[c.id]) h+='<div class="addf" data-addform="'+c.id+'">'+
+      '<input data-f="ar" placeholder="اسم المنتج بالعربي">'+
+      '<input data-f="en" placeholder="الاسم بالإنكليزي (اختياري)" dir="ltr">'+
+      '<input data-f="desc" placeholder="وصف (اختياري)">'+
+      '<input data-f="price" type="number" step="0.01" min="0" placeholder="السعر $" dir="ltr">'+
+      '<div style="display:flex;gap:6px"><button class="mbtn ok" data-addsave="'+c.id+'">حفظ المنتج</button>'+
+      '<button class="mbtn" data-addopen="'+c.id+'">إلغاء</button></div></div>';
+    its.forEach(function(it){
+      var pend=pendingFor(it.id);
+      h+='<div class="mrow'+(it.is_available?'':' off')+'"><div class="nm">'+esc(it.name_ar)+
+        (it.name_en&&it.name_en!==it.name_ar?'<small>'+esc(it.name_en)+'</small>':'')+'</div>'+
+        (P.edit?'<input type="number" step="0.01" min="0" value="'+Number(it.price_usd)+'" data-price="'+it.id+'" dir="ltr">'+
+                '<button class="mbtn ok" data-psave="'+it.id+'">💾</button>'+
+                '<button class="mbtn" data-avail="'+it.id+'" data-on="'+(it.is_available?1:0)+'">'+(it.is_available?'✅ متوفر':'⛔ خلص')+'</button>'
+              :'<b>'+money(it.price_usd)+'</b>')+
+        ((P.edit||P.add)?(pend?'<span class="mwait">⏳ الحذف بانتظار موافقة الإدارة</span>'
+                               :'<button class="mbtn dg" data-del="'+it.id+'" title="طلب حذف">🗑</button>'):'')+
+        '</div>';
+    });
+    if(!its.length) h+='<div class="note" style="color:var(--muted)">ما في منتجات بهالقسم</div>';
+  });
+  var rej=(M.requests||[]).filter(function(q){return q.status!=='pending'}).slice(0,5);
+  if(rej.length) h+='<div class="mcat"><b>آخر طلبات الحذف</b><i></i></div>'+rej.map(function(q){
+    return '<div class="note">'+(q.status==='approved'?'✅ انحذف':'❌ الإدارة رفضت حذف')+' «'+esc(q.item_name)+'»</div>'; }).join('');
+  $('#list').innerHTML=h;
+}
+$('#list').addEventListener('click',async function(e){
+  if(TAB!=='menu') return;
+  var b=e.target.closest('button'); if(!b) return;
+  e.stopImmediatePropagation();
+  var r=null;
+  if(b.dataset.addopen){ addOpen[b.dataset.addopen]=!addOpen[b.dataset.addopen]; paintMenu(); return; }
+  if(b.dataset.addsave){
+    var f=document.querySelector('[data-addform="'+b.dataset.addsave+'"]'), g=function(k){return f.querySelector('[data-f="'+k+'"]').value.trim()};
+    if(g('ar').length<2) return toast('اكتب اسم المنتج');
+    if(g('price')==='') return toast('اكتب السعر');
+    b.disabled=true;
+    r=await sb.rpc('vendor_add_item',{p_token:TOKEN,p_category:b.dataset.addsave,p_name_ar:g('ar'),p_name_en:g('en'),p_desc_ar:g('desc'),p_price:Number(g('price'))});
+    if(!r.error){ delete addOpen[b.dataset.addsave]; toast('✓ انزاد المنتج'); }
+  }
+  else if(b.dataset.psave){
+    var inp=document.querySelector('[data-price="'+b.dataset.psave+'"]');
+    r=await sb.rpc('vendor_update_item',{p_token:TOKEN,p_item:b.dataset.psave,p_price:Number(inp.value),p_available:null});
+    if(!r.error) toast('✓ انحفظ السعر');
+  }
+  else if(b.dataset.avail){
+    r=await sb.rpc('vendor_update_item',{p_token:TOKEN,p_item:b.dataset.avail,p_price:null,p_available:b.dataset.on!=='1'});
+  }
+  else if(b.dataset.del){
+    var why=prompt('طلب حذف المنتج — بيوصل للإدارة لتوافق.\nالسبب (اختياري):','');
+    if(why===null) return;
+    r=await sb.rpc('vendor_request_delete',{p_token:TOKEN,p_item:b.dataset.del,p_reason:why});
+    if(!r.error) toast('⏳ انبعت طلب الحذف للإدارة');
+  }
+  else return;
+  if(r&&r.error) toast('ما زبط: '+(r.error.message==='not allowed'?'ما عندك صلاحية':r.error.message));
+  await loadMenu();
+},true);
 document.querySelector('.tabs').addEventListener('click',function(e){var b=e.target.closest('button'); if(b) setTab(b.dataset.tab)});
 
 $('#openBtn').addEventListener('click',async function(){

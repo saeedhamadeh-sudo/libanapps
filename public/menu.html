@@ -546,6 +546,7 @@ textarea{min-height:60px;resize:vertical}
     <label id="lPhone"></label><input type="tel" id="cPhone" autocomplete="tel" inputmode="tel">
     <div id="wrapTable"><label id="lTable"></label><input type="text" id="cTable" inputmode="numeric"></div>
     <div id="wrapAddr" class="hidden">
+      <div id="zoneWrap" class="hidden"><label id="lZone"></label><select id="cZone"></select></div>
       <label id="lAddr"></label><input type="text" id="cAddr">
       <button class="btn alt" id="geoBtn" style="margin-top:8px"></button>
       <div id="map"></div>
@@ -563,6 +564,7 @@ textarea{min-height:60px;resize:vertical}
       <button data-p="whish" aria-pressed="false" class="hidden"></button>
     </div>
     <div class="muted hidden" id="whishNote" style="font-size:12.5px;margin-top:6px;color:var(--accent)"></div>
+    <div id="dlvFeeLine" class="hidden" style="margin-top:12px;padding:10px 12px;border-radius:12px;background:var(--bg-2);border:1px solid var(--line);font-size:14px"></div>
     <div class="err hidden" id="formErr"></div>
   </div>
   <div class="dfoot hidden" id="footForm">
@@ -702,7 +704,7 @@ function img(u){
 }
 var L='ar', T=window.I18N.ar;
 var R=null, CATS=[], ITEMS=[], BANNERS=[], PROMOS=[], BRANCHES=[];
-var BRANCH=null, BRANCH_ID=null;
+var BRANCH=null, BRANCH_ID=null, ZONES=[];
 // وضع المطاعم / المحلات: كل «فرع» = مطعم أو محل إلو أقسامه
 var VMODE=false, ALL_CATS=[], ALL_ITEMS=[];
 function vt(ar,en){ return L==='en'?en:ar; }
@@ -967,6 +969,10 @@ async function load(){
   ]);
   CATS=res[0].data||[]; ITEMS=res[1].data||[]; BANNERS=res[2].data||[]; PROMOS=res[3].data||[];
   BRANCHES=res[4].data||[];
+  if(R.delivery_pricing==='zones'){
+    var zr=await sb.from('delivery_zones').select('*').eq('restaurant_id',R.id).eq('is_active',true).order('sort');
+    ZONES=zr.data||[];
+  }
   VMODE=!!R.vendors_mode;
   if(VMODE){
     ALL_CATS=CATS; ALL_ITEMS=ITEMS; CATS=[]; ITEMS=[];
@@ -1022,7 +1028,7 @@ function setLang(l){
   $('#paySeg').children[0].textContent=T.cash;
   $('#paySeg').children[1].textContent=T.whish;
   if(DEMO) $('#demoBar').textContent=T.demo;
-  paintHeader(); paintVendorBar(); paintChips(); paintMenu(); paintCart();
+  paintHeader(); paintVendorBar(); paintChips(); paintMenu(); paintCart(); paintFee();
   store('la_lang',l);
 }
 $('#langBtn').addEventListener('click',function(){ setLang(L==='ar'?'en':'ar') });
@@ -1311,6 +1317,46 @@ function onBuilderClick(e){
   var bb2=document.querySelector('#bld .bb'); if(bb2) bb2.scrollTop=st;
 }
 
+/* ---------- رسم التوصيل: ثابت / مناطق / مسافة (نفس حساب السيرفر) ---------- */
+function roadKm(a,b,c,d){ var Rr=6371,x=(c-a)*Math.PI/180,y=(d-b)*Math.PI/180;
+  var h=Math.sin(x/2)*Math.sin(x/2)+Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180)*Math.sin(y/2)*Math.sin(y/2);
+  return Math.round(2*Rr*Math.asin(Math.sqrt(h))*1.3*10)/10; }
+function dlvInfo(){
+  if(!R) return {fee:0};
+  if(BRANCH && BRANCH.delivery_enabled) return {fee:Number(BRANCH.delivery_fee_usd||0)};
+  var m=R.delivery_pricing||'fixed';
+  if(m==='zones'){
+    var zid=$('#cZone')?$('#cZone').value:'', z=ZONES.find(function(x){return x.id===zid});
+    return z?{fee:Number(z.fee_usd||0),zone:z}:{fee:0,needZone:true};
+  }
+  if(m==='distance'){
+    var oLat=(VMODE&&BRANCH&&BRANCH.lat!=null)?BRANCH.lat:R.origin_lat, oLng=(VMODE&&BRANCH&&BRANCH.lng!=null)?BRANCH.lng:R.origin_lng;
+    if(oLat==null||geo.lat==null) return {fee:Number(R.delivery_fee_usd||0),needLoc:oLat!=null};
+    var km=roadKm(oLat,oLng,geo.lat,geo.lng);
+    if(R.dlv_max_km!=null&&km>Number(R.dlv_max_km)) return {fee:0,km:km,far:true};
+    return {fee:Math.ceil((Number(R.dlv_base_usd||0)+Number(R.dlv_per_km_usd||0)*km)*4)/4,km:km};
+  }
+  return {fee:Number(R.delivery_fee_usd||0)};
+}
+function paintFee(){
+  var el=$('#dlvFeeLine'); if(!el) return;
+  var zw=$('#zoneWrap'), zones=R&&R.delivery_pricing==='zones'&&!(BRANCH&&BRANCH.delivery_enabled);
+  if(zw){ zw.classList.toggle('hidden',!zones);
+    if(zones){ $('#lZone').textContent=L==='en'?'Your area':'منطقتك';
+      var cur=$('#cZone').value;
+      $('#cZone').innerHTML='<option value="">'+(L==='en'?'— Choose your area —':'— اختار منطقتك —')+'</option>'+
+        ZONES.map(function(z){ return '<option value="'+z.id+'"'+(z.id===cur?' selected':'')+'>'+esc(tx(z,'name'))+' — '+mainTxt(z.fee_usd)+'</option>'; }).join('');
+    } }
+  if(oType!=='delivery'){ el.classList.add('hidden'); return; }
+  var d=dlvInfo(), t=totals(), txt;
+  if(d.needZone) txt=L==='en'?'🏍️ Choose your area to see the delivery fee':'🏍️ اختار منطقتك ليبين سعر التوصيل';
+  else if(d.far) txt=(L==='en'?'⚠️ Too far for delivery':'⚠️ بعيد كتير عالتوصيل')+' ('+d.km+(L==='en'?' km':' كم')+')';
+  else if(d.needLoc) txt=L==='en'?'🏍️ Delivery fee depends on distance — set your location':'🏍️ سعر التوصيل حسب المسافة — حدّد موقعك';
+  else txt='🏍️ '+(L==='en'?'Delivery':'التوصيل')+': <b>'+mainTxt(d.fee)+'</b>'+(d.km!=null?' · '+d.km+(L==='en'?' km':' كم'):'')+
+         ' &nbsp;·&nbsp; '+(L==='en'?'Total':'المجموع')+': <b>'+mainTxt(t.total)+'</b>';
+  el.innerHTML=txt; el.classList.remove('hidden');
+}
+
 /* ---------- cart ---------- */
 function addItem(id){
   if(cart[id]&&cart[id].opts){ cart[id].qty++; saveCart(); paintCart(); return; }
@@ -1349,7 +1395,7 @@ function loadCart(){
 function totals(){
   var sub=0,n=0;
   Object.keys(cart).forEach(function(k){ sub+=lineUnit(cart[k])*cart[k].qty; n+=cart[k].qty; });
-  var dlvFee=BRANCH&&BRANCH.delivery_enabled ? Number(BRANCH.delivery_fee_usd||0) : Number(R.delivery_fee_usd||0);
+  var df=dlvInfo(), dlvFee=df.fee||0;
   var del=(oType==='delivery'&&sub>0)?dlvFee:0;
   return {sub:sub,del:del,total:sub+del,count:n};
 }
@@ -1438,7 +1484,7 @@ function showStep(s){
 }
 function showForm(){
   if(!R.dinein_enabled) setType('delivery');
-  showStep('form');
+  showStep('form'); paintFee();
   if(oType==='delivery'){ setTimeout(function(){ initMap(); if(MAP) MAP.invalidateSize(); },120); }
 }
 $('#backBtn').addEventListener('click',function(){ showStep('cart') });
@@ -1452,8 +1498,9 @@ function setType(t){
   $('#wrapTable').classList.toggle('hidden',t!=='dine_in');
   $('#wrapAddr').classList.toggle('hidden',t!=='delivery');
   if(t==='delivery'){ setTimeout(initMap,60); }
-  paintCart();
+  paintCart(); paintFee();
 }
+$('#cZone').addEventListener('change',function(){ paintFee(); paintCart(); });
 $('#typeSeg').addEventListener('click',function(e){
   var b=e.target.closest('button'); if(b) setType(b.dataset.t);
 });
@@ -1480,6 +1527,7 @@ function showAccuracy(la,ln,m){
 }
 function setPin(la,ln,zoom){
   geo.lat=la; geo.lng=ln;
+  setTimeout(function(){ paintFee(); paintCart(); },0);
   if(!MAP) return;
   if(PIN) PIN.setLatLng([la,ln]);
   else{
@@ -1492,6 +1540,7 @@ function setPin(la,ln,zoom){
 }
 function okMsg(){
   var m=$('#geoMsg'); m.className='ok'; m.style.color=''; m.textContent=T.locationSet;
+  setTimeout(function(){ paintFee(); paintCart(); },0);
   try{ localStorage.setItem('la_geo',JSON.stringify({lat:geo.lat,lng:geo.lng})); }catch(e){}
 }
 function refreshMap(){
@@ -1639,6 +1688,7 @@ function waText(o){
   lines.push(T.phone+': '+$('#cPhone').value.trim());
   if(oType==='dine_in'&&$('#cTable').value) lines.push(T.tableNo+': '+$('#cTable').value.trim());
   if(oType==='delivery'){
+    var zi=dlvInfo(); if(zi.zone) lines.push((L==='en'?'Area':'المنطقة')+': '+tx(zi.zone,'name'));
     if($('#cAddr').value) lines.push(T.address+': '+$('#cAddr').value.trim());
     if(geo.lat) lines.push('📍 https://maps.google.com/?q='+geo.lat+','+geo.lng);
   }
@@ -1664,6 +1714,10 @@ $('#confirmBtn').addEventListener('click',async function(){
   if(name.length<2){ return fail(T.required); }
   if(phone.replace(/\D/g,'').length<7){ return fail(T.invalidPhone); }
   if(oType==='delivery'&&R.require_location&&!geo.lat){ return fail(T.needLocation); }
+  var di=oType==='delivery'?dlvInfo():{};
+  if(di.needZone) return fail(L==='en'?'Choose your area':'اختار منطقتك');
+  if(di.far) return fail(L==='en'?'Your location is outside our delivery range':'موقعك برّا منطقة التوصيل');
+  if(di.needLoc) return fail(T.needLocation);
   var t=totals();
   var minOrder=BRANCH&&BRANCH.delivery_enabled ? Number(BRANCH.min_order_usd||0) : Number(R.min_order_usd||0);
   if(oType==='delivery'&&t.sub<minOrder){
@@ -1679,7 +1733,7 @@ $('#confirmBtn').addEventListener('click',async function(){
         p_slug:slug, p_type:oType, p_name:name, p_phone:phone,
         p_table:$('#cTable').value.trim(), p_address:$('#cAddr').value.trim(),
         p_lat:geo.lat, p_lng:geo.lng, p_note:$('#cNote').value.trim(),
-        p_payment:pay,
+        p_payment:pay, p_zone:(oType==='delivery'&&di.zone)?di.zone.id:null,
         p_lines:Object.keys(cart).map(function(k){ var c=cart[k], l={item_id:c.item.id,qty:c.qty};
           if(c.opts) l.opts=c.opts; return l; })
       });
@@ -1704,6 +1758,8 @@ $('#confirmBtn').addEventListener('click',async function(){
   }catch(e){
     console.error('place_order failed:', e);
     var d = (e && (e.message || e.hint || e.details || e.code)) || '';
+    if(/zone required/.test(d)) d=L==='en'?'choose your area':'اختار منطقتك';
+    if(/out of delivery range/.test(d)) d=L==='en'?'outside the delivery range':'برّا منطقة التوصيل';
     fail(T.error + (d ? ' — ' + d : ''));
   }finally{ btn.disabled=false; btn.textContent=T.confirm; }
 });
