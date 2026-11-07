@@ -1,0 +1,9 @@
+-- ============================================================
+--  تصليح: «تفعيل نقدي» للتوصيل ما كان يبين مفعّل
+--  التفعيل بينحفظ بـ delivery_subs / delivery_seats (وهيدا اللي بيستعملو الشوفيرية والطلبات)،
+--  بس لايحة السوبر ولوحة المطعم كانوا يقروا أعمدة قديمة بـ restaurants
+--  (delivery_active / delivery_expires_at) ما حدا بيحدّثها.
+--  هلق: _dlv_billing() مصدر واحد لـ super_delivery_list و delivery_state و admin_fleet.
+--  مشغّل على Supabase (migration: delivery_status_from_subs)
+--  لقراءة النص الحالي: select pg_get_functiondef('public._dlv_billing'::regproc);
+-- ============================================================
