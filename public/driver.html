@@ -264,35 +264,43 @@ function paintDuty(){
 var VI={};
 function vInfo(o){ return VI[String(o.id)]||null; }
 function vendorBox(o){
-  var v=vInfo(o); if(!v) return '';
-  var st=v.branch_status==='accepted'?'<span class="chip p">✅ المطعم وافق — عم يجهّز الطلب</span>'
-        :v.branch_status==='rejected'?'<span class="chip" style="background:#3a0d0d;color:#f87171">❌ المطعم رفض الطلب'+(v.reason?' — '+esc(v.reason):'')+'</span>'
-        :'<span class="chip w">⏳ بانتظار موافقة المطعم</span>';
-  var acts='';
-  if(v.branch_status==='pending'){
-    var wa=String(v.whatsapp||v.phone||'').replace(/\D/g,'').length>=7?waNum(v.whatsapp||v.phone):'';
-    var lines=(v.items||[]).map(function(i){return '• '+i.qty+' × '+i.name}).join('\n');
-    var txt='مرحبا 👋\nطلب جديد رقم '+v.order_no+' لـ '+v.name_ar+':\n'+lines+
-      (v.note?'\n📝 '+v.note:'')+'\n\nمجموع الأصناف: '+Number(v.subtotal_usd||0)+' $'+
-      (v.panel?'\n\nوافق عليه من لوحتك:\n'+location.origin+'/v/'+v.panel:'')+'\n\nالشوفير جايي ياخدو 🏍️';
-    acts='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">'+
-      (v.online?'':'<div style="width:100%;color:#fbbf24;font-weight:700">⚠️ لوحة المطعم مسكّرة — ابعتلو الطلب أو احكيه</div>')+
-      (wa?'<a class="btn alt" style="flex:1" target="_blank" rel="noopener" href="https://wa.me/'+wa+'?text='+encodeURIComponent(txt)+'">💬 ابعت الطلب للمطعم</a>':'')+
-      (v.phone?'<a class="btn alt" style="flex:1" href="tel:'+esc(v.phone)+'">📞 اتصل بالمطعم</a>':'')+
-      '<button class="btn ok" style="width:100%" data-vacc="'+o.id+'">✅ المطعم وافق عالتلفون</button></div>';
-  }
-  var map=v.lat!=null?' · <a target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination='+v.lat+','+v.lng+'" style="color:var(--accent)">🧭 للمطعم</a>':'';
-  return '<div class="meta" style="margin-top:8px;padding:8px 10px;border-radius:10px;background:var(--bg-2);border:1px solid var(--line)">'+
-    '🏪 <b style="color:var(--text)">'+esc(v.name_ar)+'</b> '+(v.online?'<span style="color:#4ade80;font-size:12px">🟢 لوحتو مفتوحة</span>':'<span style="color:#9ca3af;font-size:12px">⚪ لوحتو مسكّرة</span>')+
-    (v.address_ar?'<br>📍 '+esc(v.address_ar):'')+map+
-    '<div style="margin-top:6px">'+st+'</div>'+acts+'</div>';
+  var V=vInfo(o); if(!V) return '';
+  var h='';
+  if(V.free_text) h+='<div class="meta" style="margin-top:8px;padding:8px 10px;border-radius:10px;background:var(--bg-2);border:1px solid var(--accent)">'+
+    '📝 <b style="color:var(--text)">طلب حر — اشتري هالأغراض:</b><div style="white-space:pre-wrap;color:var(--text);margin-top:4px">'+esc(V.free_text)+'</div></div>';
+  (V.vendors||[]).forEach(function(v){
+    var st=v.status==='accepted'?'<span class="chip p">✅ وافق — عم يجهّز</span>'
+          :v.status==='rejected'?'<span class="chip" style="background:#3a0d0d;color:#f87171">❌ رفض'+(v.reason?' — '+esc(v.reason):'')+'</span>'
+          :'<span class="chip w">⏳ بانتظار موافقتو</span>';
+    var acts='';
+    if(v.status==='pending'){
+      var digits=String(v.whatsapp||v.phone||'').replace(/\D/g,'');
+      var wa=digits.length>=7?waNum(v.whatsapp||v.phone):'';
+      var lines=(v.items||[]).map(function(i){return '• '+i.qty+' × '+i.name}).join('\n');
+      var txt='مرحبا 👋\nطلب جديد رقم '+V.order_no+' لـ '+v.name_ar+':\n'+lines+
+        (V.note?'\n📝 '+V.note:'')+'\n\nمجموع الأصناف: '+Number(v.subtotal_usd||0)+' $'+
+        (v.panel?'\n\nوافق عليه من لوحتك:\n'+location.origin+'/v/'+v.panel:'')+'\n\nالشوفير جايي ياخدو 🏍️';
+      acts='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">'+
+        (v.online?'':'<div style="width:100%;color:#fbbf24;font-weight:700">⚠️ لوحة المطعم مسكّرة — ابعتلو الطلب أو احكيه</div>')+
+        (wa?'<a class="btn alt" style="flex:1" target="_blank" rel="noopener" href="https://wa.me/'+wa+'?text='+encodeURIComponent(txt)+'">💬 ابعت الطلب</a>':'')+
+        (v.phone?'<a class="btn alt" style="flex:1" href="tel:'+esc(v.phone)+'">📞 اتصل</a>':'')+
+        '<button class="btn ok" style="width:100%" data-vacc="'+o.id+'" data-vb="'+v.branch_id+'">✅ وافق عالتلفون</button></div>';
+    }
+    var map=v.lat!=null?' · <a target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination='+v.lat+','+v.lng+'" style="color:var(--accent)">🧭 للمحل</a>':'';
+    h+='<div class="meta" style="margin-top:8px;padding:8px 10px;border-radius:10px;background:var(--bg-2);border:1px solid var(--line)">'+
+      '🏪 <b style="color:var(--text)">'+esc(v.name_ar)+'</b> '+(v.online?'<span style="color:#4ade80;font-size:12px">🟢 لوحتو مفتوحة</span>':'<span style="color:#9ca3af;font-size:12px">⚪ لوحتو مسكّرة</span>')+
+      (v.address_ar?'<br>📍 '+esc(v.address_ar):'')+map+
+      ((V.vendors||[]).length>1?'<div style="margin-top:4px">'+(v.items||[]).map(function(i){return i.qty+' × '+esc(i.name)}).join('<br>')+'</div>':'')+
+      '<div style="margin-top:6px">'+st+'</div>'+acts+'</div>';
+  });
+  return h;
 }
 function departBtn(o){
   return vendorBlocks(o)
     ?'<button class="btn go full" disabled style="opacity:.5">🏍️ في الطريق إليك — بعد موافقة المطعم</button>'
     :'<button class="btn go full" data-act="depart" data-id="'+o.id+'">🏍️ في الطريق إليك</button>';
 }
-function vendorBlocks(o){ var v=vInfo(o); return !!(v && v.branch_status!=='accepted'); }
+function vendorBlocks(o){ var v=vInfo(o); return !!(v && (v.vendors||[]).some(function(x){return x.status==='pending'})); }
 
 /* ---------- الطلبات ---------- */
 function paintOrders(){
@@ -365,7 +373,7 @@ document.addEventListener('click',async function(e){
   if(va){
     if(!confirm('أكّدت مع المطعم إنو وافق عالطلب وعم يجهّزو؟')) return;
     va.disabled=true;
-    try{ await rpc('driver_vendor_accept',{p_order:Number(va.dataset.vacc)}); toast('✓ انسجّل إنو المطعم وافق'); }
+    try{ await rpc('driver_vendor_accept',{p_order:Number(va.dataset.vacc),p_branch:va.dataset.vb||null}); toast('✓ انسجّل إنو المطعم وافق'); }
     catch(err){ toast(errTxt(err)); }
     await load(); return;
   }

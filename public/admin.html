@@ -758,6 +758,26 @@ body.login-page .credit .credit-tel{color:#E08A2B}
       <h3 id="brListTitle">الفروع</h3>
       <div id="brList"><p class="muted">جاري التحميل…</p></div>
     </div>
+    <div class="panel hidden" id="homeLayoutPanel">
+      <h3>🏠 الصفحة الرئيسية عند الزبون</h3>
+      <p class="muted" style="font-size:13px;margin-top:0">رتّب المربعات اللي بيشوفها الزبون أول ما يفتح، وغيّر أيقونة كل نوع إذا بدك. ترتيب المطاعم/المحلات جوّا كل نوع بيكون متل ترتيبهن بلايحة «المطاعم / المحلات» فوق (▲▼).</p>
+      <div id="hlList" style="display:grid;gap:6px"></div>
+      <div style="margin-top:14px;border-top:1px dashed var(--line);padding-top:12px">
+        <div class="sw"><input type="checkbox" id="foOn"><label for="foOn" style="margin:0"><b>📝 طلب حر</b> — الزبون بيكتب شو بدو والشوفير بيشتريلو ياه</label></div>
+        <div class="g3" style="margin-top:6px">
+          <div><label>اسم المربع (عربي)</label><input type="text" id="foTitleAr" placeholder="طلب حر"></div>
+          <div><label>اسم المربع (إنكليزي)</label><input type="text" id="foTitleEn" dir="ltr" placeholder="Anything you need"></div>
+          <div><label>رسم التوصيل للطلب الحر ($)</label><input type="number" id="foFee" step="0.25" min="0" placeholder="متل التوصيل العادي"></div>
+        </div>
+      </div>
+      <div style="margin-top:10px">
+        <label>رسم إضافي لكل محل زيادة بنفس الطلب ($)</label>
+        <input type="number" id="hlExtra" step="0.25" min="0" placeholder="0" style="max-width:200px">
+        <p class="muted" style="font-size:12px;margin:4px 0 0">مثال: توصيل 2$ + 1$ لكل محل زيادة → طلب من 3 محلات = 4$.</p>
+      </div>
+      <div class="acts"><button class="btn" id="hlSave">حفظ</button></div>
+      <div class="msg" id="hlMsg"></div>
+    </div>
     <div class="panel hidden" id="vendorReqPanel">
       <h3>🗑 طلبات حذف منتجات من المطاعم/المحلات</h3>
       <div id="vReqList"><p class="muted">…</p></div>
@@ -1053,6 +1073,7 @@ function branchRow(b){
       (b.can_edit_prices||b.can_add_items?'<span style="font-size:12px;margin-inline-end:6px" title="'+t('صلاحيات من رابطو')+'">🔑</span>':''):'')+
     (VM()?'<button class="btn sm" data-vlink="'+b.id+'" title="'+t('رابط لوحة الطلبات لهالمطعم/المحل')+'">🔗 '+t('رابط الطلبات')+'</button> '+
           '<button class="btn alt sm" data-vmenu="'+b.id+'">📋 '+t('رابط المنيو')+'</button> ':'')+
+    (VM()?'<button class="btn alt sm" data-brup="'+b.id+'" title="'+t('لفوق')+'">▲</button><button class="btn alt sm" data-brdn="'+b.id+'">▼</button> ':'')+
     '<button class="btn alt sm" data-bren="'+b.id+'">'+t('تعديل')+'</button> '+
     '<button class="btn dg sm" data-brdel="'+b.id+'">'+t('حذف')+'</button></div>';
 }
@@ -1101,6 +1122,65 @@ $('#brTypeSel').addEventListener('change',function(){
   $('#brGroupAr').classList.add('hidden'); $('#brGroupAr').value=v;
   $('#brGroupEn').value=v?(TYPE_EN[v]||''):'';
 });
+/* ---------- 🏠 ترتيب الصفحة الرئيسية ---------- */
+var HL_ORDER=[], HL_ICONS={};
+function hlTypes(){
+  var g=[]; BRANCHES.forEach(function(b){ if(b.group_ar&&g.indexOf(b.group_ar)<0) g.push(b.group_ar); });
+  if($('#foOn').checked) g.push('__free');
+  var ord=HL_ORDER.slice(); g.forEach(function(x){ if(ord.indexOf(x)<0) ord.push(x); });
+  return ord.filter(function(x){ return g.indexOf(x)>=0; });
+}
+function paintHL(){
+  HL_ORDER=hlTypes();
+  $('#hlList').innerHTML=HL_ORDER.length?HL_ORDER.map(function(g,i){
+    var nm=g==='__free'?'📝 '+($('#foTitleAr').value.trim()||'طلب حر'):g;
+    var cnt=g==='__free'?'':' <span class="muted" style="font-size:12px">('+BRANCHES.filter(function(b){return b.group_ar===g}).length+')</span>';
+    return '<div style="display:flex;align-items:center;gap:8px;background:var(--bg-2);border:1px solid var(--line);border-radius:10px;padding:6px 8px">'+
+      '<b style="width:22px;text-align:center">'+(i+1)+'</b>'+
+      '<input type="text" data-hlicon="'+esc(g)+'" value="'+esc(HL_ICONS[g]||'')+'" placeholder="'+(g==='__free'?'📝':'🏪')+'" style="width:58px;text-align:center;font-size:20px;padding:4px">'+
+      '<span style="flex:1">'+esc(nm)+cnt+'</span>'+
+      '<button class="btn alt sm" data-hlup="'+i+'"'+(i===0?' disabled':'')+'>▲</button>'+
+      '<button class="btn alt sm" data-hldn="'+i+'"'+(i===HL_ORDER.length-1?' disabled':'')+'>▼</button></div>';
+  }).join(''):'<p class="muted">'+t('حطّ نوع لكل مطعم/محل (مطاعم، محلات تجارية…) ليطلعوا مربعات هون')+'</p>';
+}
+function fillHL(){
+  var L0=R.home_layout||{};
+  HL_ORDER=(L0.order||[]).slice(); HL_ICONS=Object.assign({},L0.icons||{});
+  $('#foOn').checked=!!R.free_order_enabled;
+  $('#foTitleAr').value=R.free_order_title_ar||''; $('#foTitleEn').value=R.free_order_title_en||'';
+  $('#foFee').value=R.free_order_fee_usd==null?'':R.free_order_fee_usd;
+  $('#hlExtra').value=R.dlv_extra_vendor_usd||'';
+  paintHL();
+}
+$('#hlList').addEventListener('click',function(e){
+  var u=e.target.closest('[data-hlup]'), d=e.target.closest('[data-hldn]');
+  if(!u&&!d) return;
+  var i=Number((u||d).dataset.hlup||(u||d).dataset.hldn), j=u?i-1:i+1;
+  var x=HL_ORDER[i]; HL_ORDER[i]=HL_ORDER[j]; HL_ORDER[j]=x; paintHL();
+});
+$('#hlList').addEventListener('input',function(e){ var el=e.target; if(el.dataset.hlicon!=null) HL_ICONS[el.dataset.hlicon]=el.value.trim(); });
+$('#foOn').addEventListener('change',paintHL);
+$('#foTitleAr').addEventListener('input',paintHL);
+$('#hlSave').addEventListener('click',async function(){
+  var icons={}; Object.keys(HL_ICONS).forEach(function(k){ if(HL_ICONS[k]) icons[k]=HL_ICONS[k]; });
+  await patch({home_layout:{order:HL_ORDER,icons:icons},
+    free_order_enabled:$('#foOn').checked,
+    free_order_title_ar:$('#foTitleAr').value.trim()||'طلب حر',
+    free_order_title_en:$('#foTitleEn').value.trim()||'Anything you need',
+    free_order_fee_usd:$('#foFee').value===''?null:Number($('#foFee').value),
+    dlv_extra_vendor_usd:Number($('#hlExtra').value)||0},'#hlMsg');
+});
+// ترتيب المطاعم/المحلات (▲▼)
+async function moveBranch(id,dir){
+  var i=BRANCHES.findIndex(function(b){return b.id===id}), j=i+dir;
+  if(i<0||j<0||j>=BRANCHES.length) return;
+  var x=BRANCHES[i]; BRANCHES[i]=BRANCHES[j]; BRANCHES[j]=x;
+  for(var k=0;k<BRANCHES.length;k++){
+    if(BRANCHES[k].sort!==k+1){ BRANCHES[k].sort=k+1; await sb.from('restaurant_branches').update({sort:k+1}).eq('id',BRANCHES[k].id); }
+  }
+  await loadBranches();
+}
+
 async function loadBranches(){
   var r=await sb.from('restaurant_branches').select('*').eq('restaurant_id',R.id).order('sort');
   BRANCHES=r.data||[];
@@ -1114,6 +1194,7 @@ async function loadBranches(){
     ? BRANCHES.map(branchRow).join('')
     : '<p class="muted">'+(VM()?t('ما في مطاعم أو محلات بعد — أضف أول واحد من الأعلى'):t('ما في فروع بعد — أضف أول فرع من الأعلى'))+'</p>';
   loadVendorReqs();
+  if(VM()) fillHL();
 }
 
 function clearBranchForm(){
@@ -1175,6 +1256,7 @@ $('#saveBranch').addEventListener('click',async function(){
     group_en:$('#brGroupEn').value.trim()||$('#brGroupAr').value.trim(),
     sort:BRANCHES.length+1
   };
+  if($('#brId').value){ var cb=BRANCHES.find(function(x){return x.id===$('#brId').value}); if(cb) payload.sort=cb.sort; }
   var id=$('#brId').value;
   var err, savedId=id;
   if(id){
@@ -1213,6 +1295,8 @@ $('#delBranch').addEventListener('click',async function(){
 });
 
 $('#brList').addEventListener('click',async function(e){
+  var mv=e.target.closest('[data-brup],[data-brdn]');
+  if(mv){ mv.disabled=true; await moveBranch(mv.dataset.brup||mv.dataset.brdn, mv.dataset.brup?-1:1); return; }
   var vl=e.target.closest('[data-vlink]');
   if(vl){
     var vb=BRANCHES.find(function(x){return x.id===vl.dataset.vlink}); if(!vb) return;
@@ -1329,6 +1413,7 @@ function applyVendorLabels(){
   var gb=document.getElementById('brGroupBox'); if(gb) gb.classList.remove('hidden');
   var vbx=document.getElementById('brVendorBox'); if(vbx) vbx.classList.remove('hidden');
   var rq=document.getElementById('vendorReqPanel'); if(rq) rq.classList.remove('hidden');
+  var hl=document.getElementById('homeLayoutPanel'); if(hl) hl.classList.remove('hidden');
   var na=document.getElementById('brNameAr'); if(na) na.placeholder='مثال: بيتزا الضيعة';
 }
 function vendorName(id){ var v=VENDORS.find(function(x){return x.id===id}); return v?v.name_ar:''; }
@@ -2013,6 +2098,7 @@ function orderRow(o, pending){
     '<span>'+typeLabel+' · '+o.total_usd+' $ · '+d.toLocaleDateString('en-GB')+' '+d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})+'</span>'+
     (o.customer_phone?'<span style="direction:ltr;font-size:12px">📞 '+esc(o.customer_phone)+'</span>':'')+
     (o.notes?'<span style="color:var(--muted);font-size:12px">📝 '+esc(o.notes)+'</span>':'')+
+    (o.free_text?'<span style="font-size:12.5px;white-space:pre-wrap">📝 '+t('طلب حر')+': '+esc(o.free_text.length>160?o.free_text.slice(0,160)+'…':o.free_text)+'</span>':'')+
     '</div>'+pay+orderStatusLabel(o.status)+acts+
     '<a class="btn alt sm" style="text-decoration:none" target="_blank" href="/i/'+encodeURIComponent(o.token)+'">'+t('الفاتورة')+'</a></div>';
 }
@@ -2501,7 +2587,13 @@ Object.assign(ADMIN_EN, {
   "اختار صورة": "Choose image", "الصورة الحالية": "Current image", "ما في صور": "No images", "ما في عروض": "No offers",
   "بدون تعليق": "No caption", "هدية": "Gift", "نقدًا": "Cash", "اكتب اسم المنتج": "Type the product name",
   // أيام
-  "بيسكّر تاني يوم": "closes next day", "التوصيل مقفل اليوم": "Delivery closed today", "قفّل التوصيل اليوم": "Close delivery today",
+  "بيسكّر تاني يوم": "closes next day", "🏠 الصفحة الرئيسية عند الزبون": "🏠 Customer home page",
+  "رتّب المربعات اللي بيشوفها الزبون أول ما يفتح، وغيّر أيقونة كل نوع إذا بدك. ترتيب المطاعم/المحلات جوّا كل نوع بيكون متل ترتيبهن بلايحة «المطاعم / المحلات» فوق (▲▼).": "Order the tiles customers see first and change each type's icon if you like. Restaurants/shops inside each type follow their order in the «Restaurants / shops» list above (▲▼).",
+  "📝 طلب حر": "📝 Free order", "— الزبون بيكتب شو بدو والشوفير بيشتريلو ياه": "— the customer writes what they need and the driver buys it",
+  "اسم المربع (عربي)": "Tile name (Arabic)", "اسم المربع (إنكليزي)": "Tile name (English)", "رسم التوصيل للطلب الحر ($)": "Free order delivery fee ($)",
+  "متل التوصيل العادي": "Same as normal delivery", "رسم إضافي لكل محل زيادة بنفس الطلب ($)": "Extra fee for each additional place in the same order ($)",
+  "مثال: توصيل 2$ + 1$ لكل محل زيادة → طلب من 3 محلات = 4$.": "Example: delivery $2 + $1 per extra place → an order from 3 places = $4.",
+  "حطّ نوع لكل مطعم/محل (مطاعم، محلات تجارية…) ليطلعوا مربعات هون": "Give each restaurant/shop a type (restaurants, shops…) to see tiles here", "طلب حر": "Free order", "التوصيل مقفل اليوم": "Delivery closed today", "قفّل التوصيل اليوم": "Close delivery today",
   "التوصيل مقفل اليوم — الزبائن ما بيقدروا يطلبوا توصيل": "Delivery is closed today — customers can't order delivery", "رجّع التوصيل": "Reopen delivery",
   "قفل التوصيل لليوم — بيرجع لحالو بكرا الصبح.": "Close delivery for today — it reopens by itself tomorrow morning.", "السبب (بيبين للزبائن):": "Reason (shown to customers):",
   "ما في شوفيرية اليوم": "No drivers today", "رجّع التوصيل هلق؟": "Reopen delivery now?", "🏷️ نوع المؤسسة": "🏷️ Business type", "اكتب النوع الجديد (عربي) — مثلاً: صيدليات": "Type the new kind (Arabic) — e.g. pharmacies",

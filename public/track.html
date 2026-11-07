@@ -70,6 +70,7 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font-famil
     <div><b id="etaMin">—</b><span id="lMin"></span></div>
     <div><b id="etaKm">—</b><span id="lKm"></span></div>
   </div>
+  <div id="vlist" class="hidden" style="margin-top:10px;display:grid;gap:6px"></div>
   <div class="steps" id="steps"><i></i><i></i><i></i><i></i></div>
   <div class="lbls" id="lbls"></div>
   <a class="btn wa hidden" id="drvBtn" target="_blank" rel="noopener"></a>
@@ -106,7 +107,9 @@ var TX={
    vOk:'وافق المطعم على طلبك ✅',vOkS:'{v} عم يجهّز طلبك — ناطرين شوفير ياخدو',
    vClaim:'وافق المطعم والشوفير متجه لأخذ الطلب 🏍️',vClaimS:'{d} متجه لعند {v} ليستلم طلبك ويجيبلك ياه',
    vClaimWait:'تم تكليف سائق',vClaimWaitS:'بانتظار موافقة {v} على الطلب',
-   vRej:'نأسف، المطعم رفض الطلب',vRejS:'تواصل معنا لتفاصيل أكثر',reason:'السبب',theRest:'المطعم'},
+   vRej:'نأسف، المطعم رفض الطلب',vRejS:'تواصل معنا لتفاصيل أكثر',reason:'السبب',theRest:'المطعم',
+   fWait:'وصل طلبك ✅',fWaitS:'ناطرين شوفير يستلمو ويشتريلك الأغراض',fClaim:'الشوفير عم يجيبلك طلبك 🛒',fClaimS:'{d} عم يشتري الأغراض وبيجيبلك ياهن',
+   vsAcc:'وافق',vsPend:'بانتظار الموافقة',vsRej:'رفض',partial:'بعض المحلات رفضت — الباقي جايي'},
  en:{order:'Order',call:'Call restaurant',waDrv:'Chat with your rider',waMsg:'Hello, this is the customer for order',inv:'Invoice',min:'min approx.',km:'km',
    new:'The restaurant received your order',newS:'Being prepared — the rider will appear here once assigned',
    waiting:'Your order is ready for delivery',waitingS:'Waiting for a rider to pick it up',
@@ -122,7 +125,9 @@ var TX={
    vOk:'The restaurant accepted your order ✅',vOkS:'{v} is preparing your order — waiting for a rider',
    vClaim:'Accepted — your rider is heading to pick it up 🏍️',vClaimS:'{d} is heading to {v} to collect your order',
    vClaimWait:'A rider has been assigned',vClaimWaitS:'Waiting for {v} to accept the order',
-   vRej:'Sorry, the restaurant declined the order',vRejS:'Please contact us for details',reason:'Reason',theRest:'the restaurant'}
+   vRej:'Sorry, the restaurant declined the order',vRejS:'Please contact us for details',reason:'Reason',theRest:'the restaurant',
+   fWait:'We got your order ✅',fWaitS:'Waiting for a rider to pick it up and shop for you',fClaim:'Your rider is getting your order 🛒',fClaimS:'{d} is buying your items and bringing them to you',
+   vsAcc:'accepted',vsPend:'waiting',vsRej:'declined',partial:'Some places declined — the rest is on its way'}
 };
 var VI=null;   // حالة موافقة المطعم/المحل (order_vendor_info)
 var L='ar', T=TX.ar, D=null, MAP=null, mMoto=null, mDest=null, line=null, fitted=false, timer=null;
@@ -154,6 +159,7 @@ function slide(marker,to){
 
 function approval(){
   if(!VI) return 'accepted';                      // ما في معلومات → السلوك القديم
+  if(VI.free) return 'accepted';
   if(VI.has_vendor) return VI.branch_status||'pending';
   // منيو عادي: إذا الشوفير استلم، المطعم أكيد ماشي بالطلب
   if(D && ['claimed','ready_wait','on_the_way','delivered'].indexOf(D.dispatch)>=0) return 'accepted';
@@ -162,8 +168,20 @@ function approval(){
   return 'accepted';
 }
 function vendorName(){
-  var v=VI&&VI.vendor; if(!v) return '';
+  var vs=VI&&VI.vendors;
+  if(vs&&vs.length>1) return vs.map(function(x){return L==='en'?(x.name_en||x.name_ar):x.name_ar}).join(L==='en'?', ':'، ');
+  var v=(vs&&vs[0])||(VI&&VI.vendor); if(!v) return '';
   return L==='en'?(v.name_en||v.name_ar):v.name_ar;
+}
+function paintVendors(){
+  var box=$('#vlist'), vs=(VI&&VI.vendors)||[];
+  if(vs.length<2){ box.classList.add('hidden'); return; }
+  box.classList.remove('hidden');
+  box.innerHTML=vs.map(function(v){
+    var c=v.status==='accepted'?['✅',T.vsAcc,'#16a34a']:v.status==='rejected'?['❌',T.vsRej,'#dc2626']:['⏳',T.vsPend,'var(--muted)'];
+    return '<div style="display:flex;justify-content:space-between;gap:8px;font-size:13.5px;background:var(--bg-2);border:1px solid var(--line);border-radius:10px;padding:7px 10px">'+
+      '<b>🏪 '+(L==='en'?(v.name_en||v.name_ar):v.name_ar)+'</b><span style="color:'+c[2]+'">'+c[0]+' '+c[1]+(v.status==='rejected'&&v.reason?' — '+v.reason:'')+'</span></div>';
+  }).join('');
 }
 function paint(){
   var r=D.restaurant, st=D.dispatch, dn=(D.driver&&D.driver.name)||T.driver;
@@ -188,7 +206,12 @@ function paint(){
   // موافقة المطعم: قبل ما يوافق ما منقول «طلبك جاهز»
   var acc=approval(), vn=vendorName()||T.theRest, ov=null;
   if(VI && VI.has_vendor) $('#oNo').textContent=T.order+' '+D.order_no+' · 🏪 '+vendorName();
-  if(acc==='rejected') ov=['vRej', VI&&VI.reason?(T.reason+': '+VI.reason):T.vRejS, 0, 0];
+  paintVendors();
+  if(VI&&VI.free){
+    if(!st||st==='new'||st==='waiting') ov=['fWait',null,1,1];
+    else if(st==='claimed'||st==='ready_wait') ov=['fClaim',null,2,2];
+  }
+  else if(acc==='rejected') ov=['vRej', VI&&VI.reason?(T.reason+': '+VI.reason):T.vRejS, 0, 0];
   else if(!st||st==='new'||st==='waiting') ov=acc==='accepted'?['vOk',null,1,1]:['vWait',null,0,0];
   else if(st==='claimed') ov=acc==='accepted'?['vClaim',null,2,2]:['vClaimWait',null,1,0];
   if(ov){

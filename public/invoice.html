@@ -406,11 +406,30 @@ function render(){
   h+=row(W().pay, o.payment_method==='whish'?W().whish:W().cash);
   h+='</div>';
 
-  h+='<div class="lines">'+items.map(function(i){
+  var lineH=function(i){
     return '<div class="ln"><div>'+esc(L==='ar'?i.name_ar:i.name_en)+
       '<div class="q">'+i.qty+' × '+money(i.price_usd)+' $</div></div>'+
       '<div>'+money(i.line_usd)+' $</div></div>';
-  }).join('')+'</div>';
+  };
+  var VS=D.vendors||[];
+  if(o.free_text){
+    h+='<div class="lines"><div class="ln" style="display:block"><b>📝 '+(L==='ar'?'طلب حر':'Free order')+'</b>'+
+      '<div style="white-space:pre-wrap;margin-top:6px">'+esc(o.free_text)+'</div>'+
+      '<div class="q" style="margin-top:6px">'+(L==='ar'?'حق الأغراض بيتحدّد عند الشراء وبينضاف عالتوصيل':'Item prices are set at purchase and added to delivery')+'</div></div></div>';
+  }
+  if(VS.length>1){
+    // فاتورة وحدة مفصّلة حسب كل مطعم/محل
+    h+=VS.map(function(v){
+      var its=items.filter(function(i){return i.branch_id===v.id});
+      var rej=v.status==='rejected';
+      return '<div class="lines"'+(rej?' style="opacity:.5"':'')+'><div class="ln" style="font-weight:800"><div>🏪 '+esc(L==='ar'?v.name_ar:(v.name_en||v.name_ar))+
+        (rej?' — '+(L==='ar'?'رفض الطلب':'declined'):'')+'</div><div>'+money(v.subtotal_usd)+' $</div></div>'+
+        its.map(lineH).join('')+'</div>';
+    }).join('');
+  } else if(items.length){
+    h+='<div class="lines">'+(VS.length===1?'<div class="ln" style="font-weight:800"><div>🏪 '+esc(L==='ar'?VS[0].name_ar:(VS[0].name_en||VS[0].name_ar))+'</div><div></div></div>':'')+
+      items.map(lineH).join('')+'</div>';
+  }
 
   var lbpTxt=Number(o.total_lbp).toLocaleString('en-US')+' '+(L==='ar'?'ل.ل.':'LBP');
   h+='<div class="sum">'+
