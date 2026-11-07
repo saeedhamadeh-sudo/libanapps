@@ -248,6 +248,8 @@ input[type=checkbox]{width:auto}
 .msg.e{color:#FF7A7E}.msg.s{color:#4ADE80}
 .muted{color:var(--muted);font-size:12.5px}
 .hidden{display:none!important}
+section[data-p="items"].vmode:not(.hidden){display:flex;flex-direction:column}
+section[data-p="items"].vmode #itemFormPanel{order:2}
 /* modal */
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:200;
   display:flex;align-items:center;justify-content:center;padding:16px}
@@ -349,7 +351,7 @@ body.login-page .credit .credit-tel{color:#E08A2B}
 
   <!-- ITEMS -->
   <section data-p="items">
-    <div class="panel">
+    <div class="panel" id="itemFormPanel">
       <h3 id="fTitle">إضافة منتج</h3>
       <input type="hidden" id="fId">
       <div class="g2">
@@ -379,8 +381,9 @@ body.login-page .credit .credit-tel{color:#E08A2B}
       <div class="msg" id="iMsg"></div>
     </div>
     <div class="panel">
-      <h3>المنتجات</h3>
-      <div style="display:flex;gap:8px;align-items:center">
+      <h3 id="iTitle">المنتجات</h3>
+      <div id="vHead" class="hidden" style="display:flex;align-items:center;gap:10px;margin-bottom:10px"></div>
+      <div id="iTools" style="display:flex;gap:8px;align-items:center">
         <input type="text" id="iq" placeholder="بحث…" style="flex:1">
         <button class="btn alt sm" id="fixSortBtn" style="white-space:nowrap">ترقيم تلقائي</button>
         <button class="btn alt sm" id="lockBtn" style="white-space:nowrap">🔓 الترتيب مفتوح</button>
@@ -1312,7 +1315,7 @@ function catVendor(c){
 }
 async function loadVendors(){
   if(!VM()) return;
-  var r=await sb.from('restaurant_branches').select('id,name_ar').eq('restaurant_id',R.id).order('sort');
+  var r=await sb.from('restaurant_branches').select('id,name_ar,name_en,image_url,group_ar,is_active').eq('restaurant_id',R.id).order('sort');
   VENDORS=r.data||[];
   $('#cVendor').innerHTML='<option value="">— اختر المطعم أو المحل —</option>'+
     VENDORS.map(function(v){return '<option value="'+v.id+'">'+esc(v.name_ar)+'</option>'}).join('');
@@ -1662,7 +1665,55 @@ async function loadItems(){
 var PRICEMODE=false;
 var SORTLOCK=false;
 try{ SORTLOCK = localStorage.getItem('la_sortlock')==='1'; }catch(e){}
+/* بوضع المحلات: كل مطعم/محل مربّع، وبس تكبس عليه بتشوف منتجاتو وبتعدّلها */
+var CUR_VENDOR=null;   // id، أو '__none' للأقسام بلا مطعم
+function vendorCats(vid){ return CATS.filter(function(c){ var v=catVendor(c)||'__none'; return v===vid; }); }
+function paintVendorTiles(){
+  $('#itemFormPanel').classList.add('hidden');
+  $('#iTools').classList.add('hidden'); $('#bulkBar').classList.add('hidden');
+  $('#vHead').classList.add('hidden');
+  $('#iTitle').textContent=t('المطاعم / المحلات')+' — '+t('اختار واحد لتعدّل منتجاتو');
+  var tiles=VENDORS.map(function(v){ return {id:v.id,v:v}; });
+  if(CATS.some(function(c){return !catVendor(c)})) tiles.push({id:'__none',v:{name_ar:'⚠️ '+t('أقسام بلا مطعم/محل')}});
+  var cnt=function(vid){ var ids=vendorCats(vid).map(function(c){return c.id}); return ITEMS.filter(function(i){return ids.indexOf(i.category_id)>=0}).length; };
+  $('#iList').innerHTML=tiles.length?'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px">'+tiles.map(function(x){
+    var v=x.v, n=cnt(x.id);
+    return '<button type="button" data-vtile="'+x.id+'" style="display:flex;flex-direction:column;padding:0;overflow:hidden;border:1px solid var(--line);border-radius:14px;background:var(--card);color:var(--text);cursor:pointer;text-align:center'+(v.is_active===false?';opacity:.5':'')+'">'+
+      '<span style="aspect-ratio:1/1;width:100%;background:#fff;display:flex;align-items:center;justify-content:center;padding:10px">'+
+        (v.image_url?'<img src="'+esc(v.image_url)+'" alt="" style="width:100%;height:100%;object-fit:contain">':'<span style="font-size:42px">🏪</span>')+'</span>'+
+      '<span style="padding:8px"><b style="display:block;font-size:14px">'+esc(v.name_ar)+'</b>'+
+        '<span class="muted" style="font-size:12px">'+n+' '+t('منتج')+(v.group_ar?' · '+esc(v.group_ar):'')+'</span></span></button>';
+  }).join('')+'</div>':'<p class="muted">'+t('ما في مطاعم أو محلات بعد — زيدهن من تبويب «المطاعم / المحلات»')+'</p>';
+  relang();
+}
+function openVendorItems(vid){
+  CUR_VENDOR=vid; $('#iq').value=''; if(PRICEMODE) setPriceMode(false);
+  clearItem(); paintItems(); window.scrollTo(0,0);
+}
+document.addEventListener('click',function(e){
+  var b=e.target.closest('[data-vtile]'); if(b){ openVendorItems(b.dataset.vtile); return; }
+  if(e.target.closest('[data-vback]')){ CUR_VENDOR=null; if(PRICEMODE) setPriceMode(false); clearItem(); paintItems(); }
+});
+
 function paintItems(){
+  var sec=document.querySelector('section[data-p="items"]'); if(sec) sec.classList.toggle('vmode',VM());
+  if(VM() && !CUR_VENDOR){ paintVendorTiles(); return; }
+  var VCATS=null;
+  if(VM()){
+    VCATS=vendorCats(CUR_VENDOR);
+    var vv=VENDORS.find(function(x){return x.id===CUR_VENDOR})||{name_ar:'⚠️ '+t('أقسام بلا مطعم/محل')};
+    $('#itemFormPanel').classList.toggle('hidden',CUR_VENDOR==='__none'&&!VCATS.length);
+    $('#iTools').classList.remove('hidden');
+    $('#iTitle').textContent=t('المنتجات');
+    $('#vHead').classList.remove('hidden');
+    $('#vHead').innerHTML='<button class="btn alt sm" data-vback="1">→ '+t('كل المطاعم')+'</button>'+
+      (vv.image_url?'<img src="'+esc(vv.image_url)+'" alt="" style="width:38px;height:38px;border-radius:8px;object-fit:contain;background:#fff;padding:2px">':'')+
+      '<b style="font-size:17px">'+esc(vv.name_ar)+'</b>';
+    // قائمة الأقسام بالفورم: بس أقسام هالمطعم
+    var keep=$('#fCat').value;
+    $('#fCat').innerHTML=buildCatOptions(VCATS,'');
+    if(keep&&VCATS.some(function(c){return c.id===keep})) $('#fCat').value=keep;
+  }
   var q=$('#iq').value.trim().toLowerCase();
   var canSort=!q && !PRICEMODE && !SORTLOCK;
   var html;
@@ -1671,8 +1722,8 @@ function paintItems(){
   else if(PRICEMODE) html='<div class="sortnote">'+t('وضع تعديل الأسعار')+'</div>';
   else html='<div class="sortnote">'+t('فضّي خانة البحث لتقدر ترتّب بالسحب')+'</div>';
 
-  var groups = CATS.map(function(c){ return {cat:c, list:itemsOf(c.id)}; });
-  var orphan = ITEMS.filter(function(i){
+  var groups = (VCATS||CATS).map(function(c){ return {cat:c, list:itemsOf(c.id)}; });
+  var orphan = VCATS?[]:ITEMS.filter(function(i){
     return !CATS.some(function(c){ return c.id===i.category_id }); });
   if(orphan.length) groups.push({cat:{id:'',name_ar:'بدون قسم'}, list:orphan});
 
@@ -1909,7 +1960,8 @@ $('#iList').addEventListener('click',async function(e){
   if(i.image_url){$('#fPrev').src=i.image_url;$('#fPrev').classList.remove('hidden')}
   else $('#fPrev').classList.add('hidden');
   $('#fTitle').textContent='تعديل منتج'; $('#delItem').classList.remove('hidden');
-  window.scrollTo({top:0,behavior:'smooth'});
+  if(VM()) $('#itemFormPanel').scrollIntoView({behavior:'smooth',block:'start'});
+  else window.scrollTo({top:0,behavior:'smooth'});
 });
 
 /* ---------- orders ---------- */
@@ -2395,7 +2447,9 @@ Object.assign(ADMIN_EN, {
   "اختار صورة": "Choose image", "الصورة الحالية": "Current image", "ما في صور": "No images", "ما في عروض": "No offers",
   "بدون تعليق": "No caption", "هدية": "Gift", "نقدًا": "Cash", "اكتب اسم المنتج": "Type the product name",
   // أيام
-  "بيسكّر تاني يوم": "closes next day",
+  "بيسكّر تاني يوم": "closes next day", "اختار واحد لتعدّل منتجاتو": "pick one to edit its products",
+  "أقسام بلا مطعم/محل": "Categories without a restaurant/shop", "كل المطاعم": "All restaurants",
+  "ما في مطاعم أو محلات بعد — زيدهن من تبويب «المطاعم / المحلات»": "No restaurants or shops yet — add them from the «Restaurants / shops» tab",
   "🏍️ سعر التوصيل": "🏍️ Delivery price", "https://maps.google.com/…  أو  33.67, 35.55": "https://maps.google.com/…  or  33.67, 35.55", "سعر ثابت شامل": "Flat fee", "— نفس السعر لكل الطلبات («رسوم التوصيل» فوق)": "— the same fee for every order («Delivery fee» above)",
   "حسب المنطقة": "By area", "— الزبون بيختار منطقتو وإنت بتحط سعر كل منطقة": "— the customer picks their area and you set each area's price",
   "حسب المسافة": "By distance", "— سعر أساسي + سعر لكل كيلومتر": "— base fee + price per kilometre", "المناطق": "Areas", "+ زيد منطقة": "+ Add area",
