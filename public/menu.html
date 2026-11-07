@@ -321,15 +321,21 @@ button{cursor:pointer;border:0;background:0}
 .dots i.on{background:var(--accent);width:18px;border-radius:999px}
 
 /* tools */
-.tools{position:sticky;top:53px;z-index:30;padding-top:12px;
-  background:linear-gradient(180deg,var(--bg) 75%,transparent)}
+.tools{position:sticky;top:53px;z-index:30;padding-top:12px;background:var(--bg);
+  margin:0 -16px;padding-inline:16px;box-shadow:0 8px 14px -12px rgba(0,0,0,.35)}
 .search{display:flex;align-items:center;gap:8px;background:var(--bg-2);
   border:1px solid var(--line);border-radius:999px;padding:9px 14px}
 .search input{flex:1;background:0;border:0;outline:0}
 .search input::placeholder{color:var(--muted)}
-.chips{display:flex;gap:8px;overflow-x:auto;padding:12px 16px;margin:0 -16px;scrollbar-width:none}
+.chipnav{position:relative;margin:0 -16px}
+.chips{display:flex;gap:8px;overflow-x:auto;padding:12px 16px;scrollbar-width:none;scroll-behavior:smooth}
+.cnav{position:absolute;top:50%;transform:translateY(-50%);z-index:2;width:34px;height:34px;border-radius:50%;
+  border:0;background:var(--brand);color:var(--brand-ink);box-shadow:0 2px 10px rgba(0,0,0,.3);
+  display:flex;align-items:center;justify-content:center;cursor:pointer;font:700 18px/1 sans-serif;padding:0}
+.cnav.l{left:6px}.cnav.r{right:6px}
+.cnav[hidden]{display:none}
 .chips::-webkit-scrollbar{display:none}
-.chip{white-space:nowrap;border:1px solid var(--line);color:var(--text);padding:7px 16px;
+.chip{white-space:nowrap;border:1px solid var(--line);color:var(--text);background:var(--bg-2);padding:7px 16px;
   border-radius:999px;font-size:14.5px;font-weight:600}
 .chip[aria-pressed="true"]{background:var(--brand);color:var(--brand-ink);border-color:transparent}
 
@@ -508,7 +514,7 @@ textarea{min-height:60px;resize:vertical}
       <div style="flex:1;min-width:0"><b id="vbName" style="display:block;font-size:15px"></b><small id="vbSub" style="color:var(--muted);font-size:12px"></small></div>
       <button id="vbChange" type="button" style="border:1px solid var(--line);background:var(--bg-2);color:var(--text);border-radius:10px;padding:7px 12px;font:700 13px inherit;cursor:pointer"></button>
     </div>
-    <div class="chips" id="chips"></div>
+    <div class="chipnav"><button type="button" class="cnav l" id="cnavL" aria-label="scroll left" hidden>&#8249;</button><div class="chips" id="chips"></div><button type="button" class="cnav r" id="cnavR" aria-label="scroll right" hidden>&#8250;</button></div>
   </div>
 
   <div id="menuBody"></div>
@@ -1169,7 +1175,18 @@ function paintChips(){
     h+='<button class="chip" data-c="'+c.id+'" aria-pressed="'+(filter===c.id||inFamily)+'">'+esc(tx(c,'name'))+'</button>';
   });
   $('#chips').innerHTML=h;
+  setTimeout(chipArrows,0);
 }
+function chipArrows(){
+  var c=$('#chips'); if(!c) return;
+  var max=c.scrollWidth-c.clientWidth, sl=c.scrollLeft, rtl=getComputedStyle(c).direction==='rtl';
+  var canL=rtl?(-sl<max-2):(sl>2), canR=rtl?(sl<-2):(sl<max-2);
+  $('#cnavL').hidden=!(max>2&&canL); $('#cnavR').hidden=!(max>2&&canR);
+}
+$('#chips').addEventListener('scroll',chipArrows,{passive:true});
+window.addEventListener('resize',chipArrows);
+$('#cnavL').addEventListener('click',function(){ var c=$('#chips'); c.scrollBy({left:-c.clientWidth*0.7,behavior:'smooth'}); });
+$('#cnavR').addEventListener('click',function(){ var c=$('#chips'); c.scrollBy({left:c.clientWidth*0.7,behavior:'smooth'}); });
 
 function itemHtml(it){
   var q=cart[it.id]?cart[it.id].qty:0;
