@@ -327,6 +327,7 @@ body.login-page .credit .credit-tel{color:#E08A2B}
   <div class="bar">
     <h1 id="rName">—</h1>
     <span class="lic" id="lic"></span>
+    <button class="btn alt sm hidden" id="dlvPauseBtn" style="white-space:nowrap"></button>
     <button class="btn alt sm" id="langBtn">English</button>
     <a class="btn alt sm" id="viewLink" target="_blank" style="text-decoration:none">عرض المنيو</a>
     <button class="btn alt sm" id="outBtn">خروج</button>
@@ -704,8 +705,11 @@ body.login-page .credit .credit-tel{color:#E08A2B}
         <div style="display:flex;gap:6px"><input type="text" id="brLoc" dir="ltr" placeholder="https://maps.google.com/…"><button class="btn alt sm" type="button" id="brHere">📍 موقعي هلق</button></div>
       </div>
       <div class="g2 hidden" id="brGroupBox" style="margin-top:8px">
-        <div><label>القسم (عربي) — مثلاً: مطاعم، محلات، صيدليات</label><input type="text" id="brGroupAr" list="brGroupsAr" placeholder="مطاعم"><datalist id="brGroupsAr"></datalist></div>
-        <div><label>القسم (إنكليزي)</label><input type="text" id="brGroupEn" list="brGroupsEn" placeholder="Restaurants" dir="ltr"><datalist id="brGroupsEn"></datalist></div>
+        <div><label>🏷️ نوع المؤسسة</label>
+          <select id="brTypeSel"></select>
+          <input type="text" id="brGroupAr" class="hidden" style="margin-top:6px" placeholder="اكتب النوع الجديد (عربي) — مثلاً: صيدليات">
+          <datalist id="brGroupsAr"></datalist></div>
+        <div><label>النوع بالإنكليزي</label><input type="text" id="brGroupEn" list="brGroupsEn" placeholder="Restaurants" dir="ltr"><datalist id="brGroupsEn"></datalist></div>
       </div>
       <div class="g2">
         <div><label>رقم الهاتف</label><input type="text" id="brPhone" placeholder="961…" dir="ltr"></div>
@@ -863,6 +867,7 @@ async function boot(){
   document.documentElement.dataset.theme=R.theme||'flame';
   $('#rName').textContent=R.name_ar;
   applyVendorLabels();
+  paintPause();
   $('#viewLink').href='/'+R.slug;
   $('#staffOrdersLink').href='/orders.html?r='+R.slug;
   await licBadge(); siteHelp();
@@ -1039,7 +1044,7 @@ function branchRow(b){
   var thumb=b.image_url?'<img src="'+esc(b.image_url)+'" style="width:42px;height:42px;border-radius:8px;object-fit:contain;background:#fff;padding:2px;margin-left:10px;flex-shrink:0">':'';
   return '<div class="row" data-bid="'+b.id+'" style="display:flex;align-items:center;gap:0">'+
     thumb+
-    '<div class="t" style="flex:1"><b>'+esc(b.name_ar)+'</b>'+(VM()&&b.group_ar?' <span style="font-size:12px;color:var(--accent,#E08A2B)">📂 '+esc(b.group_ar)+'</span>':'')+closedBadge+'<span>'+esc(b.name_en)+' · '+esc(b.phone||'')+'</span>'+dlvBadge+'</div>'+
+    '<div class="t" style="flex:1"><b>'+esc(b.name_ar)+'</b>'+(VM()&&b.group_ar?' <span style="font-size:12px;color:var(--accent,#E08A2B)">🏷️ '+esc(b.group_ar)+'</span>':'')+closedBadge+'<span>'+esc(b.name_en)+' · '+esc(b.phone||'')+'</span>'+dlvBadge+'</div>'+
     activeLabel+
     '<button class="btn alt sm" data-brfc="'+b.id+'" title="'+(b.force_closed?t('إلغاء الإغلاق الطارئ'):t('إغلاق طارئ'))+'">⚡ '+(b.force_closed?t('فتح'):t('إغلاق'))+'</button>'+
     (VM()?(b.panel_seen_at&&(Date.now()-new Date(b.panel_seen_at))<60000
@@ -1079,12 +1084,31 @@ $('#vReqList').addEventListener('click',async function(e){
   if(r.error) return alert(t('ما نجح')+': '+r.error.message);
   await loadVendorReqs(); await loadItems();
 });
+// نوع المؤسسة: مطاعم / محلات تجارية / … + «نوع جديد»
+var TYPES_AR=[], TYPE_EN={}, TYPE_PRESETS=[['مطاعم','Restaurants'],['محلات تجارية','Shops']];
+function buildTypeSel(cur){
+  var sel=$('#brTypeSel'); if(!sel) return;
+  var list=TYPE_PRESETS.map(function(p){return p[0]}); TYPES_AR.forEach(function(g){ if(list.indexOf(g)<0) list.push(g); });
+  TYPE_PRESETS.forEach(function(p){ if(!TYPE_EN[p[0]]) TYPE_EN[p[0]]=p[1]; });
+  sel.innerHTML='<option value="">— '+t('بلا نوع')+' —</option>'+list.map(function(g){return '<option value="'+esc(g)+'">'+esc(g)+'</option>'}).join('')+
+    '<option value="__new">➕ '+t('نوع جديد…')+'</option>';
+  if(cur&&list.indexOf(cur)<0){ sel.value='__new'; $('#brGroupAr').classList.remove('hidden'); $('#brGroupAr').value=cur; }
+  else { sel.value=cur||''; $('#brGroupAr').classList.add('hidden'); $('#brGroupAr').value=cur||''; }
+}
+$('#brTypeSel').addEventListener('change',function(){
+  var v=this.value;
+  if(v==='__new'){ $('#brGroupAr').classList.remove('hidden'); $('#brGroupAr').value=''; $('#brGroupEn').value=''; $('#brGroupAr').focus(); return; }
+  $('#brGroupAr').classList.add('hidden'); $('#brGroupAr').value=v;
+  $('#brGroupEn').value=v?(TYPE_EN[v]||''):'';
+});
 async function loadBranches(){
   var r=await sb.from('restaurant_branches').select('*').eq('restaurant_id',R.id).order('sort');
   BRANCHES=r.data||[];
   var ga=[], ge=[];
   BRANCHES.forEach(function(b){ if(b.group_ar&&ga.indexOf(b.group_ar)<0) ga.push(b.group_ar); if(b.group_en&&ge.indexOf(b.group_en)<0) ge.push(b.group_en); });
   $('#brGroupsAr').innerHTML=ga.map(function(g){return '<option value="'+esc(g)+'">'}).join('');
+  TYPES_AR=ga; TYPE_EN={}; BRANCHES.forEach(function(b){ if(b.group_ar&&b.group_en) TYPE_EN[b.group_ar]=b.group_en; });
+  buildTypeSel($('#brGroupAr').value);
   $('#brGroupsEn').innerHTML=ge.map(function(g){return '<option value="'+esc(g)+'">'}).join('');
   $('#brList').innerHTML=BRANCHES.length
     ? BRANCHES.map(branchRow).join('')
@@ -1102,7 +1126,7 @@ function clearBranchForm(){
   $('#brDelivery').checked=false;
   $('#brFee').value=''; $('#brMin').value='';
   $('#brDeliveryNote').value='';
-  $('#brGroupAr').value=''; $('#brGroupEn').value='';
+  $('#brGroupAr').value=''; $('#brGroupEn').value=''; buildTypeSel('');
   $('#brCanEdit').checked=false; $('#brCanAdd').checked=false; $('#brLoc').value='';
   $('#delBranch').classList.add('hidden');
   $('#brImg').value='';
@@ -1232,7 +1256,7 @@ $('#brList').addEventListener('click',async function(e){
     $('#brFee').value=b.delivery_fee_usd||'';
     $('#brMin').value=b.min_order_usd||'';
     $('#brDeliveryNote').value=b.delivery_note_ar||'';
-    $('#brGroupAr').value=b.group_ar||''; $('#brGroupEn').value=b.group_en||'';
+    buildTypeSel(b.group_ar||''); $('#brGroupEn').value=b.group_en||'';
     $('#brCanEdit').checked=!!b.can_edit_prices; $('#brCanAdd').checked=!!b.can_add_items;
     $('#brLoc').value=fmtLL(b.lat,b.lng);
     $('#delBranch').classList.remove('hidden');
@@ -2145,7 +2169,7 @@ function fillSettings(){
 async function patch(o,el){
   var r=await sb.from('restaurants').update(o).eq('id',R.id).select().maybeSingle();
   if(r.error){ msg(el,'ما نجح: '+r.error.message,false); return false; }
-  R=r.data||R; msg(el,'تم الحفظ',true); return true;
+  R=r.data||R; msg(el,'تم الحفظ',true); paintPause(); return true;
 }
 $('#sLogo').addEventListener('change',function(e){
   var f=e.target.files[0]; if(!f) return;
@@ -2180,6 +2204,36 @@ $('#saveLook').addEventListener('click',async function(){
   if(await patch({theme:$('#sTheme').value,default_lang:$('#sLang').value},'#pMsg'))
     document.documentElement.dataset.theme=R.theme;
 });
+
+/* ---------- ⛔ التوصيل مقفل اليوم ---------- */
+function isPaused(){ return !!(R&&R.delivery_paused_until&&new Date(R.delivery_paused_until)>new Date()); }
+function paintPause(){
+  var b=$('#dlvPauseBtn'); if(!b||!R) return;
+  b.classList.toggle('hidden',!R.delivery_enabled);
+  var on=isPaused();
+  b.textContent=on?'⛔ '+t('التوصيل مقفل اليوم'):'🏍️ '+t('قفّل التوصيل اليوم');
+  b.className='btn sm '+(on?'dg':'alt')+(R.delivery_enabled?'':' hidden');
+  var bar=document.getElementById('pauseBar');
+  if(on){
+    if(!bar){ bar=document.createElement('div'); bar.id='pauseBar';
+      bar.style.cssText='background:#7f1d1d;color:#fecaca;padding:10px 14px;border-radius:12px;margin:0 0 10px;font-weight:700;display:flex;gap:10px;align-items:center;flex-wrap:wrap';
+      var app=$('#app'); app.insertBefore(bar,app.firstChild); }
+    bar.innerHTML='<span style="flex:1">⛔ '+t('التوصيل مقفل اليوم — الزبائن ما بيقدروا يطلبوا توصيل')+
+      (R.delivery_pause_msg_ar?' · '+esc(R.delivery_pause_msg_ar):'')+'</span>'+
+      '<button class="btn sm" data-unpause="1">'+t('رجّع التوصيل')+'</button>';
+  } else if(bar) bar.remove();
+}
+async function setPause(on){
+  var why='';
+  if(on){ why=prompt(t('قفل التوصيل لليوم — بيرجع لحالو بكرا الصبح.\nالسبب (بيبين للزبائن):'),t('ما في شوفيرية اليوم')); if(why===null) return; }
+  else if(!confirm(t('رجّع التوصيل هلق؟'))) return;
+  var r=await sb.rpc('admin_pause_delivery',{rid:R.id,p_pause:on,p_msg:why||''});
+  if(r.error) return alert(t('ما نجح')+': '+r.error.message);
+  var rr=await sb.from('restaurants').select('*').eq('id',R.id).maybeSingle(); if(rr.data) R=rr.data;
+  paintPause();
+}
+$('#dlvPauseBtn').addEventListener('click',function(){ setPause(!isPaused()); });
+document.addEventListener('click',function(e){ if(e.target.closest('[data-unpause]')) setPause(false); });
 
 /* ---------- 🏍️ سعر التوصيل: ثابت / مناطق / مسافة ---------- */
 function parseLatLng(v){
@@ -2447,7 +2501,11 @@ Object.assign(ADMIN_EN, {
   "اختار صورة": "Choose image", "الصورة الحالية": "Current image", "ما في صور": "No images", "ما في عروض": "No offers",
   "بدون تعليق": "No caption", "هدية": "Gift", "نقدًا": "Cash", "اكتب اسم المنتج": "Type the product name",
   // أيام
-  "بيسكّر تاني يوم": "closes next day", "اختار واحد لتعدّل منتجاتو": "pick one to edit its products",
+  "بيسكّر تاني يوم": "closes next day", "التوصيل مقفل اليوم": "Delivery closed today", "قفّل التوصيل اليوم": "Close delivery today",
+  "التوصيل مقفل اليوم — الزبائن ما بيقدروا يطلبوا توصيل": "Delivery is closed today — customers can't order delivery", "رجّع التوصيل": "Reopen delivery",
+  "قفل التوصيل لليوم — بيرجع لحالو بكرا الصبح.": "Close delivery for today — it reopens by itself tomorrow morning.", "السبب (بيبين للزبائن):": "Reason (shown to customers):",
+  "ما في شوفيرية اليوم": "No drivers today", "رجّع التوصيل هلق؟": "Reopen delivery now?", "🏷️ نوع المؤسسة": "🏷️ Business type",
+  "النوع بالإنكليزي": "Type in English", "بلا نوع": "No type", "نوع جديد…": "New type…", "مطاعم": "Restaurants", "محلات تجارية": "Shops", "اختار واحد لتعدّل منتجاتو": "pick one to edit its products",
   "أقسام بلا مطعم/محل": "Categories without a restaurant/shop", "كل المطاعم": "All restaurants",
   "ما في مطاعم أو محلات بعد — زيدهن من تبويب «المطاعم / المحلات»": "No restaurants or shops yet — add them from the «Restaurants / shops» tab",
   "🏍️ سعر التوصيل": "🏍️ Delivery price", "https://maps.google.com/…  أو  33.67, 35.55": "https://maps.google.com/…  or  33.67, 35.55", "سعر ثابت شامل": "Flat fee", "— نفس السعر لكل الطلبات («رسوم التوصيل» فوق)": "— the same fee for every order («Delivery fee» above)",

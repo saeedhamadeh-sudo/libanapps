@@ -846,7 +846,7 @@ function useVendor(b){
   CATS=b?ALL_CATS.filter(function(c){ var r=vendorRoot(c); return r&&r.vendor_id===b.id; }):[];
   var ids={}; CATS.forEach(function(c){ ids[c.id]=1; });
   ITEMS=ALL_ITEMS.filter(function(i){ return ids[i.category_id]; });
-  try{ if(b) localStorage.setItem('la_vendor_'+R.id,b.id); }catch(e){}
+  try{ if(b) sessionStorage.setItem('la_vendor_'+R.id,b.id); }catch(e){}
 }
 function paintVendorBar(){
   var bar=$('#vendorBar'); if(!bar) return;
@@ -890,14 +890,29 @@ function vendorCard(b){
          :'<small class="cl">🔒 '+esc(nextOpenText(b))+'</small>')+
     '</span></button>';
 }
-var VP_GROUP='';
+var VP_GROUP=null;   // null = صفحة الأنواع
+function typeIcon(g){
+  var k=String(g||'').toLowerCase();
+  if(/مطعم|مطاعم|resta|food|أكل/.test(k)) return '🍽️';
+  if(/صيدل|pharm/.test(k)) return '💊';
+  if(/سوبر|ماركت|market|grocer|بقال/.test(k)) return '🛒';
+  if(/حلو|sweet|dessert|cake|كيك/.test(k)) return '🍰';
+  if(/قهو|كاف|coffee|cafe/.test(k)) return '☕';
+  if(/ورد|زهور|flower/.test(k)) return '💐';
+  if(/لحم|ملحم|butcher|meat/.test(k)) return '🥩';
+  if(/خضر|فواكه|fruit|veg/.test(k)) return '🥬';
+  if(/محل|محلات|shop|store|تجار/.test(k)) return '🛍️';
+  return '🏪';
+}
 function showVendorPicker(){
   var old=document.getElementById('vendorPicker'); if(old) old.remove();
   var d=document.createElement('div'); d.id='vendorPicker';
   d.style.cssText='position:fixed;inset:0;z-index:190;background:var(--bg);overflow-y:auto;padding:20px 16px 40px';
-  // الأقسام بترتيب أول ظهور
   var groups=[]; BRANCHES.forEach(function(b){ var g=vGroup(b); if(g&&groups.indexOf(g)<0) groups.push(g); });
-  if(groups.indexOf(VP_GROUP)<0) VP_GROUP='';
+  var hasOther=BRANCHES.some(function(b){return !vGroup(b)});
+  var useTypes=groups.length>1||(groups.length===1&&hasOther);
+  if(!useTypes) VP_GROUP='';
+  else if(VP_GROUP!==null && VP_GROUP!=='' && groups.indexOf(VP_GROUP)<0 && VP_GROUP!=='__other') VP_GROUP=null;
   d.innerHTML='<div style="max-width:640px;margin:0 auto">'+
     '<div style="display:flex;align-items:center;gap:12px;margin-bottom:6px">'+
       (R.logo_url?'<img src="'+esc(img(R.logo_url))+'" alt="" style="width:46px;height:46px;border-radius:12px;object-fit:contain;background:#fff;padding:3px">':'')+
@@ -905,29 +920,37 @@ function showVendorPicker(){
       '<button type="button" data-vlang style="border:1px solid var(--line);background:var(--bg-2);color:var(--text);border-radius:10px;padding:6px 10px;font:700 12px inherit">'+T.other+'</button>'+
       (BRANCH?'<button type="button" data-vclose style="border:0;background:var(--bg-2);color:var(--text);border-radius:10px;width:36px;height:36px;font-size:18px">✕</button>':'')+
     '</div>'+
-    '<h2 style="font-size:18px;margin:16px 0 12px">'+vt('اختار المطعم أو المحل','Pick a restaurant or shop')+'</h2>'+
-    '<input type="text" data-vq placeholder="'+esc(vt('بحث…','Search…'))+'" style="width:100%;padding:11px 14px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--text);font:inherit;margin-bottom:12px">'+
-    (groups.length?'<div class="vp-chips">'+['' ].concat(groups).map(function(g){
-      return '<button type="button" data-vg="'+esc(g)+'" aria-pressed="'+(g===VP_GROUP)+'">'+esc(g||vt('الكل','All'))+'</button>'; }).join('')+'</div>':'')+
+    '<div data-vpause></div>'+
+    '<div data-vtitle></div>'+
+    '<input type="text" data-vq placeholder="'+esc(vt('ابحث عن مطعم أو محل…','Search a restaurant or shop…'))+'" style="width:100%;padding:11px 14px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--text);font:inherit;margin-bottom:12px">'+
     '<div data-vlist></div></div>';
   document.body.appendChild(d);
+  if(dlvPaused()) d.querySelector('[data-vpause]').innerHTML='<div style="background:#7f1d1d;color:#fff;padding:12px 14px;border-radius:14px;margin:12px 0;font-weight:800;text-align:center;line-height:1.6">'+esc(pauseText())+'</div>';
+  var byOpen=function(a,b){ return (branchIsOpen(b)?1:0)-(branchIsOpen(a)?1:0); };
   function paintList(){
-    var q=(d.querySelector('[data-vq]').value||'').trim().toLowerCase();
-    var list=BRANCHES.filter(function(b){
-      if(VP_GROUP && vGroup(b)!==VP_GROUP) return false;
-      return !q||((b.name_ar||'')+' '+(b.name_en||'')+' '+(b.address_ar||'')+' '+vGroup(b)).toLowerCase().indexOf(q)>=0;
-    });
-    // المفتوح أول جوّا كل قسم
-    var byOpen=function(a,b){ return (branchIsOpen(b)?1:0)-(branchIsOpen(a)?1:0); };
-    var html='';
-    if(!list.length) html='<p style="color:var(--muted);text-align:center;padding:30px">'+vt('ما في نتائج','No results')+'</p>';
-    else if(!groups.length||VP_GROUP) html='<div class="vp-grid">'+list.sort(byOpen).map(vendorCard).join('')+'</div>';
-    else {
-      groups.concat(['']).forEach(function(g){
-        var part=list.filter(function(b){return vGroup(b)===g}).sort(byOpen); if(!part.length) return;
-        html+='<div class="vp-sec"><b>'+esc(g||vt('غير ذلك','Other'))+'</b><i></i></div><div class="vp-grid">'+part.map(vendorCard).join('')+'</div>';
-      });
+    var q=(d.querySelector('[data-vq]').value||'').trim().toLowerCase(), html='', title='';
+    if(q){
+      var hits=BRANCHES.filter(function(b){ return ((b.name_ar||'')+' '+(b.name_en||'')+' '+(b.address_ar||'')+' '+vGroup(b)).toLowerCase().indexOf(q)>=0; }).sort(byOpen);
+      html=hits.length?'<div class="vp-grid">'+hits.map(vendorCard).join('')+'</div>':'<p style="color:var(--muted);text-align:center;padding:30px">'+vt('ما في نتائج','No results')+'</p>';
+    } else if(useTypes && VP_GROUP===null){
+      // صفحة الأنواع: مطاعم / محلات تجارية / …
+      title='<h2 style="font-size:18px;margin:16px 0 12px">'+vt('شو بدك تطلب اليوم؟','What would you like today?')+'</h2>';
+      var types=groups.concat(hasOther?['__other']:[]);
+      html='<div class="vp-grid">'+types.map(function(g){
+        var list=BRANCHES.filter(function(b){ return g==='__other'?!vGroup(b):vGroup(b)===g; });
+        var open=list.filter(branchIsOpen).length, nm=g==='__other'?vt('غير ذلك','Other'):g;
+        return '<button type="button" class="vt" data-vg="'+esc(g)+'"><span class="lg" style="background:var(--bg-2)"><span style="font-size:64px">'+typeIcon(g==='__other'?'':g)+'</span></span>'+
+          '<span class="tx"><b style="font-size:16px">'+esc(nm)+'</b><small class="'+(open?'op':'cl')+'">'+list.length+' '+vt('محل','places')+' · '+open+' '+vt('فاتح هلق','open now')+'</small></span></button>';
+      }).join('')+'</div>';
+    } else {
+      var list=BRANCHES.filter(function(b){ return !useTypes||(VP_GROUP==='__other'?!vGroup(b):vGroup(b)===VP_GROUP); }).sort(byOpen);
+      if(useTypes) title='<div style="display:flex;align-items:center;gap:10px;margin:16px 0 12px">'+
+        '<button type="button" data-vtypes style="border:1px solid var(--line);background:var(--card);color:var(--text);border-radius:10px;padding:7px 12px;font:700 13px inherit;cursor:pointer">'+(L==='en'?'←':'→')+' '+vt('الأنواع','Types')+'</button>'+
+        '<h2 style="font-size:18px;margin:0">'+typeIcon(VP_GROUP==='__other'?'':VP_GROUP)+' '+esc(VP_GROUP==='__other'?vt('غير ذلك','Other'):VP_GROUP)+'</h2></div>';
+      else title='<h2 style="font-size:18px;margin:16px 0 12px">'+vt('اختار المطعم أو المحل','Pick a restaurant or shop')+'</h2>';
+      html=list.length?'<div class="vp-grid">'+list.map(vendorCard).join('')+'</div>':'<p style="color:var(--muted);text-align:center;padding:30px">'+vt('ما في مطاعم أو محلات بعد','No restaurants or shops yet')+'</p>';
     }
+    d.querySelector('[data-vtitle]').innerHTML=title;
     d.querySelector('[data-vlist]').innerHTML=html;
   }
   paintList();
@@ -935,10 +958,9 @@ function showVendorPicker(){
   d.addEventListener('click',function(e){
     if(e.target.closest('[data-vclose]')){ d.remove(); return; }
     if(e.target.closest('[data-vlang]')){ setLang(L==='ar'?'en':'ar'); showVendorPicker(); return; }
+    if(e.target.closest('[data-vtypes]')){ VP_GROUP=null; paintList(); d.scrollTop=0; return; }
     var gb=e.target.closest('[data-vg]');
-    if(gb){ VP_GROUP=gb.dataset.vg;
-      Array.prototype.forEach.call(d.querySelectorAll('[data-vg]'),function(x){x.setAttribute('aria-pressed',x.dataset.vg===VP_GROUP)});
-      paintList(); return; }
+    if(gb){ VP_GROUP=gb.dataset.vg; paintList(); d.scrollTop=0; return; }
     var bt=e.target.closest('[data-vpick]'); if(!bt) return;
     var b=BRANCHES.find(function(x){return x.id===bt.dataset.vpick}); if(!b) return;
     if(!branchIsOpen(b)){ toast('🔒 '+nextOpenText(b)); return; }
@@ -977,7 +999,7 @@ async function load(){
   if(VMODE){
     ALL_CATS=CATS; ALL_ITEMS=ITEMS; CATS=[]; ITEMS=[];
     var up=new URLSearchParams(location.search).get('branch');
-    var st=null; try{ st=localStorage.getItem('la_vendor_'+R.id); }catch(e){}
+    var st=null; try{ st=sessionStorage.getItem('la_vendor_'+R.id); }catch(e){}
     var pick=BRANCHES.find(function(b){return b.id===up})||BRANCHES.find(function(b){return b.id===st});
     if(pick && branchIsOpen(pick)) useVendor(pick);
     return true;
@@ -1053,7 +1075,10 @@ function paintHeader(){
   $('#typeSeg').children[0].classList.toggle('hidden',!R.dinein_enabled);
   // إعداد التوصيل: من الفرع إذا كان محدداً، وإلا من المطعم
   var dlvEnabled = VMODE ? !!R.delivery_enabled : (BRANCH ? !!BRANCH.delivery_enabled : !!R.delivery_enabled);
+  if(dlvPaused() && R.dinein_enabled) dlvEnabled=false;   // في «بالمطعم»: منخبّي التوصيل بس
   $('#typeSeg').children[1].classList.toggle('hidden',!dlvEnabled);
+  if(dlvPaused() && R.dinein_enabled && oType==='delivery') oType='dine_in';
+  paintPauseBanner();
   if(VMODE){ oType='delivery'; $('#typeSeg').children[0].classList.add('hidden'); }
 }
 
@@ -1317,6 +1342,19 @@ function onBuilderClick(e){
   var bb2=document.querySelector('#bld .bb'); if(bb2) bb2.scrollTop=st;
 }
 
+/* ---------- ⛔ التوصيل مقفل اليوم ---------- */
+function dlvPaused(){ return !!(R&&R.delivery_paused_until&&new Date(R.delivery_paused_until)>new Date()); }
+function pauseText(){ var m=L==='en'?(R.delivery_pause_msg_en||R.delivery_pause_msg_ar):R.delivery_pause_msg_ar;
+  return (L==='en'?'⛔ Delivery is closed today':'⛔ التوصيل مقفل اليوم')+(m?' — '+m:''); }
+function paintPauseBanner(where){
+  var id='pauseBanner'+(where?'-'+where.id:''), el=document.getElementById(id);
+  if(!dlvPaused()){ if(el) el.remove(); return; }
+  if(!el){ el=document.createElement('div'); el.id=id;
+    el.style.cssText='background:#7f1d1d;color:#fff;padding:12px 14px;border-radius:14px;margin:12px 0;font-weight:800;text-align:center;line-height:1.6';
+    var host=where||document.querySelector('.tools'); if(host) host.parentNode.insertBefore(el,host); }
+  el.textContent=pauseText();
+}
+
 /* ---------- رسم التوصيل: ثابت / مناطق / مسافة (نفس حساب السيرفر) ---------- */
 function roadKm(a,b,c,d){ var Rr=6371,x=(c-a)*Math.PI/180,y=(d-b)*Math.PI/180;
   var h=Math.sin(x/2)*Math.sin(x/2)+Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180)*Math.sin(y/2)*Math.sin(y/2);
@@ -1377,12 +1415,14 @@ function removeItem(id){
   saveCart(); paintMenu(); paintCart();
 }
 function saveCart(){
-  try{ localStorage.setItem('la_cart_'+slug,JSON.stringify(
+  // السلة بتضل بس بنفس الزيارة — إذا الزبون سكّر وفتح من جديد بتبلّش فاضية
+  try{ sessionStorage.setItem('la_cart_'+slug,JSON.stringify(
     Object.keys(cart).map(function(k){return {id:cart[k].item.id,qty:cart[k].qty,opts:cart[k].opts||null}}))); }catch(e){}
 }
 function loadCart(){
   try{
-    var s=JSON.parse(localStorage.getItem('la_cart_'+slug)||'[]');
+    try{ localStorage.removeItem('la_cart_'+slug); }catch(e){}   // سلة قديمة من النسخة السابقة
+    var s=JSON.parse(sessionStorage.getItem('la_cart_'+slug)||'[]');
     s.forEach(function(l){
       var it=ITEMS.find(function(x){return x.id===l.id&&x.is_available});
       if(!it) return;
@@ -1714,6 +1754,7 @@ $('#confirmBtn').addEventListener('click',async function(){
   if(name.length<2){ return fail(T.required); }
   if(phone.replace(/\D/g,'').length<7){ return fail(T.invalidPhone); }
   if(oType==='delivery'&&R.require_location&&!geo.lat){ return fail(T.needLocation); }
+  if(oType==='delivery'&&dlvPaused()) return fail(pauseText());
   var di=oType==='delivery'?dlvInfo():{};
   if(di.needZone) return fail(L==='en'?'Choose your area':'اختار منطقتك');
   if(di.far) return fail(L==='en'?'Your location is outside our delivery range':'موقعك برّا منطقة التوصيل');
@@ -1759,6 +1800,7 @@ $('#confirmBtn').addEventListener('click',async function(){
     console.error('place_order failed:', e);
     var d = (e && (e.message || e.hint || e.details || e.code)) || '';
     if(/zone required/.test(d)) d=L==='en'?'choose your area':'اختار منطقتك';
+    if(/delivery paused/.test(d)) d=pauseText();
     if(/out of delivery range/.test(d)) d=L==='en'?'outside the delivery range':'برّا منطقة التوصيل';
     fail(T.error + (d ? ' — ' + d : ''));
   }finally{ btn.disabled=false; btn.textContent=T.confirm; }
