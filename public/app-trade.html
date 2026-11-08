@@ -773,9 +773,28 @@ async function applyPaySource(key, id, src){
   toast((eff.sign>0? 'دخلت على: ' : 'انخصم من: ')+moneyTargetLabel(src)+' ✅');
   try{ render(); }catch(e){}
 }
+/* ===== محذوفات المستودع: المنتج المحذوف بيضل بالسحابة (deleted) وبينحفظ هون برّا لائحة المستودع — بيرجع أو بينمحى نهائياً من «المحذوفات» ===== */
+let _whTrashFresh = null;   // اللائحة الكاملة من السحابة (آخر تحميل كامل) — بتحلّ محل القديمة
+function whWithTrash(arr){ const t = DB._whTrash||[]; if(!t.length) return arr; const ids = new Set(arr.map(x=>x && x.id)); return arr.concat(t.filter(x=>!ids.has(x.id))); }
+function splitWhTrash(){
+  if(!Array.isArray(DB.warehouseItems)) return false;
+  let ch = false;
+  if(_whTrashFresh){ DB._whTrash = _whTrashFresh.slice(); _whTrashFresh = null; ch = true; }
+  const t = DB._whTrash || (DB._whTrash = []);
+  if(DB.warehouseItems.some(x=>x && x.deleted)){
+    const del = DB.warehouseItems.filter(x=>x && x.deleted), ids = new Set(del.map(x=>x.id));
+    DB.warehouseItems = DB.warehouseItems.filter(x=>!(x && x.deleted));
+    DB._whTrash = t.filter(x=>!ids.has(x.id)).concat(del); ch = true;
+  }
+  const act = new Set(DB.warehouseItems.map(x=>x && x.id));
+  if((DB._whTrash||[]).some(x=>act.has(x.id))){ DB._whTrash = DB._whTrash.filter(x=>!act.has(x.id)); ch = true; }
+  if(ch) invalidateWarehouseCaches();
+  return ch;
+}
 async function save(key, value){
+  if(key===KEYS.warehouseItems){ const same = value===DB.warehouseItems; splitWhTrash(); value = same? DB.warehouseItems : (Array.isArray(value)? value.filter(x=>!(x && x.deleted)) : value); }
   try{
-    localStorage.setItem(skey(key), JSON.stringify(value));
+    localStorage.setItem(skey(key), JSON.stringify(key===KEYS.warehouseItems? whWithTrash(value) : value));
   }catch(e){ console.error('storage error', key, e); return false; }
   if(key===KEYS.warehouseItems || key===KEYS.stockIns || key===KEYS.stockOuts || key===KEYS.suppliers) invalidateWarehouseCaches();
   if(DOC_BOX_KEYS[key]) syncDocsToBox(key, value);
@@ -991,7 +1010,7 @@ function warehouseItemFromDb(row){
 const ITEM_EXTRA_KEYS = ['sku','subCategory','madeIn','uom','location','reorderPoint','costPrice','supplierId',
   'tireSize','dot','loadSpeed','rechargeDate','amperage','oilType','viscosity','compat','weight','dims','msds','status',
   'vatRate','margin','mfgYear','priceSec','costSec',
-  'baseItemId','baseQty','unitsPerBase','contentPerUnit','contentUnit','perUnitContent','hospitality','hospLimit','extraBases'];
+  'baseItemId','baseQty','unitsPerBase','contentPerUnit','contentUnit','perUnitContent','hospitality','hospLimit','extraBases','deleted','deletedAt','deletedBy'];
 function pickItemExtra(src){
   const out = {};
   if(!src || typeof src!=='object') return out;
@@ -1360,6 +1379,7 @@ async function liveApply(p){
   if(rm.length){
     const rs = new Set(rm);
     DB[p.k] = arr.filter(r=>!rs.has(r.id));
+    if(p.k==='warehouseItems' && DB._whTrash) DB._whTrash = DB._whTrash.filter(r=>!rs.has(r.id));
     rm.forEach(id=>{ sm.delete(id); known.delete(id); });
   }
   setSyncedIds(p.k, known);
@@ -1622,6 +1642,7 @@ function mergeLocalOnly(key, remote, firstRunMerge){
   return { merged, localOnly };
 }
 async function syncArrayToSupabase(localKey, arr){
+  if(localKey===KEYS.warehouseItems) arr = whWithTrash(arr);   // المحذوفات بتضل بالسحابة
   const cfg = SUPABASE_TABLES[localKey];
   if(!cfg || !supabaseClient) return;
   {   // صندوق الانتظار: منسجّل شو تغيّر قبل ما نحاول نرفع (وإذا ما في جلسة/نت بيضل عالجهاز)
@@ -1709,6 +1730,7 @@ async function loadSyncedArray(localKey, fallback){
           setTimeout(flushOutbox, 2500);
         }
         let { merged, localOnly } = mergeLocalOnly(localKey, remoteRows, false);
+        if(localKey===KEYS.warehouseItems) _whTrashFresh = merged.filter(x=>x && x.deleted);
         if(localKey===KEYS.budgetCategories){
           _budgetCatsCloudOk = true;
           const dd = dedupeAutoBudgetCats(merged, remoteRows);
@@ -5493,6 +5515,7 @@ new MutationObserver(()=>{ clearTimeout(window._wrapTblT); window._wrapTblT = se
 // البرنامج بيفتح بلا إنترنت: Service Worker «الشبكة أولاً» — بيخزّن آخر نسخة من البرنامج وبيستعملها بس إذا ما في نت
 try{ if('serviceWorker' in navigator && location.protocol==='https:') navigator.serviceWorker.register('/app-sw.js').catch(()=>{}); }catch(e){}
 function render(){
+  try{ splitWhTrash(); }catch(e){ console.error('splitWhTrash', e); }
   try{ applyFavicon(); }catch(e){}
   try{ updateOfflineBadge(); }catch(e){}
   try{ ensureLiveChannel(); }catch(e){ console.error('ensureLiveChannel', e); }
@@ -11375,7 +11398,18 @@ function trashView(){
       {kind:'workerpay', arr:'workerPayments', title:'دفعات العمال المحذوفة', partyArr:'workers', partyField:'workerId', numLabel:'رقم الدفعة', amtFn:p=>p.amount}
     ] : [])
   ];
-  const cards = sections.map(sec=>{
+  const wt = (DB._whTrash||[]).slice().sort((a,b)=>(b.deletedAt||0)-(a.deletedAt||0));
+  const whCard = `<div class="card">
+    <h2><span class="dot"></span> 📦 منتجات المستودع المحذوفة</h2>
+    ${wt.length? `<div class="table-scroll"><table><thead><tr><th>المنتج</th><th>الفئة</th><th>الباركود</th><th>السعر</th><th>انحذف</th><th></th></tr></thead><tbody>${wt.map(x=>`<tr>
+      <td><b>${escapeHtml(x.name||'')}</b>${x.baseItemId? ' <span style="font-size:11px; color:var(--ink-soft);">(وحدة)</span>' : ''}</td>
+      <td>${escapeHtml(x.category||'—')}</td><td class="num">${escapeHtml(x.barcode||'—')}</td><td class="num">${fmtMoney(x.price||0)}</td>
+      <td class="num" style="font-size:12px;">${x.deletedAt? fmtDateTime12(x.deletedAt) : '—'}${x.deletedBy? '<br><span style="color:var(--ink-soft);">'+escapeHtml(x.deletedBy)+'</span>' : ''}</td>
+      <td style="white-space:nowrap;"><button class="btn btn-sm btn-credit" data-wh-restore="${x.id}">↺ استرجاع</button>
+        ${canDelItems()? `<button class="btn btn-sm btn-danger" data-wh-purge="${x.id}">حذف نهائي</button>` : ''}</td></tr>`).join('')}</tbody></table></div>`
+      : `<div class="empty"><div class="big">لا يوجد شيء محذوف هنا</div></div>`}
+  </div>`;
+  const cards = whCard + sections.map(sec=>{
     const items = DB[sec.arr].filter(x=>x.deleted && (isSuperadmin || !x.adminPurged)).sort((a,b)=>(b.deletedAt||0)-(a.deletedAt||0));
     const rows = items.map(x=>`<tr>
       <td>${escapeHtml(partyName(sec.partyArr, x[sec.partyField], 'محذوف'))} ${(isSuperadmin && x.adminPurged)? '<span style="font-size:11px; color:var(--debit);">(حذفه ADMIN)</span>':''}</td>
@@ -11397,7 +11431,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-11-04 · 22:30 · v84';
+const APP_TRADE_BUILD = '2026-11-08 · 19:30 · v85';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 function settingsView(){
   const s = DB.settings;
@@ -14000,6 +14034,18 @@ function openWarehouseItemModal(item, presetBarcode, opts){
   });
 }
 function canDelItems(){ return isPrivilegedUser(currentUser) || hasPermission('delete'); }
+// استرجاع / حذف نهائي من المحذوفات
+document.addEventListener('click', async e=>{
+  const r = e.target.closest && e.target.closest('[data-wh-restore]');
+  if(r){ e.preventDefault(); const id = r.getAttribute('data-wh-restore'); const it = (DB._whTrash||[]).find(x=>x.id===id); if(!it) return;
+    if(denyIfNo('edit_products','تعديل المنتجات')) return;
+    delete it.deleted; delete it.deletedAt; delete it.deletedBy;
+    DB._whTrash = DB._whTrash.filter(x=>x.id!==id); DB.warehouseItems.push(it);
+    const ok = await save(KEYS.warehouseItems, DB.warehouseItems); toast(ok? '↺ رجع «'+it.name+'» عالمستودع' : 'حدث خطأ أثناء الحفظ'); render(); return; }
+  const pz = e.target.closest && e.target.closest('[data-wh-purge]');
+  if(pz){ e.preventDefault(); const it = (DB._whTrash||[]).find(x=>x.id===pz.getAttribute('data-wh-purge')); if(!it) return;
+    openDeleteWarehouseItemModal(it, { purge:true, noName:true, stay:true }); }
+});
 function delItemBtn(it, noName){ return canDelItems()? `<button class="btn btn-sm btn-danger" data-del-item="${it.id}" ${noName? 'data-del-noname="1"' : ''} title="إلغاء المنتج" style="padding:4px 8px;">🗑 إلغاء</button>` : ''; }
 // زر «إلغاء» بلوايح المستودع ونقص الستوك: ما بيفتح صفحة المنتج، بيفتح التأكيد
 document.addEventListener('click', e=>{
@@ -14014,9 +14060,10 @@ function openDeleteWarehouseItemModal(item, opts){
   const wrap = document.createElement('div');
   wrap.className='modal-bg';
   wrap.innerHTML = `<div class="modal">
-    <h3 style="color:var(--debit)">⚠ حذف المنتج نهائيًا</h3>
+    <h3 style="color:var(--debit)">${opts.purge? '⚠ حذف المنتج نهائيًا' : '🗑 حذف المنتج'}</h3>
     <p style="font-size:13.5px; color:var(--ink-soft); line-height:1.7;">
-      سيتم حذف <b>${escapeHtml(item.name)}</b> نهائيًا مع كل سجلات الإضافة والسحب المرتبطة به. لا يمكن التراجع عن هذا الإجراء.
+      ${opts.purge? `سيتم حذف <b>${escapeHtml(item.name)}</b> نهائيًا مع كل سجلات الإضافة والسحب المرتبطة به. لا يمكن التراجع عن هذا الإجراء.`
+        : `<b>${escapeHtml(item.name)}</b> رح ينتقل على <b>المحذوفات</b> — بيختفي من المستودع والبيع، وفيك ترجّعو من «المحذوفات» ساعة ما بدك.`}
     </p>
     ${opts.noName? '<input type="hidden" id="wdel_confirm">' : `<div class="field"><label>اكتب اسم المنتج بالكامل للتأكيد</label><input type="text" id="wdel_confirm" placeholder="${escapeHtml(item.name)}"></div>`}
     <div class="row">
@@ -14031,7 +14078,7 @@ function openDeleteWarehouseItemModal(item, opts){
   const nameOk = ()=> opts.noName || inpD.value.trim()===String(item.name).trim();   // من إشعار نقص الستوك: بلا كتابة الاسم
   const sync = ()=>{ btnD.disabled = !(ready && nameOk()); };
   const tick = setInterval(()=>{ if(!wrap.isConnected){ clearInterval(tick); return; } cnt++;
-    if(cnt<=5) btnD.textContent = '⏳ '+cnt; else { clearInterval(tick); ready = true; btnD.textContent = '🗑 حذف نهائي'; sync(); } }, 1000);
+    if(cnt<=5) btnD.textContent = '⏳ '+cnt; else { clearInterval(tick); ready = true; btnD.textContent = opts.purge? '🗑 حذف نهائي' : '🗑 حذف'; sync(); } }, 1000);
   inpD.addEventListener('input', sync);
   setTimeout(()=>{ try{ inpD.focus(); }catch(e){} }, 50);
   wrap.querySelector('#wdel_cancel').addEventListener('click', ()=>wrap.remove());
@@ -14040,7 +14087,20 @@ function openDeleteWarehouseItemModal(item, opts){
     const typed = inpD.value.trim();
     if(!nameOk()){ toast('يجب أن تكتب الاسم كما هو بالضبط'); return; }
     btnD.disabled = true;
+    if(!opts.purge){
+      // حذف عادي: عالمحذوفات (السجلات بتضل — إذا رجّعتو بيرجع متل ما كان)
+      const it = DB.warehouseItems.find(x=>x.id===item.id); if(!it){ wrap.remove(); return; }
+      Object.assign(it, { deleted:true, deletedAt:Date.now(), deletedBy: currentUser? currentUser.username : '' });
+      DB.warehouseItems = DB.warehouseItems.filter(x=>x.id!==item.id);
+      DB._whTrash = (DB._whTrash||[]).filter(x=>x.id!==item.id).concat([it]);
+      await save(KEYS.warehouseItems, DB.warehouseItems);
+      wrap.remove(); invalidateWarehouseCaches();
+      toast('انتقل «'+item.name+'» على المحذوفات 🗑');
+      if(opts.onDone){ opts.onDone(); render(); } else if(opts.stay) render(); else go('#/warehouse');
+      return;
+    }
     DB.warehouseItems = DB.warehouseItems.filter(x=>x.id!==item.id);
+    DB._whTrash = (DB._whTrash||[]).filter(x=>x.id!==item.id);
     DB.stockIns = DB.stockIns.filter(x=>x.itemId!==item.id);
     DB.stockOuts = DB.stockOuts.filter(x=>x.itemId!==item.id);
     await Promise.all([save(KEYS.warehouseItems, DB.warehouseItems), save(KEYS.stockIns, DB.stockIns), save(KEYS.stockOuts, DB.stockOuts)]);
