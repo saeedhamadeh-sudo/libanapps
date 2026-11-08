@@ -3526,6 +3526,24 @@ export default {
       }
     }
 
+    // 1.4) زبون شغّال عالنسخة المحلية (عندو نفق): الرابط القديم /portal-trade/<slug> أو /portal/<slug>
+    //      بيتحوّل لرابط النفق — حتى كل المستخدمين يشتغلوا على نفس البيانات (كمبيوتر المحل) وما تنقسم الداتا.
+    //      ?cloud=1 بيفتح نسخة السحابة (للإدارة).
+    if (isPlatformHost(url.hostname, env) && (request.method === 'GET' || request.method === 'HEAD') && !url.searchParams.has('cloud')) {
+      const pm = url.pathname.match(/^\/(portal-trade|portal)\/([^/]+)\/?$/);
+      if (pm) {
+        try {
+          const product = pm[1] === 'portal-trade' ? 'trade' : 'alum';
+          const st = await sbGetTO(env, `app_settings?product_code=eq.${product}&slug=eq.${encodeURIComponent(decodeURIComponent(pm[2]).toLowerCase())}&select=client_id&limit=1`, 2500);
+          const cid = st && st[0] && st[0].client_id;
+          if (cid) {
+            const tun = await sbGetTO(env, `local_tunnels?client_id=eq.${cid}&tunnel_id=not.is.null&select=hostname&limit=1`, 2500);
+            if (tun && tun[0] && tun[0].hostname) return Response.redirect(`https://${tun[0].hostname}/${product}`, 302);
+          }
+        } catch (e) { /* إذا في مشكلة منكمّل عالسحابة متل العادة */ }
+      }
+    }
+
     // 1.5) دومين خاص بمتجر زبون — أي مسار غير الـAPI والصور بيعرض متجره
     if (!isPlatformHost(url.hostname, env)) {
       const host = url.hostname.toLowerCase();
