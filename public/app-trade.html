@@ -751,7 +751,7 @@ function nextPaySourceAsk(){
   </div>`;
   document.body.appendChild(wrap);
   const sel = wrap.querySelector('#ps_t');
-  if(currentUserShift()) sel.value = myDrawerIsPersonal()? '53103' : 'drawer';
+  sel.value = defaultPaySrc(incoming);
   wrap.querySelector('#ps_ok').addEventListener('click', async ()=>{
     const t = sel.value; if(!t){ wrap.querySelector('#ps_err').textContent = 'اختار الحساب'; return; }
     wrap.remove(); _paySrcOpen = false;
@@ -759,6 +759,73 @@ function nextPaySourceAsk(){
     nextPaySourceAsk();
   });
 }
+// المدفوعات بتطلع افتراضياً من الصندوق الأساسي (إذا عندك صلاحية عليه) — المقبوضات على صندوقك
+function defaultPaySrc(incoming){
+  if(!incoming && canUseSafe()) return 'main';
+  if(currentUserShift()) return myDrawerIsPersonal()? '53103' : 'drawer';
+  return canUseSafe()? 'main' : '';
+}
+// من وين انصرف سند معيّن (أو null إذا ما انسجّل)
+function paySrcOf(docId){
+  const m = (DB.cashMovements||[]).find(x=>isDocMirrorMove(x) && x.refSaleId===docId && !x.deleted);
+  if(!m) return null;
+  if(m.type==='safe_out' || m.type==='safe_in') return { m, label:'🗄 '+MAIN_BOX_NAME, main:true };
+  const a = moneyAcctOf(m); if(a){ if(a===WHISH_CODE) return { m, label:'📱 Whish', main:true }; const c = coaFind(a); return { m, label:a+' '+(c? c.name : '') }; }
+  const sh = (DB.cashierShifts||[]).find(x=>x.id===m.shiftId); return { m, label:'💵 صندوق '+(sh? sh.username : '') };
+}
+// تغيير مصدر دفع سند: منلغي الحركة القديمة (ومنرجّع الصندوق) ومنسجّل الجديدة
+async function changePaySource(key, id, src){
+  const old = paySrcOf(id);
+  if(old){ const m = old.m; m.deleted = true; m.refSaleId = null; m.note = String(m.note||'').replace(DOC_MIRROR_TAG, '[سند ملغى] ');
+    if(m.shiftId) _shiftAdd(m.shiftId, m.currency, (['deposit','safe_in','acct_in'].includes(m.type)? -1 : 1)*Math.abs(Number(m.amount)||0)); }
+  if(src && src!=='none'){ await applyPaySource(key, id, src); }
+  else await Promise.all([save(KEYS.cashMovements, DB.cashMovements), save(KEYS.cashierShifts, DB.cashierShifts)]);
+  if(old) save(KEYS.cashierShifts, DB.cashierShifts);
+}
+// كل المدفوعات (سندات صرف موردين، مصاريف الميزانية، دفعات العمال) ومن وين انصرفت
+function outgoingDocs(days){
+  const since = Date.now() - days*86400000, out = [];
+  [[KEYS.paymentVouchers, d=>{ const s = (DB.suppliers||[]).find(x=>x.id===d.supplierId); return 'سند صرف #'+(d.number||'')+(s? ' — '+s.name : ''); }],
+   [KEYS.budgetEntries, d=>{ const c = (DB.budgetCategories||[]).find(x=>x.id===d.categoryId); return 'مصروف #'+(d.number||'')+(c? ' — '+c.name : '')+(d.note? ' — '+String(d.note).slice(0,40) : ''); }],
+   [KEYS.workerPayments, d=>{ const w = (DB.workers||[]).find(x=>x.id===d.workerId); return 'دفعة عامل'+(w? ' — '+w.name : ''); }]].forEach(([k, lbl])=>{
+    (DB[k]||[]).forEach(d=>{ if(!d || d.deleted || (d.createdAt||0) < since) return; const eff = docBoxEffect(k, d); if(!eff || eff.sign>0) return;
+      out.push({ key:k, d, eff, label:lbl(d), src:paySrcOf(d.id) }); });
+  });
+  return out.sort((a,b)=>(b.d.createdAt||0)-(a.d.createdAt||0));
+}
+function paidFromCard(){
+  if(!canUseSafe()) return '';
+  const list = outgoingDocs(14); if(!list.length) return '';
+  const miss = list.filter(x=>!x.src).length;
+  return `<div class="card">
+    <h2><span class="dot"></span> 💸 المدفوعات ومن وين انصرفت (آخر ١٤ يوم)</h2>
+    ${miss? `<div style="background:#fdecec; border:1px solid var(--debit); border-radius:8px; padding:6px 10px; margin-bottom:8px; font-size:13px; color:var(--debit); font-weight:700;">⚠️ في ${miss} دفعة ما انسجّل من وين انصرفت — ما نقصت من ولا صندوق. كبوس «حدّد» حدّها.</div>` : ''}
+    <div class="table-scroll"><table><thead><tr><th>التاريخ</th><th>الدفعة</th><th>المبلغ</th><th>انصرفت من</th><th></th></tr></thead><tbody>
+    ${list.map(x=>`<tr ${x.src? '' : 'style="background:#fff3f3;"'}><td class="num" style="font-size:12px;">${fmtDateTime12(x.d.createdAt)}</td><td>${escapeHtml(x.label)}</td>
+      <td class="num">${x.eff.currency==='LBP'? fmtNum(x.eff.amt)+' '+escapeHtml(secCurLabel()) : '$'+x.eff.amt.toFixed(2)}</td>
+      <td>${x.src? escapeHtml(x.src.label) : '<b style="color:var(--debit);">⚠️ ما انسجّل</b>'}</td>
+      <td><button class="btn btn-sm ${x.src? '' : 'btn-primary'}" data-paysrc-change="${x.d.id}" data-paysrc-key="${x.key}">${x.src? 'تغيير' : 'حدّد'}</button></td></tr>`).join('')}
+    </tbody></table></div></div>`;
+}
+document.addEventListener('click', e=>{
+  const b = e.target.closest && e.target.closest('[data-paysrc-change]'); if(!b) return; e.preventDefault();
+  const key = b.getAttribute('data-paysrc-key'), id = b.getAttribute('data-paysrc-change');
+  const d = (DB[key]||[]).find(x=>x.id===id); const eff = d && docBoxEffect(key, d); if(!eff) return;
+  const cur = paySrcOf(id);
+  const wrap = document.createElement('div'); wrap.className = 'modal-bg';
+  wrap.innerHTML = `<div class="modal" style="max-width:420px;"><h3>💸 من وين انصرفت؟</h3>
+    <div style="font-size:14px; margin-bottom:8px;">${escapeHtml(eff.label)} — <b class="num">${eff.currency==='LBP'? fmtNum(eff.amt)+' '+escapeHtml(secCurLabel()) : '$'+eff.amt.toFixed(2)}</b></div>
+    ${cur? `<div style="font-size:12.5px; color:var(--ink-soft); margin-bottom:6px;">هلق: ${escapeHtml(cur.label)} — بس تغيّر، بترجع المصاري عليه وبتنخصم من الجديد.</div>` : ''}
+    <select id="pc_t" style="font-size:16px; padding:10px;"><option value="">— اختار —</option>${moneyTargetOptions({none:true})}</select>
+    <div id="pc_err" style="color:var(--debit); font-size:13px; min-height:16px;"></div>
+    <div class="row"><button class="btn" id="pc_x">إلغاء</button><button class="btn btn-primary" id="pc_ok">✅ حفظ</button></div></div>`;
+  document.body.appendChild(wrap);
+  const sel = wrap.querySelector('#pc_t'); if(!cur) sel.value = defaultPaySrc(false);
+  wrap.querySelector('#pc_x').addEventListener('click', ()=>wrap.remove());
+  wrap.querySelector('#pc_ok').addEventListener('click', async ()=>{ const t = sel.value; if(!t){ wrap.querySelector('#pc_err').textContent = 'اختار'; return; }
+    if(t==='drawer' && !currentUserShift()){ wrap.querySelector('#pc_err').textContent = 'ما عندك صندوق مفتوح'; return; }
+    wrap.remove(); await changePaySource(key, id, t); render(); });
+});
 async function applyPaySource(key, id, src){
   if(!src || src==='none') return;
   if(src==='box') src = 'drawer'; else if(src==='safe') src = 'main'; else if(src==='owner') src = '10801';
@@ -9625,7 +9692,8 @@ function safeBalance(){ const m = safeMoves(); const l = m[m.length-1]; return l
 // الخزنة: كل مستخدم إلو صلاحية «رؤية الخزنة» بيشوفها، وبس يلي إلو «السحب من الخزنة» بيقدر يسحب ويدفع منها (المدير دايماً)
 function canSeeSafe(){ return hasPermission('safe_view') || hasPermission('safe_withdraw'); }
 function canUseSafe(){ return hasPermission('safe_withdraw'); }
-function safeView(){
+function safeView(){ return safeViewMain() + paidFromCard(); }
+function safeViewMain(){
   const L = secCurLabel(), lbpOnly = currencyMode()==='SEC';
   const moves = safeMoves().slice().reverse();
   const bal = safeBalance();
@@ -11431,7 +11499,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-11-08 · 19:30 · v85';
+const APP_TRADE_BUILD = '2026-11-09 · 00:30 · v86';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 function settingsView(){
   const s = DB.settings;
@@ -13250,7 +13318,7 @@ function openBudgetBillModal(categoryId){
   addLine();
   wrap.querySelector('#bb_add').addEventListener('click', addLine);
   wrap.querySelector('#bb_cancel').addEventListener('click', ()=>wrap.remove());
-  const t = wrap.querySelector('#bb_t'); if(currentUserShift()) t.value = myDrawerIsPersonal()? '53103' : 'drawer';
+  const t = wrap.querySelector('#bb_t'); t.value = defaultPaySrc(false);
   const syncSrc = ()=>{ wrap.querySelector('#bb_src_other').style.display = t.value==='other'? '' : 'none'; wrap.querySelector('#bb_err').textContent = ''; };
   t.addEventListener('change', syncSrc); syncSrc();
   const onAcc = ()=> (wrap.querySelector('input[name="bb_pay"]:checked')||{}).value==='account';
@@ -13313,7 +13381,7 @@ function openBillPayModal(entryId){
     <div class="row"><button class="btn" id="bp_cancel">إلغاء</button><button class="btn btn-primary" id="bp_ok">💾 تسجيل الدفعة</button></div>
   </div>`;
   document.body.appendChild(wrap);
-  const t = wrap.querySelector('#bp_t'); if(currentUserShift()) t.value = myDrawerIsPersonal()? '53103' : 'drawer';
+  const t = wrap.querySelector('#bp_t'); t.value = defaultPaySrc(false);
   wrap.querySelector('#bp_cancel').addEventListener('click', ()=>wrap.remove());
   wrap.querySelector('#bp_ok').addEventListener('click', async ()=>{
     const err = m=>{ wrap.querySelector('#bp_err').textContent = m; };
@@ -13393,7 +13461,7 @@ function openAddBudgetEntryModal(categoryId){
   wrap.querySelector('#be_cancel').addEventListener('click', ()=>wrap.remove());
   let src = null;
   const beT = wrap.querySelector('#be_t');
-  if(currentUserShift()) beT.value = myDrawerIsPersonal()? '53103' : 'drawer';
+  beT.value = defaultPaySrc(false);
   const syncSrc = ()=>{ src = beT.value || null; const o = wrap.querySelector('#be_src_other'); o.style.display = src==='other' ? '' : 'none'; wrap.querySelector('#be_err').textContent = ''; };
   beT.addEventListener('change', ()=>{ syncSrc(); if(src==='other') wrap.querySelector('#be_src_other').focus(); }); syncSrc();
   wrap.querySelector('#be_save').addEventListener('click', async ()=>{
