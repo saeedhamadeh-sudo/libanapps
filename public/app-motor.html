@@ -2029,6 +2029,19 @@ Object.assign(D,{
  e_prev_above_cur:['العداد السابق أكبر من العداد الحالي ({x})','Previous is above the current reading ({x})','Index précédent supérieur à l’actuel ({x})'],
  swipe:['↔ اسحب الجدول يميناً ويساراً لرؤية كل الأعمدة','↔ Swipe the table sideways to see all columns','↔ Faites glisser le tableau pour voir toutes les colonnes']
 });
+Object.assign(D,{
+ prev_pdf:['إدخال العداد السابق','Enter previous readings','Saisir les index précédents'],
+ prev_pdf_hint:['اختر ملف PDF من برنامج الفوترة القديم. يطابق البرنامج عمود «المشترك» مع أسماء الزبائن، ويضع «القراءة الأخيرة» كعداد سابق. الاسم غير المسجّل لا يُدخل.','Choose the PDF from the old billing system. “Subscriber” is matched to customer names and “Last reading” becomes the previous reading. Unknown names are skipped.','Choisissez le PDF de l’ancien système. Les noms inconnus sont ignorés.'],
+ prev_pdf_rows:['صفوف الملف','Rows in file','Lignes du fichier'],
+ prev_pdf_ok:['تطابقت','Matched','Correspondants'],
+ prev_pdf_none:['غير مسجّلين','Not registered','Non enregistrés'],
+ prev_pdf_amb:['اسم مكرر','Duplicate name','Nom en double'],
+ prev_pdf_skip:['لن يُدخلوا (غير مسجّلين أو مكرّرون):','Skipped (not registered or duplicate):','Ignorés :'],
+ prev_pdf_go:['إدخال العداد السابق لـ {n} زبون','Enter previous reading for {n} customers','Saisir pour {n} clients'],
+ prev_pdf_done:['تم إدخال العداد السابق لـ {n} زبون ✓','Previous reading entered for {n} customers ✓','Saisi pour {n} clients ✓'],
+ prev_pdf_bad:['تعذّرت قراءة الجدول من ملف PDF','Could not read the table from the PDF','Lecture du tableau impossible'],
+ now:['الحالي','current','actuel'], new:['الجديد','new','nouveau']
+});
 function roleLabel(s){ if(!s) return ''; if(s.role==='owner') return t('role_owner'); if(s.role==='admin') return t('role_admin'); return (s.can_read&&!s.can_collect)?t('role_reader'):t('role_collector'); }
 function editReading(r,after){
   if(!r) return;
@@ -3076,7 +3089,7 @@ VIEWS.customers=async function(main){
     '<select id="car"><option value="">'+esc(t('area'))+': '+esc(t('all'))+'</option>'+Object.keys(areas).sort().map(function(a){return '<option>'+esc(a)+'</option>'}).join('')+'</select>'+
     '</div><div class="toolbar">'+
     (adm?'<button class="btn" id="cadd">'+esc(t('new_customer'))+'</button><button class="btn alt" id="cimp">'+esc(t('import_excel'))+'</button>':'')+
-    '<button class="btn ghost" id="cexp">'+esc(t('export_csv'))+'</button>'+(adm?'<button class="btn ghost" id="clbl">'+esc(t('labels'))+'</button><button class="btn ghost" id="cfill">'+esc(t('fill_barcodes'))+'</button>':'')+
+    '<button class="btn ghost" id="cexp">'+esc(t('export_csv'))+'</button>'+(adm?'<button class="btn ghost" id="clbl">'+esc(t('labels'))+'</button><button class="btn ghost" id="cfill">'+esc(t('fill_barcodes'))+'</button><button class="btn acc" id="cprevpdf">📄 '+esc(t('prev_pdf'))+'</button>':'')+
     '<span class="sp"></span><span class="muted" id="ccount"></span></div><div class="tw"><table><thead><tr><th>'+esc(t('code'))+'</th><th>'+esc(t('name'))+'</th><th>'+esc(t('barcode'))+'</th><th>'+esc(t('plan'))+'</th><th>'+esc(t('box'))+'</th><th>'+esc(t('area'))+'</th><th>'+esc(t('collector'))+'</th><th>'+esc(t('status'))+'</th><th>'+esc(t('balance'))+'</th><th>'+esc(t('prev_reading'))+'</th><th>'+esc(t('cur_reading'))+' ('+esc(monthName(SITE.bill_period,true))+')</th></tr></thead><tbody id="ctb"></tbody></table></div><div id="cmore" style="text-align:center;margin-top:10px"></div>';
   $('#cst',main).value=CF.st; $('#cpl',main).value=CF.plan; if($('#ccol',main)) $('#ccol',main).value=CF.col; $('#car',main).value=CF.area;
   function filtered(){
@@ -3112,6 +3125,7 @@ VIEWS.customers=async function(main){
   ['cst','cpl','ccol','car'].forEach(function(id){ var el=$('#'+id,main); if(el) el.addEventListener('change',function(){ CF[{cst:'st',cpl:'plan',ccol:'col',car:'area'}[id]]=this.value; CF.lim=200; paint(); }); });
   if(adm){ $('#cadd',main).addEventListener('click',function(){ editCustomer(null); }); $('#cimp',main).addEventListener('click',importDialog);
     $('#clbl',main).addEventListener('click',function(){ printLabels(filtered().slice(0,500)); });
+    $('#cprevpdf',main).addEventListener('click',prevPdfDialog);
     $('#cfill',main).addEventListener('click',async function(){ try{ var r=await call('motor_fill_barcodes'); toast(t('fill_done',{n:r.count}),'s'); await loadCustomers(); go('customers'); }catch(e){ toast(errText(e),'e'); } }); }
   $('#cexp',main).addEventListener('click',function(){
     var rows=[[t('code'),t('name'),t('barcode'),t('meter_no'),t('plan'),t('box'),t('area'),t('location_name'),t('collector'),t('mobile'),t('status'),t('balance'),t('prev_reading'),t('cur_reading')]];
@@ -3716,6 +3730,103 @@ async function logoutClick(){
     var tb=el.querySelector('table'); if(tb&&tb.rows[0]&&tb.rows[0].cells.length>5) tb.classList.add('stick'); }); }
   new MutationObserver(function(){ if(!pend){ pend=true; requestAnimationFrame(fix); } }).observe(document.body,{childList:true,subtree:true});
 })();
+/* قراءة جدول PDF (برنامج الفوترة القديم): لكل صف → مفتاح الاسم + القراءة الأخيرة + السابق + الجوال + العلبة */
+function nameKey(s){
+  s=String(s||'').normalize('NFKC').replace(/[أإآٱ]/g,'ا').replace(/ة/g,'ه').replace(/ى/g,'ي').replace(/ؤ/g,'و').replace(/ئ/g,'ي').replace(/ء/g,'')
+    .replace(/[ً-ْـ]/g,'').replace(/[^ء-يa-zA-Z0-9]/g,'').toLowerCase();
+  return s.split('').sort().join('');
+}
+function parseBillingPages(pages){ // pages: [[{str,x,y,w}]]
+  var HEAD={name:nameKey('المشترك'),mobile:nameKey('الجوال'),service:nameKey('الخدمة'),area:nameKey('المنطقة'),box:nameKey('العلبة'),
+    last:nameKey('القراءة الأخيرة'),prev:nameKey('السابق'),date:nameKey('التاريخ')};
+  var out=[], cols=null, problems=[];
+  pages.forEach(function(items,pi){
+    items=items.filter(function(i){ return String(i.str).trim()!==''; });
+    var hash=items.filter(function(i){ return String(i.str).trim()==='#'; })[0];
+    if(hash){
+      // عناوين الأعمدة: كل الحروف القريبة من سطر «#» مجمّعة حسب x
+      var hs=items.filter(function(i){ return i!==hash&&Math.abs(i.y-hash.y)<16; }).sort(function(a,b){ return a.x-b.x; });
+      var cl=[], cur=null;
+      hs.forEach(function(i){ if(cur&&i.x<=cur.x2+5){ cur.x2=Math.max(cur.x2,i.x+i.w); cur.t+=i.str; } else { cur={x1:i.x,x2:i.x+i.w,t:i.str}; cl.push(cur); } });
+      var c={hash:hash.x+hash.w/2};
+      cl.forEach(function(k){ var key=nameKey(k.t); for(var h in HEAD) if(HEAD[h]===key) c[h]=(k.x1+k.x2)/2; });
+      if(c.name!=null&&c.last!=null) cols=c; else problems.push('page '+(pi+1)+': header not recognised');
+    }
+    if(!cols) return;
+    var centers=Object.keys(cols).map(function(k){ return {k:k,x:cols[k]}; });
+    function col(i){ var cx=i.x+i.w/2, best=null, bd=1e9; centers.forEach(function(c){ var d=Math.abs(c.x-cx); if(d<bd){ bd=d; best=c.k; } }); return best; }
+    var hy=hash?hash.y:1e9;
+    var anchors=items.filter(function(i){ return i.y<hy-5&&/^\d+$/.test(String(i.str).trim())&&col(i)==='hash'; }).sort(function(a,b){ return b.y-a.y; });
+    anchors.forEach(function(a,ai){
+      var up=ai>0?(anchors[ai-1].y+a.y)/2:Math.min(hy-5,a.y+30), dn=ai<anchors.length-1?(anchors[ai+1].y+a.y)/2:a.y-30;
+      var row=items.filter(function(i){ return i.y<up&&i.y>=dn; });
+      var g={}; row.forEach(function(i){ var k=col(i); (g[k]=g[k]||[]).push(i); });
+      function txt(k){ var a=(g[k]||[]).sort(function(p,q){ return (Math.abs(q.y-p.y)>3?q.y-p.y:0)||(q.x-p.x); }), out='', prev=null;
+        a.forEach(function(i){ if(prev&&(Math.abs(prev.y-i.y)>3||prev.x-(i.x+i.w)>1.5)) out+=' '; out+=i.str; prev=i; }); return out; }
+      function num(k){ var v=(g[k]||[]).map(function(i){return String(i.str).trim()}).filter(function(s){return /^-?\d+(\.\d+)?$/.test(s)}); return v.length?Number(v[0]):null; }
+      out.push({no:Number(String(a.str).trim()),page:pi+1,key:nameKey(txt('name')),name_raw:txt('name').normalize('NFKC').replace(/\s+/g,' ').trim(),
+        last:num('last'),prev:num('prev'),mobile:txt('mobile').replace(/\D/g,''),box:txt('box').trim()});
+    });
+  });
+  return {rows:out,problems:problems};
+}
+
+/* ---------- «إدخال العداد السابق» من ملف PDF (مطابقة بالاسم) ---------- */
+var PDFJS_V='4.0.379', pdfjsP=null;
+function loadPdfJs(){ if(pdfjsP) return pdfjsP;
+  pdfjsP=import('https://cdn.jsdelivr.net/npm/pdfjs-dist@'+PDFJS_V+'/build/pdf.min.mjs').then(function(m){
+    m.GlobalWorkerOptions.workerSrc='https://cdn.jsdelivr.net/npm/pdfjs-dist@'+PDFJS_V+'/build/pdf.worker.min.mjs'; return m; })
+    .catch(function(e){ pdfjsP=null; throw e; });
+  return pdfjsP; }
+function prevPdfDialog(){
+  var m=modal(t('prev_pdf'),'<p class="muted" style="margin-top:0">'+esc(t('prev_pdf_hint'))+'</p><input type="file" id="ppf" accept="application/pdf,.pdf"><div id="ppv" style="margin-top:12px"></div>',
+    '<button class="btn ghost" data-x>'+esc(t('close'))+'</button><button class="btn hidden" data-gob></button>',true);
+  var plan=null, running=false;
+  m.foot.addEventListener('click',async function(e){
+    if(e.target.closest('[data-x]')){ if(!running) m.close(); return; }
+    var gb=e.target.closest('[data-gob]'); if(!gb||!plan) return;
+    running=true; busy(gb,true,t('saving')); var done=0, errs=[];
+    try{
+      for(var i=0;i<plan.length;i+=200){
+        var r=await call('motor_set_prev_bulk',{p_rows:plan.slice(i,i+200).map(function(x){ return {id:x.c.id,value:x.r.last}; })});
+        done+=r.done; errs=errs.concat(r.errors||[]);
+        $('#ppbar i',m.body).style.width=Math.min(100,Math.round((i+200)/plan.length*100))+'%';
+      }
+      var byId={}; plan.forEach(function(x){ byId[x.c.id]=x.c.name; });
+      $('#ppres',m.body).innerHTML='<div class="okmsg">'+esc(t('prev_pdf_done',{n:done}))+'</div>'+(errs.length?'<div class="err" style="margin-top:8px">'+esc(errs.slice(0,40).map(function(x){ return (byId[x.id]||'')+': '+errText(x.error); }).join('\n'))+'</div>':'');
+      gb.classList.add('hidden'); await loadCustomers(); if(TAB==='customers') go('customers');
+    }catch(err){ $('#ppres',m.body).innerHTML='<div class="err">'+esc(errText(err))+'</div>'; busy(gb,false); }
+    running=false;
+  });
+  $('#ppf',m.body).addEventListener('change',async function(){
+    var file=this.files&&this.files[0], pv=$('#ppv',m.body), gb=$('[data-gob]',m.foot); plan=null; gb.classList.add('hidden'); if(!file) return;
+    pv.innerHTML='<div class="muted">'+esc(t('loading'))+'</div>';
+    try{
+      var lib=await loadPdfJs(); var doc=await lib.getDocument({data:new Uint8Array(await file.arrayBuffer())}).promise, pages=[];
+      for(var n=1;n<=doc.numPages;n++){ var tc=await (await doc.getPage(n)).getTextContent();
+        pages.push(tc.items.map(function(i){ return {str:i.str,x:i.transform[4],y:i.transform[5],w:i.width}; }));
+        pv.innerHTML='<div class="muted">'+esc(t('loading'))+' '+n+' / '+doc.numPages+'</div>'; }
+      var res=parseBillingPages(pages);
+      if(!res.rows.length){ pv.innerHTML='<div class="err">'+esc(t('prev_pdf_bad'))+'</div>'; return; }
+      var idx={}; CUST.forEach(function(c){ var k=nameKey(c.name); (idx[k]=idx[k]||[]).push(c); });
+      var ok=[], none=[], amb=[];
+      res.rows.forEach(function(r){
+        if(r.last==null) return;
+        var l=idx[r.key]||[];
+        if(l.length>1){ var f=l.filter(function(c){ var a=String(c.mobile||'').replace(/^0+/,''); return (a&&r.mobile.replace(/^0+/,'').slice(-a.length)===a)||(r.box&&c.box===r.box); }); if(f.length===1) l=f; }
+        if(l.length===1) ok.push({r:r,c:l[0]}); else if(l.length>1) amb.push(r); else none.push(r);
+      });
+      plan=ok;
+      pv.innerHTML='<div class="stats">'+stat(t('prev_pdf_rows'),fmtN(res.rows.length,0))+stat(t('prev_pdf_ok'),fmtN(ok.length,0))+stat(t('prev_pdf_none'),fmtN(none.length,0))+stat(t('prev_pdf_amb'),fmtN(amb.length,0))+'</div>'+
+        '<div class="tw" style="max-height:40vh"><table><thead><tr><th>#</th><th>'+esc(t('name'))+'</th><th>'+esc(t('box'))+'</th><th>'+esc(t('prev_reading'))+' ('+esc(t('now'))+')</th><th>'+esc(t('prev_reading'))+' ('+esc(t('new'))+')</th></tr></thead><tbody>'+
+        ok.map(function(x){ var cur=x.c.read_now?x.c.read_now_prev:x.c.last_value; return '<tr><td class="num">'+esc(x.r.no)+'</td><td><b>'+esc(x.c.name)+'</b></td><td>'+esc(x.c.box)+'</td><td class="num">'+esc(fmtN(cur))+'</td><td class="num"><b>'+esc(fmtN(x.r.last))+'</b></td></tr>'; }).join('')+'</tbody></table></div>'+
+        ((none.length||amb.length)?'<div class="lic" style="margin-top:10px;white-space:pre-line"><b>'+esc(t('prev_pdf_skip'))+'</b>\n'+
+          esc(none.concat(amb).map(function(r){ return '#'+r.no+' · '+r.name_raw+(r.mobile?' · '+r.mobile:'')+(amb.indexOf(r)>=0?' ('+t('prev_pdf_amb')+')':''); }).join('\n'))+'</div>':'')+
+        '<div class="pbar" id="ppbar" style="margin-top:12px"><i></i></div><div id="ppres" style="margin-top:10px"></div>';
+      if(ok.length){ gb.textContent=t('prev_pdf_go',{n:ok.length}); gb.classList.remove('hidden'); }
+    }catch(err){ pv.innerHTML='<div class="err">'+esc(t('prev_pdf_bad'))+' ('+esc(err&&err.message||'')+')</div>'; }
+  });
+}
 window.addEventListener('offline',function(){ toast(t('offline'),'e'); });
 boot();
 })();

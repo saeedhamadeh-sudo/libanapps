@@ -2276,13 +2276,11 @@ end $$;
 --       · إذا انقرى العداد هالدورة: بتتصحّح القراءة والفاتورة والرصيد
 --       · وإلا: بينحفظ للقراءة الجاية (الاستهلاك = الحالي − هالقيمة)
 -- ============================================================
-create or replace function public.motor_set_prev(p_slug text, p_token text, p_customer uuid, p_value numeric)
+create or replace function public._motor_set_prev(sid uuid, p_customer uuid, p_value numeric)
 returns jsonb language plpgsql security definer set search_path = public as $$
-declare w jsonb; sid uuid; st public.motor_sites%rowtype; c public.motor_customers%rowtype; r public.motor_readings%rowtype;
+declare st public.motor_sites%rowtype; c public.motor_customers%rowtype; r public.motor_readings%rowtype;
         i public.motor_invoices%rowtype; v_kwh numeric; v_energy numeric; amt numeric; delta numeric := 0;
 begin
-  w := public._motor_admin(p_slug, p_token);
-  sid := (w->>'site_id')::uuid;
   if p_value is null or p_value < 0 then perform public._motor_err('bad_value'); end if;
   select * into st from public.motor_sites where id = sid;
   select * into c from public.motor_customers where id = p_customer and site_id = sid and deleted_at is null for update;
@@ -2309,6 +2307,34 @@ begin
     update public.motor_customers set next_prev = p_value, updated_at = now() where id = c.id;
   end if;
   return jsonb_build_object('ok', true, 'mode', 'next');
+end $$;
+revoke all on function public._motor_set_prev(uuid, uuid, numeric) from public, anon, authenticated;
+
+create or replace function public.motor_set_prev(p_slug text, p_token text, p_customer uuid, p_value numeric)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w jsonb;
+begin
+  w := public._motor_admin(p_slug, p_token);
+  return public._motor_set_prev((w->>'site_id')::uuid, p_customer, p_value);
+end $$;
+
+-- إدخال العداد السابق دفعة وحدة (من ملف PDF): p_rows = [{id, value}]
+create or replace function public.motor_set_prev_bulk(p_slug text, p_token text, p_rows jsonb)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w jsonb; sid uuid; r jsonb; ok int := 0; errs jsonb := '[]'::jsonb;
+begin
+  w := public._motor_admin(p_slug, p_token);
+  sid := (w->>'site_id')::uuid;
+  if jsonb_typeof(p_rows) <> 'array' or jsonb_array_length(p_rows) > 3000 then perform public._motor_err('bad_data'); end if;
+  for r in select * from jsonb_array_elements(p_rows) loop
+    begin
+      perform public._motor_set_prev(sid, (r->>'id')::uuid, (r->>'value')::numeric);
+      ok := ok + 1;
+    exception when others then
+      errs := errs || jsonb_build_object('id', r->>'id', 'error', sqlerrm);
+    end;
+  end loop;
+  return jsonb_build_object('ok', true, 'done', ok, 'errors', errs);
 end $$;
 
 -- ============================================================
@@ -2363,7 +2389,7 @@ begin
     'motor_invoice_edit(text,text,uuid,numeric,text)', 'motor_payment_edit(text,text,uuid,numeric,text)',
     'motor_fill_barcodes(text,text)', 'motor_month_report(text,text,text)', 'motor_backup(text,text)',
     'motor_trash_list(text,text)', 'motor_trash_restore(text,text,uuid)', 'motor_trash_purge(text,text,uuid)',
-    'motor_set_prev(text,text,uuid,numeric)']
+    'motor_set_prev(text,text,uuid,numeric)', 'motor_set_prev_bulk(text,text,jsonb)']
   loop
     execute format('grant execute on function public.%s to anon, authenticated', f);
   end loop;
