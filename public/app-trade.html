@@ -9682,20 +9682,15 @@ function safeMoves(){
   const out = [];
   (DB.cashMovements||[]).forEach(m=>{
     if(m.deleted || !SAFE_MOVE_TYPES.includes(m.type)) return;
-    if(m.type==='whish_close'){ const i = whishCloseInfo(m)||{}; const a = Math.abs(Number(m.amount)||0);
-      out.push({id:m.id, at:m.createdAt, date:m.date, kind:'in', lbp:m.currency==='LBP'? a : 0, usd:m.currency==='USD'? a : 0, label:'📱 إقفال Whish للموظف '+(i.user||'')+(i.by? ' — أقفله: '+i.by : '')}); return; }
+    if(m.type==='whish_close') return;   // إقفال Whish بينزل بكشف Whish بس — مش بالصندوق الأساسي
     if(m.type==='shift_close'){ const i = shiftCloseInfo(m)||{}; if(i.legacy) return;   // الإقفالات القديمة بالسجل بس، ما بتحرّك رصيد الصندوق الأساسي
       out.push({id:m.id, at:m.createdAt, date:m.date, kind:'in', lbp:Number(i.toSafeLBP)||0, usd:Number(i.toSafeUSD)||0, label:'إقفال صندوق '+(i.user||'')+' — أقفله: '+(i.by||'')}); }
     else { const sign = m.type==='safe_in'? 1 : -1, a = Math.abs(Number(m.amount)||0);
       out.push({id:m.id, at:m.createdAt, date:m.date, kind:m.type==='safe_in'?'in':'out', lbp: m.currency==='LBP'? sign*a : 0, usd: m.currency==='USD'? sign*a : 0, label: isDocMirrorMove(m)? (m.type==='safe_in'? 'قبض: ' : 'صرف: ')+String(m.note).slice(DOC_MIRROR_TAG.length) : (m.type==='safe_in'?'إيداع بالصندوق الأساسي':'سحب من الصندوق الأساسي')+(m.note? ' — '+m.note : '')}); }
   });
-  // Whish جزء من الصندوق الأساسي: الدفع منو أو السحب لبرّا بينقّص المجموع (السحب كاش عالصندوق الأساسي ما بيغيّر المجموع)
-  (DB.cashMovements||[]).forEach(m=>{ if(!isWhishAcctMove(m) || String(m.note||'').includes(WHISH_TO_MAIN)) return;
-    const sign = m.type==='acct_in'? 1 : -1, a = Math.abs(Number(m.amount)||0);
-    out.push({id:m.id, at:m.createdAt, date:m.date, kind:sign>0?'in':'out', lbp:m.currency==='LBP'? sign*a : 0, usd:m.currency==='USD'? sign*a : 0,
-      label:'📱 '+(isDocMirrorMove(m)? (sign>0? 'قبض عـ Whish: ' : 'دفع من Whish: ')+String(m.note).slice(DOC_MIRROR_TAG.length) : String(m.note||'').replace(/^\[حساب\] /,'')).replace(/\s*⟨\d+⟩/,'')}); });
+  // Whish حساب لحالو (كشف Whish) — بس السحب من Whish كاش عالصندوق الأساسي بيدخل عالصندوق
   (DB.cashMovements||[]).forEach(m=>{ if(!isWhishAcctMove(m) || !String(m.note||'').includes(WHISH_TO_MAIN)) return; const a = Math.abs(Number(m.amount)||0);
-    out.push({id:m.id, at:m.createdAt, date:m.date, kind:'in', lbp:0, usd:0, label:'📱→💵 '+String(m.note||'').replace(/^\[حساب\] /,'').replace(WHISH_TO_MAIN,'').replace(/\s*⟨\d+⟩/,'')+' ('+(m.currency==='USD'? '$'+a.toFixed(2) : fmtNum(a)+' '+secCurLabel())+')'}); });
+    out.push({id:m.id, at:m.createdAt, date:m.date, kind:'in', lbp:m.currency==='LBP'? a : 0, usd:m.currency==='USD'? a : 0, label:'📱→💵 '+String(m.note||'').replace(/^\[حساب\] /,'').replace(WHISH_TO_MAIN,'').replace(/\s*⟨\d+⟩/,'').trim()}); });
   // القيود اليدوية على الصندوق الأساسي (53101 ليرة / 53102 دولار)
   (DB.cashMovements||[]).forEach(m=>{ if(m.deleted || m.type!=='gl') return; const i = glInfo(m)||{}; const a = Math.abs(Number(m.amount)||0);
     ['53101','53102'].forEach(code=>{ if(i.dr!==code && i.cr!==code) return; const sg = i.dr===code? 1 : -1; const isL = code==='53101';
@@ -9719,7 +9714,7 @@ function safeViewMain(){
     <h2><span class="dot"></span> 🗄 الصندوق الأساسي</h2>
     <div class="stats" style="margin:8px 0 12px;">
       <div class="stat"><div class="k">الموجود بالصندوق الأساسي ${L}</div><div class="v num">${fmtNum(bal.lbp)}</div></div>
-      ${(()=>{ const w = whishInMainParts(); return (Math.abs(w.lbp)>=1||Math.abs(w.usd)>=0.005)? `<div class="stat"><div class="k">📱 منها Whish</div><div class="v num" style="color:#a3174a;">${[w.lbp? fmtNum(w.lbp)+' '+L : '', w.usd? '$'+w.usd.toFixed(2) : ''].filter(Boolean).join(' + ')}</div></div><div class="stat"><div class="k">💵 منها كاش ${L}</div><div class="v num">${fmtNum(bal.lbp - w.lbp)}</div></div>` : ''; })()}
+      ${(()=>{ const w = {lbp:0, usd:0}; return (Math.abs(w.lbp)>=1||Math.abs(w.usd)>=0.005)? `<div class="stat"><div class="k">📱 منها Whish</div><div class="v num" style="color:#a3174a;">${[w.lbp? fmtNum(w.lbp)+' '+L : '', w.usd? '$'+w.usd.toFixed(2) : ''].filter(Boolean).join(' + ')}</div></div><div class="stat"><div class="k">💵 منها كاش ${L}</div><div class="v num">${fmtNum(bal.lbp - w.lbp)}</div></div>` : ''; })()}
       ${(lbpOnly && Math.abs(bal.usd)<0.005)? '' : `<div class="stat"><div class="k">الموجود بالصندوق الأساسي $</div><div class="v num">$${bal.usd.toFixed(2)}</div></div>`}
     </div>
     ${canUseSafe()? `<div class="action-row" style="margin-bottom:10px;">
@@ -9862,8 +9857,8 @@ function coaBalanceUSD(a){   // موجب = مدين
     case 'customer': return customerBalance(a.ref);                 // القيود داخلة بكشف الزبون
     case 'supplier': return -supplierBalance(a.ref);
     case 'worker':   return -workerBalance(a.ref);
-    case 'mainLBP':  return ((safeBalance().lbp||0) - whishClosedTotals().lbp)/r;   // الكاش بس — الـ Whish إلو حساب لحالو (51601)
-    case 'mainUSD':  return (safeBalance().usd||0) - whishClosedTotals().usd;
+    case 'mainLBP':  return (safeBalance().lbp||0)/r;   // الكاش بس — الـ Whish إلو حساب لحالو (51601)
+    case 'mainUSD':  return (safeBalance().usd||0);
     case 'whish': { const c = whishClosedTotals(), o = whishOpenTotals(); return glDelta(a.code) + acctDelta(a.code) + (c.lbp+o.lbp)/r + c.usd + o.usd; }
     case 'personal': { const sh = personalShift(); return glDelta(a.code) + acctDelta(a.code) + (sh? (Number(sh.cashLBP)||0)/r + (Number(sh.cashUSD)||0) : 0); }
     case 'drawer':   return (DB.cashierShifts||[]).filter(s=>s.status==='open' && !s.deleted && s.username===a.ref).reduce((t,s)=>t+(Number(s.cashLBP)||0)/r+(Number(s.cashUSD)||0), 0);
@@ -10194,7 +10189,7 @@ function openEditShiftCloseModal(id){
 document.addEventListener('click', e=>{ const b = e.target.closest && e.target.closest('[data-edit-close]'); if(b){ e.preventDefault(); openEditShiftCloseModal(b.getAttribute('data-edit-close')); } });
 /* ===== Whish كجزء من الصندوق الأساسي: سحب منو ودفع منو ===== */
 const WHISH_CODE = '51601';
-const WHISH_TO_MAIN = '⟪main⟫';   // سحب من Whish كاش عالصندوق الأساسي: المجموع ما بيتغيّر، بس بيتحوّل من Whish لكاش
+const WHISH_TO_MAIN = '⟪main⟫';   // سحب من Whish كاش عالصندوق الأساسي: بينقص من Whish وبيدخل عالصندوق الأساسي
 function isWhishAcctMove(m){ return m && !m.deleted && (m.type==='acct_in' || m.type==='acct_out') && moneyAcctOf(m)===WHISH_CODE; }
 // رصيد Whish (يلي انقفل من الصناديق + الحركات عليه) بالعملتين
 // يلي من Whish جوّا الصندوق الأساسي (المقفول من الصناديق + حركات Whish) — للتقسيم «منها Whish / منها كاش»
@@ -11580,7 +11575,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-11-09 · 15:40 · v87';
+const APP_TRADE_BUILD = '2026-11-09 · 16:00 · v88';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 function settingsView(){
   const s = DB.settings;
