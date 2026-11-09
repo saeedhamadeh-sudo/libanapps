@@ -368,6 +368,7 @@ create table if not exists public.motor_customer_secrets (
 );
 -- ---------- v4: سلة المحذوفات ----------
 alter table public.motor_customers add column if not exists deleted_at timestamptz;
+alter table public.motor_customers add column if not exists next_prev numeric(14,2);   -- عداد سابق يحدده المدير للقراءة الجاية
 alter table public.motor_invoices  add column if not exists voided_reading jsonb;   -- القراءة الملغاة (لإرجاعها من السلة)
 create table if not exists public.motor_trash (
   id         uuid primary key default gen_random_uuid(),
@@ -836,7 +837,7 @@ returns jsonb language sql stable security definer set search_path = public as $
       'zone', c.zone, 'plan_id', c.plan_id, 'balance', c.balance, 'mobile', c.mobile, 'mobile_cc', c.mobile_cc,
       'is_active', c.is_active, 'archived', c.archived, 'collector_id', c.collector_id,
       'collector_name', coalesce(sf.name, c.collector_name),
-      'last_value', coalesce(lr.value, c.initial_reading),
+      'last_value', coalesce(c.next_prev, lr.value, c.initial_reading),
       'read_now', (rn.id is not null), 'read_now_value', rn.value, 'read_now_prev', rn.prev_value,
       'last_note', nt.body, 'last_note_by', nt.staff_name, 'last_note_at', nt.created_at,
       'updated_at', c.updated_at, 'deleted', c.deleted_at is not null) order by c.code, c.name), '[]'::jsonb)
@@ -915,8 +916,8 @@ begin
     'has_login', exists (select 1 from public.motor_customer_secrets x where x.customer_id = c.id) and c.username <> '',
     'plan', case when pl.id is null then null else to_jsonb(pl) - 'site_id' end,
     'collector_name', coalesce((select name from public.motor_staff where id = c.collector_id), c.collector_name),
-    'prev_value', coalesce(lr.value, c.initial_reading),
-    'baseline', lr.id is null and st.first_read_baseline and coalesce(c.initial_reading,0) = 0,
+    'prev_value', coalesce(c.next_prev, lr.value, c.initial_reading),
+    'baseline', lr.id is null and st.first_read_baseline and coalesce(c.initial_reading,0) = 0 and c.next_prev is null,
     'last_reading', case when lr.id is null then null else to_jsonb(lr) - 'site_id' end,
     'period', st.bill_period,
     'read_now', case when rn.id is null then null else to_jsonb(rn) - 'site_id' end,
@@ -1201,8 +1202,9 @@ begin
   select value into prev from public.motor_readings where customer_id = c.id order by created_at desc limit 1;
   if not found then
     prev := coalesce(c.initial_reading, 0);
-    baseline := st.first_read_baseline and coalesce(c.initial_reading, 0) = 0;
+    baseline := st.first_read_baseline and coalesce(c.initial_reading, 0) = 0 and c.next_prev is null;
   end if;
+  if c.next_prev is not null then prev := c.next_prev; end if;   -- المدير حدّد العداد السابق
   if baseline then prev := p_value; end if;     -- أول قراءة = عداد أولي، بلا استهلاك
   if p_value < prev then perform public._motor_err('lower_than_prev', prev::text); end if;
 
@@ -1242,7 +1244,7 @@ begin
           c.balance, c.balance + amt, (w->>'staff_id')::uuid, w->>'name')
   returning * into inv;
   if baseline then update public.motor_invoices set note = 'قراءة أولى (عداد أولي)' where id = inv.id; inv.note := 'قراءة أولى (عداد أولي)'; end if;
-  update public.motor_customers set balance = balance + amt, updated_at = now() where id = c.id;
+  update public.motor_customers set balance = balance + amt, next_prev = null, updated_at = now() where id = c.id;
 
   return jsonb_build_object('ok', true, 'invoice', to_jsonb(inv) - 'site_id', 'dist_m', d, 'reading_id', rid, 'baseline', baseline);
 end $$;
@@ -2270,6 +2272,46 @@ begin
 end $$;
 
 -- ============================================================
+--  20e) المدير يغيّر «العداد السابق» من جدول الزبائن
+--       · إذا انقرى العداد هالدورة: بتتصحّح القراءة والفاتورة والرصيد
+--       · وإلا: بينحفظ للقراءة الجاية (الاستهلاك = الحالي − هالقيمة)
+-- ============================================================
+create or replace function public.motor_set_prev(p_slug text, p_token text, p_customer uuid, p_value numeric)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w jsonb; sid uuid; st public.motor_sites%rowtype; c public.motor_customers%rowtype; r public.motor_readings%rowtype;
+        i public.motor_invoices%rowtype; v_kwh numeric; v_energy numeric; amt numeric; delta numeric := 0;
+begin
+  w := public._motor_admin(p_slug, p_token);
+  sid := (w->>'site_id')::uuid;
+  if p_value is null or p_value < 0 then perform public._motor_err('bad_value'); end if;
+  select * into st from public.motor_sites where id = sid;
+  select * into c from public.motor_customers where id = p_customer and site_id = sid and deleted_at is null for update;
+  if not found then perform public._motor_err('customer_not_found'); end if;
+  select * into r from public.motor_readings where customer_id = c.id and period = st.bill_period for update;
+  if found then
+    if r.value < p_value then perform public._motor_err('prev_above_cur', r.value::text); end if;
+    update public.motor_readings set prev_value = p_value where id = r.id;
+    select * into i from public.motor_invoices where reading_id = r.id and not voided for update;
+    if found then
+      v_kwh := r.value - p_value;
+      v_energy := case when i.kind = 'meter' then round(v_kwh * i.kwh_price, 2) else 0 end;
+      amt := public._motor_round(sid, i.fee + v_energy - i.discount + i.addition);
+      delta := amt - i.amount;
+      update public.motor_invoices set prev_value = p_value, kwh = v_kwh, energy = v_energy, amount = amt,
+             balance_after = balance_after + delta where id = i.id;
+    end if;
+    update public.motor_customers set balance = balance + delta, updated_at = now() where id = c.id;
+    return jsonb_build_object('ok', true, 'mode', 'current', 'delta', delta);
+  end if;
+  if not exists (select 1 from public.motor_readings where customer_id = c.id) then
+    update public.motor_customers set initial_reading = p_value, next_prev = p_value, updated_at = now() where id = c.id;
+  else
+    update public.motor_customers set next_prev = p_value, updated_at = now() where id = c.id;
+  end if;
+  return jsonb_build_object('ok', true, 'mode', 'next');
+end $$;
+
+-- ============================================================
 --  21) رفع صورة العداد — تستدعيها الـWorker (/api/motor-photo) قبل الرفع
 -- ============================================================
 create or replace function public.motor_upload_ok(p_slug text, p_token text)
@@ -2320,7 +2362,8 @@ begin
     'motor_reading_edit(text,text,uuid,numeric,text)', 'motor_customer_set_login(text,text,uuid,text,text)', 'motor_cust_me(text,text)',
     'motor_invoice_edit(text,text,uuid,numeric,text)', 'motor_payment_edit(text,text,uuid,numeric,text)',
     'motor_fill_barcodes(text,text)', 'motor_month_report(text,text,text)', 'motor_backup(text,text)',
-    'motor_trash_list(text,text)', 'motor_trash_restore(text,text,uuid)', 'motor_trash_purge(text,text,uuid)']
+    'motor_trash_list(text,text)', 'motor_trash_restore(text,text,uuid)', 'motor_trash_purge(text,text,uuid)',
+    'motor_set_prev(text,text,uuid,numeric)']
   loop
     execute format('grant execute on function public.%s to anon, authenticated', f);
   end loop;

@@ -97,6 +97,18 @@ main{max-width:1280px;margin:0 auto;padding:14px 12px 90px}
 .stat[data-go] span::after{content:' ›';opacity:.5}
 /* الجداول: تمرير يمين/شمال وفوق/تحت داخل الجدول نفسه، وشريط التمرير الأفقي دايماً ظاهر */
 .tw{max-height:calc(100vh - 190px);max-height:calc(100dvh - 190px);overflow:auto}
+@media (max-width:899px){
+  .tw{max-height:none}
+  table{font-size:13px} th,td{padding:6px 8px}
+  .toolbar input,.toolbar select{min-width:0;flex:1 1 44%}
+  .toolbar .btn{padding:8px 10px;font-size:13px}
+  .tw::before{content:attr(data-swipe);display:block;position:sticky;inset-inline-start:0;font-size:11.5px;color:var(--mut);padding:4px 8px;background:#fff}
+  .stats{grid-template-columns:1fr 1fr}
+  .tbar .ttl{font-size:14px}
+  .modal.wide{max-width:100%}
+}
+table.stick td:nth-child(2),table.stick th:nth-child(2){position:sticky;inset-inline-start:0;background:#fff;z-index:1;box-shadow:-1px 0 0 var(--line)}
+table.stick th:nth-child(2){background:var(--soft);z-index:2}
 body.compact table{font-size:12px} body.compact th,body.compact td{padding:4px 6px} body.compact th{font-size:11px}
 .menu-ov{display:none}
 @media (min-width:900px){
@@ -2009,6 +2021,14 @@ var TRASH_VIEW=async function(main){
   });
   var te=$('#tempty',main); if(te) te.addEventListener('click',async function(){ if(!(await confirmBox(t('trash_all_q')))) return; try{ await call('motor_trash_purge',{p_id:null}); go('trash'); }catch(err){ toast(errText(err),'e'); } });
 };
+Object.assign(D,{
+ prev_hint_now:['قُرئ عداد هذا الزبون هذا الشهر ({v}). تغيير العداد السابق يصحّح استهلاك هذا الشهر وفاتورته ورصيده.','This month is already read ({v}); changing the previous reading fixes this month’s consumption, invoice and balance.','Déjà relevé ce mois ({v}) : la facture sera corrigée.'],
+ prev_hint_next:['القراءة القادمة ستُحسب: العداد الحالي − هذه القيمة.','The next reading will be billed as: current − this value.','Le prochain relevé sera : actuel − cette valeur.'],
+ prev_saved_now:['تم تصحيح العداد السابق والفاتورة ✓','Previous reading and invoice corrected ✓','Index et facture corrigés ✓'],
+ prev_saved_next:['تم حفظ العداد السابق — يُستعمل في القراءة القادمة ✓','Saved — used for the next reading ✓','Enregistré pour le prochain relevé ✓'],
+ e_prev_above_cur:['العداد السابق أكبر من العداد الحالي ({x})','Previous is above the current reading ({x})','Index précédent supérieur à l’actuel ({x})'],
+ swipe:['↔ اسحب الجدول يميناً ويساراً لرؤية كل الأعمدة','↔ Swipe the table sideways to see all columns','↔ Faites glisser le tableau pour voir toutes les colonnes']
+});
 function roleLabel(s){ if(!s) return ''; if(s.role==='owner') return t('role_owner'); if(s.role==='admin') return t('role_admin'); return (s.can_read&&!s.can_collect)?t('role_reader'):t('role_collector'); }
 function editReading(r,after){
   if(!r) return;
@@ -3072,11 +3092,23 @@ VIEWS.customers=async function(main){
     $('#ccount',main).innerHTML=esc(fmtN(list.length,0))+' · '+esc(t('total'))+': '+balHtml(tot);
     $('#ctb',main).innerHTML=list.slice(0,CF.lim).map(function(c){
       return '<tr data-cust="'+esc(c.id)+'" style="cursor:pointer"><td class="num">'+esc(c.code)+'</td><td><b>'+esc(c.name)+'</b></td><td class="num">'+esc(c.barcode)+'</td><td>'+esc(planName(c.plan_id))+'</td><td>'+esc(c.box)+'</td><td>'+esc(c.area)+'</td><td>'+esc(c.collector_name||'')+'</td>'+
-        '<td><span class="chip '+(c.is_active?'on':'off')+'">'+esc(c.is_active?t('active'):t('inactive'))+'</span>'+(c.archived?' <span class="chip gray">'+esc(t('archived'))+'</span>':'')+'</td><td>'+balHtml(c.balance)+'</td><td class="num">'+esc(fmtN(c.read_now?c.read_now_prev:c.last_value))+'</td><td class="num">'+(c.read_now?'<b>'+esc(fmtN(c.read_now_value))+'</b>':'<span class="muted">—</span>')+'</td></tr>'; }).join('')||'<tr><td colspan="11" class="muted">'+esc(custLoading?t('loading'):t('no_results'))+'</td></tr>';
+        '<td><span class="chip '+(c.is_active?'on':'off')+'">'+esc(c.is_active?t('active'):t('inactive'))+'</span>'+(c.archived?' <span class="chip gray">'+esc(t('archived'))+'</span>':'')+'</td><td>'+balHtml(c.balance)+'</td><td class="num">'+(isAdmin()?'<button class="btn ghost sm" data-prev="'+esc(c.id)+'" title="'+esc(t('edit'))+'">✏️ '+esc(fmtN(c.read_now?c.read_now_prev:c.last_value))+'</button>':esc(fmtN(c.read_now?c.read_now_prev:c.last_value)))+'</td><td class="num">'+(c.read_now?'<b>'+esc(fmtN(c.read_now_value))+'</b>':'<span class="muted">—</span>')+'</td></tr>'; }).join('')||'<tr><td colspan="11" class="muted">'+esc(custLoading?t('loading'):t('no_results'))+'</td></tr>';
     $('#cmore',main).innerHTML=list.length>CF.lim?'<button class="btn ghost" id="cmb">'+esc(t('more'))+' ('+esc(list.length-CF.lim)+')</button>':'';
     var mb=$('#cmb',main); if(mb) mb.addEventListener('click',function(){ CF.lim+=300; paint(); });
   }
   $('#cq',main).addEventListener('input',function(){ CF.q=this.value; CF.lim=200; paint(); });
+  $('#ctb',main).addEventListener('click',function(e){ var b=e.target.closest('[data-prev]'); if(!b) return; e.stopPropagation(); e.preventDefault();
+    var c=CUST.filter(function(x){return x.id===b.dataset.prev})[0]; if(!c) return;
+    var cur=c.read_now?c.read_now_prev:c.last_value;
+    var m=modal(t('prev_reading')+' — '+c.name,'<p class="muted" style="margin-top:0">'+esc(c.read_now?t('prev_hint_now',{v:fmtN(c.read_now_value)}):t('prev_hint_next'))+'</p>'+
+      '<input id="pvv" class="valinput" inputmode="decimal" value="'+esc(n2(cur))+'"><div id="pvm" class="err msg" style="margin-top:8px"></div>',
+      '<button class="btn ghost" data-x>'+esc(t('cancel'))+'</button><button class="btn" data-s>'+esc(t('save'))+'</button>');
+    setTimeout(function(){ var i=$('#pvv',m.body); i.focus(); i.select(); },60);
+    m.foot.addEventListener('click',async function(ev){ if(ev.target.closest('[data-x]')) return m.close(); var sb2=ev.target.closest('[data-s]'); if(!sb2) return;
+      var v=$('#pvv',m.body).value.trim(); if(v===''||!isFinite(Number(v))){ $('#pvm',m.body).textContent=t('e_bad_value'); return; }
+      busy(sb2,true); try{ var r=await call('motor_set_prev',{p_customer:c.id,p_value:Number(v)}); toast(r.mode==='current'?t('prev_saved_now'):t('prev_saved_next'),'s'); m.close(); await loadCustomers(); }
+      catch(err){ $('#pvm',m.body).textContent=errText(err); busy(sb2,false); } });
+  },true);
   ['cst','cpl','ccol','car'].forEach(function(id){ var el=$('#'+id,main); if(el) el.addEventListener('change',function(){ CF[{cst:'st',cpl:'plan',ccol:'col',car:'area'}[id]]=this.value; CF.lim=200; paint(); }); });
   if(adm){ $('#cadd',main).addEventListener('click',function(){ editCustomer(null); }); $('#cimp',main).addEventListener('click',importDialog);
     $('#clbl',main).addEventListener('click',function(){ printLabels(filtered().slice(0,500)); });
@@ -3678,6 +3710,12 @@ async function logoutClick(){
   doLogout(false);
 }
 
+/* كل جدول: تلميح السحب على الهاتف + تثبيت عمود الاسم عند التمرير يميناً/يساراً */
+(function(){ var pend=false;
+  function fix(){ pend=false; $$('.tw').forEach(function(el){ if(el.dataset.swipe) return; el.dataset.swipe=t('swipe');
+    var tb=el.querySelector('table'); if(tb&&tb.rows[0]&&tb.rows[0].cells.length>5) tb.classList.add('stick'); }); }
+  new MutationObserver(function(){ if(!pend){ pend=true; requestAnimationFrame(fix); } }).observe(document.body,{childList:true,subtree:true});
+})();
 window.addEventListener('offline',function(){ toast(t('offline'),'e'); });
 boot();
 })();
