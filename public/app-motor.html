@@ -90,17 +90,26 @@ nav.tabs::-webkit-scrollbar{display:none}
 nav.tabs button{border:0;background:transparent;color:rgba(255,255,255,.8);padding:7px 12px;border-radius:999px;font-weight:700;white-space:nowrap;cursor:pointer;font-size:14px}
 nav.tabs button.on{background:#fff;color:var(--p)}
 main{max-width:1280px;margin:0 auto;padding:14px 12px 90px}
-/* القائمة على اليمين: ثابتة على الكمبيوتر، ودرج يُفتح بزر ☰ على الهاتف */
-.menu-btn{display:none!important}
+/* القائمة على اليمين: ثابتة على الكمبيوتر (تنضب بزر ☰)، ودرج على الهاتف */
+.menu-btn{display:inline-flex!important}
+.stat[data-go]{cursor:pointer;transition:transform .1s,box-shadow .1s}
+.stat[data-go]:hover{transform:translateY(-2px);box-shadow:0 6px 18px rgba(12,59,94,.18)}
+.stat[data-go] span::after{content:' ›';opacity:.5}
+/* الجداول: تمرير يمين/شمال وفوق/تحت داخل الجدول نفسه، وشريط التمرير الأفقي دايماً ظاهر */
+.tw{max-height:calc(100vh - 190px);max-height:calc(100dvh - 190px);overflow:auto}
+body.compact table{font-size:12px} body.compact th,body.compact td{padding:4px 6px} body.compact th{font-size:11px}
 .menu-ov{display:none}
 @media (min-width:900px){
   nav.tabs{position:fixed;top:54px;bottom:0;inset-inline-start:0;width:230px;flex-direction:column;flex-wrap:nowrap;padding:12px 10px;margin:0;max-width:none;overflow-y:auto;background:var(--pd);gap:3px;z-index:40}
   nav.tabs button{text-align:start;border-radius:10px;padding:10px 14px;width:100%}
   main{margin-inline-start:230px;max-width:none;padding-inline:18px}
   .tbar{max-width:none}
+  body.side-mini nav.tabs{width:62px;padding-inline:6px}
+  body.side-mini nav.tabs span,body.side-mini nav.tabs .chip{display:none!important}
+  body.side-mini nav.tabs button{text-align:center;padding:10px 0;font-size:18px}
+  body.side-mini main{margin-inline-start:62px}
 }
 @media (max-width:899px){
-  .menu-btn{display:inline-flex!important}
   nav.tabs{position:fixed;top:0;bottom:0;inset-inline-start:0;width:270px;max-width:85vw;flex-direction:column;flex-wrap:nowrap;padding:18px 12px;margin:0;background:var(--pd);z-index:900;transform:translateX(105%);transition:transform .2s;overflow-y:auto;gap:4px}
   html[dir=ltr] nav.tabs{transform:translateX(-105%)}
   body.menu-open nav.tabs{transform:none!important}
@@ -191,6 +200,7 @@ window.LIBANAPPS = {
       <button class="btn sm menu-btn" id="tMenu" type="button" aria-label="menu">☰</button>
       <img id="tLogo" class="hidden" alt="">
       <div style="min-width:0;flex:1"><div class="ttl" id="tName"></div><div class="who" id="tWho"></div></div>
+      <button class="btn sm" id="tCompact" type="button" title="⇔">⇔</button>
       <select id="tLang"><option value="ar">ع</option><option value="en">EN</option><option value="fr">FR</option></select>
       <button class="btn sm" id="tOut"></button>
     </div>
@@ -1520,7 +1530,8 @@ var D={
  read_done:['مقروء','Read','Relevé'],
  not_read:['غير مقروء','Not read','Non relevé'],
  active:['مفعّل','Active','Actif'],
- inactive:['غير مفعّل','Inactive','Inactif'],
+ inactive:['مقطوع','Cut off','Coupé'],
+ staff_off:['موقوف','Disabled','Désactivé'],
  archived:['مؤرشف','Archived','Archivé'],
  balance:['الرصيد المستحق','Balance due','Solde dû'],
  credit:['رصيد له','Credit','Crédit'],
@@ -1768,7 +1779,7 @@ var D={
  e_not_found:['غير موجود','Not found','Introuvable'],
  e_forbidden:['ليست لديك صلاحية لهذا الإجراء','You are not allowed to do this','Action non autorisée'],
  e_customer_not_found:['لم يُعثر على زبون بهذا الرمز: {x}','No customer with this code: {x}','Aucun client avec ce code : {x}'],
- e_customer_inactive:['هذا الزبون غير مفعّل','This customer is inactive','Client inactif'],
+ e_customer_inactive:['هذا الزبون مقطوع','This customer is cut off','Client coupé'],
  e_no_window:['لم يحدّد المدير فترة أخذ العدادات لك','No reading period has been set for you','Aucune période de relevé définie'],
  e_out_of_window:['خارج فترة أخذ العدادات ({x})','Outside the reading period ({x})','Hors période de relevé ({x})'],
  e_already_read:['قُرئ عداد هذا الزبون في هذه الدورة ({x})','Already read in this cycle ({x})','Déjà relevé pour ce cycle ({x})'],
@@ -1818,7 +1829,7 @@ Object.assign(D,{
  all_customers:['كل الزبائن ({n})','All customers ({n})','Tous les clients ({n})'],
  cut:['✂️ قطع الاشتراك','✂️ Cut','✂️ Couper'],
  connect:['🔌 وصل الاشتراك','🔌 Connect','🔌 Brancher'],
- cut_done:['تم قطع الاشتراك — يظهر الآن «غير مفعّل»','Cut — now shown as inactive','Coupé — affiché inactif'],
+ cut_done:['تم قطع الاشتراك — يظهر الآن «مقطوع»','Cut — now shown as inactive','Coupé — affiché inactif'],
  connect_done:['تم وصل الاشتراك — يظهر الآن «مفعّل»','Connected — now shown as active','Branché — affiché actif'],
  cut_reason:['سبب القطع / الوصل (اختياري)','Reason (optional)','Motif (facultatif)'],
  confirm_cut:['قطع اشتراك {n}؟','Cut {n}?','Couper {n} ?'],
@@ -1966,6 +1977,36 @@ Object.assign(D,{
  lbl_hint:['لطابعة الملصقات: كل ملصق بصفحة بالمقاس المختار. اختر الطابعة من نافذة الطباعة.','For label printers: one label per page at this size. Pick the printer in the print dialog.','Une étiquette par page à cette taille.'],
  pdf_btn:['📄 PDF','📄 PDF','📄 PDF']
 });
+Object.assign(D,{
+ nav_trash:['سلة المحذوفات','Recycle bin','Corbeille'],
+ to_trash:['نُقل إلى سلة المحذوفات — يمكن إرجاعه من هناك','Moved to the recycle bin — it can be restored','Déplacé dans la corbeille'],
+ trash_restore:['↩️ إرجاع','↩️ Restore','↩️ Restaurer'],
+ trash_purge:['حذف نهائي','Delete forever','Supprimer définitivement'],
+ trash_empty:['🗑️ إفراغ السلة','🗑️ Empty the bin','🗑️ Vider la corbeille'],
+ trash_none:['السلة فارغة','The recycle bin is empty','La corbeille est vide'],
+ trash_restored:['تم الإرجاع ✓','Restored ✓','Restauré ✓'],
+ trash_q:['حذف «{n}» نهائياً؟ لا يمكن التراجع.','Delete “{n}” forever? This cannot be undone.','Supprimer « {n} » définitivement ?'],
+ trash_all_q:['إفراغ السلة وحذف كل ما فيها نهائياً؟ لا يمكن التراجع.','Empty the bin and delete everything forever?','Vider la corbeille définitivement ?'],
+ trash_hint:['كل ما يُحذف أو يُلغى (زبون، فاتورة، قراءة، دفعة، حركة صندوق، نوع اشتراك، موظف) يأتي إلى هنا. «إرجاع» يعيده كما كان مع تصحيح الرصيد.','Anything deleted or cancelled lands here. “Restore” brings it back and fixes balances.','Tout élément supprimé arrive ici. « Restaurer » le rétablit.'],
+ tk_customer:['زبون','Customer','Client'], tk_invoice:['فاتورة / قراءة','Invoice / reading','Facture / relevé'], tk_payment:['دفعة','Payment','Paiement'],
+ tk_move:['حركة صندوق','Cash move','Mouvement'], tk_plan:['نوع اشتراك','Plan','Formule'], tk_staff:['موظف','Staff','Employé'],
+ staff_restored_pw:['أُرجع الموظف — عيّن له كلمة مرور جديدة من تبويب الموظفين','Staff restored — set a new password in Staff','Employé restauré — définissez un mot de passe']
+});
+var TRASH_VIEW=async function(main){
+  var rows=await call('motor_trash_list');
+  main.innerHTML='<div class="card"><p class="muted" style="margin:0">'+esc(t('trash_hint'))+'</p></div>'+
+    '<div class="toolbar"><b>'+esc(fmtN(rows.length,0))+'</b><span class="sp"></span>'+(rows.length?'<button class="btn danger" id="tempty">'+esc(t('trash_empty'))+'</button>':'')+'</div>'+
+    '<div class="tw"><table><thead><tr><th>'+esc(t('date'))+'</th><th>'+esc(t('type'))+'</th><th>'+esc(t('name'))+'</th><th>'+esc(t('amount'))+'</th><th>'+esc(t('by'))+'</th><th></th></tr></thead><tbody>'+
+    (rows.map(function(r){ return '<tr><td class="num">'+esc(dt(r.at))+'</td><td><span class="chip gray">'+esc(t('tk_'+r.kind))+'</span></td><td>'+esc(r.label)+'</td><td class="num">'+(r.amount!=null?esc(money(r.amount)):'')+'</td><td>'+esc(r.by)+'</td>'+
+      '<td><button class="btn ok sm" data-rs="'+esc(r.id)+'">'+esc(t('trash_restore'))+'</button> <button class="btn ghost sm" data-pg="'+esc(r.id)+'|'+esc(r.label)+'">'+esc(t('trash_purge'))+'</button></td></tr>'; }).join('')||
+     '<tr><td colspan="6" class="muted">'+esc(t('trash_none'))+'</td></tr>')+'</tbody></table></div>';
+  main.addEventListener('click',async function(e){
+    var rs=e.target.closest('[data-rs]'), pg=e.target.closest('[data-pg]');
+    if(rs){ busy(rs,true); try{ var r=await call('motor_trash_restore',{p_id:rs.dataset.rs}); toast(r.kind==='staff'?t('staff_restored_pw'):t('trash_restored'),'s'); loadCustomers(); go('trash'); }catch(err){ toast(errText(err),'e'); busy(rs,false); } }
+    if(pg){ var p=pg.dataset.pg.split('|'); if(!(await confirmBox(t('trash_q',{n:p.slice(1).join('|')})))) return; try{ await call('motor_trash_purge',{p_id:p[0]}); go('trash'); }catch(err){ toast(errText(err),'e'); } }
+  });
+  var te=$('#tempty',main); if(te) te.addEventListener('click',async function(){ if(!(await confirmBox(t('trash_all_q')))) return; try{ await call('motor_trash_purge',{p_id:null}); go('trash'); }catch(err){ toast(errText(err),'e'); } });
+};
 function roleLabel(s){ if(!s) return ''; if(s.role==='owner') return t('role_owner'); if(s.role==='admin') return t('role_admin'); return (s.can_read&&!s.can_collect)?t('role_reader'):t('role_collector'); }
 function editReading(r,after){
   if(!r) return;
@@ -2181,6 +2222,7 @@ var TABS=[
   {id:'report',k:'nav_report',i:'📊',admin:true},
   {id:'map',k:'nav_map',i:'🗺️',admin:true},
   {id:'staff',k:'nav_staff',i:'🧑‍🔧',admin:true},
+  {id:'trash',k:'nav_trash',i:'🗑️',admin:true},
   {id:'plans',k:'nav_plans',i:'⚡',admin:true},
   {id:'settings',k:'nav_settings',i:'⚙️'}
 ];
@@ -2191,11 +2233,16 @@ function paintShell(){
   $('#tWho').innerHTML=esc(ME.role==='owner'?t('role_owner'):ME.name+' · '+roleLabel(ME))+' <span id="liveDot" style="color:#7CFC9A;font-size:11px">'+esc(t('live'))+'</span>';
   if(SITE.logo_url){ $('#tLogo').src=SITE.logo_url; $('#tLogo').classList.remove('hidden'); } else $('#tLogo').classList.add('hidden');
   $('#tLang').value=LANG; $('#tOut').textContent=t('logout');
-  $('#tabs').innerHTML=visibleTabs().map(function(x){ return '<button data-tab="'+x.id+'" class="'+(x.id===TAB?'on':'')+'">'+x.i+' '+esc(t(x.k))+
+  $('#tabs').innerHTML=visibleTabs().map(function(x){ return '<button data-tab="'+x.id+'" title="'+esc(t(x.k))+'" class="'+(x.id===TAB?'on':'')+'">'+x.i+' <span>'+esc(t(x.k))+'</span>'+
     (x.id==='wa'?' <span class="chip off" id="waBadge" style="padding:0 7px'+(WA_PENDING?'':';display:none')+'">'+WA_PENDING+'</span>':'')+'</button>'; }).join('');
 }
 $('#tabs').addEventListener('click',function(e){ var b=e.target.closest('[data-tab]'); if(b){ document.body.classList.remove('menu-open'); go(b.dataset.tab); } });
-$('#tMenu').addEventListener('click',function(){ document.body.classList.toggle('menu-open'); });
+$('#tMenu').addEventListener('click',function(){
+  if(window.matchMedia('(min-width:900px)').matches){ var on=!document.body.classList.contains('side-mini'); document.body.classList.toggle('side-mini',on); lsSet('motor_side_mini',on?'1':null); }
+  else document.body.classList.toggle('menu-open'); });
+$('#tCompact').addEventListener('click',function(){ var on=!document.body.classList.contains('compact'); document.body.classList.toggle('compact',on); lsSet('motor_compact',on?'1':null); });
+if(lsGet('motor_side_mini','')) document.body.classList.add('side-mini');
+if(lsGet('motor_compact','')) document.body.classList.add('compact');
 $('#menuOv').addEventListener('click',function(){ document.body.classList.remove('menu-open'); });
 $('#tLang').addEventListener('change',function(){ setLang(this.value); paintShell(); go(TAB); });
 $('#tOut').addEventListener('click',function(){ if(ME&&ME.role==='customer') doLogout(false); else logoutClick(); });
@@ -2245,6 +2292,7 @@ function refreshSearchLists(){ searchHooks.forEach(function(f){ try{ f(); }catch
    التبويبات
    ========================================================= */
 var VIEWS={};
+VIEWS.trash=function(m){ return TRASH_VIEW(m); };
 
 /* ---------- الرئيسية ---------- */
 VIEWS.dash=async function(main){
@@ -2258,20 +2306,21 @@ VIEWS.dash=async function(main){
     (acts.length?'<div class="big-actions">'+acts.join('')+'</div>':'')+
     '<div class="card"><div class="row"><b>💱 '+esc(t('rate_t'))+':</b>'+(isAdmin()?'<input id="drate" inputmode="decimal" value="'+esc(n2(d.lbp_rate))+'" style="max-width:160px"><span>'+esc(sym('LBP'))+'</span><button class="btn sm" id="drs">'+esc(t('save'))+'</button>':'<b class="num">1$ = '+esc(fmtN(d.lbp_rate,0))+' '+esc(sym('LBP'))+'</b>')+'</div></div>'+
     '<div class="stats">'+
-      stat(t('st_active_c'), fmtN(d.customers_active,0)+' / '+fmtN(d.customers_total,0))+
-      stat(t('st_read',{p:d.period}), fmtN(d.read_period,0))+
-      stat(t('st_billed'), money(d.billed_period))+
-      stat(t('st_unpaid'), fmtN(d.unpaid_count,0))+
-      (mine?'':stat(t('st_debt'), money(d.debt_total)))+
-      (mine?'':stat(t('st_cash_box'), money(d.cash_box)))+
-      (mine?'':stat(t('st_whish_box'), money(d.whish_box)))+
-      (mine?'':stat(t('st_wa'), fmtN(d.wa_pending,0)))+
-      stat(t('st_cash_today'), money(d.cash_today))+
-      stat(t('st_whish_today'), money(d.whish_today))+
-      stat(t('st_month'), money(d.collected_month))+
+      stat(t('st_active_c'), fmtN(d.customers_active,0)+' / '+fmtN(d.customers_total,0),'customers|on')+
+      stat(t('st_read',{p:d.period}), fmtN(d.read_period,0),'month')+
+      stat(t('st_billed'), money(d.billed_period),mine?'month':'report')+
+      stat(t('st_unpaid'), fmtN(d.unpaid_count,0),can('collect')?'pay':'customers|debt')+
+      (mine?'':stat(t('st_debt'), money(d.debt_total),'customers|debt'))+
+      (mine?'':stat(t('st_cash_box'), money(d.cash_box),'cash'))+
+      (mine?'':stat(t('st_whish_box'), money(d.whish_box),'whish'))+
+      (mine?'':stat(t('st_wa'), fmtN(d.wa_pending,0),'wa'))+
+      (mine?'':stat(t('nav_trash'), fmtN(d.trash_count,0),'trash'))+
+      stat(t('st_cash_today'), money(d.cash_today),mine?'cstmt':'cash')+
+      stat(t('st_whish_today'), money(d.whish_today),mine?'cstmt':'whish')+
+      stat(t('st_month'), money(d.collected_month),mine?'cstmt':'report')+
       (d.my_cash_in_hand!=null?stat(t('st_hand'), money(d.my_cash_in_hand)):'')+
     '</div>'+(ME.role==='collector'&&can('read')?windowNote():'');
-  $$('[data-go]',main).forEach(function(b){ b.addEventListener('click',function(){ go(b.dataset.go); }); });
+  $$('[data-go]',main).forEach(function(b){ b.addEventListener('click',function(){ var p=b.dataset.go.split('|'); if(p[0]==='customers'){ CF.st=p[1]||''; CF.q=''; CF.lim=200; } go(p[0]); }); });
   var rs=$('#drs',main); if(rs) rs.addEventListener('click',async function(){ var v=$('#drate',main).value.trim(); if(!(n2(v)>0)) return toast(t('e_bad_amount'),'e');
     busy(rs,true); try{ SITE=await call('motor_settings_save',{p_data:{lbp_rate:v}}); toast(t('rate_saved'),'s'); }catch(e){ toast(errText(e),'e'); } busy(rs,false); });
 };
@@ -2404,7 +2453,8 @@ async function syncNow(){
     var first=SYNC.since===null; SYNC.since=r.now;
     var dot=$('#liveDot'); if(dot) dot.style.color='#7CFC9A';
     var changed=(r.customers||[]).length>0;
-    (r.customers||[]).forEach(function(c){ var i=-1; for(var k=0;k<CUST.length;k++) if(CUST[k].id===c.id){ i=k; break; } if(i>=0) CUST[i]=c; else CUST.push(c); });
+    (r.customers||[]).forEach(function(c){ var i=-1; for(var k=0;k<CUST.length;k++) if(CUST[k].id===c.id){ i=k; break; }
+      if(c.deleted){ if(i>=0) CUST.splice(i,1); return; } if(i>=0) CUST[i]=c; else CUST.push(c); });
     if(r.me){ var was=JSON.stringify([ME.can_read,ME.can_collect,ME.can_cut,ME.is_admin]); ME=Object.assign(ME,r.me); if(was!==JSON.stringify([ME.can_read,ME.can_collect,ME.can_cut,ME.is_admin])) paintShell(); }
     var perChanged=SITE.bill_period!==r.period||n2(SITE.lbp_rate)!==n2(r.lbp_rate);
     SITE.bill_period=r.period; SITE.lbp_rate=r.lbp_rate;
@@ -2421,7 +2471,7 @@ function pingNow(){ if(!navigator.geolocation||!TOKEN) return;
   navigator.geolocation.getCurrentPosition(function(p){ call('motor_ping',{p_lat:p.coords.latitude,p_lng:p.coords.longitude,p_acc:Math.round(p.coords.accuracy||0)}).catch(function(){}); },function(){},{enableHighAccuracy:true,timeout:20000,maximumAge:60000}); }
 document.addEventListener('visibilitychange',function(){ if(!document.hidden&&ME) syncNow(); });
 
-function stat(l,v){ return '<div class="stat"><span>'+esc(l)+'</span><b class="num">'+esc(v)+'</b></div>'; }
+function stat(l,v,g){ return '<div class="stat"'+(g?' data-go="'+esc(g)+'"':'')+'><span>'+esc(l)+'</span><b class="num">'+esc(v)+'</b></div>'; }
 function windowNote(){
   var me=STAFF.filter(function(s){return s.id===ME.staff_id})[0]||ME;
   if(!me.read_from||!me.read_to) return '<div class="lic">'+esc(t('window_none'))+'</div>';
@@ -2435,8 +2485,8 @@ function finderView(main,mode){
   searchHooks=[];
   var areas={}; CUST.forEach(function(c){ if(c.area) areas[c.area]=1; });
   main.innerHTML=licBanner()+(mode==='read'&&ME.role==='collector'?windowNote():'')+
-    '<div class="card"><button class="btn lg full '+(mode==='pay'?'ok':mode==='switch'?'acc':'')+'" id="scanBtn">📷 '+esc(t(mode==='pay'?'scan_pay':'scan'))+'</button>'+
-    '<div class="row" style="margin-top:12px"><input id="fq" type="search" placeholder="'+esc(t('search_ph'))+'" autocomplete="off" style="flex:2 1 220px">'+
+    '<div class="card">'+(isAdmin()?'':'<button class="btn lg full '+(mode==='pay'?'ok':mode==='switch'?'acc':'')+'" id="scanBtn" style="margin-bottom:12px">📷 '+esc(t(mode==='pay'?'scan_pay':'scan'))+'</button>')+
+    '<div class="row"><input id="fq" type="search" placeholder="'+esc(t('search_ph'))+'" autocomplete="off" style="flex:2 1 220px">'+
     '<select id="farea" style="flex:1 1 140px"><option value="">'+esc(t('area'))+': '+esc(t('all'))+'</option>'+Object.keys(areas).sort().map(function(a){return '<option>'+esc(a)+'</option>'}).join('')+'</select></div>'+
     (mode==='read'?'<div class="muted" id="fprog" style="margin-top:8px"></div>':'')+'</div>'+
     '<div class="sec-t" id="ftitle"></div><div class="list" id="flist"></div><div id="fmore" style="text-align:center;margin-top:10px"></div>';
@@ -2468,7 +2518,8 @@ function finderView(main,mode){
   q.addEventListener('input',paint);
   $('#farea',main).addEventListener('change',function(){ FF.area=this.value; FF.lim=80; paint(); });
   q.addEventListener('keydown',function(e){ if(e.key==='Enter'){ e.preventDefault(); var v=q.value.trim(); if(v) openByCode(v,mode); } });
-  $('#scanBtn',main).addEventListener('click',async function(){ var code=await scanBarcode(); if(code) openByCode(code,mode); });
+  if($('#scanBtn',main)) $('#scanBtn',main).addEventListener('click',async function(){ var code=await scanBarcode(); if(code) openByCode(code,mode); });
+  if(isAdmin()) setTimeout(function(){ q.focus(); },60);
   searchHooks.push(paint); paint();
 }
 VIEWS.read=function(main){ finderView(main,'read'); };
@@ -3065,7 +3116,7 @@ async function editCustomer(id){
   m.foot.addEventListener('click',async function(e){
     if(e.target.closest('[data-x]')) return m.close();
     if(e.target.closest('[data-del]')){ if(!(await confirmBox(t('confirm_delete')))) return;
-      try{ await call('motor_customer_delete',{p_id:id}); toast(t('saved'),'s'); m.close(); await loadCustomers(); go(TAB); }catch(err){ $('#cmsg',m.body).textContent=errText(err); } return; }
+      try{ await call('motor_customer_delete',{p_id:id}); toast(t('to_trash'),'s'); m.close(); await loadCustomers(); go(TAB); }catch(err){ $('#cmsg',m.body).textContent=errText(err); } return; }
     var sv=e.target.closest('[data-save]'); if(!sv) return;
     var d={}; if(!newc) d.id=id;
     $$('[data-f]',m.body).forEach(function(el){ d[el.dataset.f]=el.type==='checkbox'?el.checked:el.value.trim(); });
@@ -3244,7 +3295,7 @@ VIEWS.staff=async function(main){
       return '<tr><td><b>'+esc(s.name)+'</b><div class="muted num">'+esc(s.phone)+'</div></td><td class="num">'+esc(s.username)+'</td><td>'+perms(s)+'</td>'+
         '<td>'+(s.role!=='admin'&&s.can_read?(s.read_from?'<span class="chip '+(open?'on':'gray')+'">'+esc(s.read_from+' → '+s.read_to)+'</span>':'<span class="chip warn">—</span>'):'')+'</td>'+
         '<td>'+(s.totp_enabled?'<span class="chip on">'+esc(t('tfa_on'))+'</span> <button class="btn ghost sm" data-tr="'+esc(s.id)+'">'+esc(t('tfa_reset'))+'</button>':'<span class="chip gray">'+esc(t('tfa_off'))+'</span>')+'</td>'+
-        '<td><span class="chip '+(s.is_active?'on':'off')+'">'+esc(s.is_active?t('active'):t('inactive'))+'</span></td>'+
+        '<td><span class="chip '+(s.is_active?'on':'off')+'">'+esc(s.is_active?t('active'):t('staff_off'))+'</span></td>'+
         '<td><button class="btn alt sm" data-cp="'+esc(s.id)+'">'+esc(t('copy'))+'</button> '+(s.phone?'<button class="btn wa sm" data-sl="'+esc(s.id)+'">'+esc(t('send_link'))+'</button>':'')+'</td>'+
         '<td><button class="btn ghost sm" data-ed="'+esc(s.id)+'">'+esc(t('edit'))+'</button></td></tr>'; }).join('')||'<tr><td colspan="8" class="muted">'+esc(t('no_results'))+'</td></tr>')+'</tbody></table></div>';
   var byId=function(id){ return STAFF.filter(function(s){return s.id===id})[0]; };
@@ -3380,7 +3431,7 @@ VIEWS.plans=async function(main){
     '<div class="tw"><table><thead><tr><th>'+esc(t('name'))+'</th><th>'+esc(t('amps'))+'</th><th>'+esc(t('kind'))+'</th><th>'+esc(t('fee'))+'</th><th>'+esc(t('kwh_price'))+'</th><th>'+esc(t('status'))+'</th><th></th></tr></thead><tbody>'+
     (PLANS.map(function(p){ return '<tr><td><b>'+esc(p.name)+'</b></td><td class="num">'+esc(fmtN(p.amps))+'</td><td>'+esc(p.kind==='fixed'?t('kind_fixed'):t('kind_meter'))+'</td><td class="num">'+esc(money(p.fee))+'</td>'+
       '<td class="num">'+(p.kind==='fixed'?'—':(p.kwh_price!=null?esc(money(p.kwh_price).replace(/\.?0+$/,'')):'<span class="muted">'+esc(fmtN(SITE.kwh_price,4))+' ('+esc(t('kwh_general'))+')</span>'))+'</td>'+
-      '<td><span class="chip '+(p.is_active?'on':'off')+'">'+esc(p.is_active?t('active'):t('inactive'))+'</span></td><td><button class="btn ghost sm" data-pe="'+esc(p.id)+'">'+esc(t('edit'))+'</button></td></tr>'; }).join('')||'<tr><td colspan="7" class="muted">'+esc(t('no_results'))+'</td></tr>')+'</tbody></table></div>';
+      '<td><span class="chip '+(p.is_active?'on':'off')+'">'+esc(p.is_active?t('active'):t('staff_off'))+'</span></td><td><button class="btn ghost sm" data-pe="'+esc(p.id)+'">'+esc(t('edit'))+'</button></td></tr>'; }).join('')||'<tr><td colspan="7" class="muted">'+esc(t('no_results'))+'</td></tr>')+'</tbody></table></div>';
   $('#kps',main).addEventListener('click',async function(){ var b=this, v=$('#kp',main).value.trim(); if(v===''||!isFinite(Number(v))) return toast(t('e_bad_amount'),'e');
     busy(b,true); try{ SITE=await call('motor_settings_save',{p_data:{kwh_price:v}}); toast(t('saved'),'s'); }catch(e){ toast(errText(e),'e'); } busy(b,false); });
   $('#padd',main).addEventListener('click',function(){ planForm(null); });

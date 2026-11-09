@@ -366,6 +366,21 @@ create table if not exists public.motor_customer_secrets (
   locked_until  timestamptz,
   updated_at    timestamptz not null default now()
 );
+-- ---------- v4: سلة المحذوفات ----------
+alter table public.motor_customers add column if not exists deleted_at timestamptz;
+alter table public.motor_invoices  add column if not exists voided_reading jsonb;   -- القراءة الملغاة (لإرجاعها من السلة)
+create table if not exists public.motor_trash (
+  id         uuid primary key default gen_random_uuid(),
+  site_id    uuid not null references public.motor_sites(id) on delete cascade,
+  kind       text not null,          -- customer / invoice / payment / move / plan / staff / note
+  ref_id     uuid,
+  label      text not null default '',
+  data       jsonb not null default '{}'::jsonb,
+  deleted_by text not null default '',
+  deleted_at timestamptz not null default now()
+);
+create index if not exists motor_trash_site_idx on public.motor_trash (site_id, deleted_at desc);
+
 create table if not exists public.motor_csessions (
   token_hash  text primary key,
   customer_id uuid not null references public.motor_customers(id) on delete cascade,
@@ -380,7 +395,7 @@ declare t text;
 begin
   foreach t in array array['motor_sites','motor_plans','motor_staff','motor_staff_secrets','motor_sessions',
                            'motor_customers','motor_readings','motor_invoices','motor_payments','motor_moves',
-                           'motor_notes','motor_switch_log','motor_customer_secrets','motor_csessions']
+                           'motor_notes','motor_switch_log','motor_customer_secrets','motor_csessions','motor_trash']
   loop
     execute format('alter table public.%I enable row level security', t);
     execute format('revoke all on public.%I from anon, authenticated', t);
@@ -824,7 +839,7 @@ returns jsonb language sql stable security definer set search_path = public as $
       'last_value', coalesce(lr.value, c.initial_reading),
       'read_now', (rn.id is not null), 'read_now_value', rn.value, 'read_now_prev', rn.prev_value,
       'last_note', nt.body, 'last_note_by', nt.staff_name, 'last_note_at', nt.created_at,
-      'updated_at', c.updated_at) order by c.code, c.name), '[]'::jsonb)
+      'updated_at', c.updated_at, 'deleted', c.deleted_at is not null) order by c.code, c.name), '[]'::jsonb)
   from public.motor_customers c
   join public.motor_sites st on st.id = c.site_id
   left join public.motor_staff sf on sf.id = c.collector_id
@@ -834,7 +849,8 @@ returns jsonb language sql stable security definer set search_path = public as $
   left join lateral (select n.body, n.staff_name, n.created_at from public.motor_notes n where n.customer_id = c.id
                      order by n.created_at desc limit 1) nt on true
   where c.site_id = p_sid and (p_own is null or c.collector_id = p_own)
-    and (p_since is null or c.updated_at > p_since);
+    and (p_since is null or c.updated_at > p_since)
+    and (c.deleted_at is null or p_since is not null);
 $$;
 revoke all on function public._motor_cust_rows(uuid, uuid, timestamptz) from public, anon, authenticated;
 
@@ -887,7 +903,7 @@ begin
       select * into c from public.motor_customers where site_id = sid and lower(meter_no) = q limit 1;
     end if;
   end if;
-  if c.id is null then perform public._motor_err('customer_not_found', coalesce(p_barcode,'')); end if;
+  if c.id is null or c.deleted_at is not null then perform public._motor_err('customer_not_found', coalesce(p_barcode,'')); end if;
   if w->>'role' = 'collector' and not st.collector_sees_all and c.collector_id is distinct from (w->>'staff_id')::uuid then
     perform public._motor_err('forbidden');
   end if;
@@ -1033,17 +1049,16 @@ end $$;
 
 create or replace function public.motor_customer_delete(p_slug text, p_token text, p_id uuid)
 returns jsonb language plpgsql security definer set search_path = public as $$
-declare w jsonb; sid uuid;
+declare w jsonb; sid uuid; c public.motor_customers%rowtype;
 begin
   w := public._motor_admin(p_slug, p_token);
   sid := (w->>'site_id')::uuid;
-  if exists (select 1 from public.motor_invoices where customer_id = p_id and kind <> 'opening')
-     or exists (select 1 from public.motor_payments where customer_id = p_id)
-     or exists (select 1 from public.motor_readings where customer_id = p_id) then
-    perform public._motor_err('has_records');
-  end if;
-  delete from public.motor_customers where id = p_id and site_id = sid;
-  return jsonb_build_object('ok', found);
+  select * into c from public.motor_customers where id = p_id and site_id = sid and deleted_at is null for update;
+  if not found then perform public._motor_err('customer_not_found'); end if;
+  update public.motor_customers set deleted_at = now(), updated_at = now() where id = c.id;
+  insert into public.motor_trash (site_id, kind, ref_id, label, data, deleted_by)
+  values (sid, 'customer', c.id, '#' || c.code || ' ' || c.name, jsonb_build_object('balance', c.balance, 'barcode', c.barcode), w->>'name');
+  return jsonb_build_object('ok', true, 'trash', true);
 end $$;
 
 -- استيراد من Excel: p_rows مصفوفة كائنات بنفس أسماء حقول motor_customer_save
@@ -1093,6 +1108,8 @@ begin
         select id into ex from public.motor_customers where site_id = sid and meter_no = trim(r->>'meter_no') limit 1;
       end if;
       if ex is not null then
+        update public.motor_customers set deleted_at = null where id = ex and deleted_at is not null;
+        delete from public.motor_trash where kind = 'customer' and ref_id = ex;
         perform public.motor_customer_save(p_slug, p_token, (r - 'opening_balance') || jsonb_build_object('id', ex));
         updated := updated + 1;
       else
@@ -1240,7 +1257,7 @@ begin
   select * into st from public.motor_sites where id = sid for update;
   for c in select cu.*, pl.fee as pfee, pl.name as pname from public.motor_customers cu
              join public.motor_plans pl on pl.id = cu.plan_id
-            where cu.site_id = sid and cu.is_active and not cu.archived and pl.kind = 'fixed'
+            where cu.site_id = sid and cu.is_active and not cu.archived and cu.deleted_at is null and pl.kind = 'fixed'
               and not exists (select 1 from public.motor_invoices i where i.customer_id = cu.id
                                and i.period = st.bill_period and i.kind in ('meter','fixed') and not i.voided)
             for update of cu
@@ -1267,9 +1284,13 @@ begin
   select * into i from public.motor_invoices where id = p_id and site_id = sid for update;
   if not found then perform public._motor_err('not_found'); end if;
   if i.voided then return jsonb_build_object('ok', true); end if;
-  update public.motor_invoices set voided = true, voided_at = now(), voided_by = w->>'name', reading_id = null where id = i.id;
+  update public.motor_invoices set voided = true, voided_at = now(), voided_by = w->>'name', reading_id = null,
+         voided_reading = (select to_jsonb(r) from public.motor_readings r where r.id = i.reading_id) where id = i.id;
   if i.reading_id is not null then delete from public.motor_readings where id = i.reading_id; end if;
   update public.motor_customers set balance = balance - i.amount, updated_at = now() where id = i.customer_id;
+  insert into public.motor_trash (site_id, kind, ref_id, label, data, deleted_by)
+  values (sid, 'invoice', i.id, 'فاتورة #' || i.no || coalesce(' ' || nullif(i.period,''), '') || ' — ' ||
+          (select name from public.motor_customers where id = i.customer_id), jsonb_build_object('amount', i.amount), w->>'name');
   return jsonb_build_object('ok', true);
 end $$;
 
@@ -1347,6 +1368,9 @@ begin
   end if;
   update public.motor_payments set voided = true, voided_at = now(), voided_by = w->>'name' where id = p.id;
   update public.motor_customers set balance = balance + p.amount, updated_at = now() where id = p.customer_id;
+  insert into public.motor_trash (site_id, kind, ref_id, label, data, deleted_by)
+  values (sid, 'payment', p.id, 'إيصال #' || p.no || ' — ' || (select name from public.motor_customers where id = p.customer_id),
+          jsonb_build_object('amount', p.amount), w->>'name');
   return jsonb_build_object('ok', true);
 end $$;
 
@@ -1452,7 +1476,10 @@ declare w jsonb; sid uuid;
 begin
   w := public._motor_admin(p_slug, p_token);
   sid := (w->>'site_id')::uuid;
-  if exists (select 1 from public.motor_customers where plan_id = p_id) then perform public._motor_err('plan_in_use'); end if;
+  if exists (select 1 from public.motor_customers where plan_id = p_id and deleted_at is null) then perform public._motor_err('plan_in_use'); end if;
+  update public.motor_customers set plan_id = null where plan_id = p_id;
+  insert into public.motor_trash (site_id, kind, ref_id, label, data, deleted_by)
+  select sid, 'plan', x.id, x.name, to_jsonb(x), w->>'name' from public.motor_plans x where x.id = p_id and x.site_id = sid;
   delete from public.motor_plans where id = p_id and site_id = sid;
   return jsonb_build_object('ok', true);
 end $$;
@@ -1530,6 +1557,8 @@ begin
     delete from public.motor_sessions where staff_id = p_id;
     return jsonb_build_object('ok', true, 'deactivated', true);
   end if;
+  insert into public.motor_trash (site_id, kind, ref_id, label, data, deleted_by)
+  select sid, 'staff', x.id, x.name || ' (' || x.username || ')', to_jsonb(x), w->>'name' from public.motor_staff x where x.id = p_id and x.site_id = sid;
   delete from public.motor_staff where id = p_id and site_id = sid;
   return jsonb_build_object('ok', true, 'deleted', true);
 end $$;
@@ -1649,6 +1678,9 @@ begin
             from public.motor_moves where site_id = m.site_id and account = 'cash' and kind = 'close'), '-infinity'::timestamptz)))) then
     perform public._motor_err('closed_period');
   end if;
+  insert into public.motor_trash (site_id, kind, ref_id, label, data, deleted_by)
+  select m.site_id, 'move', m.id, m.account || ' / ' || m.kind || ' — ' || m.amount, to_jsonb(m), w->>'name'
+    from public.motor_moves m where m.id = p_id and m.site_id = (w->>'site_id')::uuid;
   delete from public.motor_moves where id = p_id and site_id = (w->>'site_id')::uuid;
   return jsonb_build_object('ok', found);
 end $$;
@@ -1911,15 +1943,16 @@ begin
   m0 := date_trunc('month', today)::date;
   return jsonb_build_object(
     'period', st.bill_period, 'lbp_rate', st.lbp_rate,
-    'customers_active', (select count(*) from public.motor_customers where site_id = sid and is_active and not archived),
-    'customers_total', (select count(*) from public.motor_customers where site_id = sid),
+    'customers_active', (select count(*) from public.motor_customers where site_id = sid and is_active and not archived and deleted_at is null),
+    'customers_total', (select count(*) from public.motor_customers where site_id = sid and deleted_at is null),
     'read_period', (select count(*) from public.motor_readings where site_id = sid and period = st.bill_period
                      and (not mine or staff_id = me)),
     'billed_period', coalesce((select sum(amount) from public.motor_invoices where site_id = sid and period = st.bill_period
                      and kind in ('meter','fixed') and not voided and (not mine or staff_id = me)), 0),
-    'unpaid_count', (select count(*) from public.motor_customers where site_id = sid and balance > 0 and not archived),
+    'unpaid_count', (select count(*) from public.motor_customers where site_id = sid and balance > 0 and not archived and deleted_at is null),
     'debt_total', case when mine then null else coalesce((select sum(balance) from public.motor_customers
-                     where site_id = sid and balance > 0), 0) end,
+                     where site_id = sid and balance > 0 and deleted_at is null), 0) end,
+    'trash_count', case when mine then null else (select count(*) from public.motor_trash where site_id = sid) end,
     'cash_box', case when mine then null else public._motor_cash_bal(sid, null) end,
     'whish_box', case when mine then null else
                    coalesce((select sum(amount) from public.motor_payments where site_id = sid and method = 'whish' and not voided), 0)
@@ -2137,7 +2170,7 @@ begin
     left join public.motor_plans pl on pl.id = c.plan_id
     left join public.motor_staff sf on sf.id = c.collector_id
     left join public.motor_readings r on r.customer_id = c.id and r.period = per
-    where c.site_id = sid and not c.archived), '[]'::jsonb));
+    where c.site_id = sid and not c.archived and c.deleted_at is null), '[]'::jsonb));
 end $$;
 
 -- نسخة احتياطية كاملة (تُنزَّل كملف Excel عند الخروج)
@@ -2159,6 +2192,81 @@ begin
     'invoices', coalesce((select jsonb_agg(to_jsonb(x) - 'site_id' order by x.created_at) from public.motor_invoices x where x.site_id = sid), '[]'),
     'payments', coalesce((select jsonb_agg(to_jsonb(x) - 'site_id' order by x.created_at) from public.motor_payments x where x.site_id = sid), '[]'),
     'moves', coalesce((select jsonb_agg(to_jsonb(x) - 'site_id' order by x.created_at) from public.motor_moves x where x.site_id = sid), '[]'));
+end $$;
+
+-- ============================================================
+--  20d) سلة المحذوفات (المدير): إرجاع أو حذف نهائي
+-- ============================================================
+create or replace function public.motor_trash_list(p_slug text, p_token text)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w jsonb;
+begin
+  w := public._motor_admin(p_slug, p_token);
+  return coalesce((select jsonb_agg(jsonb_build_object('id', t.id, 'kind', t.kind, 'label', t.label, 'by', t.deleted_by,
+           'at', t.deleted_at, 'amount', t.data->'amount') order by t.deleted_at desc)
+         from public.motor_trash t where t.site_id = (w->>'site_id')::uuid), '[]'::jsonb);
+end $$;
+
+create or replace function public.motor_trash_restore(p_slug text, p_token text, p_id uuid)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w jsonb; sid uuid; tr public.motor_trash%rowtype; i public.motor_invoices%rowtype; p public.motor_payments%rowtype;
+        r public.motor_readings%rowtype; nid uuid;
+begin
+  w := public._motor_admin(p_slug, p_token);
+  sid := (w->>'site_id')::uuid;
+  select * into tr from public.motor_trash where id = p_id and site_id = sid for update;
+  if not found then perform public._motor_err('not_found'); end if;
+  if tr.kind = 'customer' then
+    update public.motor_customers set deleted_at = null, updated_at = now() where id = tr.ref_id and site_id = sid;
+  elsif tr.kind = 'invoice' then
+    select * into i from public.motor_invoices where id = tr.ref_id and site_id = sid for update;
+    if found and i.voided then
+      if i.voided_reading is not null then
+        r := jsonb_populate_record(null::public.motor_readings, i.voided_reading);
+        if exists (select 1 from public.motor_readings where customer_id = r.customer_id and period = r.period) then
+          perform public._motor_err('already_read', r.period);
+        end if;
+        insert into public.motor_readings values (r.*) returning id into nid;
+      end if;
+      update public.motor_invoices set voided = false, voided_at = null, voided_by = '', reading_id = nid, voided_reading = null where id = i.id;
+      update public.motor_customers set balance = balance + i.amount, updated_at = now() where id = i.customer_id;
+    end if;
+  elsif tr.kind = 'payment' then
+    select * into p from public.motor_payments where id = tr.ref_id and site_id = sid for update;
+    if found and p.voided then
+      update public.motor_payments set voided = false, voided_at = null, voided_by = '' where id = p.id;
+      update public.motor_customers set balance = balance - p.amount, updated_at = now() where id = p.customer_id;
+    end if;
+  elsif tr.kind = 'move' then
+    insert into public.motor_moves select (jsonb_populate_record(null::public.motor_moves, tr.data)).*;
+  elsif tr.kind = 'plan' then
+    insert into public.motor_plans select (jsonb_populate_record(null::public.motor_plans, tr.data)).*;
+  elsif tr.kind = 'staff' then
+    insert into public.motor_staff select (jsonb_populate_record(null::public.motor_staff, tr.data)).*;
+  end if;
+  delete from public.motor_trash where id = tr.id;
+  return jsonb_build_object('ok', true, 'kind', tr.kind);
+end $$;
+
+-- حذف نهائي (p_id فاضي = إفراغ السلة كلها)
+create or replace function public.motor_trash_purge(p_slug text, p_token text, p_id uuid default null)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w jsonb; sid uuid; tr record; n int := 0;
+begin
+  w := public._motor_admin(p_slug, p_token);
+  sid := (w->>'site_id')::uuid;
+  for tr in select * from public.motor_trash where site_id = sid and (p_id is null or id = p_id) loop
+    if tr.kind = 'customer' then
+      delete from public.motor_customers where id = tr.ref_id and site_id = sid and deleted_at is not null;
+    elsif tr.kind = 'invoice' then
+      delete from public.motor_invoices where id = tr.ref_id and site_id = sid and voided;
+    elsif tr.kind = 'payment' then
+      delete from public.motor_payments where id = tr.ref_id and site_id = sid and voided;
+    end if;
+    delete from public.motor_trash where id = tr.id;
+    n := n + 1;
+  end loop;
+  return jsonb_build_object('ok', true, 'count', n);
 end $$;
 
 -- ============================================================
@@ -2211,7 +2319,8 @@ begin
     'motor_2fa_disable(text,text,text,uuid)', 'motor_wa_outbox(text,text,integer)', 'motor_wa_mark(text,text,text,uuid)',
     'motor_reading_edit(text,text,uuid,numeric,text)', 'motor_customer_set_login(text,text,uuid,text,text)', 'motor_cust_me(text,text)',
     'motor_invoice_edit(text,text,uuid,numeric,text)', 'motor_payment_edit(text,text,uuid,numeric,text)',
-    'motor_fill_barcodes(text,text)', 'motor_month_report(text,text,text)', 'motor_backup(text,text)']
+    'motor_fill_barcodes(text,text)', 'motor_month_report(text,text,text)', 'motor_backup(text,text)',
+    'motor_trash_list(text,text)', 'motor_trash_restore(text,text,uuid)', 'motor_trash_purge(text,text,uuid)']
   loop
     execute format('grant execute on function public.%s to anon, authenticated', f);
   end loop;
