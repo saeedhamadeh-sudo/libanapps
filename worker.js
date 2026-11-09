@@ -1698,7 +1698,8 @@ async function motorPhoto(request, env) {
   try { body = await request.json(); } catch { return json(400, { error: 'bad json' }); }
   const slug = String(body.slug || '').trim().toLowerCase();
   const token = String(body.token || '');
-  const period = /^\d{4}-\d{2}$/.test(String(body.period || '')) ? String(body.period) : new Date().toISOString().slice(0, 7);
+  const period = body.kind === 'logo' ? 'logo'
+    : /^\d{4}-\d{2}$/.test(String(body.period || '')) ? String(body.period) : new Date().toISOString().slice(0, 7);
   const b64 = String(body.data || '').replace(/^data:image\/[a-z]+;base64,/i, '');
   if (!/^[a-z0-9][a-z0-9-]{1,30}$/.test(slug) || !b64) return json(400, { error: 'missing fields' });
   let bytes;
