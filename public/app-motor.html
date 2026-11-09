@@ -2070,7 +2070,7 @@ async function enterCustomer(){
     '<div class="bigbal"><span class="muted">'+esc(t('my_balance'))+'</span><b>'+balHtml(c.balance)+'</b>'+(second(c.balance)?'<span class="muted num">≈ '+esc(second(c.balance))+'</span>':'')+
     '<div class="muted">#'+esc(c.code)+' · '+esc(c.barcode||'')+(c.plan_name?' · '+esc(c.plan_name):'')+'</div></div>'+
     (last?'<div class="card"><h3>'+esc(t('last_invoice'))+'</h3>'+billHtml({inv:last,c:c})+(last.photo?'<div style="margin-top:8px"><img class="thumb" style="width:90px;height:90px" src="'+esc(last.photo)+'?w=320" data-big="'+esc(last.photo)+'" alt=""></div>':'')+'</div>':'')+
-    ((SITE.whish_qr_url||SITE.whish_phone)?'<div class="card" style="text-align:center"><h3>🟣 '+esc(t('pay_whish_t'))+'</h3>'+(SITE.whish_qr_url?'<img src="'+esc(SITE.whish_qr_url)+'" alt="" style="max-width:240px;width:100%;border-radius:10px">':'')+(SITE.whish_phone?'<div style="font-weight:800;font-size:18px" class="num">📞 '+esc(SITE.whish_phone)+'</div>':'')+'</div>':'')+
+    (SITE.whish_phone?'<div class="card" style="text-align:center"><h3>🟣 '+esc(t('pay_whish_t'))+'</h3><div style="font-weight:800;font-size:18px" class="num">📞 '+esc(SITE.whish_phone)+'</div></div>':'')+
     '<div class="card"><h3>🧾 '+esc(t('my_invoices'))+'</h3><div class="tw"><table><thead><tr><th>'+esc(t('date'))+'</th><th>'+esc(t('type'))+'</th><th></th><th>'+esc(t('debit'))+'</th><th>'+esc(t('creditc'))+'</th><th>'+esc(t('running'))+'</th><th></th></tr></thead><tbody>'+
     rows.map(function(r,i){ run+=n2(r.debit)-n2(r.credit);
       var kind=r.t==='pay'?t('k_pay')+' ('+(r.method==='whish'?t('whish'):t('cash'))+')':t('k_'+r.kind);
@@ -2098,6 +2098,22 @@ var CFG=window.LIBANAPPS, sb=null;
 try{ sb=window.supabase.createClient(CFG.SUPABASE_URL,CFG.SUPABASE_ANON_KEY); }catch(e){}
 var $=function(s,r){return (r||document).querySelector(s)}, $$=function(s,r){return Array.prototype.slice.call((r||document).querySelectorAll(s))};
 Object.assign(D,{
+ lbl_t:['طابعة الباركود (الملصقات)','Barcode / label printer','Imprimante d’étiquettes'],
+ lbl_mode:['طريقة الطباعة','Print method','Méthode'],
+ lbl_m_browser:['نافذة الطباعة (طابعة USB / ويندوز)','Print dialog (USB / Windows printer)','Fenêtre d’impression (USB / Windows)'],
+ lbl_m_ble:['بلوتوث مباشر من الهاتف','Direct Bluetooth from the phone','Bluetooth direct depuis le téléphone'],
+ lbl_m_rawbt:['عبر تطبيق RawBT (أندرويد)','Via the RawBT app (Android)','Via l’application RawBT (Android)'],
+ lbl_lang:['لغة الطابعة','Printer language','Langage de l’imprimante'],
+ lbl_pick:['🔗 اختيار طابعة الباركود','🔗 Choose label printer','🔗 Choisir l’imprimante'],
+ lbl_gap:['الفراغ بين الملصقات','Gap between labels','Espace entre étiquettes'],
+ lbl_dpi:['دقة الطابعة','Printer resolution','Résolution'], lbl_density:['غمق الطباعة','Darkness','Densité'], lbl_speed:['السرعة','Speed','Vitesse'],
+ lbl_copies:['عدد النسخ لكل زبون','Copies per customer','Copies par client'], lbl_bh:['ارتفاع الباركود','Barcode height','Hauteur du code'],
+ lbl_ox:['إزاحة أفقية','Horizontal offset','Décalage horizontal'], lbl_oy:['إزاحة عمودية','Vertical offset','Décalage vertical'], lbl_rot:['تدوير','Rotation','Rotation'],
+ lbl_fields:['ما يظهر على الملصق','Shown on the label','Contenu de l’étiquette'], lbl_f_site:['اسم المولّد','Generator name','Nom du générateur'], lbl_f_code:['رقم الباركود تحت الخطوط','Code under the bars','Code sous les barres'],
+ lbl_inv:['عكس الألوان (إذا طلع الملصق أسود)','Invert colours (if the label prints black)','Inverser (si l’étiquette sort noire)'],
+ lbl_test:['🖨️ طباعة ملصق تجريبي','🖨️ Print a test label','🖨️ Étiquette de test'], lbl_sample:['اسم الزبون','Customer name','Nom du client'],
+ lbl_hint2:['الإعدادات محفوظة على هذا الجهاز. ابدأ بالمقاس والفراغ كما هو مكتوب على لفّة الملصقات، ثم اطبع ملصقاً تجريبياً.','Settings are saved on this device. Set the size and gap printed on the label roll, then print a test label.','Réglages enregistrés sur cet appareil. Indiquez la taille et l’espace du rouleau, puis imprimez un test.'],
+ whish_to_stmt:['يُسجَّل الدفع في كشف Whish اليومي مباشرة','The payment goes straight to the daily Whish statement','Le paiement va directement au relevé Whish du jour'],
  nav_stock:['المخزون','Stock','Stock'], nav_expenses:['المصاريف','Expenses','Dépenses'], nav_salaries:['المعاشات','Salaries','Salaires'], nav_journal:['اليومية','Daily journal','Journal'],
  dev_unreg:['الجهاز غير مسجل — هذا الحساب مقفل على جهاز آخر. تواصل مع المدير الأساسي لفك القفل','Device not registered — this account is locked to another device. Ask the main admin to unlock it','Appareil non enregistré — ce compte est lié à un autre appareil. Demandez à l’admin principal de le débloquer'],
  device:['الجهاز','Device','Appareil'], dev_none:['لم يُسجَّل بعد (يُقفل على أول جهاز)','Not set yet (locks on first login)','Pas encore (bloqué au 1er accès)'],
@@ -2780,9 +2796,7 @@ async function openCustomer(id,barcode,mode){
       '<div><label>'+esc(t('currency'))+'</label><select id="pc"><option value="'+cur+'">'+esc(cur+' '+sym(cur))+'</option>'+(rate()?'<option value="'+oth+'">'+esc(oth+' '+sym(oth))+'</option>':'')+'</select></div></div>'+
       '<div id="peq" class="muted" style="margin:6px 0"></div>'+(rate()?'<div class="muted">'+esc(t('rate_t'))+': <b class="num">'+esc(fmtN(rate(),0))+'</b></div>':'')+
       '<label style="margin-top:8px">'+esc(t('method'))+'</label><div class="row"><label class="chk"><input type="radio" name="pm" value="cash" checked> 💵 '+esc(t('cash'))+'</label>'+(isAdmin()?'<label class="chk"><input type="radio" name="pm" value="whish"> 🟣 '+esc(t('whish'))+'</label>':'')+'</div>'+
-      '<div id="wqr" class="hidden" style="text-align:center;margin:8px 0;padding:10px;border-radius:12px;background:var(--wishbg)">'+
-        (SITE.whish_qr_url?'<img src="'+esc(SITE.whish_qr_url)+'" alt="Whish QR" style="max-width:240px;width:100%;border-radius:10px;background:#fff">':'<div class="muted">'+esc(t('whish_qr_none'))+'</div>')+
-        (SITE.whish_phone?'<div style="font-weight:800;font-size:18px;margin-top:6px" class="num">📞 '+esc(SITE.whish_phone)+'</div>':'')+'</div>'+
+      '<div id="wqr" class="hidden muted" style="margin:6px 0;padding:8px 10px;border-radius:10px;background:var(--wishbg)">🟣 '+esc(t('whish_to_stmt'))+'</div>'+
       '<label>'+esc(t('note'))+'</label><input id="pn">'+
       '<div id="pmsg" class="err msg" style="margin-top:8px"></div><button class="btn ok full lg" id="pgo" style="margin-top:10px">'+esc(t('pay_save'))+'</button></div>';
     $$('input[name=pm]',box).forEach(function(r){ r.addEventListener('change',function(){ $('#wqr',box).classList.toggle('hidden',$('input[name=pm]:checked',box).value!=='whish'); }); });
@@ -2948,30 +2962,39 @@ function canvasToEscPos(cv){
 var BLE_SERVICES=['000018f0-0000-1000-8000-00805f9b34fb','0000ff00-0000-1000-8000-00805f9b34fb','0000ffe0-0000-1000-8000-00805f9b34fb',
   'e7810a71-73ae-499d-8c15-faa9aef0c3f2','49535343-fe7d-4ae5-8fa9-9fafd205e455','0000fee7-0000-1000-8000-00805f9b34fb','0000ae30-0000-1000-8000-00805f9b34fb',
   '0000ae00-0000-1000-8000-00805f9b34fb','0000ff80-0000-1000-8000-00805f9b34fb','0000ffb0-0000-1000-8000-00805f9b34fb'];
-var bleDev=null, bleChar=null;
-async function blePick(){
+var BLEP={r:{dev:null,ch:null,k:'motor_ble'},l:{dev:null,ch:null,k:'motor_lble'}};
+async function blePick(slot){
+  var P=BLEP[slot||'r'];
   if(!navigator.bluetooth) throw new Error(t('ble_unsup'));
   var dv=await navigator.bluetooth.requestDevice({acceptAllDevices:true,optionalServices:BLE_SERVICES});
-  bleDev=dv; bleChar=null; lsSet('motor_ble_id',dv.id); lsSet('motor_ble_name',dv.name||dv.id);
-  await bleConnect(); return dv.name||dv.id;
+  P.dev=dv; P.ch=null; lsSet(P.k+'_id',dv.id); lsSet(P.k+'_name',dv.name||dv.id);
+  await bleConnect(slot); return dv.name||dv.id;
 }
-async function bleConnect(){
+async function bleConnect(slot){
+  var P=BLEP[slot||'r'];
   if(!navigator.bluetooth) throw new Error(t('ble_unsup'));
-  if(!bleDev){ var id=lsGet('motor_ble_id','');
-    if(id&&navigator.bluetooth.getDevices){ var ds=await navigator.bluetooth.getDevices(); bleDev=ds.filter(function(x){return x.id===id})[0]||null; }
-    if(!bleDev) throw new Error(t('ble_none')); }
-  var srv=await bleDev.gatt.connect();
+  if(!P.dev){ var id=lsGet(P.k+'_id','');
+    if(id&&navigator.bluetooth.getDevices){ var ds=await navigator.bluetooth.getDevices(); P.dev=ds.filter(function(x){return x.id===id})[0]||null; }
+    if(!P.dev) throw new Error(t('ble_none')); }
+  var srv=await P.dev.gatt.connect();
   var svcs=[]; try{ svcs=await srv.getPrimaryServices(); }catch(e){}
   for(var i=0;i<svcs.length;i++){ try{ var chs=await svcs[i].getCharacteristics();
-      for(var j=0;j<chs.length;j++){ var p=chs[j].properties; if(p.writeWithoutResponse||p.write){ bleChar=chs[j]; return bleChar; } } }catch(e){} }
+      for(var j=0;j<chs.length;j++){ var p=chs[j].properties; if(p.writeWithoutResponse||p.write){ P.ch=chs[j]; return P.ch; } } }catch(e){} }
   throw new Error('No writable characteristic');
 }
-async function bleWrite(bytes){
-  var c=(bleChar&&bleChar.service.device.gatt.connected)?bleChar:await bleConnect();
+async function bleWrite(bytes,slot){
+  var P=BLEP[slot||'r'];
+  var c=(P.ch&&P.ch.service.device.gatt.connected)?P.ch:await bleConnect(slot);
   var N=Math.max(16,Math.min(512,parseInt(lsGet('motor_ble_chunk','100'),10)||100)), wait=Math.max(0,parseInt(lsGet('motor_ble_delay','20'),10)||0);
   for(var i=0;i<bytes.length;i+=N){ var part=bytes.slice(i,i+N);
     if(c.properties.writeWithoutResponse&&c.writeValueWithoutResponse) await c.writeValueWithoutResponse(part); else await c.writeValue(part);
     if(wait) await new Promise(function(r){ setTimeout(r,wait); }); }
+}
+function rawbtSend(bytes){
+  var bin=''; for(var i=0;i<bytes.length;i+=8192) bin+=String.fromCharCode.apply(null,Array.prototype.slice.call(bytes.subarray(i,i+8192)));
+  var b64=btoa(bin), a=document.createElement('a');
+  a.href=/android/i.test(navigator.userAgent)?'intent:base64,'+b64+'#Intent;scheme=rawbt;package=ru.a402d.rawbtprinter;end;':'rawbt:base64,'+b64;
+  document.body.appendChild(a); a.click(); a.remove();
 }
 async function printDoc(T){
   try{ if(document.fonts&&document.fonts.ready) await document.fonts.ready; }catch(e){}
@@ -2983,11 +3006,7 @@ async function printDoc(T){
     return;
   }
   if(mode==='rawbt'){
-    try{ var bytes=canvasToEscPos(cv), bin=''; for(var i=0;i<bytes.length;i+=8192) bin+=String.fromCharCode.apply(null,Array.prototype.slice.call(bytes.subarray(i,i+8192)));
-      var b64=btoa(bin), a=document.createElement('a');
-      a.href=/android/i.test(navigator.userAgent)?'intent:base64,'+b64+'#Intent;scheme=rawbt;package=ru.a402d.rawbtprinter;end;':'rawbt:base64,'+b64;
-      document.body.appendChild(a); a.click(); a.remove(); return;
-    }catch(e){ toast(t('print_fail',{e:e&&e.message||''}),'e'); return; }
+    try{ rawbtSend(canvasToEscPos(cv)); return; }catch(e){ toast(t('print_fail',{e:e&&e.message||''}),'e'); return; }
   }
   printHtml('<img src="'+cv.toDataURL('image/png')+'" style="width:'+(paperW()===576?'80mm':'58mm')+'">');
 }
@@ -3008,11 +3027,108 @@ function code128Svg(text,h){
   codes.forEach(function(cd){ var p=C128[cd]; for(var j=0;j<p.length;j++){ var w=+p[j]; if(j%2===0) bars+='<rect x="'+x+'" y="0" width="'+w+'" height="'+h+'"/>'; x+=w; } });
   return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 '+(x+10)+' '+h+'" preserveAspectRatio="none" style="width:100%;height:'+h+'px">'+bars+'</svg>';
 }
-function printLabels(list){
-  var W=n2(lsGet('motor_lbl_w','50'))||50, H=n2(lsGet('motor_lbl_h','30'))||30;
+function lblCard(){
+  var c=lblCfg(), num=function(id,l,v,suf){ return '<div><label>'+esc(t(l))+(suf?' ('+suf+')':'')+'</label><input id="'+id+'" data-l="'+id.slice(2)+'" inputmode="decimal" value="'+esc(v)+'"></div>'; },
+      ck=function(k,l){ return '<label class="chk"><input type="checkbox" data-l="'+k+'" '+(+c[k]?'checked':'')+'> '+esc(t(l))+'</label>'; };
+  return '<div class="card"><h3>🏷️ '+esc(t('lbl_t'))+'</h3><div class="g2">'+
+    '<div><label>'+esc(t('lbl_mode'))+'</label><select data-l="mode"><option value="browser">'+esc(t('lbl_m_browser'))+'</option><option value="ble">'+esc(t('lbl_m_ble'))+'</option><option value="rawbt">'+esc(t('lbl_m_rawbt'))+'</option></select></div>'+
+    '<div class="lbl-raw"><label>'+esc(t('lbl_lang'))+'</label><select data-l="lang"><option value="tspl">TSPL — Xprinter / TSC / Gprinter / HPRT</option><option value="escpos">ESC/POS</option></select></div>'+
+    '</div><div class="lbl-ble" style="margin-top:8px"><div class="row"><button class="btn" id="lblpick">'+esc(t('lbl_pick'))+'</button><b id="lblname"></b></div></div>'+
+    '<div class="sec-t">'+esc(t('lbl_size'))+'</div><div class="g2">'+num('l_w','lbl_w',c.w,'mm')+num('l_h','lbl_h',c.h,'mm')+num('l_gap','lbl_gap',c.gap,'mm')+
+    '<div class="lbl-raw"><label>'+esc(t('lbl_dpi'))+'</label><select data-l="dpi"><option value="203">203 dpi</option><option value="300">300 dpi</option></select></div>'+
+    '<div class="lbl-raw">'+num('l_density','lbl_density',c.density,'1–15').replace(/^<div>|<\/div>$/g,'')+'</div>'+
+    '<div class="lbl-raw">'+num('l_speed','lbl_speed',c.speed,'1–6').replace(/^<div>|<\/div>$/g,'')+'</div>'+
+    num('l_copies','lbl_copies',c.copies)+num('l_bh','lbl_bh',c.bh,'%')+num('l_ox','lbl_ox',c.ox,'mm')+num('l_oy','lbl_oy',c.oy,'mm')+
+    '<div><label>'+esc(t('lbl_rot'))+'</label><select data-l="rot"><option value="0">0°</option><option value="180">180°</option></select></div></div>'+
+    '<div class="sec-t">'+esc(t('lbl_fields'))+'</div><div class="row">'+ck('f_site','lbl_f_site')+ck('f_name','name')+ck('f_box','box')+ck('f_area','area')+ck('f_code','lbl_f_code')+'</div>'+
+    '<div class="row lbl-raw" style="margin-top:6px">'+ck('inv','lbl_inv')+'</div>'+
+    '<div class="row" style="margin-top:10px;align-items:flex-start"><div id="lblprev" style="border:1px dashed var(--line);border-radius:8px;padding:6px;background:#fff"></div><button class="btn alt" id="lbltest">'+esc(t('lbl_test'))+'</button></div>'+
+    '<p class="muted">'+esc(t('lbl_hint2'))+'</p></div>';
+}
+function lblBind(main){
+  var c=lblCfg(), sample={name:t('lbl_sample'),box:'MK190',area:'',barcode:(SITE.barcode_prefix||'AWZ')+'-00001'};
+  $$('[data-l]',main).forEach(function(el){ var k=el.dataset.l; if(el.type==='checkbox') return; el.value=c[k]; });
+  function paint(){ var v=c.mode; $$('.lbl-raw',main).forEach(function(e){ e.classList.toggle('hidden',v==='browser'); }); $$('.lbl-ble',main).forEach(function(e){ e.classList.toggle('hidden',v!=='ble'); });
+    $('#lblname',main).textContent=lsGet('motor_lble_name','')?t('ble_cur',{n:lsGet('motor_lble_name','')}):'';
+    var pv=$('#lblprev',main); pv.innerHTML=''; try{ var cv=renderLabel(sample,c); cv.style.width=Math.min(260,c.w*5)+'px'; cv.style.height='auto'; cv.style.display='block'; pv.appendChild(cv); }catch(e){} }
+  $$('[data-l]',main).forEach(function(el){ el.addEventListener(el.tagName==='SELECT'||el.type==='checkbox'?'change':'input',function(){
+    var k=el.dataset.l; c[k]=el.type==='checkbox'?(el.checked?1:0):(el.tagName==='SELECT'&&/mode|lang/.test(k)?el.value:n2(el.value)); lblSave(c); paint(); }); });
+  $('#lblpick',main).addEventListener('click',async function(){ try{ var nm=await blePick('l'); toast(t('ble_cur',{n:nm}),'s'); paint(); }catch(e){ if(!/cancel/i.test(String(e&&e.message))) toast(errText(e),'e'); } });
+  $('#lbltest',main).addEventListener('click',function(){ printLabels([sample]); });
+  if(document.fonts&&document.fonts.ready) document.fonts.ready.then(paint); paint();
+}
+/* إعدادات طابعة الباركود (لكل جهاز) */
+var LBL_DEF={mode:'browser',lang:'tspl',w:50,h:30,gap:2,dpi:203,density:8,speed:4,copies:1,bh:45,ox:0,oy:0,rot:0,inv:0,f_name:1,f_box:1,f_code:1,f_site:0,f_area:0};
+function lblCfg(){ var o={}; try{ o=JSON.parse(lsGet('motor_lblcfg','')||'{}')||{}; }catch(e){}
+  if(o.w==null&&lsGet('motor_lbl_w','')) o.w=n2(lsGet('motor_lbl_w','50')); if(o.h==null&&lsGet('motor_lbl_h','')) o.h=n2(lsGet('motor_lbl_h','30'));
+  return Object.assign({},LBL_DEF,o); }
+function lblSave(o){ lsSet('motor_lblcfg',JSON.stringify(o)); }
+function c128Modules(text){ text=String(text).replace(/[^\x20-\x7E]/g,''); var codes=[104], sum=104;
+  for(var i=0;i<text.length;i++){ var v=text.charCodeAt(i)-32; codes.push(v); sum+=v*(i+1); }
+  codes.push(sum%103); codes.push(106); var m=[]; codes.forEach(function(cd){ var p=C128[cd]; for(var j=0;j<p.length;j++) m.push(+p[j]); }); return m; }
+/* رسم ملصق واحد على canvas بدقة الطابعة (203 أو 300 نقطة/إنش) */
+function renderLabel(c,cfg){
+  var dpm=cfg.dpi/25.4, W=Math.round(cfg.w*dpm), H=Math.round(cfg.h*dpm);
+  W=Math.ceil(W/8)*8;
+  var cv=document.createElement('canvas'); cv.width=W; cv.height=H; var x=cv.getContext('2d');
+  x.fillStyle='#fff'; x.fillRect(0,0,W,H); x.fillStyle='#000'; x.textAlign='center'; x.textBaseline='middle';
+  var pad=Math.round(1.2*dpm), ox=Math.round(n2(cfg.ox)*dpm), oy=Math.round(n2(cfg.oy)*dpm), y=pad+oy;
+  function line(txt,sz,bold){ if(!txt) return; var f=sz; x.direction=/[\u0600-\u06FF]/.test(txt)?'rtl':'ltr'; x.font=(bold?'bold ':'')+f+'px Cairo, Tahoma, Arial, sans-serif';
+    while(x.measureText(txt).width>W-pad*2&&f>8){ f--; x.font=(bold?'bold ':'')+f+'px Cairo, Tahoma, Arial, sans-serif'; }
+    x.fillText(txt,W/2+ox,y+f*0.6); y+=Math.round(f*1.18); }
+  var base=Math.max(14,Math.round(H/7));
+  if(cfg.f_site) line(SITE.name||'',Math.round(base*0.8),false);
+  var top=[cfg.f_name?c.name:'',cfg.f_box&&c.box?(t('box')+' '+c.box):'',cfg.f_area&&c.area?c.area:''].filter(Boolean).join(' · ');
+  line(top,base,true);
+  var codeH=cfg.f_code?Math.round(base*1.05):0, bh=Math.max(20,Math.min(H-y-codeH-pad,Math.round(H*n2(cfg.bh)/100)));
+  var mods=c128Modules(c.barcode||''), tot=mods.reduce(function(a,b){return a+b},0)+20, mw=Math.max(1,Math.floor((W-pad*2)/tot)), bw=tot*mw, bx=Math.round((W-bw)/2)+ox+10*mw, xx=bx;
+  mods.forEach(function(w,i){ if(i%2===0) x.fillRect(xx,y,w*mw,bh); xx+=w*mw; });
+  y+=bh+2;
+  if(cfg.f_code) line(c.barcode,codeH,true);
+  if(+cfg.rot===180){ var c2=document.createElement('canvas'); c2.width=W; c2.height=H; var x2=c2.getContext('2d'); x2.translate(W,H); x2.rotate(Math.PI); x2.drawImage(cv,0,0); cv=c2; }
+  return cv;
+}
+function canvasBits(cv,blackIsOne){
+  var w=cv.width, h=cv.height, d=cv.getContext('2d').getImageData(0,0,w,h).data, bpr=Math.ceil(w/8), out=new Uint8Array(bpr*h);
+  if(!blackIsOne) out.fill(255);
+  for(var y=0;y<h;y++) for(var xx=0;xx<w;xx++){ var i=(y*w+xx)*4; if((d[i]+d[i+1]+d[i+2])/3<150){ if(blackIsOne) out[y*bpr+(xx>>3)]|=(0x80>>(xx%8)); else out[y*bpr+(xx>>3)]&=~(0x80>>(xx%8)); } }
+  return {bpr:bpr,h:h,data:out};
+}
+function enc(str){ return new TextEncoder().encode(str); }
+function joinBytes(parts){ var len=parts.reduce(function(a,p){return a+p.length},0), o=new Uint8Array(len), k=0; parts.forEach(function(p){ o.set(p,k); k+=p.length; }); return o; }
+/* TSPL (Xprinter / TSC / Gprinter / HPRT…) */
+function labelsTspl(list,cfg){
+  var parts=[enc('SIZE '+cfg.w+' mm,'+cfg.h+' mm\r\nGAP '+n2(cfg.gap)+' mm,0 mm\r\nDENSITY '+cfg.density+'\r\nSPEED '+cfg.speed+'\r\nDIRECTION 0,0\r\nREFERENCE 0,0\r\nSET TEAR ON\r\n')];
+  list.forEach(function(c){ var b=canvasBits(renderLabel(c,cfg),!!+cfg.inv);
+    parts.push(enc('CLS\r\nBITMAP 0,0,'+b.bpr+','+b.h+',0,'),b.data,enc('\r\nPRINT 1,'+Math.max(1,cfg.copies|0)+'\r\n')); });
+  return joinBytes(parts);
+}
+/* ESC/POS (طابعات ملصقات تعمل بأوامر الإيصالات) */
+function labelsEscPos(list,cfg){
+  var parts=[new Uint8Array([0x1B,0x40])];
+  list.forEach(function(c){ var b=canvasBits(renderLabel(c,cfg),!+cfg.inv);
+    for(var k=0;k<Math.max(1,cfg.copies|0);k++){ parts.push(new Uint8Array([0x1D,0x76,0x30,0x00,b.bpr&255,(b.bpr>>8)&255,b.h&255,(b.h>>8)&255]),b.data,new Uint8Array([0x1D,0x0C])); } });
+  return joinBytes(parts);
+}
+async function printLabels(list){
+  list=(list||[]).filter(function(c){return c.barcode});
+  if(!list.length) return toast(t('no_results'),'e');
+  var cfg=lblCfg();
+  try{ if(document.fonts&&document.fonts.ready) await document.fonts.ready; }catch(e){}
+  if(cfg.mode==='ble'||cfg.mode==='rawbt'){
+    try{ var bytes=cfg.lang==='escpos'?labelsEscPos(list,cfg):labelsTspl(list,cfg);
+      if(cfg.mode==='rawbt') return rawbtSend(bytes);
+      toast(t('printing')); await bleWrite(bytes,'l'); toast('🏷️ ✓ '+list.length,'s'); }
+    catch(e){ toast(t('print_fail',{e:e&&e.message||''}),'e'); }
+    return;
+  }
+  return printLabelsHtml(list,cfg);
+}
+function printLabelsHtml(list,cfg){
+  var W=cfg.w, H=cfg.h;
   var html='<style>@page{size:'+W+'mm '+H+'mm;margin:0}#printArea .lbl{width:'+W+'mm;height:'+H+'mm;box-sizing:border-box;padding:1.5mm 2mm;text-align:center;font-family:Cairo,Arial;page-break-after:always;overflow:hidden;display:flex;flex-direction:column;justify-content:center}'+
     '#printArea .lbl b{display:block;font-size:'+Math.max(7,Math.round(H/3.6))+'px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#printArea .lbl span{font-size:'+Math.max(7,Math.round(H/3.4))+'px;letter-spacing:1px;font-weight:700}</style>'+
-    list.filter(function(c){return c.barcode}).map(function(c){ return '<div class="lbl"><b>'+esc(c.name)+(c.box?' · '+esc(c.box):'')+'</b>'+code128Svg(c.barcode,Math.round(H*1.9))+'<span>'+esc(c.barcode)+'</span></div>'; }).join('');
+    list.map(function(c){ var cp=[]; for(var k=0;k<Math.max(1,cfg.copies|0);k++) cp.push('<div class="lbl"><img src="'+renderLabel(c,cfg).toDataURL('image/png')+'" style="width:100%;height:100%;object-fit:contain"></div>'); return cp.join(''); }).join('');
   printHtml(html);
 }
 
@@ -3585,10 +3701,6 @@ VIEWS.settings=async function(main){
       '<div><label>'+esc(t('main_cur'))+'</label><select data-s="currency"><option value="USD">USD $</option><option value="LBP">LBP ل.ل</option></select></div>'+
       fld('lbp_rate','lbp_rate',S.lbp_rate)+fld('cur_label','cur_label',S.cur_label)+fld('round_step','round_step',S.round_step)+fld('barcode_prefix','barcode_prefix',S.barcode_prefix)+
       '<div style="grid-column:1/-1">'+chk('show_second','show_second',S.show_second)+chk('wa_from_office','wa_from_office',S.wa_from_office)+'</div>'+
-      '<div style="grid-column:1/-1;padding:10px;border-radius:12px;background:var(--wishbg)"><label>🟣 '+esc(t('whish_qr'))+'</label><div class="row">'+
-        (S.whish_qr_url?'<img id="swqr" src="'+esc(S.whish_qr_url)+'" alt="" style="height:90px;border-radius:8px;background:#fff">':'<span id="swqr"></span>')+
-        '<label class="btn wish" style="cursor:pointer">'+esc(t('whish_qr_up'))+'<input type="file" id="swqrf" accept="image/*" class="hidden"></label></div>'+
-        '<input type="hidden" data-s="whish_qr_url" value="'+esc(S.whish_qr_url||'')+'"><label style="margin-top:8px">'+esc(t('whish_phone'))+'</label><input data-s="whish_phone" value="'+esc(S.whish_phone||'')+'"></div>'+
       '<div style="grid-column:1/-1"><label>'+esc(t('invoice_note'))+'</label><textarea data-s="invoice_note">'+esc(S.invoice_note)+'</textarea></div></div></div>'+
       '<div class="card"><h3>'+esc(t('s_read'))+'</h3>'+chk('require_photo','require_photo',S.require_photo)+chk('first_baseline','first_read_baseline',S.first_read_baseline)+chk('require_gps','require_gps',S.require_gps)+chk('sees_all','collector_sees_all',S.collector_sees_all)+
       '<div class="g2" style="margin-top:8px">'+fld('max_dist','max_distance_m',S.max_distance_m)+'</div>'+
@@ -3601,7 +3713,7 @@ VIEWS.settings=async function(main){
     '<div class="g2" style="margin-top:8px"><div><label>'+esc(t('ble_chunk'))+'</label><input id="blech" inputmode="numeric" value="'+esc(lsGet('motor_ble_chunk','100'))+'"></div><div><label>'+esc(t('ble_delay'))+'</label><input id="bledl" inputmode="numeric" value="'+esc(lsGet('motor_ble_delay','20'))+'"></div></div>'+
     '<p class="muted">'+esc(t('ble_hint'))+'</p></div>'+
     '<p class="muted" id="rawhint">'+esc(t('rawbt_hint'))+'</p><button class="btn alt" id="ptest">'+esc(t('test_print'))+'</button>'+
-    '<div class="sec-t">🏷️ '+esc(t('lbl_size'))+'</div><div class="g2"><div><label>'+esc(t('lbl_w'))+'</label><input id="lw" inputmode="numeric" value="'+esc(lsGet('motor_lbl_w','50'))+'"></div><div><label>'+esc(t('lbl_h'))+'</label><input id="lh" inputmode="numeric" value="'+esc(lsGet('motor_lbl_h','30'))+'"></div></div><p class="muted">'+esc(t('lbl_hint'))+'</p></div>'+
+    '</div>'+lblCard()+
     (adm?'<div class="card"><button class="btn" id="bkn">'+esc(t('backup_now'))+'</button></div>':'');
   if(ME.staff_id){
     h+='<div class="card"><h3>🔐 '+esc(t('tfa'))+' — <span class="chip '+(ME.totp_enabled?'on':'gray')+'">'+esc(ME.totp_enabled?t('tfa_on'):t('tfa_off'))+'</span></h3><div id="tfabox">'+
@@ -3618,10 +3730,6 @@ VIEWS.settings=async function(main){
       try{ toast(t('uploading')); var b=await shrink(f,600); var path=await uploadPhoto(b,'logo'); $('[data-s=logo_url]',main).value=path;
         var im=$('#slogo',main); if(im.tagName==='IMG') im.src=path; else im.outerHTML='<img id="slogo" src="'+esc(path)+'" style="height:60px;border-radius:10px">'; toast(t('logo_saved'),'s'); }
       catch(e){ toast(errText(e),'e'); } });
-    $('#swqrf',main).addEventListener('change',async function(){ var f=this.files&&this.files[0]; if(!f) return;
-      try{ toast(t('uploading')); var b=await shrink(f,900); var path=await uploadPhoto(b,'logo'); $('[data-s=whish_qr_url]',main).value=path;
-        var im=$('#swqr',main); if(im.tagName==='IMG') im.src=path; else im.outerHTML='<img id="swqr" src="'+esc(path)+'" style="height:90px;border-radius:8px">'; toast(t('logo_saved'),'s'); }
-      catch(e){ toast(errText(e),'e'); } });
     $('#ssave',main).addEventListener('click',async function(){ var b=this, d={}; $$('[data-s]',main).forEach(function(el){ d[el.dataset.s]=el.type==='checkbox'?el.checked:el.value.trim(); });
       busy(b,true); var msg=$('#smsg',main); msg.className='msg'; msg.textContent='';
       try{ SITE=await call('motor_settings_save',{p_data:d}); msg.className='okmsg'; msg.textContent=t('saved'); paintShell(); }catch(e){ msg.className='err'; msg.textContent=errText(e); } busy(b,false); }); }
@@ -3631,8 +3739,7 @@ VIEWS.settings=async function(main){
   $('#pmode',main).addEventListener('change',function(){ lsSet('motor_print',this.value); pmTog(); });
   $('#ppw',main).addEventListener('change',function(){ lsSet('motor_paper',this.value); });
   $('#blech',main).addEventListener('change',function(){ lsSet('motor_ble_chunk',this.value); });
-  $('#lw',main).addEventListener('change',function(){ lsSet('motor_lbl_w',this.value); });
-  $('#lh',main).addEventListener('change',function(){ lsSet('motor_lbl_h',this.value); });
+  lblBind(main);
   if($('#bkn',main)) $('#bkn',main).addEventListener('click',async function(){ var b=this; busy(b,true,t('backup_making')); try{ await backupNow(); toast(t('backup_done'),'s'); }catch(e){ toast(errText(e),'e'); } busy(b,false); });
   $('#bledl',main).addEventListener('change',function(){ lsSet('motor_ble_delay',this.value); });
   $('#blepick',main).addEventListener('click',async function(){ try{ var nm=await blePick(); toast(t('ble_cur',{n:nm}),'s'); pmTog(); }catch(e){ if(!/cancel/i.test(String(e&&e.message))) toast(errText(e),'e'); } });
