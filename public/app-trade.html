@@ -590,14 +590,18 @@ function docBoxEffectBase(kind, d){
   if(!d || d.deleted) return null;
   const amt = Math.abs(Number(d.amount)||0); if(!amt) return null;
   if(kind==='receipts'){
-    if(d.shiftId || isPosReceipt(d) || !docMethodIsCash(d.method)) return null;   // إيصالات نقطة البيع محسوبة أصلاً
+    if(d.shiftId || isPosReceipt(d)) return null;   // إيصالات نقطة البيع محسوبة أصلاً (Whish تبعها من الصندوق)
+    if(isWhishMethod(d.method)) return { sign:1, currency:/ل\.ل|LBP/.test(d.method||'')?'LBP':'USD', amt, label:'إيصال قبض #'+(d.number||'')+' (Whish)', whish:true };
+    if(!docMethodIsCash(d.method)) return null;
     return { sign:1, currency:/ل\.ل/.test(d.method||'')?'LBP':'USD', amt, label:'إيصال قبض #'+(d.number||'') };
   }
   if(kind==='paymentVouchers'){
+    if(isWhishMethod(d.method)) return { sign:-1, currency:/ل\.ل|LBP/.test(d.method||'')?'LBP':'USD', amt, label:'سند صرف مورد #'+(d.number||'')+' (Whish)', whish:true };
     if(!docMethodIsCash(d.method)) return null;
     return { sign:-1, currency:/ل\.ل/.test(d.method||'')?'LBP':'USD', amt, label:'سند صرف مورد #'+(d.number||'') };
   }
   if(kind==='workerPayments'){
+    if(isWhishMethod(d.method)) return { sign:-1, currency:/ل\.ل|LBP/.test(d.method||'')?'LBP':'USD', amt, label:'دفعة عامل (Whish)', whish:true };
     if(!docMethodIsCash(d.method)) return null;
     return { sign:-1, currency:/ل\.ل|LBP/.test(d.method||'')?'LBP':'USD', amt, label:'دفعة عامل' };
   }
@@ -644,6 +648,11 @@ function syncDocsToBox(key, arr){
       const mRate = m && (m.rate || (m.currency==='LBP' && !m.deleted && usd0>0 && Math.abs(Number(m.amount)||0)>usd0*100 ? Math.abs(Number(m.amount))/usd0 : 0));
       const eff = legacyClosed ? docBoxEffectBase(key, d) : docBoxEffect(key, d, mRate || undefined);
       if(!m){
+        // دفع/قبض عبر Whish: بينزل دغري على حساب Whish بلا سؤال
+        if(eff && eff.whish && now - (d.createdAt||0) <= 5*60*1000 && !_paySrcAsked.has(d.id) && !(_sentSnap[key] && _sentSnap[key].has(d.id))){
+          _paySrcAsked.add(d.id); setTimeout(()=>applyPaySource(key, d.id, WHISH_CODE).catch(e=>console.error('whish doc', e)), 30);
+          return;
+        }
         // صرف جديد عملتو هلق عهالجهاز → منسأل: من الصندوق ولا من الخزنة؟
         if(eff && now - (d.createdAt||0) <= 5*60*1000 && !_paySrcAsked.has(d.id) && !(_sentSnap[key] && _sentSnap[key].has(d.id))){
           _paySrcAsked.add(d.id); _paySrcQueue.push({key, id:d.id}); setTimeout(nextPaySourceAsk, 50);
@@ -5736,6 +5745,8 @@ function render(){
   /* ---------- Warehouse (المستودع) ---------- */
   } else if(parts[0]==='pos'){
     html += crumbs([['الرئيسية','#/'],['نقطة البيع (POS)',null]]) + posView();
+  } else if(parts[0]==='whish' && canSeeSafe()){
+    html += crumbs([['الرئيسية','#/'],['كشف حساب Whish',null]]) + whishStatementView();
   } else if(parts[0]==='safe' && canSeeSafe()){
     html += crumbs([['الرئيسية','#/'],['الصندوق الأساسي',null]]) + safeView();
   } else if(parts[0]==='coa'){
@@ -5927,6 +5938,12 @@ function hubView(){
       <div class="hub-sub">يلي انتقل من الصناديق</div>
       <div class="hub-amt num" style="color:var(--steel)">${fmtNum(safeBalance().lbp)} ${secCurLabel()}</div>
     </div>`},
+    ...(whishEnabled()? [{key:'whish', perm:'__safe__', html:`<div class="hub-card" data-nav="#/whish">
+      <div class="hub-icon">📱</div>
+      <div class="hub-title">كشف حساب Whish</div>
+      <div class="hub-sub">كل قبض وصرف عبر Whish</div>
+      <div class="hub-amt num" style="color:#a3174a">${(()=>{ const w = whishBalanceParts(); return fmtNum(Math.round(w.lbp))+' '+secCurLabel()+(Math.abs(w.usd)>=0.005? ' + $'+w.usd.toFixed(2) : ''); })()}</div>
+    </div>`}] : []),
     {key:'coa', perm:'reports', html:`<div class="hub-card" data-nav="#/coa">
       <div class="hub-icon">📚</div>
       <div class="hub-title">لوحة الحسابات</div>
@@ -9702,7 +9719,7 @@ function safeViewMain(){
     <h2><span class="dot"></span> 🗄 الصندوق الأساسي</h2>
     <div class="stats" style="margin:8px 0 12px;">
       <div class="stat"><div class="k">الموجود بالصندوق الأساسي ${L}</div><div class="v num">${fmtNum(bal.lbp)}</div></div>
-      ${(()=>{ const w = whishBalanceParts(); return (Math.abs(w.lbp)>=1||Math.abs(w.usd)>=0.005)? `<div class="stat"><div class="k">📱 منها Whish</div><div class="v num" style="color:#a3174a;">${[w.lbp? fmtNum(w.lbp)+' '+L : '', w.usd? '$'+w.usd.toFixed(2) : ''].filter(Boolean).join(' + ')}</div></div><div class="stat"><div class="k">💵 منها كاش ${L}</div><div class="v num">${fmtNum(bal.lbp - w.lbp)}</div></div>` : ''; })()}
+      ${(()=>{ const w = whishInMainParts(); return (Math.abs(w.lbp)>=1||Math.abs(w.usd)>=0.005)? `<div class="stat"><div class="k">📱 منها Whish</div><div class="v num" style="color:#a3174a;">${[w.lbp? fmtNum(w.lbp)+' '+L : '', w.usd? '$'+w.usd.toFixed(2) : ''].filter(Boolean).join(' + ')}</div></div><div class="stat"><div class="k">💵 منها كاش ${L}</div><div class="v num">${fmtNum(bal.lbp - w.lbp)}</div></div>` : ''; })()}
       ${(lbpOnly && Math.abs(bal.usd)<0.005)? '' : `<div class="stat"><div class="k">الموجود بالصندوق الأساسي $</div><div class="v num">$${bal.usd.toFixed(2)}</div></div>`}
     </div>
     ${canUseSafe()? `<div class="action-row" style="margin-bottom:10px;">
@@ -10180,9 +10197,72 @@ const WHISH_CODE = '51601';
 const WHISH_TO_MAIN = '⟪main⟫';   // سحب من Whish كاش عالصندوق الأساسي: المجموع ما بيتغيّر، بس بيتحوّل من Whish لكاش
 function isWhishAcctMove(m){ return m && !m.deleted && (m.type==='acct_in' || m.type==='acct_out') && moneyAcctOf(m)===WHISH_CODE; }
 // رصيد Whish (يلي انقفل من الصناديق + الحركات عليه) بالعملتين
-function whishBalanceParts(){ const c = whishClosedTotals(); const o = {lbp:c.lbp, usd:c.usd};
+// يلي من Whish جوّا الصندوق الأساسي (المقفول من الصناديق + حركات Whish) — للتقسيم «منها Whish / منها كاش»
+function whishInMainParts(){ const c = whishClosedTotals(); const o = {lbp:c.lbp, usd:c.usd};
   (DB.cashMovements||[]).forEach(m=>{ if(!isWhishAcctMove(m)) return; const a = Math.abs(Number(m.amount)||0)*(m.type==='acct_in'? 1 : -1); if(m.currency==='USD') o.usd += a; else o.lbp += a; });
   return o; }
+function whishBalanceParts(){ const c = whishClosedTotals(); const o = {lbp:c.lbp, usd:c.usd};
+  const op = whishOpenTotals(); o.lbp += op.lbp; o.usd += op.usd;   // قبض Whish بالصناديق المفتوحة بينحسب دغري
+  (DB.cashMovements||[]).forEach(m=>{ if(!isWhishAcctMove(m)) return; const a = Math.abs(Number(m.amount)||0)*(m.type==='acct_in'? 1 : -1); if(m.currency==='USD') o.usd += a; else o.lbp += a; });
+  return o; }
+// كشف حساب Whish: كل قبض Whish (من البيع دغري — بلا ما نستنى إقفال الصندوق) وكل صرف/سحب منو، بلا تكرار عند الإقفال
+function whishStatementRows(){
+  const rows = [];
+  const shifts = DB.cashierShifts||[];
+  const closedIds = new Set((DB.cashMovements||[]).filter(m=>!m.deleted && m.type==='whish_close').map(m=>m.refSaleId));
+  const shOf = id=> shifts.find(x=>x.id===id);
+  // قبض Whish من الصناديق (البيع): بينزل لحظة ما ينعمل. صناديق قديمة انقفلت بلا «إقفال Whish» ما بتنحسب (متل الرصيد)
+  (DB.receipts||[]).forEach(r=>{ if(r.deleted || !r.shiftId || !isWhishMethod(r.method)) return; const sh = shOf(r.shiftId); if(!sh || sh.deleted) return;
+    if(sh.status!=='open' && !closedIds.has(sh.id)) return;
+    const usd = /\$/.test(r.method||''); const a = Number(r.amount)||0;
+    const inv = (DB.invoices||[]).find(i=>i.id===r.invoiceId || (i.receiptId && i.receiptId===r.id));
+    rows.push({ at:r.createdAt||0, date:r.date, kind:'in', lbp: usd? 0 : a, usd: usd? a : 0, label:'🧾 بيع Whish'+(r.number? ' — إيصال #'+r.number : '')+(inv && inv.number? ' (فاتورة #'+inv.number+')' : ''), by: sh.username });
+  });
+  // سحب/دفع/قبض مباشر على حساب Whish
+  (DB.cashMovements||[]).forEach(m=>{ if(!isWhishAcctMove(m)) return; const a = Math.abs(Number(m.amount)||0), sign = m.type==='acct_in'? 1 : -1;
+    const toMain = String(m.note||'').includes(WHISH_TO_MAIN);
+    rows.push({ at:m.createdAt||0, date:m.date, kind: sign>0? 'in' : 'out', lbp: m.currency==='USD'? 0 : sign*a, usd: m.currency==='USD'? sign*a : 0,
+      label: (toMain? '💵 ' : (isDocMirrorMove(m)? (sign>0? '📥 ' : '📤 ') : '↔ ')) + String(m.note||'').replace(DOC_MIRROR_TAG,'').replace(/^\[حساب\] /,'').replace(WHISH_TO_MAIN,'').replace(/\s*⟨\d+⟩/,'').trim(), by:'' });
+  });
+  rows.sort((a,b)=>a.at-b.at);
+  let bl = 0, bu = 0; rows.forEach(r=>{ if(r.kind==='in'){ r.lbp = Math.abs(r.lbp); r.usd = Math.abs(r.usd); } bl += r.kind==='in'? r.lbp : r.lbp; bu += r.kind==='in'? r.usd : r.usd; r.balLbp = bl; r.balUsd = bu; });
+  return rows;
+}
+function whishStatementView(){
+  const L = secCurLabel(), lbpOnly = currencyMode()==='SEC';
+  const qs = new URLSearchParams(location.hash.split('?')[1]||''); const from = qs.get('from')||'', to = qs.get('to')||'';
+  const all = whishStatementRows();
+  const bal = all.length? { lbp: all[all.length-1].balLbp, usd: all[all.length-1].balUsd } : { lbp:0, usd:0 };
+  const list = all.filter(r=>(!from || (r.date||'')>=from) && (!to || (r.date||'')<=to)).slice().reverse();
+  const tin = list.filter(r=>r.kind==='in').reduce((a,r)=>a+r.lbp,0), tout = list.filter(r=>r.kind==='out').reduce((a,r)=>a+Math.abs(r.lbp),0);
+  const money = (l,u)=> [ (l||lbpOnly)? fmtNum(Math.round(l))+' '+escapeHtml(L) : '', Math.abs(u)>=0.005? '$'+u.toFixed(2) : '' ].filter(Boolean).join(' + ') || '0';
+  return `
+  <div class="stats">
+    <div class="stat-card" style="border-color:#e7a3bb;"><div class="label">📱 رصيد Whish هلق</div><div class="value num" style="color:#a3174a;">${money(bal.lbp, bal.usd)}</div></div>
+    <div class="stat-card"><div class="label">قبض (بالفترة)</div><div class="value num" style="color:var(--credit);">${fmtNum(Math.round(tin))} ${escapeHtml(L)}</div></div>
+    <div class="stat-card"><div class="label">صرف وسحب (بالفترة)</div><div class="value num" style="color:var(--debit);">${fmtNum(Math.round(tout))} ${escapeHtml(L)}</div></div>
+  </div>
+  <div class="card">
+    <h2><span class="dot"></span> 📱 كشف حساب Whish</h2>
+    <div style="font-size:12.5px; color:var(--ink-soft); margin-bottom:8px;">كل بيعة أو إيصال قبض عبر Whish بينزل هون دغري، وكل سند صرف أو سحب عبر Whish كمان — بلا ما نستنى إقفال الصندوق، وإقفال الصندوق ما بيكرّرهن.</div>
+    <div class="action-row no-print" style="margin-bottom:10px; align-items:end; flex-wrap:wrap;">
+      ${canUseSafe()? `<button class="btn" data-whish-withdraw="1" style="background:#fdeef3; border-color:#e7a3bb; color:#a3174a; font-weight:800;">📱 سحب من Whish</button>` : ''}
+      <label style="font-size:12.5px;">من <input type="date" id="wsFrom" value="${from}" style="width:auto;"></label>
+      <label style="font-size:12.5px;">لـ <input type="date" id="wsTo" value="${to}" style="width:auto;"></label>
+      <button class="btn btn-sm" id="wsApply">عرض</button>
+      <button class="btn btn-sm btn-primary" onclick="printWithFilename('Whish-${todayISO()}')">🖨 طباعة</button>
+    </div>
+    ${list.length? `<div class="table-scroll"><table><thead><tr><th>التاريخ</th><th>البيان</th><th>الموظف</th><th>داخل</th><th>طالع</th><th>الرصيد</th></tr></thead><tbody>
+      ${list.map(r=>`<tr><td class="num" style="font-size:12px; white-space:nowrap;">${r.at? fmtDateTime12(r.at) : fmtDate(r.date)}</td><td>${escapeHtml(r.label)}</td><td>${escapeHtml(r.by||'')}</td>
+        <td class="num" style="color:var(--credit);">${r.kind==='in'? money(r.lbp, r.usd) : ''}</td>
+        <td class="num" style="color:var(--debit);">${r.kind==='out'? money(Math.abs(r.lbp), Math.abs(r.usd)) : ''}</td>
+        <td class="num" style="font-weight:700;">${money(r.balLbp, r.balUsd)}</td></tr>`).join('')}
+    </tbody></table></div>` : `<div class="empty"><div class="big">ما في حركات Whish بعد</div></div>`}
+  </div>`;
+}
+document.addEventListener('click', e=>{ const b = e.target.closest && e.target.closest('#wsApply'); if(!b) return;
+  const f = (document.getElementById('wsFrom')||{}).value||'', t = (document.getElementById('wsTo')||{}).value||'';
+  const q = new URLSearchParams(); if(f) q.set('from', f); if(t) q.set('to', t); go('#/whish'+(q.toString()? '?'+q.toString() : '')); });
 function openWhishWithdrawModal(){
   const L = secCurLabel(), lbpOnly = currencyMode()==='SEC';
   const w = whishBalanceParts();
@@ -11315,6 +11395,7 @@ function paymentFormView(kind, rec, partyId){
           <button type="button" class="btn btn-sm ${d.method==='نقدا'?'btn-primary':''}" data-method="نقدا">نقدًا</button>
           <button type="button" class="btn btn-sm ${d.method==='شيك'?'btn-primary':''}" data-method="شيك">شيك</button>
           <button type="button" class="btn btn-sm ${d.method==='حوالة'?'btn-primary':''}" data-method="حوالة">حوالة</button>
+          ${whishEnabled()? `<button type="button" class="btn btn-sm ${isWhishMethod(d.method)?'btn-primary':''}" data-method="Whish" style="${isWhishMethod(d.method)? '' : 'color:#a3174a;'}">📱 Whish</button>` : ''}
         </div>
       </div>
     </div>
@@ -11499,7 +11580,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-11-09 · 00:30 · v86';
+const APP_TRADE_BUILD = '2026-11-09 · 15:40 · v87';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 function settingsView(){
   const s = DB.settings;
