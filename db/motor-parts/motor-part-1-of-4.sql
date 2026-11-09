@@ -677,7 +677,8 @@ returns boolean language plpgsql stable set search_path = public, extensions as 
 declare key bytea := public._motor_b32_decode(p_secret); w int; ctr bigint; msg bytea; h bytea; off int; bin bigint;
 begin
   if p_code is null or p_code !~ '^\d{6}$' or length(key) = 0 then return false; end if;
-  for w in -1..1 loop
+  -- ±4 دقائق: ساعة الهاتف كثيراً ما تكون متقدّمة أو متأخرة دقيقة أو دقيقتين
+  for w in -8..8 loop
     ctr := floor(extract(epoch from now()) / 30)::bigint + w;
     msg := decode(lpad(to_hex(ctr), 16, '0'), 'hex');
     h := hmac(msg, key, 'sha1');

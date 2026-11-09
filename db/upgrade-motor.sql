@@ -676,7 +676,8 @@ returns boolean language plpgsql stable set search_path = public, extensions as 
 declare key bytea := public._motor_b32_decode(p_secret); w int; ctr bigint; msg bytea; h bytea; off int; bin bigint;
 begin
   if p_code is null or p_code !~ '^\d{6}$' or length(key) = 0 then return false; end if;
-  for w in -1..1 loop
+  -- ±4 دقائق: ساعة الهاتف كثيراً ما تكون متقدّمة أو متأخرة دقيقة أو دقيقتين
+  for w in -8..8 loop
     ctr := floor(extract(epoch from now()) / 30)::bigint + w;
     msg := decode(lpad(to_hex(ctr), 16, '0'), 'hex');
     h := hmac(msg, key, 'sha1');
@@ -1845,13 +1846,18 @@ declare w jsonb; sec text; st public.motor_sites%rowtype; u text;
 begin
   w := public._motor_who(p_slug, p_token);
   if w->>'staff_id' is null then perform public._motor_err('forbidden'); end if;
-  sec := public._motor_b32_encode(gen_random_bytes(20));
-  update public.motor_staff_secrets set totp_pending = sec where staff_id = (w->>'staff_id')::uuid;
+  -- نفس المفتاح إذا ضغط «تفعيل» أكثر من مرة (حتى ما يصير الـQR الممسوح قديم)
+  select totp_pending into sec from public.motor_staff_secrets where staff_id = (w->>'staff_id')::uuid;
+  if coalesce(sec,'') = '' then
+    sec := public._motor_b32_encode(gen_random_bytes(20));
+    update public.motor_staff_secrets set totp_pending = sec where staff_id = (w->>'staff_id')::uuid;
+  end if;
   select * into st from public.motor_sites where id = (w->>'site_id')::uuid;
   select username into u from public.motor_staff where id = (w->>'staff_id')::uuid;
+  -- الرابط بأحرف إنكليزية فقط (الأحرف العربية كانت تخرب الـQR)
   return jsonb_build_object('secret', sec,
-    'uri', 'otpauth://totp/' || replace(coalesce(nullif(st.name,''), st.slug),' ','%20') || ':' || u ||
-           '?secret=' || sec || '&issuer=LibanApps%20Motor&digits=6&period=30');
+    'uri', 'otpauth://totp/LibanApps%20Motor:' || st.slug || '-' || regexp_replace(u, '[^a-z0-9._-]', '', 'g') ||
+           '?secret=' || sec || '&issuer=LibanApps%20Motor&algorithm=SHA1&digits=6&period=30');
 end $$;
 
 create or replace function public.motor_2fa_enable(p_slug text, p_token text, p_code text)
