@@ -2098,6 +2098,30 @@ var CFG=window.LIBANAPPS, sb=null;
 try{ sb=window.supabase.createClient(CFG.SUPABASE_URL,CFG.SUPABASE_ANON_KEY); }catch(e){}
 var $=function(s,r){return (r||document).querySelector(s)}, $$=function(s,r){return Array.prototype.slice.call((r||document).querySelectorAll(s))};
 Object.assign(D,{
+ nav_suppliers:['الموردون','Suppliers','Fournisseurs'],
+ sup_new:['مورد جديد','New supplier','Nouveau fournisseur'], sup_name:['المورد','Supplier','Fournisseur'], sup_none:['أضف مورداً أولاً','Add a supplier first','Ajoutez d’abord un fournisseur'],
+ sup_purchases:['المشتريات','Purchases','Achats'], sup_balance:['الرصيد المستحق للمورد','Owed to supplier','Dû au fournisseur'], sup_balance_all:['مجموع المستحق للموردين','Total owed to suppliers','Total dû aux fournisseurs'],
+ sup_pay:['دفعة للمورد','Supplier payment','Paiement fournisseur'], k_supplier:['دفعات الموردين','Supplier payments','Paiements fournisseurs'],
+ pur_new:['فاتورة مشتريات','Purchase invoice','Facture d’achat'], pur_inv:['فاتورة مشتريات','Purchase invoice','Facture d’achat'], pur_ref:['رقم فاتورة المورد','Supplier invoice no.','N° facture fournisseur'],
+ pur_item:['الصنف','Item','Article'], pur_items:['الأصناف','Items','Articles'], pur_line:['سطر جديد','Add line','Ajouter une ligne'],
+ pur_paid_now:['المدفوع الآن (اختياري)','Paid now (optional)','Payé maintenant (facultatif)'],
+ pur_save_stock:['حفظ وإضافة إلى المخزون','Save and add to stock','Enregistrer et ajouter au stock'],
+ pur_save_nostock:['حفظ بدون إضافة إلى المخزون','Save without adding to stock','Enregistrer sans stock'],
+ pur_saved:['تم حفظ فاتورة المشتريات #{n} — {v}','Purchase #{n} saved — {v}','Achat n°{n} enregistré — {v}'],
+ pur_void_q:['إلغاء فاتورة المشتريات؟ إذا كانت مضافة إلى المخزون تُخصم كمياتها منه.','Void this purchase? If it was added to stock, its quantities are removed.','Annuler cet achat ? Les quantités ajoutées au stock seront retirées.'],
+ e_no_items:['أضف صنفاً واحداً على الأقل مع الكمية','Add at least one item with a quantity','Ajoutez au moins un article'],
+ e_has_history:['لا يمكن حذف مورد عليه فواتير أو دفعات','Cannot delete a supplier with invoices or payments','Fournisseur avec historique'],
+ stk_out:['سحب','Withdraw','Retirer'], stk_avail:['الكمية المتوفرة','Available','Disponible'], stk_taker:['مين سحب','Taken by','Retiré par'],
+ stk_taker_other:['شخص آخر (اكتب الاسم)','Someone else (type the name)','Autre (saisir le nom)'], stk_taker_ph:['اسم الشخص الذي سحب','Name of the person','Nom de la personne'],
+ stk_for:['لأي غرض / لأي زبون','Purpose / customer','Motif / client'], stk_for_ph:['مثال: تركيب عداد لزبون…','e.g. meter install for a customer…','ex. pose de compteur…'],
+ stk_moves:['سجل حركات المخزون','Stock movements','Mouvements de stock'], stk_k_out:['سحب','Withdrawal','Retrait'], stk_k_purchase:['مشتريات','Purchase','Achat'], stk_k_adjust:['تعديل','Adjustment','Ajustement'], stk_k_void:['إلغاء مشتريات','Purchase voided','Achat annulé'],
+ e_taker_required:['حدّد مين سحب من المخزون','Choose who took it from stock','Indiquez qui a retiré'], e_stock_low:['الكمية غير كافية في المخزون (المتوفر {x})','Not enough in stock (available {x})','Stock insuffisant (disponible {x})'],
+ sal_add:['إضافة المعاش','Add salary','Ajouter le salaire'], sal_add_all:['إضافة معاش الشهر لكل الموظفين','Add this month’s salary for everyone','Ajouter le salaire du mois pour tous'],
+ sal_add_all_q:['إضافة المعاش الشهري لشهر {p} لكل موظف له معاش ولم يُضف له بعد؟','Add the {p} salary for every employee who has one and was not added yet?','Ajouter le salaire de {p} pour chaque employé non encore ajouté ?'],
+ sal_add_hint:['تُضاف القيمة إلى حساب الموظف (له). يمكنك إضافة مكافأة أو بدل بنفس الطريقة، أو قيمة سالبة للخصم.','The amount is credited to the employee’s account. Use the same for bonuses, or a negative value for a deduction.','Le montant est crédité au compte de l’employé. Valeur négative = retenue.'],
+ sal_set_hint:['هذه القيمة تُستعمل تلقائياً عند «إضافة المعاش» كل شهر.','This amount is used automatically when you add the monthly salary.','Montant utilisé automatiquement chaque mois.'],
+ sal_not_added:['لم يُضف','Not added','Non ajouté'], sal_bal:['الرصيد المستحق له','Owed to employee','Dû à l’employé'], sal_bal_all:['مجموع المستحق للموظفين','Total owed to staff','Total dû au personnel'],
+ sal_stmt:['كشف حساب الموظف','Employee statement','Relevé de l’employé'], sal_due_row:['معاش مستحق','Salary due','Salaire dû'], sal_total_due:['مجموع المستحق','Total due','Total dû'],
  lbl_t:['طابعة الباركود (الملصقات)','Barcode / label printer','Imprimante d’étiquettes'],
  lbl_mode:['طريقة الطباعة','Print method','Méthode'],
  lbl_m_browser:['نافذة الطباعة (طابعة USB / ويندوز)','Print dialog (USB / Windows printer)','Fenêtre d’impression (USB / Windows)'],
@@ -2320,6 +2344,7 @@ var TABS=[
   {id:'expenses',k:'nav_expenses',i:'🧾',admin:true},
   {id:'salaries',k:'nav_salaries',i:'👷',admin:true},
   {id:'stock',k:'nav_stock',i:'📦',admin:true},
+  {id:'suppliers',k:'nav_suppliers',i:'🚚',admin:true},
   {id:'cstmt',k:'nav_cstmt',i:'🧾'},
   {id:'report',k:'nav_report',i:'📊',admin:true},
   {id:'map',k:'nav_map',i:'🗺️',admin:true},
@@ -3969,25 +3994,47 @@ function expenseForm(after){
 var YF={period:''};
 VIEWS.salaries=async function(main){
   if(!YF.period) YF.period=TODAY.slice(0,7);
-  main.innerHTML='<div class="toolbar"><label style="margin:0">'+esc(t('month'))+'</label><input type="month" id="yp" value="'+esc(YF.period)+'" style="flex:0 1 180px"><span class="sp"></span><b id="ytot"></b></div><div id="ybody"></div>';
+  main.innerHTML='<div class="toolbar"><label style="margin:0">'+esc(t('month'))+'</label><input type="month" id="yp" value="'+esc(YF.period)+'" style="flex:0 1 180px"><button class="btn" id="yall">➕ '+esc(t('sal_add_all'))+'</button><span class="sp"></span></div><div id="ybody"></div>';
   var L=[];
   async function load(){
     var box=$('#ybody',main); box.innerHTML='<div class="muted">'+esc(t('loading'))+'</div>';
     try{ L=await call('motor_salaries',{p_period:YF.period}); }catch(e){ box.innerHTML='<div class="err">'+esc(errText(e))+'</div>'; return; }
-    var due=0, paid=0; L.forEach(function(s){ due+=n2(s.salary); paid+=n2(s.paid); });
-    box.innerHTML='<div class="stats">'+stat(t('sal_due'),money(due))+stat(t('sal_paid'),money(paid))+stat(t('sal_rem'),money(due-paid))+'</div>'+
-      '<div class="tw"><table><thead><tr><th>'+esc(t('name_user'))+'</th><th>'+esc(t('salary'))+'</th><th>'+esc(t('sal_paid'))+'</th><th>'+esc(t('sal_rem'))+'</th><th>'+esc(t('payments'))+'</th><th></th></tr></thead><tbody>'+
-      (L.map(function(s,i){ var rem=n2(s.salary)-n2(s.paid);
-        return '<tr><td><b>'+esc(s.name)+'</b></td><td class="num">'+esc(money(s.salary))+'</td><td class="num">'+esc(money(s.paid))+'</td><td class="num"><b style="color:'+(rem>0?'var(--bad)':'var(--ok)')+'">'+esc(money(rem))+'</b></td>'+
+    var due=0, paid=0, bal=0; L.forEach(function(s){ due+=n2(s.due); paid+=n2(s.paid); bal+=n2(s.balance); });
+    box.innerHTML='<div class="stats">'+stat(t('sal_due')+' ('+YF.period+')',money(due))+stat(t('sal_paid')+' ('+YF.period+')',money(paid))+stat(t('sal_bal_all'),money(bal))+'</div>'+
+      '<div class="tw"><table><thead><tr><th>'+esc(t('name_user'))+'</th><th>'+esc(t('salary'))+'</th><th>'+esc(t('sal_due'))+'</th><th>'+esc(t('sal_paid'))+'</th><th>'+esc(t('payments'))+'</th><th>'+esc(t('sal_bal'))+'</th><th></th></tr></thead><tbody>'+
+      (L.map(function(s,i){ var b=n2(s.balance);
+        return '<tr><td><b>'+esc(s.name)+'</b></td>'+
+          '<td class="num">'+esc(money(s.salary))+' <button class="btn ghost sm" data-ss="'+i+'">✏️</button></td>'+
+          '<td class="num">'+(s.due==null?'<span class="chip warn">'+esc(t('sal_not_added'))+'</span>':esc(money(s.due)))+'</td>'+
+          '<td class="num">'+esc(money(s.paid))+'</td>'+
           '<td>'+(s.payments||[]).map(function(p,j){ return '<div class="muted num" style="white-space:nowrap">#'+esc(p.vno)+' · '+esc(dt(p.at))+' · '+esc(money(p.amount))+' '+accChip(p.account)+' <a href="#" data-pp="'+i+'|'+j+'">🖨️</a></div>'; }).join('')+'</td>'+
-          '<td><button class="btn ok sm" data-pay="'+i+'">'+esc(t('sal_pay'))+'</button></td></tr>'; }).join('')||'<tr><td colspan="6" class="muted">'+esc(t('no_results'))+'</td></tr>')+'</tbody></table></div>';
+          '<td class="num"><b style="color:'+(b>0?'var(--bad)':'var(--ok)')+'">'+esc(money(b))+'</b></td>'+
+          '<td style="white-space:nowrap"><button class="btn alt sm" data-due="'+i+'">➕ '+esc(t('sal_add'))+'</button> <button class="btn ok sm" data-pay="'+i+'">'+esc(t('sal_pay'))+'</button> <button class="btn ghost sm" data-st="'+i+'">'+esc(t('statement'))+'</button></td></tr>'; }).join('')||'<tr><td colspan="7" class="muted">'+esc(t('no_results'))+'</td></tr>')+'</tbody></table></div>';
   }
   $('#yp',main).addEventListener('change',function(){ if(/^\d{4}-\d{2}$/.test(this.value)){ YF.period=this.value; load(); } });
+  $('#yall',main).addEventListener('click',async function(){ if(!(await confirmBox(t('sal_add_all_q',{p:YF.period})))) return;
+    try{ var r=await call('motor_salary_due_all',{p_period:YF.period}); toast(t('saved')+' ('+r.count+')','s'); load(); }catch(e){ toast(errText(e),'e'); } });
   $('#ybody',main).addEventListener('click',function(e){
-    var pp=e.target.closest('[data-pp]'); if(pp){ e.preventDefault(); var q=pp.dataset.pp.split('|'), s=L[+q[0]], p=s.payments[+q[1]];
-      return printDoc(voucherTicket({vno:p.vno,at:p.at,staff:s.name,period:YF.period,amount:p.amount,account:p.account,note:p.note,by:ME.name})); }
-    var b=e.target.closest('[data-pay]'); if(!b) return; var s=L[+b.dataset.pay], rem=Math.max(0,n2(s.salary)-n2(s.paid));
-    var m=modal(t('sal_pay')+' — '+s.name,'<div class="muted">'+esc(t('month'))+': <b class="num">'+esc(YF.period)+'</b> · '+esc(t('sal_rem'))+': <b class="num">'+esc(money(rem))+'</b></div>'+
+    var pp=e.target.closest('[data-pp]'); if(pp){ e.preventDefault(); var q=pp.dataset.pp.split('|'), s0=L[+q[0]], p=s0.payments[+q[1]];
+      return printDoc(voucherTicket({vno:p.vno,at:p.at,staff:s0.name,period:YF.period,amount:p.amount,account:p.account,note:p.note,by:ME.name})); }
+    var ss=e.target.closest('[data-ss]'); if(ss){ var s1=L[+ss.dataset.ss];
+      var m1=modal(t('salary')+' — '+s1.name,'<label>'+esc(t('salary'))+' ('+esc(mainCur())+')</label><input id="ysv" inputmode="decimal" style="font-size:20px" value="'+esc(n2(s1.salary)||'')+'"><p class="muted">'+esc(t('sal_set_hint'))+'</p><div id="ysm" class="err msg"></div>',
+        '<button class="btn ghost" data-x>'+esc(t('cancel'))+'</button><button class="btn" data-s>'+esc(t('save'))+'</button>');
+      m1.foot.addEventListener('click',async function(ev){ if(ev.target.closest('[data-x]')) return m1.close(); var bb=ev.target.closest('[data-s]'); if(!bb) return; busy(bb,true);
+        try{ await call('motor_staff_salary_set',{p_staff:s1.id,p_amount:n2($('#ysv',m1.body).value)}); toast(t('saved'),'s'); m1.close(); load(); }catch(err){ $('#ysm',m1.body).textContent=errText(err); busy(bb,false); } });
+      return; }
+    var du=e.target.closest('[data-due]'); if(du){ var s2=L[+du.dataset.due];
+      var m2=modal(t('sal_add')+' — '+s2.name,'<div class="muted">'+esc(t('month'))+': <b class="num">'+esc(YF.period)+'</b></div>'+
+        '<label style="margin-top:8px">'+esc(t('amount'))+' ('+esc(mainCur())+')</label><input id="yda" inputmode="decimal" style="font-size:20px" value="'+esc(n2(s2.salary)||'')+'">'+
+        '<p class="muted">'+esc(t('sal_add_hint'))+'</p><label>'+esc(t('note'))+'</label><input id="ydn" value="'+esc(t('k_salary')+' '+YF.period)+'"><div id="ydm" class="err msg" style="margin-top:8px"></div>',
+        '<button class="btn ghost" data-x>'+esc(t('cancel'))+'</button><button class="btn" data-s>'+esc(t('save'))+'</button>');
+      m2.foot.addEventListener('click',async function(ev){ if(ev.target.closest('[data-x]')) return m2.close(); var bb=ev.target.closest('[data-s]'); if(!bb) return;
+        var v=n2($('#yda',m2.body).value); if(!v){ $('#ydm',m2.body).textContent=t('e_bad_amount'); return; } busy(bb,true);
+        try{ await call('motor_salary_due_add',{p_staff:s2.id,p_period:YF.period,p_amount:v,p_note:$('#ydn',m2.body).value}); toast(t('saved'),'s'); m2.close(); load(); }catch(err){ $('#ydm',m2.body).textContent=errText(err); busy(bb,false); } });
+      return; }
+    var st=e.target.closest('[data-st]'); if(st) return staffStatement(L[+st.dataset.st],load);
+    var b=e.target.closest('[data-pay]'); if(!b) return; var s=L[+b.dataset.pay], rem=Math.max(0,n2(s.balance));
+    var m=modal(t('sal_pay')+' — '+s.name,'<div class="muted">'+esc(t('month'))+': <b class="num">'+esc(YF.period)+'</b> · '+esc(t('sal_bal'))+': <b class="num">'+esc(money(s.balance))+'</b></div>'+
       '<label style="margin-top:8px">'+esc(t('amount'))+' ('+esc(mainCur())+')</label><input id="ya" inputmode="decimal" style="font-size:20px" value="'+esc(rem||'')+'">'+
       '<div style="margin-top:8px">'+accPick('yacc')+'</div><label style="margin-top:8px">'+esc(t('note'))+'</label><input id="yn"><div id="ymsg" class="err msg" style="margin-top:8px"></div>',
       '<button class="btn ghost" data-x>'+esc(t('cancel'))+'</button><button class="btn" data-s>'+esc(t('save'))+' + 🖨️</button><button class="btn alt" data-s="np">'+esc(t('save'))+'</button>');
@@ -4002,19 +4049,166 @@ VIEWS.salaries=async function(main){
   });
   load();
 };
+/* كشف حساب الموظف: المعاشات المضافة (له) والدفعات (عليه) */
+async function staffStatement(s,after){
+  var m=modal(t('sal_stmt')+' — '+s.name,'<div class="muted">'+esc(t('loading'))+'</div>',false,true), d;
+  async function paint(){
+    try{ d=await call('motor_staff_statement',{p_staff:s.id}); }catch(e){ m.body.innerHTML='<div class="err">'+esc(errText(e))+'</div>'; return; }
+    var run=0, inn=0, out=0;
+    var trs=d.rows.map(function(r){ var cr=r.t==='due'?n2(r.amount):0, db=r.t==='pay'?n2(r.amount):0; run+=cr-db; inn+=cr; out+=db;
+      return '<tr><td class="num">'+esc(dt(r.at))+'</td><td>'+esc(r.t==='due'?t('sal_due_row'):t('sal_pay')+' #'+r.vno)+(r.t==='pay'?' '+accChip(r.account):'')+'</td><td class="num">'+esc(r.period||'')+'</td><td>'+esc(r.note||'')+'</td>'+
+        '<td class="num">'+(cr?esc(money(cr)):'')+'</td><td class="num">'+(db?esc(money(db)):'')+'</td><td class="num"><b>'+esc(money(run))+'</b></td>'+
+        '<td>'+(r.t==='due'?'<button class="btn ghost sm" data-dd="'+esc(r.id)+'">'+esc(t('delete'))+'</button>':'')+'</td></tr>'; });
+    m.body.innerHTML='<div class="stats">'+stat(t('sal_total_due'),money(inn))+stat(t('sal_paid'),money(out))+stat(t('sal_bal'),money(inn-out))+'</div>'+
+      '<div class="tw"><table><thead><tr><th>'+esc(t('date'))+'</th><th>'+esc(t('type'))+'</th><th>'+esc(t('month'))+'</th><th>'+esc(t('note'))+'</th><th>'+esc(t('sal_due'))+'</th><th>'+esc(t('sal_paid'))+'</th><th>'+esc(t('running'))+'</th><th></th></tr></thead><tbody>'+
+      (trs.join('')||'<tr><td colspan="8" class="muted">'+esc(t('no_results'))+'</td></tr>')+'</tbody></table></div>'+
+      '<div class="row" style="margin-top:10px"><button class="btn ghost" id="ssx">'+esc(t('export_xlsx'))+'</button></div>';
+    $('#ssx',m.body).addEventListener('click',function(){ var R=[[t('date'),t('type'),t('month'),t('note'),t('sal_due'),t('sal_paid'),t('running')]], r2=0;
+      d.rows.forEach(function(r){ var cr=r.t==='due'?n2(r.amount):0, db=r.t==='pay'?n2(r.amount):0; r2+=cr-db; R.push([dt(r.at),r.t==='due'?t('sal_due_row'):t('sal_pay')+' #'+r.vno,r.period||'',r.note||'',cr,db,r2]); });
+      downloadBlob(makeXlsx([{name:s.name.slice(0,28),rows:R}]),'staff-'+s.name+'.xlsx'); });
+  }
+  m.body.addEventListener('click',async function(e){ var b=e.target.closest('[data-dd]'); if(!b) return; if(!(await confirmBox(t('confirm_delete')))) return;
+    try{ await call('motor_salary_due_delete',{p_id:b.dataset.dd}); toast(t('saved'),'s'); paint(); after&&after(); }catch(err){ toast(errText(err),'e'); } });
+  paint();
+}
+
+/* =========================================================
+   الموردون: فواتير المشتريات (تدخل المخزون أو لا) + الدفعات بسند صرف
+   ========================================================= */
+VIEWS.suppliers=async function(main){
+  var L=await call('motor_suppliers');
+  var tp=0, tb=0; L.forEach(function(x){ tp+=n2(x.purchases); tb+=n2(x.balance); });
+  main.innerHTML='<div class="toolbar"><button class="btn" id="uadd">➕ '+esc(t('sup_new'))+'</button><button class="btn alt" id="upur">🧾 '+esc(t('pur_new'))+'</button><span class="sp"></span></div>'+
+    '<div class="stats">'+stat(t('sup_purchases'),money(tp))+stat(t('sup_balance_all'),money(tb))+'</div>'+
+    '<div class="tw"><table><thead><tr><th>'+esc(t('sup_name'))+'</th><th>'+esc(t('phone'))+'</th><th>'+esc(t('sup_purchases'))+'</th><th>'+esc(t('sal_paid'))+'</th><th>'+esc(t('sup_balance'))+'</th><th></th></tr></thead><tbody>'+
+    (L.map(function(x,i){ return '<tr><td><b>'+esc(x.name)+'</b>'+(x.notes?'<div class="muted">'+esc(x.notes)+'</div>':'')+'</td><td class="num">'+esc(x.phone)+'</td><td class="num">'+esc(money(x.purchases))+' <span class="muted">('+esc(x.count)+')</span></td><td class="num">'+esc(money(x.paid))+'</td>'+
+      '<td class="num"><b style="color:'+(n2(x.balance)>0?'var(--bad)':'var(--ok)')+'">'+esc(money(x.balance))+'</b></td>'+
+      '<td style="white-space:nowrap"><button class="btn alt sm" data-pu="'+i+'">🧾 '+esc(t('pur_new'))+'</button> <button class="btn ok sm" data-up="'+i+'">💸 '+esc(t('sup_pay'))+'</button> <button class="btn ghost sm" data-us="'+i+'">'+esc(t('statement'))+'</button> <button class="btn ghost sm" data-ue="'+i+'">✏️</button></td></tr>'; }).join('')||
+     '<tr><td colspan="6" class="muted">'+esc(t('no_results'))+'</td></tr>')+'</tbody></table></div>';
+  $('#uadd',main).addEventListener('click',function(){ supplierForm(null); });
+  $('#upur',main).addEventListener('click',function(){ if(!L.length) return toast(t('sup_none'),'e'); purchaseForm(L,null); });
+  main.addEventListener('click',function(e){ var b=e.target.closest('[data-pu],[data-up],[data-us],[data-ue]'); if(!b) return;
+    if(b.dataset.pu) return purchaseForm(L,L[+b.dataset.pu]);
+    if(b.dataset.up) return supplierPay(L[+b.dataset.up]);
+    if(b.dataset.us) return supplierStatement(L[+b.dataset.us]);
+    if(b.dataset.ue) return supplierForm(L[+b.dataset.ue]); });
+};
+function supplierForm(x){ var n=!x; x=x||{};
+  var m=modal(n?t('sup_new'):x.name,'<div class="g2"><div><label>'+esc(t('sup_name'))+'</label><input id="un" value="'+esc(x.name||'')+'"></div><div><label>'+esc(t('phone'))+'</label><input id="uph" type="tel" value="'+esc(x.phone||'')+'"></div>'+
+    '<div style="grid-column:1/-1"><label>'+esc(t('note'))+'</label><input id="uno" value="'+esc(x.notes||'')+'"></div></div><div id="umsg" class="err msg" style="margin-top:8px"></div>',
+    '<button class="btn ghost" data-x>'+esc(t('cancel'))+'</button>'+(n?'':'<button class="btn danger" data-del>'+esc(t('delete'))+'</button>')+'<button class="btn" data-s>'+esc(t('save'))+'</button>');
+  m.foot.addEventListener('click',async function(e){ if(e.target.closest('[data-x]')) return m.close();
+    if(e.target.closest('[data-del]')){ if(!(await confirmBox(t('confirm_delete')))) return;
+      try{ await call('motor_supplier_delete',{p_id:x.id}); toast(t('saved'),'s'); m.close(); go('suppliers'); }catch(err){ $('#umsg',m.body).textContent=errText(err); } return; }
+    var b=e.target.closest('[data-s]'); if(!b) return; busy(b,true);
+    try{ await call('motor_supplier_save',{p_data:{id:x.id||'',name:$('#un',m.body).value.trim(),phone:$('#uph',m.body).value.trim(),notes:$('#uno',m.body).value}}); toast(t('saved'),'s'); m.close(); go('suppliers'); }
+    catch(err){ $('#umsg',m.body).textContent=errText(err); busy(b,false); } });
+}
+async function purchaseForm(sups,sup){
+  var stock=[]; try{ stock=await call('motor_stock_list'); }catch(e){}
+  var m=modal(t('pur_new'),'<div class="g2"><div><label>'+esc(t('sup_name'))+'</label><select id="psup">'+sups.map(function(x){ return '<option value="'+esc(x.id)+'">'+esc(x.name)+'</option>'; }).join('')+'</select></div>'+
+    '<div><label>'+esc(t('pur_ref'))+'</label><input id="pref"></div><div><label>'+esc(t('date'))+'</label><input id="pday" type="date" value="'+esc(TODAY)+'"></div></div>'+
+    '<datalist id="pitems">'+stock.map(function(x){ return '<option value="'+esc(x.name)+'">'; }).join('')+'</datalist>'+
+    '<div class="tw" style="margin-top:10px"><table><thead><tr><th>'+esc(t('pur_item'))+'</th><th>'+esc(t('qty'))+'</th><th>'+esc(t('unit_price'))+'</th><th>'+esc(t('total'))+'</th><th></th></tr></thead><tbody id="plines"></tbody></table></div>'+
+    '<div class="row" style="margin-top:6px"><button class="btn ghost sm" id="padd">➕ '+esc(t('pur_line'))+'</button><span class="sp"></span><b style="font-size:18px">'+esc(t('total'))+': <span id="ptot" class="num">0</span></b></div>'+
+    '<div class="g2" style="margin-top:10px"><div><label>'+esc(t('pur_paid_now'))+' ('+esc(mainCur())+')</label><input id="ppay" inputmode="decimal" placeholder="0"></div><div>'+accPick('pacc')+'</div></div>'+
+    '<label style="margin-top:8px">'+esc(t('note'))+'</label><input id="pnote"><div id="pmsg" class="err msg" style="margin-top:8px"></div>',
+    '<button class="btn ghost" data-x>'+esc(t('cancel'))+'</button><button class="btn alt" data-s="0">'+esc(t('pur_save_nostock'))+'</button><button class="btn" data-s="1">📦 '+esc(t('pur_save_stock'))+'</button>',true);
+  if(sup) $('#psup',m.body).value=sup.id;
+  function addLine(){ var tr=document.createElement('tr');
+    tr.innerHTML='<td><input class="pi" list="pitems" style="min-width:160px"></td><td><input class="pq" inputmode="decimal" style="width:80px"></td><td><input class="pp" inputmode="decimal" style="width:100px"></td><td class="num pt"></td><td><button class="btn ghost sm" data-rm>✕</button></td>';
+    $('#plines',m.body).appendChild(tr);
+    $('.pi',tr).addEventListener('change',function(){ var it=stock.filter(function(x){ return x.name===this.value; },this)[0]; if(it&&!$('.pp',tr).value) $('.pp',tr).value=n2(it.unit_price)||''; tot(); }); }
+  function lines(){ return $$('#plines tr',m.body).map(function(tr){ var nm=$('.pi',tr).value.trim(), it=stock.filter(function(x){return x.name===nm})[0];
+    return {tr:tr,item_id:it?it.id:'',name:nm,qty:n2($('.pq',tr).value),unit_price:n2($('.pp',tr).value)}; }); }
+  function tot(){ var s=0; lines().forEach(function(l){ var v=Math.round(l.qty*l.unit_price*100)/100; $('.pt',l.tr).textContent=v?money(v):''; s+=v; }); $('#ptot',m.body).textContent=money(s); }
+  m.body.addEventListener('input',tot);
+  m.body.addEventListener('click',function(e){ var r=e.target.closest('[data-rm]'); if(r){ r.closest('tr').remove(); tot(); } });
+  $('#padd',m.body).addEventListener('click',addLine); addLine(); addLine();
+  m.foot.addEventListener('click',async function(e){ if(e.target.closest('[data-x]')) return m.close(); var b=e.target.closest('[data-s]'); if(!b) return;
+    var ls=lines().filter(function(l){ return l.name&&l.qty>0; }).map(function(l){ return {item_id:l.item_id,name:l.name,qty:l.qty,unit_price:l.unit_price}; });
+    if(!ls.length){ $('#pmsg',m.body).textContent=t('e_no_items'); return; }
+    busy(b,true);
+    try{ var r=await call('motor_purchase_add',{p_data:{supplier_id:$('#psup',m.body).value,ref:$('#pref',m.body).value.trim(),day:$('#pday',m.body).value,note:$('#pnote',m.body).value,
+          to_stock:b.dataset.s==='1',items:ls,pay_amount:n2($('#ppay',m.body).value),pay_account:accVal(m.body,'pacc')}});
+      toast(t('pur_saved',{n:r.no,v:money(r.total)})+(r.vno?' — '+t('voucher_no')+' '+r.vno:''),'s'); m.close(); go(TAB==='stock'?'stock':'suppliers'); }
+    catch(err){ $('#pmsg',m.body).textContent=errText(err); busy(b,false); } });
+}
+function supplierPay(x){
+  var m=modal(t('sup_pay')+' — '+x.name,'<div class="muted">'+esc(t('sup_balance'))+': <b class="num">'+esc(money(x.balance))+'</b></div>'+
+    '<label style="margin-top:8px">'+esc(t('amount'))+' ('+esc(mainCur())+')</label><input id="sa" inputmode="decimal" style="font-size:20px" value="'+esc(n2(x.balance)>0?n2(x.balance):'')+'">'+
+    '<div style="margin-top:8px">'+accPick('sacc')+'</div><label style="margin-top:8px">'+esc(t('note'))+'</label><input id="snn"><div id="smm" class="err msg" style="margin-top:8px"></div>',
+    '<button class="btn ghost" data-x>'+esc(t('cancel'))+'</button><button class="btn" data-s>'+esc(t('save'))+' + 🖨️</button><button class="btn alt" data-s="np">'+esc(t('save'))+'</button>');
+  m.foot.addEventListener('click',async function(e){ if(e.target.closest('[data-x]')) return m.close(); var b=e.target.closest('[data-s]'); if(!b) return;
+    var v=n2($('#sa',m.body).value); if(!(v>0)){ $('#smm',m.body).textContent=t('e_bad_amount'); return; } busy(b,true);
+    try{ var r=await call('motor_supplier_pay',{p_supplier:x.id,p_amount:v,p_account:accVal(m.body,'sacc'),p_note:$('#snn',m.body).value});
+      toast(t('saved')+' — '+t('voucher_no')+' '+r.move.vno,'s'); m.close();
+      if(b.dataset.s!=='np') printDoc(voucherTicket({vno:r.move.vno,at:r.move.created_at,staff:x.name,amount:v,account:r.move.account,note:r.move.note,by:r.move.by_name}));
+      go('suppliers'); }
+    catch(err){ $('#smm',m.body).textContent=errText(err); busy(b,false); } });
+}
+async function supplierStatement(x){
+  var m=modal(t('statement')+' — '+x.name,'<div class="muted">'+esc(t('loading'))+'</div>',false,true);
+  async function paint(){ var d; try{ d=await call('motor_supplier_statement',{p_supplier:x.id}); }catch(e){ m.body.innerHTML='<div class="err">'+esc(errText(e))+'</div>'; return; }
+    var run=0;
+    m.body.innerHTML='<div class="stats">'+stat(t('sup_balance'),money(d.balance))+'</div><div class="tw"><table><thead><tr><th>'+esc(t('date'))+'</th><th>'+esc(t('type'))+'</th><th>'+esc(t('pur_items'))+'</th><th>'+esc(t('sup_purchases'))+'</th><th>'+esc(t('sal_paid'))+'</th><th>'+esc(t('running'))+'</th><th></th></tr></thead><tbody>'+
+      (d.rows.map(function(r){ var cr=r.t==='purchase'&&!r.voided?n2(r.total):0, db=r.t==='pay'?n2(r.amount):0; run+=cr-db;
+        return '<tr class="'+(r.voided?'void':'')+'"><td class="num">'+esc(r.t==='purchase'?r.day:dt(r.at))+'</td><td>'+esc(r.t==='purchase'?t('pur_inv')+' #'+r.no+(r.ref?' ('+r.ref+')':''):t('sup_pay')+' #'+r.vno)+(r.t==='pay'?' '+accChip(r.account):(r.to_stock?' <span class="chip on">📦</span>':''))+'</td>'+
+          '<td>'+(r.items||[]).map(function(i){ return '<div class="muted" style="white-space:nowrap">'+esc(i.name)+' × '+esc(fmtN(i.qty))+' @ '+esc(money(i.unit_price))+'</div>'; }).join('')+esc(r.note||'')+'</td>'+
+          '<td class="num">'+(r.t==='purchase'?esc(money(r.total)):'')+'</td><td class="num">'+(db?esc(money(db)):'')+'</td><td class="num"><b>'+esc(money(run))+'</b></td>'+
+          '<td>'+(r.t==='purchase'&&!r.voided?'<button class="btn ghost sm" data-pv="'+esc(r.id)+'">'+esc(t('void'))+'</button>':'')+'</td></tr>'; }).join('')||'<tr><td colspan="7" class="muted">'+esc(t('no_results'))+'</td></tr>')+'</tbody></table></div>'; }
+  m.body.addEventListener('click',async function(e){ var b=e.target.closest('[data-pv]'); if(!b) return; if(!(await confirmBox(t('pur_void_q')))) return;
+    try{ await call('motor_purchase_void',{p_id:b.dataset.pv}); toast(t('saved'),'s'); paint(); }catch(err){ toast(errText(err),'e'); } });
+  m.onclose=function(){ if(TAB==='suppliers') go('suppliers',true); };
+  paint();
+}
+
+/* سجل حركات المخزون (سحب / مشتريات / تعديل) */
+async function stockMoves(x){
+  var m=modal(t('stk_moves')+(x?' — '+x.name:''),'<div class="muted">'+esc(t('loading'))+'</div>',false,true), d;
+  try{ d=await call('motor_stock_moves_list',{p_item:x?x.id:null,p_from:null,p_to:null}); }catch(e){ m.body.innerHTML='<div class="err">'+esc(errText(e))+'</div>'; return; }
+  var K={out:'stk_k_out',purchase:'stk_k_purchase',adjust:'stk_k_adjust',void:'stk_k_void','in':'stk_k_purchase'};
+  m.body.innerHTML='<div class="tw"><table><thead><tr><th>'+esc(t('date'))+'</th>'+(x?'':'<th>'+esc(t('name'))+'</th>')+'<th>'+esc(t('type'))+'</th><th>'+esc(t('qty'))+'</th><th>'+esc(t('stk_taker'))+'</th><th>'+esc(t('note'))+'</th><th>'+esc(t('by'))+'</th></tr></thead><tbody>'+
+    (d.map(function(r){ return '<tr><td class="num">'+esc(dt(r.at))+'</td>'+(x?'':'<td><b>'+esc(r.item)+'</b></td>')+'<td>'+esc(t(K[r.kind]||r.kind))+(r.purchase_no?' #'+esc(r.purchase_no):'')+'</td>'+
+      '<td class="num"><b style="color:'+(n2(r.qty)<0?'var(--bad)':'var(--ok)')+'">'+(n2(r.qty)>0?'+':'')+esc(fmtN(r.qty))+'</b></td><td>'+esc(r.taker||'')+'</td><td>'+esc(r.note||'')+'</td><td>'+esc(r.by||'')+'</td></tr>'; }).join('')||'<tr><td colspan="7" class="muted">'+esc(t('no_results'))+'</td></tr>')+'</tbody></table></div>'+
+    '<div class="row" style="margin-top:10px"><button class="btn ghost" id="smx">'+esc(t('export_xlsx'))+'</button></div>';
+  $('#smx',m.body).addEventListener('click',function(){ var R=[[t('date'),t('name'),t('type'),t('qty'),t('stk_taker'),t('note'),t('by')]];
+    d.forEach(function(r){ R.push([dt(r.at),r.item,t(K[r.kind]||r.kind),n2(r.qty),r.taker||'',r.note||'',r.by||'']); });
+    downloadBlob(makeXlsx([{name:t('stk_moves'),rows:R}]),'stock-moves-'+SLUG+'.xlsx'); });
+}
 
 /* ---------- المخزون ---------- */
 VIEWS.stock=async function(main){
   var L=await call('motor_stock_list'), q='';
-  main.innerHTML='<div class="toolbar"><button class="btn" id="kadd">➕ '+esc(t('stock_new'))+'</button><input type="search" id="kq" placeholder="'+esc(t('search_ph'))+'"><button class="btn ghost" id="kx">'+esc(t('export_xlsx'))+'</button><span class="sp"></span></div><div id="kst"></div>'+
+  main.innerHTML='<div class="toolbar"><button class="btn" id="kadd">➕ '+esc(t('stock_new'))+'</button><input type="search" id="kq" placeholder="'+esc(t('search_ph'))+'"><button class="btn ghost" id="kmv">📜 '+esc(t('stk_moves'))+'</button><button class="btn ghost" id="kx">'+esc(t('export_xlsx'))+'</button><span class="sp"></span></div><div id="kst"></div>'+
     '<div class="tw"><table><thead><tr><th>'+esc(t('name'))+'</th><th>'+esc(t('stock_cat'))+'</th><th>'+esc(t('qty'))+'</th><th>'+esc(t('unit_price'))+'</th><th>'+esc(t('value'))+'</th><th>'+esc(t('note'))+'</th><th>'+esc(t('date'))+'</th><th></th></tr></thead><tbody id="ktb"></tbody></table></div>';
   function rows(){ var k=normS(q); return L.filter(function(x){ return !k||normS(x.name).indexOf(k)>=0||normS(x.category).indexOf(k)>=0; }); }
   function paint(){ var R=rows(), tv=0, tq=0; R.forEach(function(x){ tv+=n2(x.qty)*n2(x.unit_price); tq+=n2(x.qty); });
     $('#kst',main).innerHTML='<div class="stats">'+stat(t('stock_items'),fmtN(R.length))+stat(t('qty'),fmtN(tq))+stat(t('total_value'),money(tv))+'</div>';
-    $('#ktb',main).innerHTML=R.map(function(x){ return '<tr><td><b>'+esc(x.name)+'</b></td><td>'+esc(x.category)+'</td><td class="num"><b>'+esc(fmtN(x.qty))+'</b></td><td class="num">'+esc(money(x.unit_price))+'</td><td class="num">'+esc(money(n2(x.qty)*n2(x.unit_price)))+'</td><td>'+esc(x.notes)+'</td><td class="num muted">'+esc(dt(x.updated_at))+(x.updated_by?' · '+esc(x.updated_by):'')+'</td><td><button class="btn ghost sm" data-ke="'+esc(x.id)+'">'+esc(t('edit'))+'</button></td></tr>'; }).join('')||'<tr><td colspan="8" class="muted">'+esc(t('no_results'))+'</td></tr>'; }
+    $('#ktb',main).innerHTML=R.map(function(x){ return '<tr><td><b>'+esc(x.name)+'</b></td><td>'+esc(x.category)+'</td><td class="num"><b>'+esc(fmtN(x.qty))+'</b></td><td class="num">'+esc(money(x.unit_price))+'</td><td class="num">'+esc(money(n2(x.qty)*n2(x.unit_price)))+'</td><td>'+esc(x.notes)+'</td><td class="num muted">'+esc(dt(x.updated_at))+(x.updated_by?' · '+esc(x.updated_by):'')+'</td><td style="white-space:nowrap"><button class="btn danger sm" data-ko="'+esc(x.id)+'"'+(n2(x.qty)>0?'':' disabled')+'>➖ '+esc(t('stk_out'))+'</button> <button class="btn ghost sm" data-km="'+esc(x.id)+'">📜</button> <button class="btn ghost sm" data-ke="'+esc(x.id)+'">'+esc(t('edit'))+'</button></td></tr>'; }).join('')||'<tr><td colspan="8" class="muted">'+esc(t('no_results'))+'</td></tr>'; }
   $('#kq',main).addEventListener('input',function(){ q=this.value; paint(); });
   $('#kadd',main).addEventListener('click',function(){ stockForm(null); });
-  $('#ktb',main).addEventListener('click',function(e){ var b=e.target.closest('[data-ke]'); if(b) stockForm(L.filter(function(x){return x.id===b.dataset.ke})[0]); });
+  var byId=function(id){ return L.filter(function(x){return x.id===id})[0]; };
+  $('#ktb',main).addEventListener('click',function(e){ var b=e.target.closest('[data-ke]'); if(b) return stockForm(byId(b.dataset.ke));
+    var o=e.target.closest('[data-ko]'); if(o) return stockOut(byId(o.dataset.ko));
+    var mv=e.target.closest('[data-km]'); if(mv) return stockMoves(byId(mv.dataset.km)); });
+  $('#kmv',main).addEventListener('click',function(){ stockMoves(null); });
+  function stockOut(x){
+    var m=modal(t('stk_out')+' — '+x.name,'<div class="muted">'+esc(t('stk_avail'))+': <b class="num">'+esc(fmtN(x.qty))+'</b></div>'+
+      '<label style="margin-top:8px">'+esc(t('qty'))+'</label><input id="oq" inputmode="decimal" style="font-size:20px">'+
+      '<label style="margin-top:8px">'+esc(t('stk_taker'))+' *</label><select id="os"><option value="">— '+esc(t('stk_taker_other'))+' —</option>'+STAFF.filter(function(s){return s.is_active}).map(function(s){ return '<option value="'+esc(s.id)+'">'+esc(s.name)+'</option>'; }).join('')+'</select>'+
+      '<input id="ot" style="margin-top:6px" placeholder="'+esc(t('stk_taker_ph'))+'">'+
+      '<label style="margin-top:8px">'+esc(t('stk_for'))+'</label><input id="on" placeholder="'+esc(t('stk_for_ph'))+'"><div id="omsg" class="err msg" style="margin-top:8px"></div>',
+      '<button class="btn ghost" data-x>'+esc(t('cancel'))+'</button><button class="btn danger" data-s>➖ '+esc(t('stk_out'))+'</button>');
+    $('#os',m.body).addEventListener('change',function(){ $('#ot',m.body).classList.toggle('hidden',!!this.value); });
+    m.foot.addEventListener('click',async function(e){ if(e.target.closest('[data-x]')) return m.close(); var b=e.target.closest('[data-s]'); if(!b) return;
+      var q=n2($('#oq',m.body).value), st=$('#os',m.body).value, tk=$('#ot',m.body).value.trim();
+      if(!(q>0)){ $('#omsg',m.body).textContent=t('e_bad_amount'); return; }
+      if(!st&&!tk){ $('#omsg',m.body).textContent=t('e_taker_required'); return; }
+      busy(b,true);
+      try{ var r=await call('motor_stock_out',{p_item:x.id,p_qty:q,p_staff:st||null,p_taker:tk,p_note:$('#on',m.body).value}); Object.assign(x,r); toast(t('saved'),'s'); m.close(); paint(); }
+      catch(err){ $('#omsg',m.body).textContent=errText(err); busy(b,false); } });
+  }
   $('#kx',main).addEventListener('click',function(){ var R=[[t('name'),t('stock_cat'),t('qty'),t('unit_price'),t('value'),t('note')]];
     rows().forEach(function(x){ R.push([x.name,x.category,n2(x.qty),n2(x.unit_price),n2(x.qty)*n2(x.unit_price),x.notes]); });
     downloadBlob(makeXlsx([{name:t('nav_stock'),rows:R}]),'stock-'+SLUG+'.xlsx'); });
@@ -4047,7 +4241,7 @@ function jRange(mode){ var d=new Date(TODAY+'T12:00:00'), p=function(x){return S
   if(mode==='week'){ var s=new Date(d); s.setDate(d.getDate()-6); return [f(s),TODAY]; }
   if(mode==='month') return [TODAY.slice(0,8)+'01',TODAY];
   return [JF.from||TODAY,JF.to||TODAY]; }
-function jKind(r){ return r.t==='pay'?t('k_pay'):r.t==='expense'?t('k_expense'):r.t==='salary'?t('k_salary'):t('k_'+(r.kind||r.t)); }
+function jKind(r){ return r.t==='pay'?t('k_pay'):r.t==='expense'?t('k_expense'):r.t==='salary'?t('k_salary'):r.t==='supplier'?t('k_supplier'):t('k_'+(r.kind||r.t)); }
 VIEWS.journal=async function(main){
   if(!JF.from){ JF.from=TODAY; JF.to=TODAY; }
   main.innerHTML='<div class="toolbar">'+['day','week','month','custom'].map(function(k){ return '<button class="btn '+(JF.mode===k?'':'ghost')+' sm" data-jm="'+k+'">'+esc(t(k==='day'?'j_today':'j_'+k))+'</button>'; }).join('')+
@@ -4060,10 +4254,10 @@ VIEWS.journal=async function(main){
     var d=D0, closed={}; d.closes.forEach(function(c){ closed[c.day]=c; });
     var byDay={}; d.rows.forEach(function(r){ var k=dt(r.at).slice(0,10); var day=new Date(r.at); var p=function(x){return String(x).padStart(2,'0')};
       k=day.toLocaleDateString('en-CA',{timeZone:'Asia/Beirut'}); (byDay[k]=byDay[k]||[]).push(r); });
-    var sum={cash_in:0,whish_in:0,expenses:0,salaries:0,n:0};
-    d.days.forEach(function(x){ var tt=x.totals; sum.cash_in+=n2(tt.cash_in); sum.whish_in+=n2(tt.whish_in); sum.expenses+=n2(tt.expenses); sum.salaries+=n2(tt.salaries); sum.n+=n2(tt.receipts_n); });
+    var sum={cash_in:0,whish_in:0,expenses:0,salaries:0,suppliers:0,n:0};
+    d.days.forEach(function(x){ var tt=x.totals; sum.suppliers+=n2(tt.suppliers); sum.cash_in+=n2(tt.cash_in); sum.whish_in+=n2(tt.whish_in); sum.expenses+=n2(tt.expenses); sum.salaries+=n2(tt.salaries); sum.n+=n2(tt.receipts_n); });
     var html='<div class="stats">'+stat(t('j_open')+' 💰',money(d.cash_open))+stat(t('j_receipts')+' 💵',money(sum.cash_in))+stat(t('j_receipts')+' 🟣',money(sum.whish_in))+
-      stat(t('j_expenses'),money(sum.expenses))+stat(t('j_salaries'),money(sum.salaries))+stat(t('j_close')+' 💰',money(d.cash_close))+stat(t('j_close')+' 🟣',money(d.whish_close))+'</div>';
+      stat(t('j_expenses'),money(sum.expenses))+stat(t('j_salaries'),money(sum.salaries))+stat(t('k_supplier'),money(sum.suppliers))+stat(t('j_close')+' 💰',money(d.cash_close))+stat(t('j_close')+' 🟣',money(d.whish_close))+'</div>';
     d.days.slice().reverse().forEach(function(x){
       var day=x.day, tt=(closed[day]&&closed[day].totals)||x.totals, rows=(byDay[day]||[]), c=closed[day];
       if(!rows.length&&!c&&day!==d.today&&d.days.length>1) return;
@@ -4072,7 +4266,7 @@ VIEWS.journal=async function(main){
         '<div class="tw" style="margin-top:8px"><table><thead><tr><th>'+esc(t('time'))+'</th><th>'+esc(t('type'))+'</th><th>#</th><th>'+esc(t('name'))+'</th><th>'+esc(t('pay_from'))+'</th><th>'+esc(t('j_in'))+'</th><th>'+esc(t('j_out'))+'</th><th>'+esc(t('by'))+'</th></tr></thead><tbody>'+
         (rows.map(function(r){ return '<tr><td class="num">'+esc(dt(r.at).slice(-5))+'</td><td>'+esc(jKind(r))+'</td><td class="num">'+esc(r.no==null?'':r.no)+'</td><td>'+esc(r.label||'')+(r.note?' <span class="muted">'+esc(r.note)+'</span>':'')+'</td><td>'+(r.account==='collector'?'<span class="chip gray">'+esc(t('collector'))+'</span>':accChip(r.account))+'</td>'+
           '<td class="num" style="color:var(--ok)">'+(n2(r['in'])?esc(money(r['in'])):'')+'</td><td class="num" style="color:var(--bad)">'+(n2(r.out)?esc(money(r.out)):'')+'</td><td>'+esc(r.staff||'')+'</td></tr>'; }).join('')||'<tr><td colspan="8" class="muted">'+esc(t('no_results'))+'</td></tr>')+'</tbody></table></div>'+
-        '<div class="stats" style="margin-top:8px">'+stat(t('j_receipts')+' 💵',money(tt.cash_in))+stat(t('j_receipts')+' 🟣',money(tt.whish_in))+stat(t('j_n'),fmtN(tt.receipts_n))+stat(t('j_expenses'),money(tt.expenses))+stat(t('j_salaries'),money(tt.salaries))+
+        '<div class="stats" style="margin-top:8px">'+stat(t('j_receipts')+' 💵',money(tt.cash_in))+stat(t('j_receipts')+' 🟣',money(tt.whish_in))+stat(t('j_n'),fmtN(tt.receipts_n))+stat(t('j_expenses'),money(tt.expenses))+stat(t('j_salaries'),money(tt.salaries))+(n2(tt.suppliers)?stat(t('k_supplier'),money(tt.suppliers)):'')+
           stat(t('j_cash_end'),money(tt.cash_box_end))+stat(t('j_whish_end'),money(tt.whish_end))+stat(t('j_hand'),money(tt.collectors_hand))+'</div></div>';
     });
     box.innerHTML=html;

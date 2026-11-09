@@ -1,4 +1,4 @@
--- motorapp — الجزء 1 من 4 (شغّل الأجزاء بالترتيب)
+-- motorapp — الجزء 1 من 5 (شغّل الأجزاء بالترتيب)
 -- ============================================================
 --  LibanApps — برنامج «اشتراكات المولّدات» (motorapp)   code = motor
 --
@@ -407,6 +407,62 @@ create table if not exists public.motor_stock (
   created_at timestamptz not null default now()
 );
 create index if not exists motor_stock_site_idx on public.motor_stock (site_id, name);
+-- ---------- v6: حركات المخزون، الموردون والمشتريات، استحقاقات المعاشات ----------
+alter table public.motor_sites add column if not exists purchase_seq integer not null default 0;
+alter table public.motor_moves add column if not exists supplier_id uuid;
+create table if not exists public.motor_stock_moves (
+  id          uuid primary key default gen_random_uuid(),
+  site_id     uuid not null references public.motor_sites(id) on delete cascade,
+  item_id     uuid not null,
+  item_name   text not null default '',
+  kind        text not null check (kind in ('out','in','purchase','adjust','void')),
+  qty         numeric(14,2) not null,                 -- موجب = دخول، سالب = خروج
+  unit_price  numeric(14,2) not null default 0,
+  taker       text not null default '',               -- مين سحب
+  staff_id    uuid,
+  purchase_id uuid,
+  note        text not null default '',
+  by_name     text not null default '',
+  created_at  timestamptz not null default now()
+);
+create index if not exists motor_stock_moves_idx on public.motor_stock_moves (site_id, created_at desc);
+create index if not exists motor_stock_moves_item_idx on public.motor_stock_moves (item_id, created_at desc);
+create table if not exists public.motor_suppliers (
+  id         uuid primary key default gen_random_uuid(),
+  site_id    uuid not null references public.motor_sites(id) on delete cascade,
+  name       text not null,
+  phone      text not null default '',
+  notes      text not null default '',
+  created_at timestamptz not null default now()
+);
+create table if not exists public.motor_purchases (
+  id          uuid primary key default gen_random_uuid(),
+  site_id     uuid not null references public.motor_sites(id) on delete cascade,
+  supplier_id uuid not null references public.motor_suppliers(id) on delete restrict,
+  no          integer not null,
+  ref         text not null default '',                -- رقم فاتورة المورد
+  day         date not null,
+  items       jsonb not null default '[]'::jsonb,
+  total       numeric(14,2) not null default 0,
+  to_stock    boolean not null default true,
+  note        text not null default '',
+  by_name     text not null default '',
+  voided      boolean not null default false,
+  created_at  timestamptz not null default now()
+);
+create index if not exists motor_purchases_idx on public.motor_purchases (site_id, supplier_id, day);
+create table if not exists public.motor_salary_dues (
+  id         uuid primary key default gen_random_uuid(),
+  site_id    uuid not null references public.motor_sites(id) on delete cascade,
+  staff_id   uuid not null references public.motor_staff(id) on delete cascade,
+  period     text not null,
+  amount     numeric(14,2) not null,
+  note       text not null default '',
+  by_name    text not null default '',
+  created_at timestamptz not null default now()
+);
+create index if not exists motor_salary_dues_idx on public.motor_salary_dues (staff_id, period);
+
 create table if not exists public.motor_day_closes (
   id        uuid primary key default gen_random_uuid(),
   site_id   uuid not null references public.motor_sites(id) on delete cascade,
@@ -432,7 +488,7 @@ begin
   foreach t in array array['motor_sites','motor_plans','motor_staff','motor_staff_secrets','motor_sessions',
                            'motor_customers','motor_readings','motor_invoices','motor_payments','motor_moves',
                            'motor_notes','motor_switch_log','motor_customer_secrets','motor_csessions','motor_trash',
-                           'motor_stock','motor_day_closes']
+                           'motor_stock','motor_day_closes','motor_stock_moves','motor_suppliers','motor_purchases','motor_salary_dues']
   loop
     execute format('alter table public.%I enable row level security', t);
     execute format('revoke all on public.%I from anon, authenticated', t);
@@ -734,122 +790,4 @@ begin
   return false;
 end $$;
 revoke all on function public._motor_totp_ok(text, text) from public, anon, authenticated;
-
--- ============================================================
---  5) الصفحة العامة + الدخول والخروج
--- ============================================================
-create or replace function public.motor_public(p_slug text)
-returns jsonb language plpgsql stable security definer set search_path = public as $$
-declare st public.motor_sites%rowtype; lic jsonb;
-begin
-  select * into st from public.motor_sites where slug = lower(trim(coalesce(p_slug,'')));
-  if not found then return jsonb_build_object('ok', false, 'reason', 'not_found'); end if;
-  lic := public.motor_license(st.id);
-  return jsonb_build_object(
-    'ok', st.is_active and coalesce((lic->>'ok')::boolean,false),
-    'reason', case when not st.is_active then 'inactive' else lic->>'reason' end,
-    'site', jsonb_build_object('name', st.name, 'logo_url', st.logo_url, 'slug', st.slug,
-                               'default_lang', st.default_lang));
-end $$;
-
-drop function if exists public.motor_login(text, text, text);
-drop function if exists public.motor_login(text, text, text, text);
-create or replace function public.motor_login(p_slug text, p_username text, p_password text, p_totp text default null,
-  p_device text default null, p_device_label text default '')
-returns jsonb language plpgsql security definer set search_path = public, extensions as $$
-declare st public.motor_sites%rowtype; sf public.motor_staff%rowtype; sc public.motor_staff_secrets%rowtype;
-        tok text; lic jsonb; cu public.motor_customers%rowtype; cs public.motor_customer_secrets%rowtype;
-begin
-  select * into st from public.motor_sites where slug = lower(trim(coalesce(p_slug,'')));
-  if not found then return jsonb_build_object('ok', false, 'reason', 'not_found'); end if;
-  lic := public.motor_license(st.id);
-  if not st.is_active or not coalesce((lic->>'ok')::boolean,false) then
-    return jsonb_build_object('ok', false, 'reason', 'license');
-  end if;
-  select * into sf from public.motor_staff
-   where site_id = st.id and lower(username) = lower(trim(coalesce(p_username,'')));
-  if not found then
-    -- حساب زبون؟
-    select * into cu from public.motor_customers
-     where site_id = st.id and username <> '' and lower(username) = lower(trim(coalesce(p_username,'')));
-    if not found then perform pg_sleep(0.4); return jsonb_build_object('ok', false, 'reason', 'bad_login'); end if;
-    select * into cs from public.motor_customer_secrets where customer_id = cu.id for update;
-    if not found then return jsonb_build_object('ok', false, 'reason', 'bad_login'); end if;
-    if cs.locked_until is not null and cs.locked_until > now() then
-      return jsonb_build_object('ok', false, 'reason', 'locked', 'minutes', ceil(extract(epoch from (cs.locked_until - now()))/60)::int);
-    end if;
-    if cs.password_hash <> crypt(coalesce(p_password,''), cs.password_hash) then
-      update public.motor_customer_secrets set failed_count = failed_count + 1,
-             locked_until = case when failed_count + 1 >= 6 then now() + interval '15 minutes' end where customer_id = cu.id;
-      return jsonb_build_object('ok', false, 'reason', 'bad_login');
-    end if;
-    update public.motor_customer_secrets set failed_count = 0, locked_until = null where customer_id = cu.id;
-    delete from public.motor_csessions where customer_id = cu.id and expires_at < now();
-    tok := encode(gen_random_bytes(24),'hex');
-    insert into public.motor_csessions (token_hash, customer_id, site_id) values (encode(digest(tok,'sha256'),'hex'), cu.id, st.id);
-    return jsonb_build_object('ok', true, 'token', tok, 'kind', 'customer', 'name', cu.name);
-  end if;
-  select * into sc from public.motor_staff_secrets where staff_id = sf.id for update;
-  if not found then return jsonb_build_object('ok', false, 'reason', 'bad_login'); end if;
-  if sc.locked_until is not null and sc.locked_until > now() then
-    return jsonb_build_object('ok', false, 'reason', 'locked',
-      'minutes', ceil(extract(epoch from (sc.locked_until - now()))/60)::int);
-  end if;
-  if sc.password_hash <> crypt(coalesce(p_password,''), sc.password_hash) then
-    update public.motor_staff_secrets
-       set failed_count = failed_count + 1,
-           locked_until = case when failed_count + 1 >= 6 then now() + interval '15 minutes' end
-     where staff_id = sf.id;
-    return jsonb_build_object('ok', false, 'reason', 'bad_login');
-  end if;
-  if not sf.is_active then return jsonb_build_object('ok', false, 'reason', 'inactive_user'); end if;
-  -- التحقق بخطوتين
-  if sf.totp_enabled and coalesce(sc.totp_secret,'') <> '' then
-    if coalesce(trim(p_totp),'') = '' then return jsonb_build_object('ok', false, 'need_totp', true); end if;
-    if not public._motor_totp_ok(sc.totp_secret, trim(p_totp)) then
-      update public.motor_staff_secrets
-         set failed_count = failed_count + 1,
-             locked_until = case when failed_count + 1 >= 6 then now() + interval '15 minutes' end
-       where staff_id = sf.id;
-      return jsonb_build_object('ok', false, 'need_totp', true, 'reason', 'bad_totp');
-    end if;
-  end if;
-  -- قفل الجهاز: كل مستخدم (إلا المدير الأساسي) على جهاز واحد فقط
-  if not sf.is_main then
-    if coalesce(p_device,'') !~ '^[A-Za-z0-9-]{16,64}$' then return jsonb_build_object('ok', false, 'reason', 'device'); end if;
-    if sf.device_id is null then
-      update public.motor_staff set device_id = p_device, device_label = left(coalesce(p_device_label,''), 120), device_at = now() where id = sf.id;
-    elsif sf.device_id <> p_device then
-      return jsonb_build_object('ok', false, 'reason', 'device');
-    end if;
-  end if;
-  update public.motor_staff_secrets set failed_count = 0, locked_until = null where staff_id = sf.id;
-  delete from public.motor_sessions where staff_id = sf.id and expires_at < now();
-  tok := encode(gen_random_bytes(24),'hex');
-  insert into public.motor_sessions (token_hash, staff_id, site_id)
-  values (encode(digest(tok,'sha256'),'hex'), sf.id, st.id);
-  return jsonb_build_object('ok', true, 'token', tok, 'kind', 'staff', 'role', sf.role, 'name', sf.name);
-end $$;
-
-create or replace function public.motor_logout(p_token text)
-returns void language sql security definer set search_path = public, extensions as $$
-  delete from public.motor_sessions where token_hash = encode(digest(coalesce(p_token,''),'sha256'),'hex');
-  delete from public.motor_csessions where token_hash = encode(digest(coalesce(p_token,''),'sha256'),'hex');
-$$;
-
-create or replace function public.motor_change_password(p_slug text, p_token text, p_old text, p_new text)
-returns jsonb language plpgsql security definer set search_path = public, extensions as $$
-declare w jsonb; sc public.motor_staff_secrets%rowtype;
-begin
-  w := public._motor_who(p_slug, p_token);
-  if w->>'staff_id' is null then perform public._motor_err('forbidden'); end if;
-  select * into sc from public.motor_staff_secrets where staff_id = (w->>'staff_id')::uuid;
-  if sc.password_hash <> crypt(coalesce(p_old,''), sc.password_hash) then perform public._motor_err('bad_old'); end if;
-  if length(coalesce(p_new,'')) < 4 then perform public._motor_err('short_password'); end if;
-  update public.motor_staff_secrets set password_hash = crypt(p_new, gen_salt('bf', 8)), updated_at = now()
-   where staff_id = sc.staff_id;
-  delete from public.motor_sessions where staff_id = sc.staff_id
-    and token_hash <> encode(digest(p_token,'sha256'),'hex');
-  return jsonb_build_object('ok', true);
-end $$;
 
