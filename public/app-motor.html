@@ -100,8 +100,9 @@ main{max-width:1280px;margin:0 auto;padding:14px 12px 90px}
 body.compact table{font-size:12px} body.compact th,body.compact td{padding:4px 6px} body.compact th{font-size:11px}
 .menu-ov{display:none}
 @media (min-width:900px){
-  nav.tabs{position:fixed;top:54px;bottom:0;inset-inline-start:0;width:230px;flex-direction:column;flex-wrap:nowrap;padding:12px 10px;margin:0;max-width:none;overflow-y:auto;background:var(--pd);gap:3px;z-index:40}
-  nav.tabs button{text-align:start;border-radius:10px;padding:10px 14px;width:100%}
+  nav.tabs{position:fixed;top:54px;bottom:0;inset-inline-start:0;width:230px;flex-direction:column;flex-wrap:nowrap;padding:8px 8px;margin:0;max-width:none;overflow-y:auto;background:var(--pd);gap:1px;z-index:40}
+  nav.tabs button{text-align:start;border-radius:9px;padding:7px 12px;width:100%;font-size:14px;line-height:1.45}
+  @media (max-height:700px){ nav.tabs button{padding:4px 12px;font-size:13px} nav.tabs{padding-block:4px} }
   main{margin-inline-start:230px;max-width:none;padding-inline:18px}
   .tbar{max-width:none}
   body.side-mini nav.tabs{width:62px;padding-inline:6px}
@@ -1934,6 +1935,7 @@ function waHere(){ return isAdmin()||!(SITE&&SITE.wa_from_office); }
 Object.assign(D,{
  role_reader:['قارئ عداد','Meter reader','Releveur de compteur'],
  staff_type:['نوع الموظف','Staff type','Type d’employé'],
+ type_admin:['مدير (كل الصلاحيات: الأسعار، الموظفون، الصندوق، التعديل والإلغاء)','Admin (full access)','Admin (accès complet)'],
  type_collector:['جابي (قبض + فتح/قطع)','Collector (payments + connect/cut)','Encaisseur (paiements + brancher/couper)'],
  type_reader:['قارئ عداد (أخذ العداد فقط)','Meter reader (readings only)','Releveur (relevés seulement)'],
  type_custom:['مخصّص','Custom','Personnalisé'],
@@ -3316,8 +3318,8 @@ function staffForm(s){
     '<div><label>'+esc(t('phone'))+'</label><input id="fph" type="tel" value="'+esc(s.phone||'')+'"></div>'+
     '<div><label>'+esc(t('username'))+'</label><input id="fu" autocapitalize="off" spellcheck="false" value="'+esc(s.username||'')+'"></div>'+
     '<div><label>'+esc(n?t('password'):t('reset_pass'))+'</label><input id="fp" type="text" autocomplete="new-password" placeholder="'+esc(n?'':t('pass_keep'))+'"></div>'+
-    '<div><label>'+esc(t('role'))+'</label><select id="fr"><option value="collector">'+esc(t('role_collector'))+'</option><option value="admin">'+esc(t('role_admin'))+'</option></select></div>'+
-    '<div id="fperm"><label>'+esc(t('staff_type'))+'</label><select id="ftype"><option value="collector">'+esc(t('type_collector'))+'</option><option value="reader">'+esc(t('type_reader'))+'</option><option value="custom">'+esc(t('type_custom'))+'</option></select><label class="chk"><input type="checkbox" id="fread" '+(s.can_read?'checked':'')+'> 📷 '+esc(t('can_read'))+'</label><label class="chk"><input type="checkbox" id="fc" '+(s.can_collect?'checked':'')+'> 💵 '+esc(t('can_collect'))+'</label><label class="chk"><input type="checkbox" id="fcut" '+(s.can_cut?'checked':'')+'> 🔌 '+esc(t('can_cut'))+'</label></div>'+
+    '<div class="hidden"><select id="fr"><option value="collector">collector</option><option value="admin">admin</option></select></div>'+
+    '<div style="grid-column:1/-1"><label>'+esc(t('staff_type'))+'</label><select id="ftype"><option value="admin">🛡️ '+esc(t('type_admin'))+'</option><option value="collector">'+esc(t('type_collector'))+'</option><option value="reader">'+esc(t('type_reader'))+'</option><option value="custom">'+esc(t('type_custom'))+'</option></select></div><div id="fperm" style="grid-column:1/-1" class="row"><label class="chk"><input type="checkbox" id="fread" '+(s.can_read?'checked':'')+'> 📷 '+esc(t('can_read'))+'</label><label class="chk"><input type="checkbox" id="fc" '+(s.can_collect?'checked':'')+'> 💵 '+esc(t('can_collect'))+'</label><label class="chk"><input type="checkbox" id="fcut" '+(s.can_cut?'checked':'')+'> 🔌 '+esc(t('can_cut'))+'</label></div>'+
     '<div><label>'+esc(t('read_window'))+' — '+esc(t('from'))+'</label><input id="ff" type="date" value="'+esc(s.read_from||'')+'"></div>'+
     '<div><label>'+esc(t('to'))+'</label><input id="ft" type="date" value="'+esc(s.read_to||'')+'"></div>'+
     '<div><label class="chk"><input type="checkbox" id="fa" '+(s.is_active?'checked':'')+'> '+esc(t('active'))+'</label></div>'+
@@ -3326,8 +3328,8 @@ function staffForm(s){
   $('#fr',m.body).value=s.role;
   function tog(){ $('#fperm',m.body).classList.toggle('hidden',$('#fr',m.body).value==='admin'); } $('#fr',m.body).addEventListener('change',tog); tog();
   function curType(){ var r=$('#fread',m.body).checked, c=$('#fc',m.body).checked, x=$('#fcut',m.body).checked; return (!r&&c&&x)?'collector':(r&&!c&&!x)?'reader':'custom'; }
-  $('#ftype',m.body).value=curType();
-  $('#ftype',m.body).addEventListener('change',function(){ var v=this.value; if(v==='custom') return; $('#fread',m.body).checked=v==='reader'; $('#fc',m.body).checked=v==='collector'; $('#fcut',m.body).checked=v==='collector'; });
+  $('#ftype',m.body).value=s.role==='admin'?'admin':curType();
+  $('#ftype',m.body).addEventListener('change',function(){ var v=this.value; $('#fr',m.body).value=v==='admin'?'admin':'collector'; tog(); if(v==='custom'||v==='admin') return; $('#fread',m.body).checked=v==='reader'; $('#fc',m.body).checked=v==='collector'; $('#fcut',m.body).checked=v==='collector'; });
   ['#fread','#fc','#fcut'].forEach(function(q){ $(q,m.body).addEventListener('change',function(){ $('#ftype',m.body).value=curType(); }); });
   m.foot.addEventListener('click',async function(e){
     if(e.target.closest('[data-x]')) return m.close();
