@@ -1706,7 +1706,9 @@ async function motorPhoto(request, env) {
   try { const bin = atob(b64); bytes = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i); }
   catch { return json(400, { error: 'الصورة غير صالحة' }); }
   if (bytes.length > MAX_BYTES) return json(413, { error: 'الصورة كبيرة جداً' });
-  if (bytes.length < 500 || bytes[0] !== 0xFF || bytes[1] !== 0xD8) return json(415, { error: 'الصورة يجب أن تكون JPEG' });
+  const isPdf = body.kind === 'pdf';
+  if (isPdf ? !(bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46)
+            : (bytes.length < 500 || bytes[0] !== 0xFF || bytes[1] !== 0xD8)) return json(415, { error: isPdf ? 'PDF غير صالح' : 'الصورة يجب أن تكون JPEG' });
 
   const anon = env.SUPABASE_ANON_KEY || 'sb_publishable_ypfm_aulpcqBpeFpyD_7iw_mA4DNlR5';
   const hdr = { apikey: anon, 'Content-Type': 'application/json' };
@@ -1724,11 +1726,11 @@ async function motorPhoto(request, env) {
   try { siteId = JSON.parse(chkText); } catch {}
   if (!/^[0-9a-f-]{36}$/.test(String(siteId))) return json(403, { error: 'not allowed' });
 
-  const name = `${siteId}/${period}/${crypto.randomUUID()}.jpg`;
+  const name = isPdf ? `${siteId}/pdf/${crypto.randomUUID()}.pdf` : `${siteId}/${period}/${crypto.randomUUID()}.jpg`;
   const up = await fetch(`${env.SUPABASE_URL}/storage/v1/object/motor/${name}`, {
     method: 'POST', body: bytes,
     headers: { apikey: env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`,
-               'Content-Type': 'image/jpeg', 'x-upsert': 'false' }
+               'Content-Type': isPdf ? 'application/pdf' : 'image/jpeg', 'x-upsert': 'false' }
   });
   if (!up.ok) return json(502, { error: 'تعذّر حفظ الصورة (' + up.status + '): ' + (await up.text()).slice(0, 120) });
   return json(200, { ok: true, path: '/img/motor/' + name });
