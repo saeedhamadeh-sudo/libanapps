@@ -203,6 +203,9 @@ begin
   return jsonb_build_object('now', t, 'period', st.bill_period, 'lbp_rate', st.lbp_rate,
     'me', w,
     'customers', public._motor_cust_rows(sid, own, coalesce(p_since, t - interval '1 minute')),
+    'wa_inv', case when (w->>'is_admin')::boolean then
+        (select count(*) from public.motor_invoices i where i.site_id = sid and not i.voided and i.kind in ('meter','fixed')
+            and i.wa_sent_at is null and i.created_at > now() - interval '60 days') end,
     'wa_pending', case when (w->>'is_admin')::boolean then
         (select count(*) from public.motor_invoices i where i.site_id = sid and not i.voided and i.kind in ('meter','fixed')
             and i.wa_sent_at is null and i.created_at > now() - interval '60 days')

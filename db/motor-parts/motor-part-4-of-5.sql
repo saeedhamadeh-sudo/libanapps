@@ -2,6 +2,27 @@
 -- ============================================================
 --  19) واتساب من المكتب: الفواتير والإيصالات يلّي بعد ما انبعتت
 -- ============================================================
+-- الفواتير المتراكمة حسب كشف الحساب: الدفعات تسدّد الأقدم أولاً، فالباقي = أحدث الفواتير لحد ما يكمل الرصيد
+create or replace function public._motor_due_info(p_cust uuid)
+returns jsonb language plpgsql stable security definer set search_path = public as $$
+declare bal numeric; acc numeric := 0; r record; per text[] := '{}'; n int := 0; rest numeric;
+begin
+  select balance into bal from public.motor_customers where id = p_cust;
+  bal := coalesce(bal, 0);
+  if bal > 0 then
+    for r in select period, amount from public.motor_invoices where customer_id = p_cust and not voided and amount > 0
+               and kind in ('meter','fixed') and period <> ''
+              order by created_at desc loop
+      exit when acc >= bal - 0.005;
+      acc := acc + r.amount; n := n + 1;
+      if not (r.period = any(per)) then per := r.period || per; end if;
+    end loop;
+  end if;
+  rest := greatest(bal - acc, 0);
+  return jsonb_build_object('balance', bal, 'count', n, 'periods', to_jsonb(per), 'older', rest > 0.005);
+end $$;
+revoke all on function public._motor_due_info(uuid) from public, anon, authenticated;
+
 create or replace function public.motor_wa_outbox(p_slug text, p_token text, p_days integer default 60)
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare w jsonb; sid uuid;
@@ -10,6 +31,7 @@ begin
   sid := (w->>'site_id')::uuid;
   return coalesce((select jsonb_agg(x order by x->>'at') from (
       select jsonb_build_object('t','inv','id',i.id,'at',i.created_at,'inv',to_jsonb(i) - 'site_id',
+             'due', public._motor_due_info(c.id),
              'customer', jsonb_build_object('id',c.id,'code',c.code,'name',c.name,'mobile',c.mobile,'mobile_cc',c.mobile_cc,'box',c.box)) as x
         from public.motor_invoices i join public.motor_customers c on c.id = i.customer_id
        where i.site_id = sid and not i.voided and i.kind in ('meter','fixed') and i.wa_sent_at is null
@@ -68,6 +90,9 @@ begin
                    coalesce((select sum(amount) from public.motor_payments where site_id = sid and method = 'whish' and not voided), 0)
                  + coalesce((select sum(case when kind = 'withdraw' then -abs(amount) else amount end) from public.motor_moves
                               where site_id = sid and account = 'whish'), 0) end,
+    'wa_inv', case when mine then null else
+        (select count(*) from public.motor_invoices i where i.site_id = sid and not i.voided and i.kind in ('meter','fixed')
+            and i.wa_sent_at is null and i.created_at > now() - interval '60 days') end,
     'wa_pending', case when mine then null else
         (select count(*) from public.motor_invoices i where i.site_id = sid and not i.voided and i.kind in ('meter','fixed')
             and i.wa_sent_at is null and i.created_at > now() - interval '60 days')

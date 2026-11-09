@@ -2098,6 +2098,12 @@ var CFG=window.LIBANAPPS, sb=null;
 try{ sb=window.supabase.createClient(CFG.SUPABASE_URL,CFG.SUPABASE_ANON_KEY); }catch(e){}
 var $=function(s,r){return (r||document).querySelector(s)}, $$=function(s,r){return Array.prototype.slice.call((r||document).querySelectorAll(s))};
 Object.assign(D,{
+ nav_bills:['إرسال قيمة الفاتورة','Send bill amount','Envoyer le montant'],
+ bills_hint:['كل عداد يُسجَّل يظهر هنا. «إرسال» يفتح واتساب برسالة فيها عدد الفواتير المتراكمة وقيمتها والأشهر حسب كشف حساب الزبون.','Every new reading appears here. “Send” opens WhatsApp with the number of unpaid bills, the amount and the months, from the customer’s statement.','Chaque relevé apparaît ici. « Envoyer » ouvre WhatsApp avec le nombre de factures impayées, le montant et les mois.'],
+ due_count:['الفواتير المتراكمة','Unpaid bills','Factures impayées'],
+ due_msg_ok:['💡 {s} 💡\n\nعزيزي المشترك: {n}\nفاتورة شهر {m}: {i}\nلا يوجد مستحق عليك ✔️\nرصيد لصالحك: {v}','💡 {s} 💡\n\nDear subscriber: {n}\n{m} bill: {i}\nNothing is due ✔️\nYour credit: {v}','💡 {s} 💡\n\nCher abonné : {n}\nFacture de {m} : {i}\nRien à payer ✔️\nVotre crédit : {v}'],
+ due_older:['رصيد سابق','Previous balance','Solde antérieur'], due_and:[' و',' and ',' et '],
+ due_msg:['💡 {s} 💡\n\nعزيزي المشترك: {n}\nعدد الفواتير المتراكمة: {k}\nالقيمة: {v} ✔️\nعن شهر: {m}','💡 {s} 💡\n\nDear subscriber: {n}\nUnpaid bills: {k}\nAmount: {v} ✔️\nFor: {m}','💡 {s} 💡\n\nCher abonné : {n}\nFactures impayées : {k}\nMontant : {v} ✔️\nPour : {m}'],
  nav_suppliers:['الموردون','Suppliers','Fournisseurs'],
  sup_new:['مورد جديد','New supplier','Nouveau fournisseur'], sup_name:['المورد','Supplier','Fournisseur'], sup_none:['أضف مورداً أولاً','Add a supplier first','Ajoutez d’abord un fournisseur'],
  sup_purchases:['المشتريات','Purchases','Achats'], sup_balance:['الرصيد المستحق للمورد','Owed to supplier','Dû au fournisseur'], sup_balance_all:['مجموع المستحق للموردين','Total owed to suppliers','Total dû aux fournisseurs'],
@@ -2337,6 +2343,7 @@ var TABS=[
   {id:'switch',k:'nav_switch',i:'🔌',p:'cut'},
   {id:'customers',k:'nav_customers',i:'👥'},
   {id:'month',k:'nav_month',i:'🗓️'},
+  {id:'bills',k:'nav_bills',i:'📨',admin:true},
   {id:'wa',k:'nav_wa',i:'📲',admin:true},
   {id:'cash',k:'nav_cash',i:'💰',admin:true},
   {id:'whish',k:'nav_whish',i:'🟣',admin:true},
@@ -2353,7 +2360,7 @@ var TABS=[
   {id:'plans',k:'nav_plans',i:'⚡',admin:true},
   {id:'settings',k:'nav_settings',i:'⚙️'}
 ];
-var WA_PENDING=0;
+var WA_PENDING=0, WA_INV=0;
 function visibleTabs(){ return TABS.filter(function(x){ return (!x.admin||isAdmin())&&(!x.p||can(x.p)); }); }
 function paintShell(){
   $('#tName').textContent=SITE.name||SLUG;
@@ -2361,7 +2368,8 @@ function paintShell(){
   if(SITE.logo_url){ $('#tLogo').src=SITE.logo_url; $('#tLogo').classList.remove('hidden'); } else $('#tLogo').classList.add('hidden');
   $('#tLang').value=LANG; $('#tOut').textContent=t('logout');
   $('#tabs').innerHTML=visibleTabs().map(function(x){ return '<button data-tab="'+x.id+'" title="'+esc(t(x.k))+'" class="'+(x.id===TAB?'on':'')+'">'+x.i+' <span>'+esc(t(x.k))+'</span>'+
-    (x.id==='wa'?' <span class="chip off" id="waBadge" style="padding:0 7px'+(WA_PENDING?'':';display:none')+'">'+WA_PENDING+'</span>':'')+'</button>'; }).join('');
+    (x.id==='wa'?' <span class="chip off" id="waBadge" style="padding:0 7px'+(WA_PENDING-WA_INV>0?'':';display:none')+'">'+(WA_PENDING-WA_INV)+'</span>':'')+
+    (x.id==='bills'?' <span class="chip off" id="billBadge" style="padding:0 7px'+(WA_INV?'':';display:none')+'">'+WA_INV+'</span>':'')+'</button>'; }).join('');
 }
 $('#tabs').addEventListener('click',function(e){ var b=e.target.closest('[data-tab]'); if(b){ document.body.classList.remove('menu-open'); go(b.dataset.tab); } });
 $('#tMenu').addEventListener('click',function(){
@@ -2425,7 +2433,7 @@ VIEWS.trash=function(m){ return TRASH_VIEW(m); };
 VIEWS.dash=async function(main){
   var d=await call('motor_dashboard');
   var mine=!isAdmin();
-  if(d.wa_pending!=null) setWaBadge(d.wa_pending);
+  if(d.wa_pending!=null) setWaBadge(d.wa_pending,d.wa_inv);
   var acts=[]; if(can('read')) acts.push('<button class="btn lg" data-go="read">📷 '+esc(t('nav_read'))+'</button>');
   if(can('collect')) acts.push('<button class="btn lg ok" data-go="pay">💵 '+esc(t('nav_pay'))+'</button>');
   if(can('cut')) acts.push('<button class="btn lg acc" data-go="switch">🔌 '+esc(t('nav_switch'))+'</button>');
@@ -2440,7 +2448,7 @@ VIEWS.dash=async function(main){
       (mine?'':stat(t('st_debt'), money(d.debt_total),'customers|debt'))+
       (mine?'':stat(t('st_cash_box'), money(d.cash_box),'cash'))+
       (mine?'':stat(t('st_whish_box'), money(d.whish_box),'whish'))+
-      (mine?'':stat(t('st_wa'), fmtN(d.wa_pending,0),'wa'))+
+      (mine?'':stat(t('st_wa'), fmtN(d.wa_pending,0),n2(d.wa_inv)>0?'bills':'wa'))+
       (mine?'':stat(t('nav_trash'), fmtN(d.trash_count,0),'trash'))+
       stat(t('st_cash_today'), money(d.cash_today),mine?'cstmt':'cash')+
       stat(t('st_whish_today'), money(d.whish_today),mine?'cstmt':'whish')+
@@ -2456,16 +2464,17 @@ VIEWS.dash=async function(main){
    واتساب المكتب: إرسال فواتير وإيصالات الموظفين من رقم المكتب
    ========================================================= */
 var WAF='all';
-function setWaBadge(n){ WA_PENDING=n||0; var b=$('#waBadge'); if(b){ b.textContent=WA_PENDING; b.style.display=WA_PENDING?'':'none'; } }
+function setWaBadge(n,inv){ WA_PENDING=n||0; if(inv!=null) WA_INV=inv||0; var p=Math.max(0,WA_PENDING-WA_INV);
+  var b=$('#waBadge'); if(b){ b.textContent=p; b.style.display=p?'':'none'; }
+  var c=$('#billBadge'); if(c){ c.textContent=WA_INV; c.style.display=WA_INV?'':'none'; } }
 VIEWS.wa=async function(main){
-  var rows=await call('motor_wa_outbox',{p_days:60});
-  setWaBadge(rows.length);
+  var all=await call('motor_wa_outbox',{p_days:60}), rows=all.filter(function(r){ return r.t==='pay'; });
+  setWaBadge(all.length, all.length-rows.length);
   main.innerHTML='<div class="card"><p class="muted" style="margin:0">'+esc(t('wa_hint'))+'</p></div>'+
-    '<div class="toolbar"><select id="waf" style="flex:0 1 200px"><option value="all">'+esc(t('all'))+'</option><option value="inv">'+esc(t('f_inv'))+'</option><option value="pay">'+esc(t('f_pay'))+'</option></select><span class="sp"></span><b id="wac"></b></div>'+
+    '<div class="toolbar"><span class="sp"></span><b id="wac"></b></div>'+
     '<div class="tw"><table><thead><tr><th>'+esc(t('date'))+'</th><th>'+esc(t('type'))+'</th><th>'+esc(t('name'))+'</th><th>'+esc(t('mobile'))+'</th><th>'+esc(t('amount'))+'</th><th>'+esc(t('by'))+'</th><th></th></tr></thead><tbody id="watb"></tbody></table></div>';
-  $('#waf',main).value=WAF;
   function paint(){
-    var list=rows.filter(function(r){ return WAF==='all'||r.t===WAF; });
+    var list=rows;
     $('#wac',main).textContent=fmtN(list.length,0)+' '+t('wa_pending');
     $('#watb',main).innerHTML=list.map(function(r,i){
       var c=r.customer, amt=r.t==='pay'?money(r.pay.paid_amount,r.pay.paid_currency):money(r.inv.amount);
@@ -2475,12 +2484,54 @@ VIEWS.wa=async function(main){
         '<td><button class="btn wa sm" data-ws="'+rows.indexOf(r)+'" '+(c.mobile?'':'disabled')+'>'+esc(t('wa_send'))+'</button> <button class="btn ghost sm" data-wm="'+rows.indexOf(r)+'">'+esc(t('wa_mark'))+'</button></td></tr>'; }).join('')||
       '<tr><td colspan="7"><div class="okmsg">'+esc(t('wa_none'))+'</div></td></tr>';
   }
-  function drop(r){ rows.splice(rows.indexOf(r),1); setWaBadge(rows.length); paint(); }
-  $('#waf',main).addEventListener('change',function(){ WAF=this.value; paint(); });
+  function drop(r){ rows.splice(rows.indexOf(r),1); setWaBadge(WA_PENDING-1); paint(); }
   $('#watb',main).addEventListener('click',async function(e){
     var s=e.target.closest('[data-ws]'), mk=e.target.closest('[data-wm]');
     if(s&&!s.disabled){ var r=rows[+s.dataset.ws]; sendBillWa({inv:r.inv,pay:r.pay,c:r.customer}); drop(r); }
     if(mk){ var r2=rows[+mk.dataset.wm]; try{ await call('motor_wa_mark',{p_kind:r2.t,p_id:r2.id}); drop(r2); }catch(err){ toast(errText(err),'e'); } }
+  });
+  paint();
+};
+
+/* =========================================================
+   إرسال قيمة الفاتورة: كل عداد بيتسجّل بيوصل لهون، والرسالة حسب كشف حساب الزبون
+   ========================================================= */
+function dueText(r){
+  var d=r.due||{}, c=r.customer, cur=mainCur();
+  var amt=fmtN(d.balance,cur==='LBP'?0:2)+' '+cur;
+  var months=(d.periods||[]).map(function(p){ return monthName(p,true); });
+  if(d.older) months.unshift(t('due_older'));
+  if(!months.length) months=[monthName(r.inv.period,true)];
+  if(!(n2(d.balance)>0.005)) return t('due_msg_ok',{s:SITE.name||'',n:c.name,m:monthName(r.inv.period,true),i:fmtN(r.inv.amount,cur==='LBP'?0:2)+' '+cur,v:fmtN(-n2(d.balance),cur==='LBP'?0:2)+' '+cur});
+  return t('due_msg',{s:SITE.name||'',n:c.name,k:fmtN((d.count||0)+(d.older?1:0),0),v:amt,m:months.join(t('due_and'))});
+}
+VIEWS.bills=async function(main){
+  var all=await call('motor_wa_outbox',{p_days:60}), rows=all.filter(function(r){ return r.t==='inv'; });
+  setWaBadge(all.length, rows.length);
+  var q='';
+  main.innerHTML='<div class="card"><p class="muted" style="margin:0">'+esc(t('bills_hint'))+'</p></div>'+
+    '<div class="toolbar"><input type="search" id="bq" placeholder="'+esc(t('search_ph'))+'"><span class="sp"></span><b id="bc"></b></div>'+
+    '<div class="tw"><table><thead><tr><th>'+esc(t('date'))+'</th><th>'+esc(t('name'))+'</th><th>'+esc(t('mobile'))+'</th><th>'+esc(t('consumption'))+'</th><th>'+esc(t('inv_amount'))+'</th><th>'+esc(t('due_count'))+'</th><th>'+esc(t('balance'))+'</th><th>'+esc(t('by'))+'</th><th></th></tr></thead><tbody id="btb"></tbody></table></div>';
+  function paint(){
+    var k=normS(q), list=rows.filter(function(r){ return !k||normS(r.customer.name).indexOf(k)>=0||String(r.customer.code)===k||normS(r.customer.box)===k; });
+    $('#bc',main).textContent=fmtN(list.length,0)+' '+t('wa_pending');
+    $('#btb',main).innerHTML=list.map(function(r){ var c=r.customer, i=rows.indexOf(r), d=r.due||{};
+      return '<tr><td class="num">'+esc(dt(r.at))+'</td><td><b>'+esc(c.name)+'</b> <span class="muted">#'+esc(c.code)+(c.box?' · '+esc(c.box):'')+'</span></td>'+
+        '<td class="num">'+(c.mobile?esc('+'+c.mobile_cc+' '+c.mobile):'<span class="chip off">'+esc(t('no_mobile_short'))+'</span>')+'</td>'+
+        '<td class="num">'+(r.inv.kwh!=null?esc(fmtN(r.inv.kwh))+' '+esc(t('kwh')):'—')+'</td><td class="num">'+esc(money(r.inv.amount))+'</td>'+
+        '<td class="num"><b>'+esc(fmtN((d.count||0)+(d.older?1:0),0))+'</b> <span class="muted">'+esc((d.periods||[]).map(function(p){return monthName(p,false)}).join('، '))+'</span></td>'+
+        '<td>'+balHtml(d.balance)+'</td><td>'+esc(r.inv.staff_name||'')+'</td>'+
+        '<td style="white-space:nowrap"><button class="btn wa sm" data-bs="'+i+'" '+(c.mobile?'':'disabled')+'>'+esc(t('wa_send'))+'</button> <button class="btn ghost sm" data-bv="'+i+'">👁️</button> <button class="btn ghost sm" data-bm="'+i+'">'+esc(t('wa_mark'))+'</button></td></tr>'; }).join('')||
+      '<tr><td colspan="9"><div class="okmsg">'+esc(t('wa_none'))+'</div></td></tr>';
+  }
+  function drop(r){ rows.splice(rows.indexOf(r),1); setWaBadge(WA_PENDING-1, rows.length); paint(); }
+  $('#bq',main).addEventListener('input',function(){ q=this.value; paint(); });
+  $('#btb',main).addEventListener('click',async function(e){
+    var sb2=e.target.closest('[data-bs]'), mk=e.target.closest('[data-bm]'), vw=e.target.closest('[data-bv]');
+    if(vw){ var rv=rows[+vw.dataset.bv]; modal(rv.customer.name,'<pre style="white-space:pre-wrap;font-family:inherit;margin:0">'+esc(dueText(rv))+'</pre>'); return; }
+    if(sb2&&!sb2.disabled){ var r=rows[+sb2.dataset.bs]; openWa(r.customer.mobile_cc,r.customer.mobile,dueText(r));
+      try{ await call('motor_wa_mark',{p_kind:'inv',p_id:r.id}); }catch(err){} drop(r); return; }
+    if(mk){ var r2=rows[+mk.dataset.bm]; try{ await call('motor_wa_mark',{p_kind:'inv',p_id:r2.id}); drop(r2); }catch(err){ toast(errText(err),'e'); } }
   });
   paint();
 };
@@ -2585,7 +2636,7 @@ async function syncNow(){
     if(r.me){ var was=JSON.stringify([ME.can_read,ME.can_collect,ME.can_cut,ME.is_admin]); ME=Object.assign(ME,r.me); if(was!==JSON.stringify([ME.can_read,ME.can_collect,ME.can_cut,ME.is_admin])) paintShell(); }
     var perChanged=SITE.bill_period!==r.period||n2(SITE.lbp_rate)!==n2(r.lbp_rate);
     SITE.bill_period=r.period; SITE.lbp_rate=r.lbp_rate;
-    if(r.wa_pending!=null) setWaBadge(r.wa_pending);
+    if(r.wa_pending!=null) setWaBadge(r.wa_pending,r.wa_inv);
     if((changed&&!first)||perChanged){
       refreshSearchLists();
       var idle=!$('.ov')&&!(document.activeElement&&/INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName));
