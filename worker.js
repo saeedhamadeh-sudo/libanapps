@@ -1690,6 +1690,49 @@ async function portalToken(request, env) {
   return json(200, { ok: true, hashed_token: hashedToken });
 }
 
+// ---------- motorapp: صورة العداد من الجابي ----------
+//  الجابي ما عندو حساب Supabase — منتحقق من رمز جلسته (أو جلسة صاحب الاشتراك) عبر motor_upload_ok،
+//  وبعدين منرفع الصورة بمفتاح الخدمة على مخزن motor تحت مجلد المؤسسة نفسها.
+async function motorPhoto(request, env) {
+  let body;
+  try { body = await request.json(); } catch { return json(400, { error: 'bad json' }); }
+  const slug = String(body.slug || '').trim().toLowerCase();
+  const token = String(body.token || '');
+  const period = /^\d{4}-\d{2}$/.test(String(body.period || '')) ? String(body.period) : new Date().toISOString().slice(0, 7);
+  const b64 = String(body.data || '').replace(/^data:image\/[a-z]+;base64,/i, '');
+  if (!/^[a-z0-9][a-z0-9-]{1,30}$/.test(slug) || !b64) return json(400, { error: 'missing fields' });
+  let bytes;
+  try { const bin = atob(b64); bytes = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i); }
+  catch { return json(400, { error: 'الصورة غير صالحة' }); }
+  if (bytes.length > MAX_BYTES) return json(413, { error: 'الصورة كبيرة جداً' });
+  if (bytes.length < 500 || bytes[0] !== 0xFF || bytes[1] !== 0xD8) return json(415, { error: 'الصورة يجب أن تكون JPEG' });
+
+  const anon = env.SUPABASE_ANON_KEY || 'sb_publishable_ypfm_aulpcqBpeFpyD_7iw_mA4DNlR5';
+  const hdr = { apikey: anon, 'Content-Type': 'application/json' };
+  const auth = request.headers.get('Authorization') || '';
+  if (!token && /^Bearer\s+\S+/.test(auth)) hdr.Authorization = auth;   // صاحب الاشتراك بجلسة المنصة
+  const chk = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/motor_upload_ok`, {
+    method: 'POST', headers: hdr, body: JSON.stringify({ p_slug: slug, p_token: token || null })
+  });
+  const chkText = await chk.text();
+  if (!chk.ok) {
+    const m = chkText.match(/MOTOR:[a-z_]+/);
+    return json(403, { error: m ? m[0] : 'not allowed' });
+  }
+  let siteId = '';
+  try { siteId = JSON.parse(chkText); } catch {}
+  if (!/^[0-9a-f-]{36}$/.test(String(siteId))) return json(403, { error: 'not allowed' });
+
+  const name = `${siteId}/${period}/${crypto.randomUUID()}.jpg`;
+  const up = await fetch(`${env.SUPABASE_URL}/storage/v1/object/motor/${name}`, {
+    method: 'POST', body: bytes,
+    headers: { apikey: env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`,
+               'Content-Type': 'image/jpeg', 'x-upsert': 'false' }
+  });
+  if (!up.ok) return json(502, { error: 'تعذّر حفظ الصورة (' + up.status + '): ' + (await up.text()).slice(0, 120) });
+  return json(200, { ok: true, path: '/img/motor/' + name });
+}
+
 async function createOwner(request, env) {
   const auth = request.headers.get('Authorization') || '';
   const token = auth.replace(/^Bearer\s+/i, '');
@@ -3331,6 +3374,9 @@ function pageFor(pathname) {
   if (/^\/portal\/[^/]+\/?$/.test(p))  return '/app-alum.html';
   // رابط برنامج تجارة مخصص لزبون معيّن: /portal-trade/اسم-محله
   if (/^\/portal-trade\/[^/]+\/?$/.test(p)) return '/app-trade.html';
+  // برنامج اشتراكات المولّدات (motorapp): /portal-motor/اسم-المولّد
+  if (p === '/motor' || p === '/portal-motor') return '/app-motor.html';
+  if (/^\/portal-motor\/[^/]+\/?$/.test(p)) return '/app-motor.html';
   if (p.startsWith('/admin')) return '/admin.html';
   if (p.startsWith('/super')) return '/super.html';
   return '/menu.html';   // أي مسار آخر = رابط مطعم
@@ -3511,6 +3557,10 @@ export default {
         if (url.pathname === '/api/portal-token') {
           if (request.method !== 'GET') return json(405, { error: 'method not allowed' });
           return await portalToken(request, env);
+        }
+        if (url.pathname === '/api/motor-photo') {
+          if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
+          return await motorPhoto(request, env);
         }
         if (url.pathname === '/api/portal-client') {
           if (request.method !== 'GET') return json(405, { error: 'method not allowed' });

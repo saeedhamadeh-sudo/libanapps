@@ -1,0 +1,1654 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#0c3b5e">
+<title>Motor — LibanApps</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --p:#0c3b5e; --pd:#082a44; --a:#f5a400; --on-p:#fff;
+  --bg:#f3f6f9; --card:#fff; --ink:#0f1c2b; --ink2:#4a5b6c; --mut:#8a9aab; --line:#e1e8ef;
+  --ok:#15803d; --okbg:#dcfce7; --warn:#b45309; --warnbg:#fef3c7; --bad:#dc2626; --badbg:#fee2e2; --soft:#eef3f8;
+  --wish:#6d28d9; --wishbg:#ede9fe;
+  --r:14px; --sh:0 1px 2px rgba(15,28,43,.06),0 4px 16px rgba(15,28,43,.06);
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{font-family:'Cairo','Segoe UI',Tahoma,Arial,sans-serif;background:var(--bg);color:var(--ink);font-size:15px;line-height:1.55;-webkit-font-smoothing:antialiased}
+body.lock{overflow:hidden}
+.hidden{display:none!important}
+a{color:var(--p)}
+input,select,textarea,button{font:inherit;color:inherit}
+input,select,textarea{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:#fff;outline:none}
+input:focus,select:focus,textarea:focus{border-color:var(--p);box-shadow:0 0 0 3px rgba(12,59,94,.15)}
+input[type=checkbox]{width:auto}
+textarea{min-height:70px;resize:vertical}
+label{display:block;font-size:13px;color:var(--ink2);margin:0 0 4px;font-weight:600}
+.chk{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--ink);font-weight:600;margin:6px 0}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:0;border-radius:10px;padding:10px 16px;background:var(--p);color:var(--on-p);font-weight:700;cursor:pointer;text-decoration:none;white-space:nowrap}
+.btn:disabled{opacity:.55;cursor:default}
+.btn.alt{background:var(--soft);color:var(--p)}
+.btn.ghost{background:transparent;color:var(--ink2);border:1px solid var(--line)}
+.btn.danger{background:var(--bad);color:#fff}
+.btn.ok{background:var(--ok);color:#fff}
+.btn.wa{background:#25d366;color:#fff}
+.btn.wish{background:var(--wish);color:#fff}
+.btn.acc{background:var(--a);color:#1d1300}
+.btn.sm{padding:6px 11px;font-size:13px;border-radius:8px}
+.btn.lg{padding:16px 22px;font-size:18px;border-radius:14px}
+.btn.full{width:100%}
+.chip{display:inline-flex;align-items:center;gap:4px;padding:2px 10px;border-radius:999px;font-size:12.5px;font-weight:700;white-space:nowrap}
+.chip.on{background:var(--okbg);color:var(--ok)}
+.chip.off{background:var(--badbg);color:var(--bad)}
+.chip.warn{background:var(--warnbg);color:var(--warn)}
+.chip.gray{background:var(--soft);color:var(--ink2)}
+.chip.wish{background:var(--wishbg);color:var(--wish)}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.sp{flex:1}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.g3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.g4{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+@media (max-width:720px){.g3,.g4{grid-template-columns:1fr 1fr}}
+@media (max-width:460px){.g2,.g3,.g4{grid-template-columns:1fr}}
+.card{background:var(--card);border-radius:var(--r);box-shadow:var(--sh);padding:16px;margin-bottom:14px}
+.card h3{margin:0 0 10px;font-size:17px}
+.muted{color:var(--mut);font-size:13px}
+.num{font-variant-numeric:tabular-nums;direction:ltr;unicode-bidi:isolate;display:inline-block}
+td.num,th.num{display:table-cell;unicode-bidi:plaintext;text-align:start}
+.err{color:var(--bad);background:var(--badbg);padding:9px 12px;border-radius:10px;font-size:14px;white-space:pre-line}
+.okmsg{color:var(--ok);background:var(--okbg);padding:9px 12px;border-radius:10px;font-size:14px}
+.msg:empty{display:none}
+/* الجداول: تمرير أفقي، بدون تكسير الكلمات حرفاً حرفاً */
+.tw{overflow-x:auto;-webkit-overflow-scrolling:touch;border-radius:10px;border:1px solid var(--line);background:#fff}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:start;white-space:nowrap;vertical-align:middle}
+th{background:var(--soft);font-size:12.5px;color:var(--ink2);font-weight:700;position:sticky;top:0}
+tr.void td{opacity:.45;text-decoration:line-through}
+tbody tr:hover{background:#fafcfe}
+td.wrap{white-space:normal;min-width:180px}
+/* الهيكل */
+#gate{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+.gbox{background:#fff;border-radius:18px;box-shadow:var(--sh);padding:26px 22px;max-width:400px;width:100%;text-align:center}
+.gbox img{max-width:90px;max-height:90px;border-radius:14px;margin-bottom:8px}
+.gbox h1{font-size:21px;margin:4px 0 2px}
+.gbox form{text-align:start;margin-top:14px}
+.gbox .fld{margin-bottom:10px}
+header.top{background:var(--p);color:#fff;position:sticky;top:0;z-index:50;box-shadow:0 2px 10px rgba(0,0,0,.15)}
+.tbar{display:flex;align-items:center;gap:10px;padding:8px 12px;max-width:1280px;margin:0 auto}
+.tbar img{width:34px;height:34px;border-radius:8px;object-fit:cover;background:#fff}
+.tbar .ttl{font-weight:800;font-size:16px;line-height:1.2;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tbar .who{font-size:12px;opacity:.85}
+.tbar select{width:auto;padding:4px 6px;border-radius:8px;background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.25)}
+.tbar select option{color:#000}
+.tbar .btn{background:rgba(255,255,255,.14);color:#fff}
+nav.tabs{display:flex;gap:4px;overflow-x:auto;padding:0 8px 6px;max-width:1280px;margin:0 auto;scrollbar-width:none}
+nav.tabs::-webkit-scrollbar{display:none}
+nav.tabs button{border:0;background:transparent;color:rgba(255,255,255,.8);padding:7px 12px;border-radius:999px;font-weight:700;white-space:nowrap;cursor:pointer;font-size:14px}
+nav.tabs button.on{background:#fff;color:var(--p)}
+main{max-width:1280px;margin:0 auto;padding:14px 12px 90px}
+.lic{background:var(--warnbg);color:var(--warn);padding:8px 12px;border-radius:10px;margin-bottom:12px;font-weight:700;font-size:14px}
+.stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin-bottom:14px}
+.stat{background:#fff;border-radius:12px;box-shadow:var(--sh);padding:12px 14px}
+.stat b{display:block;font-size:20px;margin-top:2px}
+.stat span{font-size:12.5px;color:var(--ink2);font-weight:700}
+.big-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
+.list{display:flex;flex-direction:column;gap:8px}
+.litem{display:flex;align-items:center;gap:10px;background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 12px;cursor:pointer}
+.litem:active{background:var(--soft)}
+.litem .nm{font-weight:800}
+.litem .sub{font-size:12.5px;color:var(--ink2)}
+.bal{font-weight:800}
+.bal.debt{color:var(--bad)}
+.bal.cred{color:var(--ok)}
+.kv{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px 14px;margin:8px 0}
+.kv div{font-size:13px;color:var(--ink2)}
+.kv b{display:block;color:var(--ink);font-size:14.5px;word-break:normal;overflow-wrap:anywhere}
+.bigbal{text-align:center;padding:12px;border-radius:12px;background:var(--soft);margin:10px 0}
+.bigbal b{font-size:26px;display:block}
+.step{border:2px dashed var(--line);border-radius:14px;padding:14px;margin-top:10px}
+.valinput{font-size:28px;text-align:center;font-weight:800;direction:ltr;letter-spacing:1px}
+.prev-img{max-width:100%;max-height:300px;border-radius:12px;display:block;margin:8px auto}
+.thumb{width:44px;height:44px;object-fit:cover;border-radius:8px;cursor:pointer;background:var(--soft)}
+.gps{font-size:13px;font-weight:700;padding:6px 10px;border-radius:8px;background:var(--soft);display:inline-block}
+.gps.ok{background:var(--okbg);color:var(--ok)}
+.gps.bad{background:var(--badbg);color:var(--bad)}
+.sec-t{font-weight:800;color:var(--p);margin:14px 0 8px;padding-bottom:4px;border-bottom:2px solid var(--soft)}
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
+.toolbar input,.toolbar select{width:auto;min-width:140px;flex:1 1 160px}
+.pbar{height:10px;background:var(--soft);border-radius:999px;overflow:hidden}
+.pbar i{display:block;height:100%;background:var(--ok);width:0;transition:width .2s}
+/* النوافذ: ما بتسكّر بالضغط برّاتها، وبتنزلق عالموبايل */
+.ov{position:fixed;inset:0;background:rgba(10,20,30,.55);display:flex;align-items:center;justify-content:center;padding:10px;z-index:1000}
+.modal{background:#fff;border-radius:18px;width:100%;max-width:560px;box-shadow:0 20px 60px rgba(0,0,0,.3);display:flex;flex-direction:column;max-height:calc(100vh - 20px);max-height:calc(100dvh - 20px);overflow:hidden}
+.modal.wide{max-width:960px}
+.mh{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 16px;border-bottom:1px solid var(--line);flex:none}
+.mh h3{margin:0;font-size:17px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mx{border:0;background:var(--soft);width:34px;height:34px;border-radius:50%;font-size:20px;line-height:1;cursor:pointer;flex:none}
+.mb{padding:14px 16px;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;flex:1 1 auto;min-height:0}
+.mf{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;padding:10px 16px;border-top:1px solid var(--line);flex:none}
+.toast{pointer-events:none;position:fixed;bottom:22px;left:50%;transform:translate(-50%,30px);opacity:0;background:#0f1c2b;color:#fff;padding:11px 18px;border-radius:12px;z-index:3000;transition:all .3s;max-width:92vw;font-weight:700;box-shadow:0 8px 30px rgba(0,0,0,.3);white-space:pre-line;text-align:center}
+.toast.on{opacity:1;transform:translate(-50%,0)}
+.toast.e{background:var(--bad)}
+.toast.s{background:var(--ok)}
+.cam{position:relative;background:#000;border-radius:12px;overflow:hidden}
+.cam video{width:100%;max-height:60vh;display:block;object-fit:cover}
+.cam .aim{position:absolute;inset:22% 10%;border:3px solid rgba(255,255,255,.85);border-radius:12px;box-shadow:0 0 0 2000px rgba(0,0,0,.25);pointer-events:none}
+.inv-box{background:#fffdf6;border:1px solid #f3e3b4;border-radius:12px;padding:12px;font-size:14px}
+.inv-box .ln{display:flex;justify-content:space-between;gap:10px;padding:3px 0}
+.inv-box .ln.tot{border-top:1px dashed #c9b37a;margin-top:6px;padding-top:8px;font-weight:800;font-size:16px}
+.lb-img{max-width:100%;max-height:75vh;display:block;margin:0 auto;border-radius:10px}
+@media print{body *{visibility:hidden}#printArea,#printArea *{visibility:visible}#printArea{position:absolute;inset:0}}
+</style>
+<script>
+window.LIBANAPPS = {
+  SUPABASE_URL: 'https://moriwmhlgugmjzddwfgv.supabase.co',
+  SUPABASE_ANON_KEY: 'sb_publishable_ypfm_aulpcqBpeFpyD_7iw_mA4DNlR5'
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.0/dist/umd/supabase.min.js"></script>
+</head>
+<body>
+<div id="gate"><div class="gbox">
+  <img id="gLogo" class="hidden" alt="">
+  <h1 id="gName">⚡ Motor</h1>
+  <div class="muted" id="gSub"></div>
+  <div id="gNote" class="muted" style="margin-top:12px"></div>
+  <form id="loginForm" class="hidden" autocomplete="on">
+    <div class="fld"><label id="lUser"></label><input id="inUser" autocomplete="username" autocapitalize="off" spellcheck="false" required></div>
+    <div class="fld"><label id="lPass"></label><input id="inPass" type="password" autocomplete="current-password" required></div>
+    <div id="loginMsg" class="err msg"></div>
+    <button class="btn full" id="loginBtn" style="margin-top:8px"></button>
+    <div style="text-align:center;margin-top:12px"><a id="ownerLink" href="#" class="muted"></a></div>
+  </form>
+  <div style="margin-top:14px"><select id="gLang" style="width:auto"><option value="ar">العربية</option><option value="en">English</option><option value="fr">Français</option></select></div>
+</div></div>
+
+<div id="app" class="hidden">
+  <header class="top">
+    <div class="tbar">
+      <img id="tLogo" class="hidden" alt="">
+      <div style="min-width:0;flex:1"><div class="ttl" id="tName"></div><div class="who" id="tWho"></div></div>
+      <select id="tLang"><option value="ar">ع</option><option value="en">EN</option><option value="fr">FR</option></select>
+      <button class="btn sm" id="tOut"></button>
+    </div>
+    <nav class="tabs" id="tabs"></nav>
+  </header>
+  <main id="main"></main>
+</div>
+<div class="toast" id="toast"></div>
+<div id="printArea" class="hidden"></div>
+
+<script>
+(function(){
+'use strict';
+/* =========================================================
+   الترجمة — العربية (فصحى) / English / Français
+   ========================================================= */
+var D={
+ loading:['جارٍ التحميل…','Loading…','Chargement…'],
+ app_name:['اشتراكات المولّد','Generator subscriptions','Abonnements générateur'],
+ username:['اسم المستخدم','Username','Nom d’utilisateur'],
+ password:['كلمة المرور','Password','Mot de passe'],
+ login:['تسجيل الدخول','Sign in','Se connecter'],
+ owner_login:['دخول صاحب الاشتراك بحساب LibanApps','Subscription owner? Sign in with LibanApps','Propriétaire ? Connexion LibanApps'],
+ logout:['خروج','Sign out','Déconnexion'],
+ bad_login:['اسم المستخدم أو كلمة المرور غير صحيحة','Wrong username or password','Identifiants incorrects'],
+ locked:['تم إيقاف الدخول مؤقتاً بسبب محاولات خاطئة — حاول بعد {m} دقيقة','Too many attempts — try again in {m} min','Trop de tentatives — réessayez dans {m} min'],
+ inactive_user:['هذا المستخدم موقوف','This user is disabled','Utilisateur désactivé'],
+ no_slug:['رابط البرنامج غير مكتمل — افتح البرنامج من صفحة حسابك','Incomplete link — open the app from your account page','Lien incomplet — ouvrez l’application depuis votre compte'],
+ my_account:['حسابي','My account','Mon compte'],
+ r_not_found:['هذا الرابط غير موجود','This link does not exist','Ce lien n’existe pas'],
+ r_license:['الاشتراك منتهٍ أو موقوف — تواصل مع صاحب الاشتراك','Subscription expired or suspended','Abonnement expiré ou suspendu'],
+ r_inactive:['البرنامج موقوف','App disabled','Application désactivée'],
+ role_owner:['صاحب الاشتراك','Owner','Propriétaire'],
+ role_admin:['مدير','Admin','Admin'],
+ role_collector:['جابي','Collector','Releveur'],
+ nav_dash:['الرئيسية','Home','Accueil'],
+ nav_read:['أخذ العداد','Read meter','Relevé'],
+ nav_pay:['القبض','Collect','Encaisser'],
+ nav_customers:['الزبائن','Customers','Clients'],
+ nav_month:['جدول عدادات الشهر','Monthly readings','Relevés du mois'],
+ nav_cstmt:['كشف حساب الجابي','Collector statement','Relevé releveur'],
+ nav_whish:['كشف حساب Whish','Whish statement','Relevé Whish'],
+ nav_staff:['الموظفون','Staff','Personnel'],
+ nav_plans:['الاشتراكات والأسعار','Plans & prices','Formules & tarifs'],
+ nav_settings:['الإعدادات','Settings','Paramètres'],
+ lic_days:['الاشتراك ينتهي خلال {d} يوم','Subscription ends in {d} days','L’abonnement se termine dans {d} jours'],
+ lic_trial:['نسخة تجريبية — متبقٍ {d} يوم','Trial — {d} days left','Essai — {d} jours restants'],
+ st_active_c:['زبائن مفعّلون','Active customers','Clients actifs'],
+ st_read:['عدادات مقروءة ({p})','Meters read ({p})','Compteurs relevés ({p})'],
+ st_billed:['فواتير الدورة','Cycle invoices','Factures du cycle'],
+ st_debt:['مجموع الديون','Total debt','Total des dettes'],
+ st_cash_today:['نقدي اليوم','Cash today','Espèces aujourd’hui'],
+ st_whish_today:['Whish اليوم','Whish today','Whish aujourd’hui'],
+ st_month:['المقبوض هذا الشهر','Collected this month','Encaissé ce mois'],
+ st_hand:['النقد الذي بحوزتي','Cash in my hand','Espèces en main'],
+ scan:['مسح باركود العداد','Scan meter barcode','Scanner le code-barres'],
+ scan_pay:['مسح الباركود للقبض','Scan to collect','Scanner pour encaisser'],
+ search_ph:['ابحث بالاسم أو الباركود أو رقم العداد أو العلبة','Search name, barcode, meter or box','Rechercher nom, code, compteur ou boîte'],
+ window_none:['لم يحدّد المدير فترة أخذ العدادات لك بعد','The admin has not set your reading period yet','L’admin n’a pas encore fixé votre période de relevé'],
+ window_is:['فترة أخذ العدادات: من {f} إلى {t}','Reading period: {f} → {t}','Période de relevé : {f} → {t}'],
+ window_closed:['خارج فترة أخذ العدادات','Outside the reading period','Hors période de relevé'],
+ progress:['قُرئ {a} من {b} — الدورة {p}','{a} of {b} read — cycle {p}','{a} sur {b} relevés — cycle {p}'],
+ no_results:['لا توجد نتائج','No results','Aucun résultat'],
+ more:['عرض المزيد','Show more','Afficher plus'],
+ read_done:['مقروء','Read','Relevé'],
+ not_read:['غير مقروء','Not read','Non relevé'],
+ active:['مفعّل','Active','Actif'],
+ inactive:['غير مفعّل','Inactive','Inactif'],
+ archived:['مؤرشف','Archived','Archivé'],
+ balance:['الرصيد المستحق','Balance due','Solde dû'],
+ credit:['رصيد له','Credit','Crédit'],
+ code:['الرقم','No.','N°'],
+ name:['الاسم','Name','Nom'],
+ alt_name:['اسم آخر','Other name','Autre nom'],
+ barcode:['باركود العداد','Meter barcode','Code-barres compteur'],
+ meter_no:['رقم العداد','Meter no.','N° compteur'],
+ box:['العلبة','Box','Boîte'],
+ generator:['المولّد / الكابل','Generator / cable','Générateur / câble'],
+ breaker_no:['رقم القاطع (الدجنتير)','Breaker no.','N° disjoncteur'],
+ building:['المبنى','Building','Immeuble'],
+ floor:['الطابق','Floor','Étage'],
+ side:['الجهة','Side','Côté'],
+ location_name:['اسم الموقع','Location name','Nom du site'],
+ location_code:['رمز الموقع','Location code','Code du site'],
+ lat:['خط العرض','Latitude','Latitude'],
+ lng:['خط الطول','Longitude','Longitude'],
+ area:['المنطقة','Area','Zone'],
+ area_code:['رمز المنطقة','Area code','Code zone'],
+ zone:['النطاق','Region','Secteur'],
+ category:['الفئة','Category','Catégorie'],
+ category2:['الفئة 2','Category 2','Catégorie 2'],
+ collector:['الجابي','Collector','Releveur'],
+ sub_date:['تاريخ الاشتراك','Subscription date','Date d’abonnement'],
+ is_active:['مفعّل','Active','Actif'],
+ credit_limit:['الحد الائتماني','Credit limit','Plafond de crédit'],
+ charge_discount:['الخصم عند الفوترة','Discount per invoice','Remise par facture'],
+ discount_desc:['وصف الخصم','Discount note','Motif de remise'],
+ charge_addition:['الإضافة عند الفوترة','Addition per invoice','Supplément par facture'],
+ addition_desc:['وصف الإضافة','Addition note','Motif du supplément'],
+ initial_reading:['العداد الأولي','Initial reading','Index initial'],
+ opening_balance:['رصيد سابق (دين)','Opening balance (debt)','Solde initial (dette)'],
+ mobile:['الجوال','Mobile','Mobile'],
+ mobile_cc:['رمز الدولة','Country code','Indicatif'],
+ mobile2:['جوال آخر','Other mobile','Autre mobile'],
+ phone:['الهاتف','Phone','Téléphone'],
+ address:['العنوان','Address','Adresse'],
+ email:['البريد الإلكتروني','Email','E-mail'],
+ nationality:['الجنسية','Nationality','Nationalité'],
+ collect_day:['يوم التحصيل','Collection day','Jour d’encaissement'],
+ notes:['ملاحظات','Notes','Notes'],
+ plan:['نوع الاشتراك','Subscription type','Type d’abonnement'],
+ none:['— لا شيء —','— none —','— aucun —'],
+ sec_basic:['البيانات الأساسية','Basic info','Infos de base'],
+ sec_sub:['الاشتراك','Subscription','Abonnement'],
+ sec_meter:['العداد والموقع','Meter & location','Compteur & emplacement'],
+ sec_disc:['الخصم والإضافة','Discount & addition','Remise & supplément'],
+ my_location:['📍 موقعي الحالي','📍 My location','📍 Ma position'],
+ new_customer:['➕ زبون جديد','➕ New customer','➕ Nouveau client'],
+ edit_customer:['تعديل الزبون','Edit customer','Modifier le client'],
+ import_excel:['📥 استيراد Excel','📥 Import Excel','📥 Importer Excel'],
+ export_csv:['📤 تصدير','📤 Export','📤 Exporter'],
+ labels:['🏷️ ملصقات الباركود','🏷️ Barcode labels','🏷️ Étiquettes'],
+ save:['حفظ','Save','Enregistrer'],
+ cancel:['إلغاء','Cancel','Annuler'],
+ close:['إغلاق','Close','Fermer'],
+ delete:['حذف','Delete','Supprimer'],
+ edit:['تعديل','Edit','Modifier'],
+ confirm_delete:['تأكيد الحذف؟','Confirm delete?','Confirmer la suppression ?'],
+ saved:['تم الحفظ ✓','Saved ✓','Enregistré ✓'],
+ all:['الكل','All','Tous'],
+ f_debt:['عليهم دين','With debt','Avec dette'],
+ take_reading:['📷 أخذ عداد','📷 Read meter','📷 Relever'],
+ collect:['💵 قبض','💵 Collect','💵 Encaisser'],
+ statement:['🧾 كشف حساب','🧾 Statement','🧾 Relevé de compte'],
+ whatsapp:['واتساب','WhatsApp','WhatsApp'],
+ adjust:['قيد يدوي','Manual entry','Écriture manuelle'],
+ label_one:['ملصق الباركود','Barcode label','Étiquette'],
+ prev_reading:['العداد السابق','Previous reading','Index précédent'],
+ cur_reading:['العداد الحالي','Current reading','Index actuel'],
+ consumption:['الاستهلاك','Consumption','Consommation'],
+ kwh:['ك.و.س','kWh','kWh'],
+ fee:['الاشتراك الأساسي','Base fee','Abonnement de base'],
+ energy:['قيمة الاستهلاك','Energy cost','Coût énergie'],
+ discount:['الخصم','Discount','Remise'],
+ addition:['الإضافة','Addition','Supplément'],
+ inv_amount:['قيمة الفاتورة','Invoice amount','Montant facture'],
+ prev_balance:['الرصيد السابق','Previous balance','Solde précédent'],
+ total_due:['المجموع المستحق','Total due','Total dû'],
+ already_read:['قُرئ عداد هذا الزبون في الدورة {p}: {v}','This meter was read in cycle {p}: {v}','Compteur déjà relevé au cycle {p} : {v}'],
+ enter_value:['أدخل قيمة العداد','Enter meter value','Saisir l’index'],
+ next_photo:['التالي: صورة العداد 📷','Next: meter photo 📷','Suivant : photo 📷'],
+ retake:['إعادة التصوير','Retake','Reprendre'],
+ upload_save:['⬆️ تحميل الصورة وحفظ العداد','⬆️ Upload photo & save','⬆️ Envoyer la photo et enregistrer'],
+ capture:['📸 التقاط','📸 Capture','📸 Capturer'],
+ camera_title:['صورة العداد','Meter photo','Photo du compteur'],
+ camera_fail:['تعذّر فتح الكاميرا — اختر صورة بالكاميرا من الزر أدناه','Camera unavailable — use the button below','Caméra indisponible — utilisez le bouton ci-dessous'],
+ pick_photo:['📷 فتح كاميرا الجهاز','📷 Open device camera','📷 Ouvrir l’appareil photo'],
+ gps_wait:['📍 جارٍ تحديد الموقع…','📍 Getting location…','📍 Localisation…'],
+ gps_ok:['📍 الموقع محدّد (±{a} م)','📍 Location OK (±{a} m)','📍 Position OK (±{a} m)'],
+ gps_bad:['📍 تعذّر تحديد الموقع — فعّل GPS واسمح للمتصفح','📍 Location failed — enable GPS and allow the browser','📍 Échec de localisation — activez le GPS'],
+ gps_retry:['إعادة المحاولة','Retry','Réessayer'],
+ est_invoice:['الفاتورة التقديرية','Estimated invoice','Facture estimée'],
+ saving:['جارٍ الحفظ…','Saving…','Enregistrement…'],
+ uploading:['جارٍ تحميل الصورة…','Uploading photo…','Envoi de la photo…'],
+ read_saved:['تم حفظ العداد وإصدار الفاتورة ✓','Reading saved and invoice issued ✓','Relevé enregistré, facture émise ✓'],
+ dist:['البعد عن موقع الزبون: {d} م','Distance from customer: {d} m','Distance du client : {d} m'],
+ send_wa:['📲 إرسال عبر واتساب','📲 Send via WhatsApp','📲 Envoyer par WhatsApp'],
+ print:['🖨️ طباعة','🖨️ Print','🖨️ Imprimer'],
+ no_mobile:['لا يوجد رقم جوال لهذا الزبون','This customer has no mobile number','Pas de numéro mobile'],
+ amount:['المبلغ','Amount','Montant'],
+ currency:['العملة','Currency','Devise'],
+ method:['طريقة الدفع','Payment method','Mode de paiement'],
+ cash:['نقدي','Cash','Espèces'],
+ whish:['Whish','Whish','Whish'],
+ note:['ملاحظة','Note','Note'],
+ equals:['يعادل {v}','Equals {v}','Équivaut à {v}'],
+ pay_save:['✅ تأكيد القبض','✅ Confirm payment','✅ Confirmer'],
+ pay_saved:['تم القبض ✓','Payment recorded ✓','Paiement enregistré ✓'],
+ receipt:['إيصال قبض','Receipt','Reçu'],
+ invoice:['فاتورة','Invoice','Facture'],
+ cycle:['الدورة','Cycle','Cycle'],
+ date:['التاريخ','Date','Date'],
+ type:['النوع','Type','Type'],
+ debit:['مدين','Debit','Débit'],
+ creditc:['دائن','Credit','Crédit'],
+ running:['الرصيد','Balance','Solde'],
+ by:['بواسطة','By','Par'],
+ photo:['الصورة','Photo','Photo'],
+ k_meter:['فاتورة عداد','Meter invoice','Facture compteur'],
+ k_fixed:['فاتورة مقطوع','Flat invoice','Facture forfait'],
+ k_opening:['رصيد سابق','Opening balance','Solde initial'],
+ k_adjust:['قيد يدوي','Manual entry','Écriture manuelle'],
+ k_pay:['قبض','Payment','Paiement'],
+ void:['إلغاء','Void','Annuler'],
+ voided:['ملغى','Voided','Annulé'],
+ confirm_void:['إلغاء هذه الحركة؟ سيُعدَّل رصيد الزبون.','Void this entry? The balance will be adjusted.','Annuler cette opération ? Le solde sera ajusté.'],
+ adj_amount:['المبلغ (موجب = دين على الزبون، سالب = له)','Amount (positive = debt, negative = credit)','Montant (positif = dette, négatif = crédit)'],
+ period:['الشهر','Month','Mois'],
+ bill_period:['دورة الفوترة الحالية','Current billing cycle','Cycle de facturation actuel'],
+ change_period:['تغيير الدورة','Change cycle','Changer de cycle'],
+ bill_fixed:['إصدار فواتير المقطوع','Issue flat invoices','Émettre les factures forfait'],
+ bill_fixed_done:['صدرت {n} فاتورة مقطوع للدورة {p}','{n} flat invoices issued for {p}','{n} factures forfait émises pour {p}'],
+ window_all:['فترة أخذ العداد لكل الجباة','Reading period for all collectors','Période de relevé pour tous'],
+ from:['من','From','Du'],
+ to:['إلى','To','Au'],
+ apply:['تطبيق','Apply','Appliquer'],
+ map:['الخريطة','Map','Carte'],
+ time:['الوقت','Time','Heure'],
+ read_of:['قُرئ {a} من {b}','{a} of {b} read','{a} sur {b} relevés'],
+ far:['بعيد','Far','Loin'],
+ name_user:['الاسم','Name','Nom'],
+ role:['الصلاحية','Role','Rôle'],
+ can_collect:['يقبض من الزبائن','Can collect payments','Peut encaisser'],
+ read_window:['فترة أخذ العداد','Reading period','Période de relevé'],
+ new_staff:['➕ موظف جديد','➕ New staff','➕ Nouvel employé'],
+ pass_keep:['اتركها فارغة لعدم التغيير','Leave empty to keep','Laisser vide pour conserver'],
+ staff_deact:['للموظف حركات — تم إيقافه بدل حذفه','Staff has records — disabled instead of deleted','Employé avec historique — désactivé'],
+ opening:['رصيد أول المدة','Opening balance','Solde d’ouverture'],
+ cash_collected:['نقدي مقبوض','Cash collected','Espèces encaissées'],
+ handed:['مسلَّم للمكتب','Handed over','Remis au bureau'],
+ in_hand:['بحوزة الجابي الآن','Now in collector’s hand','En main du releveur'],
+ whish_coll:['مقبوض Whish (للعلم)','Whish collected (info)','Whish encaissé (info)'],
+ readings_n:['عدد العدادات','Meters read','Compteurs relevés'],
+ handover:['💰 استلام نقدي من الجابي','💰 Receive cash from collector','💰 Recevoir les espèces'],
+ m_handover:['تسليم للمكتب','Handover','Remise'],
+ m_adjust:['تسوية','Adjustment','Ajustement'],
+ m_withdraw:['سحب','Withdrawal','Retrait'],
+ m_deposit:['إيداع','Deposit','Dépôt'],
+ choose_staff:['اختر الجابي','Choose collector','Choisir un releveur'],
+ whish_bal:['رصيد Whish الآن','Whish balance now','Solde Whish actuel'],
+ whish_withdraw:['➖ سحب من Whish','➖ Withdraw from Whish','➖ Retrait Whish'],
+ whish_deposit:['➕ إيداع / تسوية','➕ Deposit / adjust','➕ Dépôt / ajustement'],
+ kwh_general:['سعر الكيلوواط العام','General kWh price','Prix kWh général'],
+ plans_t:['أنواع الاشتراك','Subscription types','Types d’abonnement'],
+ new_plan:['➕ نوع جديد','➕ New type','➕ Nouveau type'],
+ amps:['الأمبير','Amps','Ampères'],
+ kind:['طريقة الحساب','Billing method','Mode de calcul'],
+ kind_meter:['عداد (اشتراك + كيلوواط)','Meter (fee + kWh)','Compteur (abonnement + kWh)'],
+ kind_fixed:['مقطوع (مبلغ ثابت)','Flat (fixed amount)','Forfait (montant fixe)'],
+ kwh_price:['سعر الكيلوواط','kWh price','Prix kWh'],
+ kwh_blank:['فارغ = السعر العام','Empty = general price','Vide = prix général'],
+ sort:['الترتيب','Order','Ordre'],
+ plan_hint:['الفاتورة = الاشتراك الأساسي + (الاستهلاك × سعر الكيلوواط) − الخصم + الإضافة. نوع «مقطوع» = الاشتراك الأساسي فقط.','Invoice = base fee + (consumption × kWh price) − discount + addition. “Flat” = base fee only.','Facture = abonnement + (consommation × prix kWh) − remise + supplément. « Forfait » = abonnement seul.'],
+ s_biz:['بيانات المولّد','Generator details','Infos du générateur'],
+ biz_name:['اسم المولّد / المؤسسة','Generator / business name','Nom du générateur'],
+ logo_url:['رابط الشعار (اختياري)','Logo URL (optional)','URL du logo (facultatif)'],
+ wa_num:['رقم واتساب المؤسسة','Business WhatsApp','WhatsApp de l’entreprise'],
+ s_money:['العملة والفوترة','Currency & billing','Devise & facturation'],
+ main_cur:['العملة الأساسية','Main currency','Devise principale'],
+ lbp_rate:['سعر صرف الدولار بالليرة','USD rate in LBP','Taux USD en LBP'],
+ show_second:['إظهار المعادل بالعملة الثانية','Show the second currency equivalent','Afficher l’équivalent'],
+ round_step:['تقريب الفاتورة لأقرب (0 = بدون)','Round invoices to nearest (0 = none)','Arrondir à (0 = non)'],
+ invoice_note:['ملاحظة أسفل الفاتورة','Invoice footer note','Note en bas de facture'],
+ s_read:['ضوابط أخذ العداد','Reading rules','Règles de relevé'],
+ require_photo:['الصورة إلزامية','Photo required','Photo obligatoire'],
+ require_gps:['الموقع الجغرافي إلزامي','GPS required','GPS obligatoire'],
+ max_dist:['أقصى بعد عن موقع الزبون بالمتر (0 = تسجيل فقط)','Max distance from customer in m (0 = record only)','Distance max en m (0 = enregistrer seulement)'],
+ sees_all:['الجابي يرى كل الزبائن (وإلا زبائنه فقط)','Collectors see all customers (otherwise only theirs)','Le releveur voit tous les clients'],
+ baseline_note:['أول قراءة لهذا الزبون — تُعتمد عداداً أولياً ولا يُحسب استهلاك (يُفوتر الاشتراك الأساسي فقط)','First reading for this customer — it becomes the starting reading, no consumption is billed (base fee only)','Premier relevé — il devient l’index de départ, sans consommation facturée (abonnement seul)'],
+ first_read:['قراءة أولى — عداد أولي','First reading — starting reading','Premier relevé — index de départ'],
+ first_baseline:['أول قراءة لزبون بلا عداد سابق تُعتمد عداداً أولياً (بلا استهلاك)','First reading of a customer without a previous reading becomes the starting reading','Le premier relevé sans index précédent devient l’index de départ'],
+ barcode_prefix:['بادئة الباركود للزبائن الجدد','Barcode prefix for new customers','Préfixe code-barres'],
+ def_lang:['لغة البرنامج الافتراضية','Default language','Langue par défaut'],
+ s_device:['هذا الجهاز','This device','Cet appareil'],
+ print_mode:['طريقة الطباعة','Print method','Mode d’impression'],
+ pm_rawbt:['طابعة بلوتوث عبر تطبيق RawBT (أندرويد)','Bluetooth printer via RawBT (Android)','Imprimante Bluetooth via RawBT (Android)'],
+ pm_browser:['نافذة الطباعة العادية','Browser print dialog','Boîte d’impression'],
+ paper:['عرض الورق','Paper width','Largeur papier'],
+ test_print:['طباعة تجريبية','Test print','Impression test'],
+ rawbt_hint:['ثبّت تطبيق RawBT، واقرن الطابعة بالبلوتوث (Classic) من داخله، ثم اختر «RawBT» هنا.','Install RawBT, pair the printer (Classic Bluetooth) inside it, then choose RawBT here.','Installez RawBT, appairez l’imprimante (Bluetooth classique), puis choisissez RawBT.'],
+ s_pass:['تغيير كلمة المرور','Change password','Changer le mot de passe'],
+ old_pass:['كلمة المرور الحالية','Current password','Mot de passe actuel'],
+ new_pass:['كلمة المرور الجديدة','New password','Nouveau mot de passe'],
+ imp_title:['استيراد الزبائن من Excel','Import customers from Excel','Importer des clients depuis Excel'],
+ imp_hint:['اختر ملف ‎.xlsx‎ أو ‎.csv‎ — الصف الأول عناوين الأعمدة. الزبون الموجود (نفس الباركود) يُحدَّث دون تغيير رصيده.','Choose an .xlsx or .csv file — first row is headers. Existing customers (same barcode) are updated without touching their balance.','Fichier .xlsx ou .csv — 1re ligne = en-têtes. Les clients existants (même code-barres) sont mis à jour sans toucher au solde.'],
+ imp_cols:['الأعمدة المعروفة','Recognized columns','Colonnes reconnues'],
+ imp_ignored:['أعمدة سيتم تجاهلها','Ignored columns','Colonnes ignorées'],
+ imp_go:['استيراد {n} زبون','Import {n} customers','Importer {n} clients'],
+ imp_done:['تمت الإضافة: {a} — التحديث: {u} — التخطّي: {s} — أنواع اشتراك جديدة: {p}','Added: {a} — Updated: {u} — Skipped: {s} — New types: {p}','Ajoutés : {a} — Mis à jour : {u} — Ignorés : {s} — Nouveaux types : {p}'],
+ imp_plans_note:['تنبيه: أُنشئت أنواع اشتراك جديدة بقيمة 0 — حدّد أسعارها من تبويب «الاشتراكات والأسعار».','Note: new subscription types were created with price 0 — set their prices in “Plans & prices”.','Note : de nouveaux types ont été créés à 0 — fixez leurs prix.'],
+ imp_bad:['تعذّرت قراءة الملف','Could not read the file','Lecture du fichier impossible'],
+ imp_none:['لم يُعثر على عمود «الاسم»','No “Name” column found','Colonne « Nom » introuvable'],
+ row:['الصف','Row','Ligne'],
+ err_title:['أخطاء','Errors','Erreurs'],
+ manual_code:['أو اكتب الرمز يدوياً','Or type the code','Ou saisissez le code'],
+ ok:['موافق','OK','OK'],
+ scanning:['وجّه الكاميرا نحو الباركود','Point the camera at the barcode','Visez le code-barres'],
+ scan_unsupported:['المسح بالكاميرا غير مدعوم على هذا المتصفح — اكتب الرمز يدوياً','Camera scanning is not supported here — type the code','Scan non supporté — saisissez le code'],
+ customer_open:['فتح','Open','Ouvrir'],
+ total:['المجموع','Total','Total'],
+ refresh:['تحديث','Refresh','Actualiser'],
+ owner_name:['صاحب الاشتراك','Owner','Propriétaire'],
+ lang:['اللغة','Language','Langue'],
+ status:['الحالة','Status','Statut'],
+ actions:['إجراءات','Actions','Actions'],
+ yes:['نعم','Yes','Oui'],
+ no:['لا','No','Non'],
+ thanks:['شكراً لكم','Thank you','Merci'],
+ inv_for:['فاتورة اشتراك شهر {p}','Subscription invoice — {p}','Facture d’abonnement — {p}'],
+ customer:['المشترك','Subscriber','Abonné'],
+ paid:['المدفوع','Paid','Payé'],
+ remaining:['الباقي','Remaining','Reste'],
+ rcpt_no:['إيصال رقم {n}','Receipt #{n}','Reçu n° {n}'],
+ inv_no:['فاتورة رقم {n}','Invoice #{n}','Facture n° {n}'],
+ offline:['لا يوجد اتصال بالإنترنت','No internet connection','Pas de connexion'],
+ period_bad:['اختر شهراً صحيحاً','Choose a valid month','Choisissez un mois valide'],
+ confirm_period:['تغيير دورة الفوترة إلى {p}؟ كل قراءة جديدة ستُسجَّل لهذه الدورة.','Change billing cycle to {p}? New readings will be recorded for it.','Passer au cycle {p} ?'],
+ confirm_fixed:['إصدار فواتير «مقطوع» لكل الزبائن المفعّلين للدورة {p}؟','Issue flat invoices for all active customers for {p}?','Émettre les factures forfait pour {p} ?'],
+ /* رسائل أخطاء قاعدة البيانات */
+ e_auth:['انتهت الجلسة — سجّل الدخول من جديد','Session expired — please sign in again','Session expirée — reconnectez-vous'],
+ e_license:['الاشتراك منتهٍ أو موقوف','Subscription expired or suspended','Abonnement expiré ou suspendu'],
+ e_inactive:['البرنامج موقوف','App disabled','Application désactivée'],
+ e_not_found:['غير موجود','Not found','Introuvable'],
+ e_forbidden:['ليست لديك صلاحية لهذا الإجراء','You are not allowed to do this','Action non autorisée'],
+ e_customer_not_found:['لم يُعثر على زبون بهذا الرمز: {x}','No customer with this code: {x}','Aucun client avec ce code : {x}'],
+ e_customer_inactive:['هذا الزبون غير مفعّل','This customer is inactive','Client inactif'],
+ e_no_window:['لم يحدّد المدير فترة أخذ العدادات لك','No reading period has been set for you','Aucune période de relevé définie'],
+ e_out_of_window:['خارج فترة أخذ العدادات ({x})','Outside the reading period ({x})','Hors période de relevé ({x})'],
+ e_already_read:['قُرئ عداد هذا الزبون في هذه الدورة ({x})','Already read in this cycle ({x})','Déjà relevé pour ce cycle ({x})'],
+ e_bad_value:['قيمة العداد غير صحيحة','Invalid meter value','Index invalide'],
+ e_photo_required:['صورة العداد إلزامية','Meter photo is required','Photo obligatoire'],
+ e_bad_photo:['الصورة غير صالحة — أعد التصوير','Invalid photo — retake it','Photo invalide — reprenez-la'],
+ e_gps_required:['الموقع الجغرافي إلزامي — فعّل GPS','GPS is required — enable it','GPS obligatoire — activez-le'],
+ e_lower_than_prev:['القيمة أقل من العداد السابق ({x})','Value is lower than the previous reading ({x})','Index inférieur au précédent ({x})'],
+ e_too_far:['أنت بعيد عن موقع الزبون ({x} م)','You are too far from the customer ({x} m)','Trop loin du client ({x} m)'],
+ e_bad_amount:['المبلغ غير صحيح','Invalid amount','Montant invalide'],
+ e_bad_currency:['العملة غير صحيحة','Invalid currency','Devise invalide'],
+ e_bad_method:['طريقة الدفع غير صحيحة','Invalid payment method','Mode invalide'],
+ e_no_rate:['حدّد سعر الصرف من الإعدادات','Set the exchange rate in settings','Définissez le taux de change'],
+ e_name_required:['الاسم مطلوب','Name is required','Le nom est requis'],
+ e_barcode_taken:['الباركود مستخدم لزبون آخر ({x})','Barcode already used ({x})','Code-barres déjà utilisé ({x})'],
+ e_bad_plan:['نوع الاشتراك غير صحيح','Invalid subscription type','Type invalide'],
+ e_bad_staff:['الموظف غير صحيح','Invalid staff','Employé invalide'],
+ e_has_records:['للزبون حركات — لا يمكن حذفه، أوقفه أو أرشفه بدلاً من ذلك','Customer has records — deactivate or archive instead','Client avec historique — désactivez-le'],
+ e_bad_period:['صيغة الشهر غير صحيحة','Invalid month','Mois invalide'],
+ e_name_taken:['الاسم مستخدم','Name already used','Nom déjà utilisé'],
+ e_plan_in_use:['هذا النوع مرتبط بزبائن — لا يمكن حذفه','Type is used by customers','Type utilisé par des clients'],
+ e_bad_kind:['النوع غير صحيح','Invalid type','Type invalide'],
+ e_bad_username:['اسم المستخدم: أحرف إنجليزية وأرقام فقط (2–30)','Username: letters/digits only (2–30)','Identifiant : lettres/chiffres (2–30)'],
+ e_username_taken:['اسم المستخدم محجوز','Username taken','Identifiant déjà pris'],
+ e_short_password:['كلمة المرور 4 أحرف على الأقل','Password must be at least 4 characters','4 caractères minimum'],
+ e_bad_window:['تاريخ البداية بعد تاريخ النهاية','Start date is after end date','Date de début après la fin'],
+ e_self_demote:['لا يمكنك إيقاف حسابك أو سحب صلاحية المدير منه','You cannot disable or demote yourself','Impossible de vous rétrograder'],
+ e_bad_old:['كلمة المرور الحالية غير صحيحة','Current password is wrong','Mot de passe actuel incorrect'],
+ e_bad_account:['الحساب غير صحيح','Invalid account','Compte invalide'],
+ e_bad_data:['بيانات غير صالحة','Invalid data','Données invalides'],
+ e_too_many:['عدد الصفوف كبير جداً','Too many rows','Trop de lignes'],
+ e_network:['تعذّر الاتصال بالخادم — تحقّق من الإنترنت','Cannot reach the server — check the internet','Serveur injoignable — vérifiez internet']
+};
+var LI={ar:0,en:1,fr:2}, LANG='ar';
+try{ LANG=localStorage.getItem('motor_lang')||''; }catch(e){}
+function t(k,v){ var a=D[k]; var s=a?(a[LI[LANG]]||a[0]):k; if(v) for(var x in v) s=s.split('{'+x+'}').join(v[x]); return s; }
+function setLang(l){ if(!LI.hasOwnProperty(l)) l='ar'; LANG=l; try{ localStorage.setItem('motor_lang',l); }catch(e){}
+  document.documentElement.lang=l; document.documentElement.dir=(l==='ar'?'rtl':'ltr'); }
+
+/* =========================================================
+   أدوات عامة
+   ========================================================= */
+var CFG=window.LIBANAPPS, sb=null;
+try{ sb=window.supabase.createClient(CFG.SUPABASE_URL,CFG.SUPABASE_ANON_KEY); }catch(e){}
+var $=function(s,r){return (r||document).querySelector(s)}, $$=function(s,r){return Array.prototype.slice.call((r||document).querySelectorAll(s))};
+var SLUG='', TOKEN='', ME=null, SITE=null, PLANS=[], STAFF=[], CUST=[], LIC=null, TODAY='', TAB='dash';
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]}); }
+function n2(v){ var x=Number(v); return isFinite(x)?x:0; }
+function fmtN(v,d){ return n2(v).toLocaleString('en-US',{minimumFractionDigits:d||0,maximumFractionDigits:d==null?2:d}); }
+function sym(c){ return c==='LBP' ? (LANG==='ar'?'ل.ل':'LBP') : '$'; }
+function mainCur(){ return (SITE&&SITE.currency)||'USD'; }
+function rate(){ return n2(SITE&&SITE.lbp_rate); }
+function money(v,c){ c=c||mainCur(); var s=fmtN(v,c==='LBP'?0:2); return c==='LBP'? s+' '+sym(c) : sym(c)+s; }
+function second(v){ if(!SITE||!SITE.show_second||!rate()) return ''; return mainCur()==='USD' ? money(n2(v)*rate(),'LBP') : money(n2(v)/rate(),'USD'); }
+function moneyBoth(v){ var s=second(v); return '<span class="num">'+esc(money(v))+'</span>'+(s?' <span class="muted num">≈ '+esc(s)+'</span>':''); }
+function dt(s){ if(!s) return ''; var d=new Date(s); if(isNaN(d)) return String(s); var p=function(x){return String(x).padStart(2,'0')};
+  return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+' '+p(d.getHours())+':'+p(d.getMinutes()); }
+function balHtml(b){ b=n2(b); return '<span class="bal num '+(b>0?'debt':(b<0?'cred':''))+'">'+esc(money(b))+'</span>'; }
+function isAdmin(){ return !!(ME&&ME.is_admin); }
+function planName(id){ var p=PLANS.filter(function(x){return x.id===id})[0]; return p?p.name:''; }
+function staffName(id){ var s=STAFF.filter(function(x){return x.id===id})[0]; return s?s.name:''; }
+function lsGet(k,d){ try{ var v=localStorage.getItem(k); return v==null?d:v; }catch(e){ return d; } }
+function lsSet(k,v){ try{ if(v==null) localStorage.removeItem(k); else localStorage.setItem(k,v); }catch(e){} }
+var toastT=null;
+function toast(m,k){ var el=$('#toast'); el.textContent=m; el.className='toast on '+(k||''); clearTimeout(toastT); toastT=setTimeout(function(){ el.className='toast'; }, k==='e'?5200:2600); }
+function errText(e){
+  var m=String((e&&(e.message||e.error_description||e.error))||e||'');
+  var mm=m.match(/MOTOR:([a-z_]+)(?::([^\n"]*))?/);
+  if(mm){ var k='e_'+mm[1]; var x=(mm[2]||'').replace('|',' → '); return D[k]?t(k,{x:x}):m; }
+  if(/Failed to fetch|NetworkError|Load failed/i.test(m)) return t('e_network');
+  return m||'Error';
+}
+function isAuthErr(e){ return /MOTOR:(auth|license|inactive)\b/.test(String(e&&e.message||e||'')); }
+async function call(fn,args){
+  if(!sb) throw new Error(t('e_network'));
+  var a=Object.assign({p_slug:SLUG,p_token:TOKEN||null},args||{});
+  var r=await sb.rpc(fn,a);
+  if(r.error){ if(isAuthErr(r.error)&&ME){ handleAuthLoss(r.error); } throw r.error; }
+  return r.data;
+}
+function handleAuthLoss(e){ toast(errText(e),'e'); setTimeout(function(){ doLogout(true); }, 1500); }
+
+/* ---------- النوافذ (لا تُغلق بالضغط خارجها) ---------- */
+function modal(title,body,foot,wide){
+  var ov=document.createElement('div'); ov.className='ov';
+  ov.innerHTML='<div class="modal'+(wide?' wide':'')+'" role="dialog" aria-modal="true"><div class="mh"><h3></h3><button class="mx" type="button" aria-label="close">×</button></div><div class="mb"></div>'+(foot!==false?'<div class="mf"></div>':'')+'</div>';
+  $('h3',ov).textContent=title;
+  $('.mb',ov).innerHTML=body||'';
+  if(foot) $('.mf',ov).innerHTML=foot;
+  document.body.appendChild(ov); document.body.classList.add('lock');
+  var api={el:ov, body:$('.mb',ov), foot:$('.mf',ov), onclose:null,
+    close:function(){ if(api.onclose) try{ api.onclose(); }catch(e){} ov.remove(); if(!$('.ov')) document.body.classList.remove('lock'); }};
+  $('.mx',ov).addEventListener('click',function(){ api.close(); });
+  return api;
+}
+function confirmBox(text){ return new Promise(function(res){
+  var m=modal(t('ok'),'<p style="margin:0;white-space:pre-line">'+esc(text)+'</p>','<button class="btn ghost" data-a="n">'+esc(t('cancel'))+'</button><button class="btn" data-a="y">'+esc(t('ok'))+'</button>');
+  m.onclose=function(){ res(false); };
+  m.foot.addEventListener('click',function(e){ var b=e.target.closest('[data-a]'); if(!b) return; m.onclose=null; m.close(); res(b.dataset.a==='y'); });
+}); }
+function busy(btn,on,txt){ if(!btn) return; if(on){ btn.dataset.t=btn.innerHTML; btn.disabled=true; btn.textContent=txt||t('saving'); } else { btn.disabled=false; if(btn.dataset.t) btn.innerHTML=btn.dataset.t; } }
+
+/* =========================================================
+   البدء: الرابط → صفحة الدخول أو البرنامج
+   ========================================================= */
+function gate(note,showLogin){
+  $('#app').classList.add('hidden'); $('#gate').classList.remove('hidden');
+  $('#gNote').innerHTML=note||''; $('#loginForm').classList.toggle('hidden',!showLogin);
+  paintGateTexts();
+}
+function paintGateTexts(){
+  $('#lUser').textContent=t('username'); $('#lPass').textContent=t('password');
+  $('#loginBtn').textContent=t('login'); $('#ownerLink').textContent=t('owner_login');
+  $('#gSub').textContent=t('app_name'); $('#gLang').value=LANG;
+}
+async function boot(){
+  var seg=location.pathname.split('/').filter(Boolean);
+  SLUG=(seg[0]==='portal-motor'&&seg[1])?decodeURIComponent(seg[1]).toLowerCase():'';
+  if(!LANG) setLang('ar'); else setLang(LANG);
+  gate(t('loading'),false);
+  if(!sb){ gate('<div class="err">'+esc(t('e_network'))+'</div>',false); return; }
+  if(!SLUG){
+    // /motor بدون رابط: صاحب الاشتراك → أول مولّد عنده
+    try{ var s=await sb.auth.getSession();
+      if(s.data.session){ var lic=(await sb.rpc('my_licenses')).data||[]; var m=lic.filter(function(x){return x.product==='motor'&&x.slug})[0];
+        if(m){ location.replace('/portal-motor/'+encodeURIComponent(m.slug)); return; } } }catch(e){}
+    gate(esc(t('no_slug'))+'<br><br><a class="btn" href="/account">'+esc(t('my_account'))+'</a>',false); return;
+  }
+  var pub;
+  try{ var r=await sb.rpc('motor_public',{p_slug:SLUG}); if(r.error) throw r.error; pub=r.data; }
+  catch(e){ gate('<div class="err">'+esc(errText(e))+'</div>',false); return; }
+  if(pub && pub.site){ $('#gName').textContent=pub.site.name||SLUG; document.title=(pub.site.name||SLUG)+' — Motor';
+    if(pub.site.logo_url){ $('#gLogo').src=pub.site.logo_url; $('#gLogo').classList.remove('hidden'); }
+    if(!lsGet('motor_lang','')) setLang(pub.site.default_lang||'ar'); }
+  if(!pub || !pub.ok){
+    // صاحب الاشتراك قد يكون اشترى للتو ولم تُنشأ المؤسسة بعد
+    if(pub && pub.reason==='not_found'){ var made=await tryOwner(true); if(made) return; }
+    var rk=pub&&pub.reason==='not_found'?'r_not_found':(pub&&pub.reason==='inactive'?'r_inactive':'r_license');
+    if(!(pub&&pub.reason==='not_found')){ var asOwner=await tryOwner(false); if(asOwner) return; }
+    gate('<div class="err">'+esc(t(rk))+'</div><br><a class="btn alt" href="/account">'+esc(t('my_account'))+'</a>',false); return;
+  }
+  TOKEN=lsGet('motor_tok:'+SLUG,'');
+  if(TOKEN){ if(await enter()) return; TOKEN=''; lsSet('motor_tok:'+SLUG,null); }
+  if(await tryOwner(false)) return;
+  gate('',true); setTimeout(function(){ $('#inUser').focus(); },50);
+}
+async function tryOwner(ensure){
+  try{ var s=await sb.auth.getSession(); if(!s.data.session) return false;
+    if(ensure){ var e=await sb.rpc('ensure_motor',{p_slug:SLUG}); if(e.error||!e.data||!e.data.ok) return false; }
+    TOKEN=''; return await enter(true);
+  }catch(e){ return false; }
+}
+async function enter(quiet){
+  try{
+    var d=await call('motor_me');
+    ME=d.me; SITE=d.site; PLANS=d.plans||[]; STAFF=d.staff||[]; LIC=d.license; TODAY=d.today;
+    if(!lsGet('motor_lang','')) setLang(SITE.default_lang||'ar');
+    $('#gate').classList.add('hidden'); $('#app').classList.remove('hidden');
+    document.title=(SITE.name||SLUG)+' — Motor';
+    paintShell();
+    loadCustomers();   // بالخلفية — القوائم بتتحدّث لما توصل
+    go(lsGet('motor_tab:'+SLUG, ME.role==='collector'?'read':'dash'));
+    return true;
+  }catch(e){ if(!quiet && !isAuthErr(e)) gate('<div class="err">'+esc(errText(e))+'</div>',true); return false; }
+}
+$('#loginForm').addEventListener('submit',async function(e){
+  e.preventDefault(); var b=$('#loginBtn'), m=$('#loginMsg'); m.textContent='';
+  busy(b,true,t('loading'));
+  try{
+    var r=await sb.rpc('motor_login',{p_slug:SLUG,p_username:$('#inUser').value.trim(),p_password:$('#inPass').value});
+    if(r.error) throw r.error;
+    var d=r.data||{};
+    if(!d.ok){ m.textContent= d.reason==='locked'?t('locked',{m:d.minutes||15}) : d.reason==='inactive_user'?t('inactive_user') : d.reason==='license'?t('r_license') : t('bad_login'); busy(b,false); return; }
+    TOKEN=d.token; lsSet('motor_tok:'+SLUG,TOKEN); $('#inPass').value='';
+    busy(b,false);
+    if(!(await enter())){ m.textContent=t('e_auth'); }
+  }catch(err){ m.textContent=errText(err); busy(b,false); }
+});
+$('#ownerLink').addEventListener('click',function(e){ e.preventDefault(); location.href='/login?next='+encodeURIComponent(location.pathname); });
+$('#gLang').addEventListener('change',function(){ setLang(this.value); paintGateTexts(); });
+async function doLogout(silent){
+  if(TOKEN){ try{ await sb.rpc('motor_logout',{p_token:TOKEN}); }catch(e){} }
+  lsSet('motor_tok:'+SLUG,null); TOKEN=''; ME=null;
+  if(!silent && sb){ try{ var s=await sb.auth.getSession(); if(s.data.session){ location.href='/account'; return; } }catch(e){} }
+  gate('',true);
+}
+
+/* =========================================================
+   الهيكل والتبويبات
+   ========================================================= */
+var TABS=[
+  {id:'dash',k:'nav_dash',i:'🏠'},
+  {id:'read',k:'nav_read',i:'📷'},
+  {id:'pay',k:'nav_pay',i:'💵'},
+  {id:'customers',k:'nav_customers',i:'👥'},
+  {id:'month',k:'nav_month',i:'🗓️'},
+  {id:'cstmt',k:'nav_cstmt',i:'🧾'},
+  {id:'whish',k:'nav_whish',i:'🟣',admin:true},
+  {id:'staff',k:'nav_staff',i:'🧑‍🔧',admin:true},
+  {id:'plans',k:'nav_plans',i:'⚡',admin:true},
+  {id:'settings',k:'nav_settings',i:'⚙️'}
+];
+function visibleTabs(){ return TABS.filter(function(x){ return !x.admin||isAdmin(); }); }
+function paintShell(){
+  $('#tName').textContent=SITE.name||SLUG;
+  $('#tWho').textContent=(ME.role==='owner'?t('role_owner'):ME.name+' · '+t('role_'+ME.role));
+  if(SITE.logo_url){ $('#tLogo').src=SITE.logo_url; $('#tLogo').classList.remove('hidden'); } else $('#tLogo').classList.add('hidden');
+  $('#tLang').value=LANG; $('#tOut').textContent=t('logout');
+  $('#tabs').innerHTML=visibleTabs().map(function(x){ return '<button data-tab="'+x.id+'" class="'+(x.id===TAB?'on':'')+'">'+x.i+' '+esc(t(x.k))+'</button>'; }).join('');
+}
+$('#tabs').addEventListener('click',function(e){ var b=e.target.closest('[data-tab]'); if(b) go(b.dataset.tab); });
+$('#tLang').addEventListener('change',function(){ setLang(this.value); paintShell(); go(TAB); });
+$('#tOut').addEventListener('click',function(){ doLogout(false); });
+function go(tab){
+  if(!visibleTabs().some(function(x){return x.id===tab})) tab=ME.role==='collector'?'read':'dash';
+  TAB=tab; lsSet('motor_tab:'+SLUG,tab);
+  $$('#tabs button').forEach(function(b){ b.classList.toggle('on',b.dataset.tab===tab); });
+  var on=$('#tabs [data-tab="'+tab+'"]'); if(on&&on.scrollIntoView) try{ on.scrollIntoView({block:'nearest',inline:'center'}); }catch(e){}
+  var main=$('#main'); main.innerHTML='<div class="muted">'+esc(t('loading'))+'</div>';
+  var f=VIEWS[tab]; Promise.resolve().then(function(){ return f(main); }).catch(function(e){ main.innerHTML='<div class="err">'+esc(errText(e))+'</div>'; });
+}
+function licBanner(){
+  if(!LIC||!LIC.days_left&&LIC.days_left!==0) return '';
+  if(LIC.trial) return '<div class="lic">'+esc(t('lic_trial',{d:LIC.days_left}))+'</div>';
+  if(LIC.days_left<=15) return '<div class="lic">'+esc(t('lic_days',{d:LIC.days_left}))+'</div>';
+  return '';
+}
+
+/* ---------- الزبائن (قائمة خفيفة للبحث) ---------- */
+var custLoading=null;
+function loadCustomers(){ custLoading=call('motor_customers').then(function(d){ CUST=d||[]; custLoading=null; if(TAB==='read'||TAB==='pay'||TAB==='customers') refreshSearchLists(); return CUST; })
+  .catch(function(e){ custLoading=null; toast(errText(e),'e'); return CUST; }); return custLoading; }
+function patchCust(id,obj){ var c=CUST.filter(function(x){return x.id===id})[0]; if(c) Object.assign(c,obj); }
+function normS(s){ return String(s||'').toLowerCase().replace(/[أإآ]/g,'ا').replace(/ة/g,'ه').replace(/ى/g,'ي').replace(/\s+/g,' ').trim(); }
+function searchCust(q,lim){
+  q=normS(q); if(!q) return [];
+  return CUST.filter(function(c){ return normS(c.name).indexOf(q)>=0 || normS(c.alt_name).indexOf(q)>=0 || normS(c.barcode)===q || normS(c.barcode).indexOf(q)>=0
+    || normS(c.meter_no).indexOf(q)>=0 || normS(c.box)===q || String(c.code)===q || normS(c.mobile).indexOf(q)>=0; }).slice(0,lim||40);
+}
+function custItem(c,mode){
+  var right= mode==='read' ? (c.read_now?'<span class="chip on">✓ '+esc(t('read_done'))+'</span>':'<span class="chip gray">'+esc(t('not_read'))+'</span>') : balHtml(c.balance);
+  return '<div class="litem" data-cust="'+esc(c.id)+'" data-mode="'+mode+'"><div style="flex:1;min-width:0"><div class="nm">'+esc(c.name)+(c.is_active?'':' <span class="chip off">'+esc(t('inactive'))+'</span>')+'</div>'+
+    '<div class="sub">#'+esc(c.code)+' · '+esc(c.barcode||'—')+(c.box?' · '+esc(t('box'))+' '+esc(c.box):'')+(c.area?' · '+esc(c.area):'')+'</div></div>'+right+'</div>';
+}
+document.addEventListener('click',function(e){ var it=e.target.closest('[data-cust]'); if(it) openCustomer(it.dataset.cust,null,it.dataset.mode||''); });
+var searchHooks=[];
+function refreshSearchLists(){ searchHooks.forEach(function(f){ try{ f(); }catch(e){} }); }
+
+/* =========================================================
+   التبويبات
+   ========================================================= */
+var VIEWS={};
+
+/* ---------- الرئيسية ---------- */
+VIEWS.dash=async function(main){
+  var d=await call('motor_dashboard');
+  var mine=ME.role==='collector';
+  main.innerHTML=licBanner()+
+    '<div class="big-actions"><button class="btn lg" data-go="read">📷 '+esc(t('nav_read'))+'</button><button class="btn lg ok" data-go="pay">💵 '+esc(t('nav_pay'))+'</button></div>'+
+    '<div class="stats">'+
+      stat(t('st_active_c'), fmtN(d.customers_active,0)+' / '+fmtN(d.customers_total,0))+
+      stat(t('st_read',{p:d.period}), fmtN(d.read_period,0))+
+      stat(t('st_billed'), money(d.billed_period))+
+      (mine?'':stat(t('st_debt'), money(d.debt_total)))+
+      stat(t('st_cash_today'), money(d.cash_today))+
+      stat(t('st_whish_today'), money(d.whish_today))+
+      stat(t('st_month'), money(d.collected_month))+
+      (d.my_cash_in_hand!=null?stat(t('st_hand'), money(d.my_cash_in_hand)):'')+
+    '</div>'+
+    (mine?windowNote():'');
+  $$('[data-go]',main).forEach(function(b){ b.addEventListener('click',function(){ go(b.dataset.go); }); });
+};
+function stat(l,v){ return '<div class="stat"><span>'+esc(l)+'</span><b class="num">'+esc(v)+'</b></div>'; }
+function windowNote(){
+  var me=STAFF.filter(function(s){return s.id===ME.staff_id})[0]||ME;
+  if(!me.read_from||!me.read_to) return '<div class="lic">'+esc(t('window_none'))+'</div>';
+  var open=TODAY>=me.read_from&&TODAY<=me.read_to;
+  return '<div class="'+(open?'okmsg':'lic')+'">'+esc(t('window_is',{f:me.read_from,t:me.read_to}))+(open?'':' — '+esc(t('window_closed')))+'</div>';
+}
+
+/* ---------- أخذ العداد / القبض: مسح أو بحث ---------- */
+function finderView(main,mode){
+  searchHooks=[];
+  main.innerHTML=licBanner()+(mode==='read'&&ME.role==='collector'?windowNote():'')+
+    '<div class="card"><button class="btn lg full '+(mode==='pay'?'ok':'')+'" id="scanBtn">📷 '+esc(t(mode==='pay'?'scan_pay':'scan'))+'</button>'+
+    '<div style="margin-top:12px"><input id="fq" type="search" placeholder="'+esc(t('search_ph'))+'" autocomplete="off"></div>'+
+    (mode==='read'?'<div class="muted" id="fprog" style="margin-top:8px"></div>':'')+'</div>'+
+    '<div class="list" id="flist"></div>';
+  var q=$('#fq',main);
+  function paint(){
+    var v=q.value, list=$('#flist',main);
+    if(mode==='read'){ var a=CUST.filter(function(c){return c.read_now}).length, b=CUST.filter(function(c){return c.is_active&&!c.archived}).length;
+      var pr=$('#fprog',main); if(pr) pr.textContent=custLoading&&!CUST.length?t('loading'):t('progress',{a:a,b:b,p:SITE.bill_period}); }
+    if(!v.trim()){ list.innerHTML=''; return; }
+    var r=searchCust(v,50); list.innerHTML=r.length?r.map(function(c){return custItem(c,mode)}).join(''):'<div class="muted">'+esc(t('no_results'))+'</div>';
+  }
+  q.addEventListener('input',paint);
+  // قارئ باركود خارجي (لوحة مفاتيح) أو كتابة الرمز ثم Enter
+  q.addEventListener('keydown',function(e){ if(e.key==='Enter'){ e.preventDefault(); var v=q.value.trim(); if(v) openByCode(v,mode); } });
+  $('#scanBtn',main).addEventListener('click',async function(){ var code=await scanBarcode(); if(code) openByCode(code,mode); });
+  searchHooks.push(paint); paint();
+}
+VIEWS.read=function(main){ finderView(main,'read'); };
+VIEWS.pay=function(main){ finderView(main,'pay'); };
+async function openByCode(code,mode){
+  code=String(code).trim(); var lc=code.toLowerCase();
+  var c=CUST.filter(function(x){ return String(x.barcode).toLowerCase()===lc; })[0]||CUST.filter(function(x){ return String(x.meter_no).toLowerCase()===lc; })[0];
+  openCustomer(c?c.id:null, c?null:code, mode);
+}
+
+/* ---------- صفحة الزبون ---------- */
+async function openCustomer(id,barcode,mode){
+  var m=modal(t('loading'),'<div class="muted">'+esc(t('loading'))+'</div>',false,false);
+  var d;
+  try{ d=await call('motor_customer_get',{p_id:id||null,p_barcode:barcode||null}); }
+  catch(e){ m.body.innerHTML='<div class="err">'+esc(errText(e))+'</div>'; $('h3',m.el).textContent=barcode||''; return; }
+  var c=d.customer;
+  $('h3',m.el).textContent=c.name;
+  function paint(){
+    var adm=isAdmin();
+    var info=[
+      [t('code'),'#'+c.code],[t('barcode'),c.barcode],[t('meter_no'),c.meter_no],[t('box'),c.box],
+      [t('plan'),d.plan?(d.plan.name+(d.plan.kind==='fixed'?' · '+t('kind_fixed'):'')):'—'],[t('area'),[c.area,c.location_name].filter(Boolean).join(' · ')],
+      [t('collector'),d.collector_name],[t('mobile'),c.mobile?('+'+c.mobile_cc+' '+c.mobile):''],[t('prev_reading'),fmtN(d.prev_value)]
+    ].filter(function(x){return x[1]!==''&&x[1]!=null});
+    m.body.innerHTML=
+      '<div class="row"><span class="chip '+(c.is_active?'on':'off')+'">'+esc(c.is_active?t('active'):t('inactive'))+'</span>'+(c.archived?' <span class="chip gray">'+esc(t('archived'))+'</span>':'')+
+      (d.read_now?' <span class="chip on">✓ '+esc(t('read_done'))+' '+esc(d.period)+': '+esc(fmtN(d.read_now.value))+'</span>':' <span class="chip gray">'+esc(t('not_read'))+' '+esc(d.period)+'</span>')+'</div>'+
+      '<div class="bigbal"><span class="muted">'+esc(t('balance'))+'</span><b>'+balHtml(c.balance)+'</b>'+(second(c.balance)?'<span class="muted num">≈ '+esc(second(c.balance))+'</span>':'')+'</div>'+
+      '<div class="kv">'+info.map(function(x){return '<div>'+esc(x[0])+'<b dir="auto">'+esc(x[1])+'</b></div>'}).join('')+'</div>'+
+      '<div class="row" style="margin-top:10px">'+
+        '<button class="btn" data-a="read" '+(d.read_now||!c.is_active?'disabled':'')+'>'+esc(t('take_reading'))+'</button>'+
+        (ME.can_collect?'<button class="btn ok" data-a="pay">'+esc(t('collect'))+'</button>':'')+
+        '<button class="btn alt" data-a="stmt">'+esc(t('statement'))+'</button>'+
+        (c.mobile?'<button class="btn wa sm" data-a="wa">'+esc(t('whatsapp'))+'</button>':'')+
+        (adm?'<button class="btn ghost sm" data-a="edit">✏️ '+esc(t('edit'))+'</button><button class="btn ghost sm" data-a="adj">'+esc(t('adjust'))+'</button><button class="btn ghost sm" data-a="label">🏷️ '+esc(t('label_one'))+'</button>':'')+
+      '</div><div id="cstep"></div>';
+    if(mode==='read'&&!d.read_now&&c.is_active) readForm();
+    else if(mode==='pay'&&ME.can_collect) payForm();
+  }
+  m.body.addEventListener('click',function(e){
+    var b=e.target.closest('[data-a]'); if(!b||b.disabled) return;
+    var a=b.dataset.a;
+    if(a==='read') readForm();
+    else if(a==='pay') payForm();
+    else if(a==='stmt') openStatement(c.id);
+    else if(a==='wa') openWa(c.mobile_cc,c.mobile,'');
+    else if(a==='edit'){ m.close(); editCustomer(c.id); }
+    else if(a==='adj') adjustForm();
+    else if(a==='label') printLabels([c]);
+  });
+  async function reload(){ try{ d=await call('motor_customer_get',{p_id:c.id}); c=d.customer; patchCust(c.id,{balance:c.balance,read_now:!!d.read_now,read_now_value:d.read_now&&d.read_now.value,last_value:d.prev_value}); }catch(e){} }
+
+  /* ----- أخذ العداد: القيمة ← الكاميرا ← تحميل الصورة + الموقع ← فاتورة ----- */
+  var geo=null, geoErr=false, photoBlob=null;
+  function startGeo(){
+    geo=null; geoErr=false; paintGeo();
+    if(!navigator.geolocation){ geoErr=true; paintGeo(); return; }
+    navigator.geolocation.getCurrentPosition(function(p){ geo={lat:p.coords.latitude,lng:p.coords.longitude,acc:Math.round(p.coords.accuracy||0)}; paintGeo(); },
+      function(){ geoErr=true; paintGeo(); }, {enableHighAccuracy:true,timeout:20000,maximumAge:30000});
+  }
+  function paintGeo(){ var el=$('#gpsLine',m.body); if(!el) return;
+    el.innerHTML= geo?'<span class="gps ok">'+esc(t('gps_ok',{a:geo.acc}))+'</span>' : geoErr?'<span class="gps bad">'+esc(t('gps_bad'))+'</span> <button class="btn sm alt" type="button" id="gpsRetry">'+esc(t('gps_retry'))+'</button>' : '<span class="gps">'+esc(t('gps_wait'))+'</span>';
+    var r=$('#gpsRetry',m.body); if(r) r.addEventListener('click',startGeo); }
+  function estimate(v){
+    var p=d.plan||{}, prev=d.baseline?n2(v):n2(d.prev_value), k=Math.max(0,n2(v)-prev);
+    var price=p.kind==='fixed'?0:(p.kwh_price!=null&&p.kwh_price!==''?n2(p.kwh_price):n2(SITE.kwh_price));
+    var amt=n2(p.fee)+k*price-n2(c.charge_discount)+n2(c.charge_addition);
+    return {kwh:k,price:price,amt:amt};
+  }
+  function readForm(){
+    var box=$('#cstep',m.body); photoBlob=null;
+    box.innerHTML='<div class="step"><label>'+esc(t('enter_value'))+' — '+esc(t('prev_reading'))+': <b class="num">'+esc(fmtN(d.prev_value))+'</b></label>'+
+      '<input id="rv" class="valinput" type="text" inputmode="decimal" autocomplete="off" placeholder="'+esc(fmtN(d.prev_value))+'">'+
+      (d.baseline?'<div class="lic" style="margin-top:8px">'+esc(t('baseline_note'))+'</div>':'')+
+      '<div id="rest" class="muted" style="margin:8px 0"></div><div id="gpsLine" style="margin:6px 0"></div>'+
+      '<div id="rph"></div><div id="rmsg" class="err msg"></div>'+
+      '<button class="btn full" id="rnext" style="margin-top:8px">'+esc(t('next_photo'))+'</button></div>';
+    startGeo();
+    var inp=$('#rv',box); setTimeout(function(){ inp.focus(); },60);
+    inp.addEventListener('input',function(){ inp.value=inp.value.replace(/[٠-٩]/g,function(x){return '٠١٢٣٤٥٦٧٨٩'.indexOf(x)}).replace(/[^0-9.]/g,'');
+      var v=inp.value; if(!v){ $('#rest',box).textContent=''; return; } var e=estimate(v);
+      $('#rest',box).innerHTML=esc(t('consumption'))+': <b class="num">'+esc(fmtN(e.kwh))+' '+esc(t('kwh'))+'</b> · '+esc(t('est_invoice'))+': <b>'+moneyBoth(e.amt)+'</b>'; });
+    $('#rnext',box).addEventListener('click',async function(){
+      var msg=$('#rmsg',box); msg.textContent='';
+      var v=inp.value.trim(); if(v===''||!isFinite(Number(v))){ msg.textContent=t('e_bad_value'); return; }
+      if(!d.baseline&&Number(v)<n2(d.prev_value)){ msg.textContent=t('e_lower_than_prev',{x:fmtN(d.prev_value)}); return; }
+      if(photoBlob){ return saveReading(Number(v)); }
+      var blob=await takePhoto(); if(!blob) return;
+      photoBlob=blob; inp.readOnly=true;
+      var url=URL.createObjectURL(blob);
+      $('#rph',box).innerHTML='<img class="prev-img" src="'+url+'" alt=""><div class="row" style="justify-content:center"><button class="btn ghost sm" id="rretake">'+esc(t('retake'))+'</button></div>';
+      $('#rretake',box).addEventListener('click',async function(){ var b2=await takePhoto(); if(b2){ photoBlob=b2; $('.prev-img',box).src=URL.createObjectURL(b2); } });
+      $('#rnext',box).innerHTML=esc(t('upload_save')); $('#rnext',box).classList.add('ok');
+    });
+  }
+  async function saveReading(v){
+    var box=$('#cstep',m.body), btn=$('#rnext',box), msg=$('#rmsg',box); msg.textContent='';
+    if(SITE.require_gps&&!geo){ msg.textContent=t('e_gps_required'); startGeo(); return; }
+    busy(btn,true,t('uploading'));
+    try{
+      var path=photoBlob?await uploadPhoto(photoBlob):'';
+      btn.textContent=t('saving');
+      var r=await call('motor_read',{p_customer:c.id,p_value:v,p_photo:path,p_lat:geo?geo.lat:null,p_lng:geo?geo.lng:null,p_accuracy:geo?geo.acc:null});
+      toast(t('read_saved'),'s');
+      var inv=r.invoice;
+      await reload(); paint();
+      showInvoice(inv, r.dist_m);
+    }catch(e){ msg.textContent=errText(e); busy(btn,false); }
+  }
+  function showInvoice(inv,dist){
+    var box=$('#cstep',m.body);
+    box.innerHTML='<div class="step"><div class="okmsg">'+esc(t('read_saved'))+'</div>'+(dist!=null?'<div class="muted" style="margin-top:6px">'+esc(t('dist',{d:dist}))+'</div>':'')+
+      '<div style="margin-top:10px">'+invoiceHtml(inv,c,d.plan)+'</div>'+
+      '<div class="row" style="margin-top:10px"><button class="btn wa" id="iwa">'+esc(t('send_wa'))+'</button><button class="btn alt" id="ipr">'+esc(t('print'))+'</button></div></div>';
+    $('#iwa',box).addEventListener('click',function(){ openWa(c.mobile_cc,c.mobile,invoiceText(inv,c)); });
+    $('#ipr',box).addEventListener('click',function(){ printDoc(invoiceTicket(inv,c)); });
+  }
+  /* ----- القبض ----- */
+  function payForm(){
+    var box=$('#cstep',m.body), cur=mainCur(), oth=cur==='USD'?'LBP':'USD';
+    var def=n2(c.balance)>0?n2(c.balance):'';
+    box.innerHTML='<div class="step"><div class="g2"><div><label>'+esc(t('amount'))+'</label><input id="pa" type="text" inputmode="decimal" class="valinput" style="font-size:22px" value="'+esc(def===''?'':String(def))+'"></div>'+
+      '<div><label>'+esc(t('currency'))+'</label><select id="pc"><option value="'+cur+'">'+esc(cur+' '+sym(cur))+'</option>'+(rate()?'<option value="'+oth+'">'+esc(oth+' '+sym(oth))+'</option>':'')+'</select></div></div>'+
+      '<div id="peq" class="muted" style="margin:6px 0"></div>'+
+      '<label style="margin-top:8px">'+esc(t('method'))+'</label><div class="row"><label class="chk"><input type="radio" name="pm" value="cash" checked> 💵 '+esc(t('cash'))+'</label><label class="chk"><input type="radio" name="pm" value="whish"> 🟣 '+esc(t('whish'))+'</label></div>'+
+      '<label>'+esc(t('note'))+'</label><input id="pn">'+
+      '<div id="pmsg" class="err msg" style="margin-top:8px"></div><button class="btn ok full lg" id="pgo" style="margin-top:10px">'+esc(t('pay_save'))+'</button></div>';
+    var pa=$('#pa',box), pc=$('#pc',box);
+    function eq(){ var v=n2(pa.value), cc=pc.value, s='';
+      if(cc!==cur&&rate()) s=t('equals',{v:money(cc==='LBP'?v/rate():v*rate(),cur)});
+      else if(second(v)) s=t('equals',{v:second(v)});
+      $('#peq',box).textContent=s; }
+    pa.addEventListener('input',function(){ pa.value=pa.value.replace(/[٠-٩]/g,function(x){return '٠١٢٣٤٥٦٧٨٩'.indexOf(x)}).replace(/[^0-9.]/g,''); eq(); });
+    pc.addEventListener('change',function(){ var v=n2(pa.value); if(v&&rate()){ pa.value=String(pc.value==='LBP'?Math.round(v*rate()):Math.round(v/rate()*100)/100); } eq(); });
+    eq();
+    $('#pgo',box).addEventListener('click',async function(){
+      var btn=this, msg=$('#pmsg',box); msg.textContent='';
+      var v=n2(pa.value); if(!(v>0)){ msg.textContent=t('e_bad_amount'); return; }
+      busy(btn,true);
+      try{
+        var r=await call('motor_pay',{p_customer:c.id,p_paid:v,p_currency:pc.value,p_method:$('input[name=pm]:checked',box).value,p_note:$('#pn',box).value,p_lat:null,p_lng:null});
+        toast(t('pay_saved'),'s');
+        var pay=r.payment; await reload(); paint();
+        var b2=$('#cstep',m.body);
+        b2.innerHTML='<div class="step"><div class="okmsg">'+esc(t('pay_saved'))+'</div><div style="margin-top:10px">'+receiptHtml(pay,c)+'</div>'+
+          '<div class="row" style="margin-top:10px"><button class="btn wa" id="rwa">'+esc(t('send_wa'))+'</button><button class="btn alt" id="rpr">'+esc(t('print'))+'</button></div></div>';
+        $('#rwa',b2).addEventListener('click',function(){ openWa(c.mobile_cc,c.mobile,receiptText(pay,c)); });
+        $('#rpr',b2).addEventListener('click',function(){ printDoc(receiptTicket(pay,c)); });
+      }catch(e){ msg.textContent=errText(e); busy(btn,false); }
+    });
+  }
+  function adjustForm(){
+    var box=$('#cstep',m.body);
+    box.innerHTML='<div class="step"><label>'+esc(t('adj_amount'))+'</label><input id="aa" type="text" inputmode="decimal"><label style="margin-top:8px">'+esc(t('note'))+'</label><input id="an">'+
+      '<div id="amsg" class="err msg" style="margin-top:8px"></div><button class="btn full" id="ago" style="margin-top:8px">'+esc(t('save'))+'</button></div>';
+    $('#ago',box).addEventListener('click',async function(){ var btn=this; var v=Number($('#aa',box).value); if(!v){ $('#amsg',box).textContent=t('e_bad_amount'); return; }
+      busy(btn,true); try{ await call('motor_adjust',{p_customer:c.id,p_amount:v,p_note:$('#an',box).value}); toast(t('saved'),'s'); await reload(); paint(); }catch(e){ $('#amsg',box).textContent=errText(e); busy(btn,false); } });
+  }
+  paint();
+}
+
+/* ---------- نصوص الفاتورة والإيصال ---------- */
+function invLines(inv){
+  var L=[];
+  if(inv.kind==='meter'){ L.push([t('prev_reading'),fmtN(inv.prev_value)]); L.push([t('cur_reading'),fmtN(inv.cur_value)]);
+    L.push([t('consumption')+' ('+t('kwh')+')',fmtN(inv.kwh)+' × '+fmtN(inv.kwh_price,4).replace(/0+$/,'').replace(/\.$/,'')]); L.push([t('energy'),money(inv.energy)]); }
+  if(n2(inv.fee)) L.push([t('fee'),money(inv.fee)]);
+  if(n2(inv.discount)) L.push([t('discount'),'−'+money(inv.discount)]);
+  if(n2(inv.addition)) L.push([t('addition'),money(inv.addition)]);
+  return L;
+}
+function invoiceHtml(inv,c,plan){
+  var L=invLines(inv);
+  return '<div class="inv-box"><div class="ln"><b>'+esc(t('inv_for',{p:inv.period}))+'</b><span class="muted">'+esc(t('inv_no',{n:inv.no}))+'</span></div>'+
+    (/^قراءة أولى/.test(inv.note||'')?'<div class="muted">'+esc(t('first_read'))+'</div>':'')+
+    L.map(function(x){return '<div class="ln"><span>'+esc(x[0])+'</span><span class="num">'+esc(x[1])+'</span></div>'}).join('')+
+    '<div class="ln tot"><span>'+esc(t('inv_amount'))+'</span><span>'+moneyBoth(inv.amount)+'</span></div>'+
+    '<div class="ln"><span>'+esc(t('prev_balance'))+'</span><span class="num">'+esc(money(inv.balance_before))+'</span></div>'+
+    '<div class="ln tot"><span>'+esc(t('total_due'))+'</span><span>'+moneyBoth(inv.balance_after)+'</span></div></div>';
+}
+function invoiceText(inv,c){
+  var s=[], sec=second(inv.balance_after);
+  s.push('*'+(SITE.name||'')+'*'); s.push(t('inv_for',{p:inv.period})+' — '+t('inv_no',{n:inv.no}));
+  s.push(t('customer')+': '+c.name+' (#'+c.code+')');
+  if(inv.plan_name) s.push(t('plan')+': '+inv.plan_name);
+  invLines(inv).forEach(function(x){ s.push(x[0]+': '+x[1]); });
+  s.push('*'+t('inv_amount')+': '+money(inv.amount)+'*');
+  s.push(t('prev_balance')+': '+money(inv.balance_before));
+  s.push('*'+t('total_due')+': '+money(inv.balance_after)+(sec?' (≈ '+sec+')':'')+'*');
+  if(SITE.invoice_note) s.push('', SITE.invoice_note);
+  return s.join('\n');
+}
+function receiptHtml(p,c){
+  return '<div class="inv-box"><div class="ln"><b>'+esc(t('receipt'))+'</b><span class="muted">'+esc(t('rcpt_no',{n:p.no}))+'</span></div>'+
+    '<div class="ln"><span>'+esc(t('date'))+'</span><span class="num">'+esc(dt(p.created_at))+'</span></div>'+
+    '<div class="ln"><span>'+esc(t('method'))+'</span><span>'+esc(p.method==='whish'?t('whish'):t('cash'))+'</span></div>'+
+    '<div class="ln"><span>'+esc(t('prev_balance'))+'</span><span class="num">'+esc(money(p.balance_before))+'</span></div>'+
+    '<div class="ln tot"><span>'+esc(t('paid'))+'</span><span class="num">'+esc(money(p.paid_amount,p.paid_currency))+'</span></div>'+
+    (p.paid_currency!==mainCur()?'<div class="ln"><span></span><span class="muted num">= '+esc(money(p.amount))+'</span></div>':'')+
+    '<div class="ln tot"><span>'+esc(t('remaining'))+'</span><span>'+moneyBoth(p.balance_after)+'</span></div></div>';
+}
+function receiptText(p,c){
+  var s=[]; s.push('*'+(SITE.name||'')+'*'); s.push(t('receipt')+' — '+t('rcpt_no',{n:p.no})); s.push(t('date')+': '+dt(p.created_at));
+  s.push(t('customer')+': '+c.name+' (#'+c.code+')');
+  s.push(t('prev_balance')+': '+money(p.balance_before));
+  s.push('*'+t('paid')+': '+money(p.paid_amount,p.paid_currency)+'*'+(p.paid_currency!==mainCur()?' (= '+money(p.amount)+')':''));
+  s.push('*'+t('remaining')+': '+money(p.balance_after)+'*');
+  s.push(t('thanks')); return s.join('\n');
+}
+function openWa(cc,mobile,text){
+  var num=String(mobile||'').replace(/\D/g,''); if(!num){ toast(t('no_mobile'),'e'); return; }
+  cc=String(cc||'961').replace(/\D/g,'');
+  if(num.indexOf('00')===0) num=num.slice(2); else if(!(num.indexOf(cc)===0&&num.length>9)) num=cc+num.replace(/^0+/,'');
+  var u='https://wa.me/'+num+(text?'?text='+encodeURIComponent(text):'');
+  var w=window.open(u,'_blank'); if(!w) location.href=u;
+}
+
+/* =========================================================
+   الطباعة: بلوتوث عبر RawBT (ESC/POS) أو نافذة الطباعة
+   التذكرة = قائمة أسطر {t:نص, b:عريض, s:حجم, c:وسط, kv:[يسار,يمين], hr:خط}
+   ========================================================= */
+function invoiceTicket(inv,c){
+  var T=[{t:SITE.name||'',b:1,s:30,c:1}];
+  if(SITE.phone) T.push({t:SITE.phone,c:1,s:20});
+  T.push({hr:1},{t:t('inv_for',{p:inv.period}),b:1,c:1},{t:t('inv_no',{n:inv.no})+' · '+dt(inv.created_at),c:1,s:19},{hr:1});
+  T.push({kv:[t('customer'),c.name]},{kv:[t('code'),'#'+c.code+(c.box?' · '+t('box')+' '+c.box:'')]});
+  if(inv.plan_name) T.push({kv:[t('plan'),inv.plan_name]});
+  T.push({hr:1}); invLines(inv).forEach(function(x){ T.push({kv:x}); });
+  T.push({hr:1},{kv:[t('inv_amount'),money(inv.amount)],b:1},{kv:[t('prev_balance'),money(inv.balance_before)]},{kv:[t('total_due'),money(inv.balance_after)],b:1,s:26});
+  if(second(inv.balance_after)) T.push({kv:['',' ≈ '+second(inv.balance_after)]});
+  if(SITE.invoice_note) T.push({hr:1},{t:SITE.invoice_note,c:1,s:19});
+  T.push({t:t('thanks'),c:1});
+  return T;
+}
+function receiptTicket(p,c){
+  var T=[{t:SITE.name||'',b:1,s:30,c:1}];
+  if(SITE.phone) T.push({t:SITE.phone,c:1,s:20});
+  T.push({hr:1},{t:t('receipt'),b:1,c:1},{t:t('rcpt_no',{n:p.no})+' · '+dt(p.created_at),c:1,s:19},{hr:1},
+    {kv:[t('customer'),c.name]},{kv:[t('code'),'#'+c.code]},{kv:[t('method'),p.method==='whish'?t('whish'):t('cash')]},{hr:1},
+    {kv:[t('prev_balance'),money(p.balance_before)]},{kv:[t('paid'),money(p.paid_amount,p.paid_currency)],b:1,s:26});
+  if(p.paid_currency!==mainCur()) T.push({kv:['','= '+money(p.amount)]});
+  T.push({kv:[t('remaining'),money(p.balance_after)],b:1});
+  if(second(p.balance_after)) T.push({kv:['',' ≈ '+second(p.balance_after)]});
+  T.push({hr:1},{kv:[t('by'),p.staff_name||'']},{t:t('thanks'),c:1});
+  return T;
+}
+function printMode(){ var d=/android/i.test(navigator.userAgent)?'rawbt':'browser'; return lsGet('motor_print',d); }
+function paperW(){ return lsGet('motor_paper','58')==='80'?576:384; }
+function renderTicket(T){
+  var W=paperW(), pad=8, rtl=LANG==='ar';
+  var cv=document.createElement('canvas'), ctx=cv.getContext('2d');
+  var font=function(s,b){ return (b?'bold ':'')+(s||22)+'px Cairo, Tahoma, Arial, sans-serif'; };
+  function wrap(text,maxW,s,b){ ctx.font=font(s,b); var words=String(text).split(' '), lines=[], cur='';
+    words.forEach(function(w){ var tst=cur?cur+' '+w:w; if(ctx.measureText(tst).width>maxW&&cur){ lines.push(cur); cur=w; } else cur=tst; }); if(cur) lines.push(cur); return lines.length?lines:['']; }
+  var ops=[], y=pad;
+  T.forEach(function(l){ var s=l.s||22, lh=Math.round(s*1.45);
+    if(l.hr){ ops.push({hr:1,y:y+6}); y+=14; return; }
+    if(l.kv){ var vl=wrap(l.kv[1],W*0.62,s,l.b); ops.push({kv:1,k:l.kv[0],v:vl,y:y,s:s,b:l.b,lh:lh}); y+=lh*vl.length; return; }
+    var ls=wrap(l.t,W-pad*2,s,l.b); ls.forEach(function(x){ ops.push({t:x,y:y,s:s,b:l.b,c:l.c}); y+=lh; }); });
+  y+=pad+30; cv.width=W; cv.height=y;
+  ctx.fillStyle='#fff'; ctx.fillRect(0,0,W,y); ctx.fillStyle='#000'; ctx.textBaseline='top'; ctx.direction=rtl?'rtl':'ltr';
+  ops.forEach(function(o){
+    if(o.hr){ ctx.fillRect(pad,o.y,W-pad*2,2); return; }
+    ctx.font=font(o.s,o.b);
+    if(o.kv){ ctx.textAlign=rtl?'right':'left'; ctx.fillText(o.k,rtl?W-pad:pad,o.y);
+      ctx.textAlign=rtl?'left':'right'; o.v.forEach(function(v,i){ ctx.fillText(v,rtl?pad:W-pad,o.y+i*o.lh); }); return; }
+    if(o.c){ ctx.textAlign='center'; ctx.fillText(o.t,W/2,o.y); } else { ctx.textAlign=rtl?'right':'left'; ctx.fillText(o.t,rtl?W-pad:pad,o.y); }
+  });
+  return cv;
+}
+function canvasToEscPos(cv){
+  var ctx=cv.getContext('2d'), w=cv.width, h=cv.height, img=ctx.getImageData(0,0,w,h).data, bpr=Math.ceil(w/8), r=new Uint8Array(bpr*h);
+  for(var yy=0;yy<h;yy++) for(var xx=0;xx<w;xx++){ var i=(yy*w+xx)*4; if((img[i]+img[i+1]+img[i+2])/3<170) r[yy*bpr+(xx>>3)]|=(0x80>>(xx%8)); }
+  var head=new Uint8Array([0x1B,0x40,0x1D,0x76,0x30,0x00,bpr&255,(bpr>>8)&255,h&255,(h>>8)&255]), tail=new Uint8Array([0x0A,0x0A,0x0A,0x1D,0x56,0x42,0x00]);
+  var out=new Uint8Array(head.length+r.length+tail.length); out.set(head,0); out.set(r,head.length); out.set(tail,head.length+r.length); return out;
+}
+async function printDoc(T){
+  try{ if(document.fonts&&document.fonts.ready) await document.fonts.ready; }catch(e){}
+  var cv=renderTicket(T);
+  if(printMode()==='rawbt'){
+    try{ var bytes=canvasToEscPos(cv), bin=''; for(var i=0;i<bytes.length;i+=8192) bin+=String.fromCharCode.apply(null,Array.prototype.slice.call(bytes.subarray(i,i+8192)));
+      var b64=btoa(bin), a=document.createElement('a');
+      a.href=/android/i.test(navigator.userAgent)?'intent:base64,'+b64+'#Intent;scheme=rawbt;package=ru.a402d.rawbtprinter;end;':'rawbt:base64,'+b64;
+      document.body.appendChild(a); a.click(); a.remove(); return;
+    }catch(e){ toast('RawBT: '+(e&&e.message||''),'e'); return; }
+  }
+  printHtml('<img src="'+cv.toDataURL('image/png')+'" style="width:'+(paperW()===576?'80mm':'58mm')+'">');
+}
+function printHtml(html){
+  var pa=$('#printArea'); pa.innerHTML=html; pa.classList.remove('hidden');
+  var imgs=$$('img',pa), left=imgs.length;
+  function go(){ setTimeout(function(){ window.print(); setTimeout(function(){ pa.classList.add('hidden'); pa.innerHTML=''; },500); },80); }
+  if(!left) go(); else imgs.forEach(function(im){ if(im.complete){ if(--left===0) go(); } else im.onload=im.onerror=function(){ if(--left===0) go(); }; });
+}
+
+/* ---------- ملصقات الباركود (Code 128) ---------- */
+var C128=['212222','222122','222221','121223','121322','131222','122213','122312','132212','221213','221312','231212','112232','122132','122231','113222','123122','123221','223211','221132','221231','213212','223112','312131','311222','321122','321221','312212','322112','322211','212123','212321','232121','111323','131123','131321','112313','132113','132311','211313','231113','231311','112133','112331','132131','113123','113321','133121','313121','211331','231131','213113','213311','213131','311123','311321','331121','312113','312311','332111','314111','221411','431111','111224','111422','121124','121421','141122','141221','112214','112412','122114','122411','142112','142211','241211','221114','413111','241112','134111','111242','121142','121241','114212','124112','124211','411212','421112','421211','212141','214121','412121','111143','111341','131141','114113','114311','411113','411311','113141','114131','311141','411131','211412','211214','211232','2331112'];
+function code128Svg(text,h){
+  text=String(text).replace(/[^\x20-\x7E]/g,''); var codes=[104], sum=104;
+  for(var i=0;i<text.length;i++){ var v=text.charCodeAt(i)-32; codes.push(v); sum+=v*(i+1); }
+  codes.push(sum%103); codes.push(106);
+  var x=10, bars='';
+  codes.forEach(function(cd){ var p=C128[cd]; for(var j=0;j<p.length;j++){ var w=+p[j]; if(j%2===0) bars+='<rect x="'+x+'" y="0" width="'+w+'" height="'+h+'"/>'; x+=w; } });
+  return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 '+(x+10)+' '+h+'" preserveAspectRatio="none" style="width:100%;height:'+h+'px">'+bars+'</svg>';
+}
+function printLabels(list){
+  var html='<style>.lbls{display:flex;flex-wrap:wrap;gap:4mm;font-family:Cairo,Arial}.lbl{width:60mm;border:1px dashed #999;padding:2mm;text-align:center;page-break-inside:avoid}.lbl b{display:block;font-size:12px}.lbl span{font-size:11px;letter-spacing:1px}</style><div class="lbls">'+
+    list.filter(function(c){return c.barcode}).map(function(c){ return '<div class="lbl"><b>'+esc(SITE.name||'')+' — '+esc(c.name)+'</b>'+code128Svg(c.barcode,48)+'<span>'+esc(c.barcode)+'</span></div>'; }).join('')+'</div>';
+  printHtml(html);
+}
+
+/* =========================================================
+   الكاميرا: مسح الباركود + صورة العداد
+   ========================================================= */
+var zxingP=null;
+function loadZxing(){ if(window.ZXing) return Promise.resolve(window.ZXing); if(zxingP) return zxingP;
+  zxingP=new Promise(function(res,rej){ var s=document.createElement('script'); s.src='https://unpkg.com/@zxing/library@0.21.3/umd/index.min.js'; s.onload=function(){ res(window.ZXing); }; s.onerror=function(){ zxingP=null; rej(new Error('zxing')); }; document.head.appendChild(s); });
+  return zxingP; }
+function scanBarcode(){ return new Promise(function(resolve){
+  var m=modal(t('scan'),'<div class="cam"><video id="sv" playsinline muted autoplay></video><div class="aim"></div></div><div id="smsg" class="muted" style="margin:8px 0">'+esc(t('scanning'))+'</div>'+
+    '<label style="margin-top:8px">'+esc(t('manual_code'))+'</label><div class="row"><input id="sman" style="flex:1" autocapitalize="characters" autocomplete="off"><button class="btn" id="sok">'+esc(t('ok'))+'</button></div>',false);
+  var stream=null, stop=false, reader=null, done=false;
+  function finish(v){ if(done) return; done=true; stop=true; try{ if(reader) reader.reset(); }catch(e){} if(stream) stream.getTracks().forEach(function(x){x.stop()}); m.onclose=null; m.close(); resolve(v); }
+  m.onclose=function(){ stop=true; try{ if(reader) reader.reset(); }catch(e){} if(stream) stream.getTracks().forEach(function(x){x.stop()}); if(!done){ done=true; resolve(null); } };
+  $('#sok',m.body).addEventListener('click',function(){ var v=$('#sman',m.body).value.trim(); if(v) finish(v); });
+  $('#sman',m.body).addEventListener('keydown',function(e){ if(e.key==='Enter'){ var v=this.value.trim(); if(v) finish(v); } });
+  var video=$('#sv',m.body);
+  (async function(){
+    try{
+      if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia) throw new Error('nocam');
+      if('BarcodeDetector' in window){
+        var fm=['qr_code','code_128','code_39','code_93','ean_13','ean_8','upc_a','upc_e','itf','codabar','data_matrix'];
+        try{ var sup=await BarcodeDetector.getSupportedFormats(); fm=fm.filter(function(f){return sup.indexOf(f)>=0}); }catch(e){}
+        var det=new BarcodeDetector({formats:fm});
+        stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment',width:{ideal:1280}}});
+        video.srcObject=stream; await video.play().catch(function(){});
+        (function loop(){ if(stop) return; det.detect(video).then(function(c){ if(c&&c.length&&c[0].rawValue) finish(c[0].rawValue); else setTimeout(loop,120); }).catch(function(){ setTimeout(loop,250); }); })();
+      }else{
+        var Z=await loadZxing(); reader=new Z.BrowserMultiFormatReader();
+        reader.decodeFromConstraints({video:{facingMode:'environment'}},video,function(res){ if(res&&!stop) finish(res.getText()); });
+      }
+    }catch(e){ $('#smsg',m.body).textContent=t('scan_unsupported'); $('.cam',m.body).classList.add('hidden'); setTimeout(function(){ $('#sman',m.body).focus(); },50); }
+  })();
+}); }
+function takePhoto(){ return new Promise(function(resolve){
+  var m=modal(t('camera_title'),'<div class="cam"><video id="pv" playsinline muted autoplay></video></div><div id="pmsg2" class="muted" style="margin:8px 0"></div>'+
+    '<div class="row"><button class="btn lg" id="pcap" style="flex:1">'+esc(t('capture'))+'</button></div>'+
+    '<div style="margin-top:10px"><label class="btn alt full" style="cursor:pointer">'+esc(t('pick_photo'))+'<input id="pfile" type="file" accept="image/*" capture="environment" class="hidden"></label></div>',false);
+  var stream=null, done=false, video=$('#pv',m.body);
+  function stopCam(){ if(stream) stream.getTracks().forEach(function(x){x.stop()}); stream=null; }
+  function finish(b){ if(done) return; done=true; stopCam(); m.onclose=null; m.close(); resolve(b); }
+  m.onclose=function(){ stopCam(); if(!done){ done=true; resolve(null); } };
+  $('#pfile',m.body).addEventListener('change',async function(){ var f=this.files&&this.files[0]; if(!f) return; try{ finish(await shrink(f)); }catch(e){ $('#pmsg2',m.body).textContent=errText(e); } });
+  $('#pcap',m.body).addEventListener('click',async function(){
+    if(!stream||!video.videoWidth){ $('#pfile',m.body).click(); return; }
+    var cv=document.createElement('canvas'), sc=Math.min(1,1280/Math.max(video.videoWidth,video.videoHeight));
+    cv.width=Math.round(video.videoWidth*sc); cv.height=Math.round(video.videoHeight*sc); cv.getContext('2d').drawImage(video,0,0,cv.width,cv.height);
+    cv.toBlob(function(b){ if(b) finish(b); },'image/jpeg',0.72);
+  });
+  (async function(){ try{ if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia) throw 0;
+      stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment',width:{ideal:1280}}}); video.srcObject=stream; await video.play().catch(function(){});
+    }catch(e){ $('.cam',m.body).classList.add('hidden'); $('#pmsg2',m.body).textContent=t('camera_fail'); } })();
+}); }
+function shrink(file){ return new Promise(function(res,rej){
+  var img=new Image(), u=URL.createObjectURL(file);
+  img.onload=function(){ var sc=Math.min(1,1280/Math.max(img.width,img.height)), cv=document.createElement('canvas'); cv.width=Math.round(img.width*sc); cv.height=Math.round(img.height*sc);
+    cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height); URL.revokeObjectURL(u); cv.toBlob(function(b){ b?res(b):rej(new Error('image')); },'image/jpeg',0.72); };
+  img.onerror=function(){ rej(new Error('image')); }; img.src=u; }); }
+function blobToB64(b){ return new Promise(function(res,rej){ var r=new FileReader(); r.onload=function(){ res(String(r.result).split(',')[1]); }; r.onerror=rej; r.readAsDataURL(b); }); }
+async function uploadPhoto(blob){
+  var b64=await blobToB64(blob), h={'Content-Type':'application/json'};
+  if(!TOKEN){ try{ var s=await sb.auth.getSession(); if(s.data.session) h.Authorization='Bearer '+s.data.session.access_token; }catch(e){} }
+  var r; try{ r=await fetch('/api/motor-photo',{method:'POST',headers:h,body:JSON.stringify({slug:SLUG,token:TOKEN||'',period:SITE.bill_period,data:b64})}); }
+  catch(e){ throw new Error(t('e_network')); }
+  var j={}; try{ j=await r.json(); }catch(e){}
+  if(!r.ok||!j.ok) throw new Error(j.error||('HTTP '+r.status));
+  return j.path;
+}
+
+/* =========================================================
+   كشف حساب الزبون
+   ========================================================= */
+async function openStatement(cid){
+  var m=modal(t('statement'),'<div class="muted">'+esc(t('loading'))+'</div>',false,true);
+  async function load(){
+    var d; try{ d=await call('motor_statement',{p_customer:cid}); }catch(e){ m.body.innerHTML='<div class="err">'+esc(errText(e))+'</div>'; return; }
+    var c=d.customer, run=0, adm=isAdmin();
+    $('h3',m.el).textContent=t('statement')+' — '+c.name;
+    var rows=d.rows.map(function(r){
+      if(!r.voided) run+=n2(r.debit)-n2(r.credit);
+      var kind=r.t==='pay'?t('k_pay')+' ('+(r.method==='whish'?t('whish'):t('cash'))+')':t('k_'+r.kind);
+      var det=r.t==='inv'&&r.kind==='meter'? t('prev_reading')+' <b class="num">'+esc(fmtN(r.prev_value))+'</b> → <b class="num">'+esc(fmtN(r.cur_value))+'</b> = '+esc(fmtN(r.kwh))+' '+esc(t('kwh'))
+        : (r.t==='pay'&&r.paid_currency!==mainCur()? esc(money(r.paid_amount,r.paid_currency)) : '');
+      return '<tr class="'+(r.voided?'void':'')+'"><td class="num">'+esc(dt(r.at))+'</td><td>'+esc(kind)+(r.period?' · '+esc(r.period):'')+' <span class="muted">#'+esc(r.no)+'</span></td>'+
+        '<td>'+det+(r.note?' <span class="muted">'+esc(r.note)+'</span>':'')+'</td>'+
+        '<td class="num">'+(n2(r.debit)?esc(money(r.debit)):'')+'</td><td class="num">'+(n2(r.credit)?esc(money(r.credit)):'')+'</td><td>'+balHtml(run)+'</td>'+
+        '<td>'+(r.photo?'<img class="thumb" src="'+esc(r.photo)+'?w=160" data-big="'+esc(r.photo)+'" loading="lazy" alt="">':'')+'</td><td>'+esc(r.staff||'')+'</td>'+
+        (adm?'<td>'+(!r.voided&&r.kind!=='opening'?'<button class="btn ghost sm" data-void="'+esc(r.t)+'|'+esc(r.id)+'">'+esc(t('void'))+'</button>':(r.voided?'<span class="chip off">'+esc(t('voided'))+'</span>':''))+'</td>':'')+'</tr>';
+    });
+    m.body.innerHTML='<div class="row" style="margin-bottom:8px"><b>#'+esc(c.code)+' '+esc(c.name)+'</b><span class="muted">'+esc(c.barcode||'')+(c.plan_name?' · '+esc(c.plan_name):'')+'</span><span class="sp"></span>'+esc(t('balance'))+': '+balHtml(c.balance)+'</div>'+
+      '<div class="tw"><table><thead><tr><th>'+esc(t('date'))+'</th><th>'+esc(t('type'))+'</th><th></th><th>'+esc(t('debit'))+'</th><th>'+esc(t('creditc'))+'</th><th>'+esc(t('running'))+'</th><th>'+esc(t('photo'))+'</th><th>'+esc(t('by'))+'</th>'+(adm?'<th></th>':'')+'</tr></thead><tbody>'+
+      (rows.join('')||'<tr><td colspan="9" class="muted">'+esc(t('no_results'))+'</td></tr>')+'</tbody></table></div>'+
+      '<div class="row" style="margin-top:10px"><button class="btn wa sm" id="swa">'+esc(t('send_wa'))+'</button><button class="btn alt sm" id="spr">'+esc(t('print'))+'</button></div>';
+    $('#swa',m.body).addEventListener('click',function(){
+      var s=['*'+(SITE.name||'')+'*',t('statement')+' — '+c.name+' (#'+c.code+')'], rb=0;
+      d.rows.filter(function(r){return !r.voided}).slice(-12).forEach(function(r){ s.push(dt(r.at).slice(0,10)+' · '+(r.t==='pay'?t('k_pay'):t('k_'+r.kind)+(r.period?' '+r.period:''))+(r.kind==='meter'?' ('+fmtN(r.prev_value)+'→'+fmtN(r.cur_value)+')':'')+': '+(n2(r.debit)?'+'+money(r.debit):'−'+money(r.credit))); });
+      s.push('*'+t('balance')+': '+money(c.balance)+'*'); openWa(c.mobile_cc,c.mobile,s.join('\n')); });
+    $('#spr',m.body).addEventListener('click',function(){
+      var T=[{t:SITE.name||'',b:1,s:28,c:1},{t:t('statement'),b:1,c:1},{t:c.name+' #'+c.code,c:1},{hr:1}];
+      d.rows.filter(function(r){return !r.voided}).slice(-20).forEach(function(r){ T.push({kv:[dt(r.at).slice(0,10)+' '+(r.t==='pay'?t('k_pay'):(r.period||t('k_'+r.kind))),(n2(r.debit)?'+'+money(r.debit):'−'+money(r.credit))],s:19}); if(r.kind==='meter') T.push({kv:['',fmtN(r.prev_value)+' → '+fmtN(r.cur_value)],s:18}); });
+      T.push({hr:1},{kv:[t('balance'),money(c.balance)],b:1,s:26}); printDoc(T); });
+    $$('[data-void]',m.body).forEach(function(b){ b.addEventListener('click',async function(){
+      if(!(await confirmBox(t('confirm_void')))) return; var p=b.dataset.void.split('|');
+      try{ await call(p[0]==='pay'?'motor_payment_void':'motor_invoice_void',{p_id:p[1]}); toast(t('saved'),'s'); load(); loadCustomers(); }catch(e){ toast(errText(e),'e'); } }); });
+  }
+  m.body.addEventListener('click',function(e){ var im=e.target.closest('[data-big]'); if(im) lightbox(im.dataset.big); });
+  load();
+}
+function lightbox(src){ modal(t('photo'),'<img class="lb-img" src="'+esc(src)+'" alt="">',false,true); }
+
+/* =========================================================
+   الزبائن (إدارة)
+   ========================================================= */
+var CF={q:'',st:'',plan:'',col:'',area:'',lim:200};
+VIEWS.customers=async function(main){
+  searchHooks=[];
+  var adm=isAdmin();
+  if(!CUST.length&&custLoading) await custLoading;
+  var areas={}; CUST.forEach(function(c){ if(c.area) areas[c.area]=1; });
+  main.innerHTML='<div class="toolbar">'+
+    '<input id="cq" type="search" placeholder="'+esc(t('search_ph'))+'" value="'+esc(CF.q)+'">'+
+    '<select id="cst"><option value="">'+esc(t('all'))+'</option><option value="on">'+esc(t('active'))+'</option><option value="off">'+esc(t('inactive'))+'</option><option value="arch">'+esc(t('archived'))+'</option><option value="debt">'+esc(t('f_debt'))+'</option></select>'+
+    '<select id="cpl"><option value="">'+esc(t('plan'))+': '+esc(t('all'))+'</option>'+PLANS.map(function(p){return '<option value="'+esc(p.id)+'">'+esc(p.name)+'</option>'}).join('')+'</select>'+
+    (adm?'<select id="ccol"><option value="">'+esc(t('collector'))+': '+esc(t('all'))+'</option>'+STAFF.filter(function(s){return s.role==='collector'}).map(function(s){return '<option value="'+esc(s.id)+'">'+esc(s.name)+'</option>'}).join('')+'</select>':'')+
+    '<select id="car"><option value="">'+esc(t('area'))+': '+esc(t('all'))+'</option>'+Object.keys(areas).sort().map(function(a){return '<option>'+esc(a)+'</option>'}).join('')+'</select>'+
+    '</div><div class="toolbar">'+
+    (adm?'<button class="btn" id="cadd">'+esc(t('new_customer'))+'</button><button class="btn alt" id="cimp">'+esc(t('import_excel'))+'</button>':'')+
+    '<button class="btn ghost" id="cexp">'+esc(t('export_csv'))+'</button>'+(adm?'<button class="btn ghost" id="clbl">'+esc(t('labels'))+'</button>':'')+
+    '<span class="sp"></span><span class="muted" id="ccount"></span></div><div class="tw"><table><thead><tr><th>'+esc(t('code'))+'</th><th>'+esc(t('name'))+'</th><th>'+esc(t('barcode'))+'</th><th>'+esc(t('plan'))+'</th><th>'+esc(t('box'))+'</th><th>'+esc(t('area'))+'</th><th>'+esc(t('collector'))+'</th><th>'+esc(t('status'))+'</th><th>'+esc(t('balance'))+'</th><th>'+esc(t('prev_reading'))+'</th></tr></thead><tbody id="ctb"></tbody></table></div><div id="cmore" style="text-align:center;margin-top:10px"></div>';
+  $('#cst',main).value=CF.st; $('#cpl',main).value=CF.plan; if($('#ccol',main)) $('#ccol',main).value=CF.col; $('#car',main).value=CF.area;
+  function filtered(){
+    var q=normS(CF.q);
+    return CUST.filter(function(c){
+      if(CF.st==='on'&&!(c.is_active&&!c.archived)) return false; if(CF.st==='off'&&c.is_active) return false; if(CF.st==='arch'&&!c.archived) return false; if(CF.st==='debt'&&!(n2(c.balance)>0)) return false;
+      if(CF.plan&&c.plan_id!==CF.plan) return false; if(CF.col&&c.collector_id!==CF.col) return false; if(CF.area&&c.area!==CF.area) return false;
+      if(q&&!(normS(c.name).indexOf(q)>=0||normS(c.barcode).indexOf(q)>=0||normS(c.meter_no).indexOf(q)>=0||normS(c.box)===q||String(c.code)===q||normS(c.mobile).indexOf(q)>=0||normS(c.alt_name).indexOf(q)>=0)) return false;
+      return true; });
+  }
+  function paint(){
+    var list=filtered(), tot=list.reduce(function(s,c){return s+n2(c.balance)},0);
+    $('#ccount',main).innerHTML=esc(fmtN(list.length,0))+' · '+esc(t('total'))+': '+balHtml(tot);
+    $('#ctb',main).innerHTML=list.slice(0,CF.lim).map(function(c){
+      return '<tr data-cust="'+esc(c.id)+'" style="cursor:pointer"><td class="num">'+esc(c.code)+'</td><td><b>'+esc(c.name)+'</b></td><td class="num">'+esc(c.barcode)+'</td><td>'+esc(planName(c.plan_id))+'</td><td>'+esc(c.box)+'</td><td>'+esc(c.area)+'</td><td>'+esc(c.collector_name||'')+'</td>'+
+        '<td><span class="chip '+(c.is_active?'on':'off')+'">'+esc(c.is_active?t('active'):t('inactive'))+'</span>'+(c.archived?' <span class="chip gray">'+esc(t('archived'))+'</span>':'')+'</td><td>'+balHtml(c.balance)+'</td><td class="num">'+esc(fmtN(c.last_value))+'</td></tr>'; }).join('')||'<tr><td colspan="10" class="muted">'+esc(custLoading?t('loading'):t('no_results'))+'</td></tr>';
+    $('#cmore',main).innerHTML=list.length>CF.lim?'<button class="btn ghost" id="cmb">'+esc(t('more'))+' ('+esc(list.length-CF.lim)+')</button>':'';
+    var mb=$('#cmb',main); if(mb) mb.addEventListener('click',function(){ CF.lim+=300; paint(); });
+  }
+  $('#cq',main).addEventListener('input',function(){ CF.q=this.value; CF.lim=200; paint(); });
+  ['cst','cpl','ccol','car'].forEach(function(id){ var el=$('#'+id,main); if(el) el.addEventListener('change',function(){ CF[{cst:'st',cpl:'plan',ccol:'col',car:'area'}[id]]=this.value; CF.lim=200; paint(); }); });
+  if(adm){ $('#cadd',main).addEventListener('click',function(){ editCustomer(null); }); $('#cimp',main).addEventListener('click',importDialog);
+    $('#clbl',main).addEventListener('click',function(){ printLabels(filtered().slice(0,500)); }); }
+  $('#cexp',main).addEventListener('click',function(){
+    var rows=[[t('code'),t('name'),t('barcode'),t('meter_no'),t('plan'),t('box'),t('area'),t('location_name'),t('collector'),t('mobile'),t('status'),t('balance'),t('prev_reading')]];
+    filtered().forEach(function(c){ rows.push([c.code,c.name,c.barcode,c.meter_no,planName(c.plan_id),c.box,c.area,c.location_name,c.collector_name,c.mobile,c.is_active?t('active'):t('inactive'),c.balance,c.last_value]); });
+    downloadCsv(rows,'customers-'+SLUG+'.csv'); });
+  searchHooks.push(paint); paint();
+};
+function downloadCsv(rows,name){
+  var csv='﻿'+rows.map(function(r){ return r.map(function(v){ v=String(v==null?'':v); return /[",\n;]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; }).join(','); }).join('\r\n');
+  var a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'})); a.download=name; document.body.appendChild(a); a.click(); a.remove();
+}
+
+var CFIELDS=[
+  ['sec_basic',[['name','text',1],['alt_name'],['mobile_cc','tel'],['mobile','tel'],['mobile2','tel'],['phone','tel'],['email','email'],['nationality'],['address','text',1],['notes','area',1]]],
+  ['sec_sub',[['plan_id','plan'],['collector_id','staff'],['sub_date','date'],['collect_day','number'],['credit_limit','number'],['initial_reading','number'],['opening_balance','number'],['is_active','bool'],['archived','bool']]],
+  ['sec_meter',[['barcode'],['meter_no'],['box'],['generator'],['breaker_no'],['building'],['floor'],['side'],['location_name'],['location_code'],['area'],['area_code'],['zone'],['category'],['category2'],['lat','number'],['lng','number']]],
+  ['sec_disc',[['charge_discount','number'],['discount_desc'],['charge_addition','number'],['addition_desc']]]
+];
+async function editCustomer(id){
+  var c={is_active:true,mobile_cc:'961'}, newc=!id;
+  var m=modal(newc?t('new_customer'):t('edit_customer'),'<div class="muted">'+esc(t('loading'))+'</div>','<button class="btn ghost" data-x>'+esc(t('cancel'))+'</button>'+(newc?'':'<button class="btn danger" data-del>'+esc(t('delete'))+'</button>')+'<button class="btn" data-save>'+esc(t('save'))+'</button>',true);
+  if(!newc){ try{ c=(await call('motor_customer_get',{p_id:id})).customer; }catch(e){ m.body.innerHTML='<div class="err">'+esc(errText(e))+'</div>'; return; } }
+  m.body.innerHTML=CFIELDS.map(function(sec){
+    return '<div class="sec-t">'+esc(t(sec[0]))+'</div><div class="g3">'+sec[1].filter(function(f){ return !(f[0]==='opening_balance'&&!newc); }).map(function(f){
+      var k=f[0], ty=f[1]||'text', v=c[k]==null?'':c[k], st=f[2]?' style="grid-column:1/-1"':'';
+      if(ty==='bool') return '<div><label class="chk"><input type="checkbox" data-f="'+k+'" '+(v?'checked':'')+'> '+esc(t(k==='archived'?'archived':'is_active'))+'</label></div>';
+      if(ty==='plan') return '<div><label>'+esc(t('plan'))+'</label><select data-f="plan_id"><option value="">'+esc(t('none'))+'</option>'+PLANS.map(function(p){return '<option value="'+esc(p.id)+'" '+(p.id===v?'selected':'')+'>'+esc(p.name)+'</option>'}).join('')+'</select></div>';
+      if(ty==='staff') return '<div><label>'+esc(t('collector'))+'</label><select data-f="collector_id"><option value="">'+esc(c.collector_name||t('none'))+'</option>'+STAFF.map(function(s){return '<option value="'+esc(s.id)+'" '+(s.id===v?'selected':'')+'>'+esc(s.name)+'</option>'}).join('')+'</select></div>';
+      if(ty==='area') return '<div'+st+'><label>'+esc(t(k))+'</label><textarea data-f="'+k+'">'+esc(v)+'</textarea></div>';
+      return '<div'+st+'><label>'+esc(t(k))+'</label><input data-f="'+k+'" type="'+(ty==='number'?'text':ty)+'"'+(ty==='number'?' inputmode="decimal"':'')+' value="'+esc(v)+'"></div>';
+    }).join('')+(sec[0]==='sec_meter'?'<div><label>&nbsp;</label><button class="btn alt full" type="button" id="cgeo">'+esc(t('my_location'))+'</button></div>':'')+'</div>';
+  }).join('')+'<div id="cmsg" class="err msg" style="margin-top:10px"></div>';
+  $('#cgeo',m.body).addEventListener('click',function(){ var b=this; if(!navigator.geolocation) return toast(t('gps_bad'),'e'); busy(b,true,t('gps_wait'));
+    navigator.geolocation.getCurrentPosition(function(p){ $('[data-f=lat]',m.body).value=p.coords.latitude.toFixed(7); $('[data-f=lng]',m.body).value=p.coords.longitude.toFixed(7); busy(b,false); },
+      function(){ busy(b,false); toast(t('gps_bad'),'e'); },{enableHighAccuracy:true,timeout:20000}); });
+  m.foot.addEventListener('click',async function(e){
+    if(e.target.closest('[data-x]')) return m.close();
+    if(e.target.closest('[data-del]')){ if(!(await confirmBox(t('confirm_delete')))) return;
+      try{ await call('motor_customer_delete',{p_id:id}); toast(t('saved'),'s'); m.close(); await loadCustomers(); go(TAB); }catch(err){ $('#cmsg',m.body).textContent=errText(err); } return; }
+    var sv=e.target.closest('[data-save]'); if(!sv) return;
+    var d={}; if(!newc) d.id=id;
+    $$('[data-f]',m.body).forEach(function(el){ d[el.dataset.f]=el.type==='checkbox'?el.checked:el.value.trim(); });
+    busy(sv,true);
+    try{ await call('motor_customer_save',{p_data:d}); toast(t('saved'),'s'); m.close(); await loadCustomers(); if(TAB==='customers') go('customers'); }
+    catch(err){ $('#cmsg',m.body).textContent=errText(err); busy(sv,false); }
+  });
+}
+
+/* ---------- استيراد Excel (قارئ xlsx مدمج — بلا مكتبات خارجية) ---------- */
+async function readXlsx(buf){
+  var dv=new DataView(buf), eocd=-1;
+  for(var i=buf.byteLength-22;i>=Math.max(0,buf.byteLength-65557);i--){ if(dv.getUint32(i,true)===0x06054b50){ eocd=i; break; } }
+  if(eocd<0) throw new Error('zip');
+  var cnt=dv.getUint16(eocd+10,true), off=dv.getUint32(eocd+16,true), files={}, td=new TextDecoder();
+  for(var n=0;n<cnt;n++){ var meth=dv.getUint16(off+10,true), cs=dv.getUint32(off+20,true), nl=dv.getUint16(off+28,true), el=dv.getUint16(off+30,true), cl=dv.getUint16(off+32,true), lo=dv.getUint32(off+42,true);
+    files[td.decode(new Uint8Array(buf,off+46,nl))]={m:meth,cs:cs,lo:lo}; off+=46+nl+el+cl; }
+  async function get(name){ var f=files[name]; if(!f) return null; var ln=dv.getUint16(f.lo+26,true), le=dv.getUint16(f.lo+28,true), data=new Uint8Array(buf,f.lo+30+ln+le,f.cs);
+    if(f.m===0) return td.decode(data);
+    if(typeof DecompressionStream==='undefined') throw new Error('DecompressionStream');
+    var out=await new Response(new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer(); return td.decode(out); }
+  var X=function(s){ return new DOMParser().parseFromString(s,'application/xml'); };
+  var sheet='xl/worksheets/sheet1.xml';
+  try{ var wb=X(await get('xl/workbook.xml')), rels=X(await get('xl/_rels/workbook.xml.rels')), s0=wb.getElementsByTagName('sheet')[0];
+    var rid=s0&&(s0.getAttribute('r:id')||s0.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships','id'));
+    Array.prototype.forEach.call(rels.getElementsByTagName('Relationship'),function(r){ if(r.getAttribute('Id')===rid){ var tg=r.getAttribute('Target'); sheet=tg.charAt(0)==='/'?tg.slice(1):'xl/'+tg.replace(/^\.\//,''); } });
+  }catch(e){}
+  var ss=[], sst=await get('xl/sharedStrings.xml');
+  if(sst) Array.prototype.forEach.call(X(sst).getElementsByTagName('si'),function(si){ var s=''; Array.prototype.forEach.call(si.getElementsByTagName('t'),function(x){ s+=x.textContent; }); ss.push(s); });
+  var sx=await get(sheet); if(!sx) throw new Error('sheet');
+  var rows=[];
+  Array.prototype.forEach.call(X(sx).getElementsByTagName('row'),function(r){ var arr=[];
+    Array.prototype.forEach.call(r.getElementsByTagName('c'),function(c){ var ref=c.getAttribute('r')||'', col=0, m=ref.match(/^[A-Z]+/);
+      if(m){ for(var k=0;k<m[0].length;k++) col=col*26+(m[0].charCodeAt(k)-64); col--; } else col=arr.length;
+      var ty=c.getAttribute('t'), v=c.getElementsByTagName('v')[0], val='';
+      if(ty==='s') val=ss[+(v&&v.textContent)]||''; else if(ty==='inlineStr'){ Array.prototype.forEach.call(c.getElementsByTagName('t'),function(x){ val+=x.textContent; }); } else val=v?v.textContent:'';
+      arr[col]=val; });
+    for(var q=0;q<arr.length;q++) if(arr[q]===undefined) arr[q]='';
+    rows.push(arr); });
+  return rows;
+}
+function readCsv(text){ var rows=[], row=[], cur='', q=false; text=text.replace(/^﻿/,''); var sep=(text.split('\n')[0].split(';').length>text.split('\n')[0].split(',').length)?';':',';
+  for(var i=0;i<text.length;i++){ var ch=text[i]; if(q){ if(ch==='"'){ if(text[i+1]==='"'){ cur+='"'; i++; } else q=false; } else cur+=ch; }
+    else if(ch==='"') q=true; else if(ch===sep){ row.push(cur); cur=''; } else if(ch==='\n'){ row.push(cur.replace(/\r$/,'')); rows.push(row); row=[]; cur=''; } else cur+=ch; }
+  if(cur||row.length){ row.push(cur); rows.push(row); } return rows; }
+var HMAP={'الاسم':'name','الخدمة':'service','المبنى':'building','الطابق':'floor','الجهة':'side','العلبة':'box','المولد / الكابل':'generator','المولد/الكابل':'generator',
+  'رقم الدجنتير':'breaker_no','رقم العداد':'meter_no','باركود العداد':'barcode','اسم اخر':'alt_name','اسم آخر':'alt_name','اسم الموقع':'location_name','رمز الموقع':'location_code',
+  'خط العرض':'lat','خط الطول':'lng','المنطقة':'area','رمز المنطقة':'area_code','النطاق':'zone','الفئة':'category','الفئة 2':'category2','الجابي':'collector_name',
+  'تاريخ الاشتراك':'sub_date','مفعل':'is_active','مفعّل':'is_active','تاريغ التوقيف':'stopped_at','تاريخ التوقيف':'stopped_at','موقف بواسطة':'stopped_by','الحد الائتماني':'credit_limit',
+  'الخصم عند التشريج':'charge_discount','وصف الخصم':'discount_desc','الإضافة عند التشريج':'charge_addition','الاضافة عند التشريج':'charge_addition','وصف الإضافة':'addition_desc','وصف الاضافة':'addition_desc',
+  'الرصيد':'opening_balance','الجوال':'mobile','الهاتف':'phone','العنوان':'address','البريد الالكتروني':'email','البريد الإلكتروني':'email','الجنسية':'nationality','ارشيف':'archived','أرشيف':'archived',
+  'يوم التحصيل':'collect_day','ملاحظات':'notes',
+  'name':'name','service':'service','plan':'service','barcode':'barcode','meter':'meter_no','meter no':'meter_no','box':'box','area':'area','mobile':'mobile','phone':'phone','balance':'opening_balance','collector':'collector_name','active':'is_active','notes':'notes','address':'address'};
+function normH(h){ return String(h||'').replace(/[\t\r\n]+/g,' ').replace(/[؟?]/g,'').replace(/\s+/g,' ').trim().toLowerCase(); }
+function excelDate(v){ if(/^\d{4,5}(\.\d+)?$/.test(v)&&+v>20000&&+v<80000){ var d=new Date(Math.round((+v-25569)*86400000)); return d.toISOString().slice(0,10); } return v; }
+function buildImport(rows){
+  var head=rows[0]||[], map=[], seenMobile=false, ignored=[];
+  head.forEach(function(h,i){ var k=HMAP[normH(h)]; if(k==='mobile'){ if(seenMobile) k='mobile_cc'; seenMobile=true; } map[i]=k||null; if(!k&&String(h).trim()) ignored.push(String(h).trim()); });
+  if(map.indexOf('name')<0) return {err:t('imp_none')};
+  var out=[];
+  rows.slice(1).forEach(function(r){ var o={};
+    map.forEach(function(k,i){ if(!k) return; var v=String(r[i]==null?'':r[i]).trim(); if(v==='NULL'||v==='null') v='';
+      if(k==='opening_balance'||k==='charge_discount'||k==='charge_addition'||k==='credit_limit'){ var nm=v.replace(/,/g,'').match(/-?\d+(\.\d+)?/); v=nm?nm[0]:''; }
+      if(k==='is_active'||k==='archived') v=/^(1|true|yes|نعم|مفعل|مفعّل)$/i.test(v)?true:(v===''?(k==='is_active'):false);
+      if(k==='breaker_no'&&v==='0') v='';
+      if((k==='mobile'||k==='phone')&&/^0+$/.test(v)) v='';
+      if(k==='mobile_cc'){ v=v.replace(/\D/g,''); if(v.length>4) { if(!o.mobile) o.mobile=v; v=''; } }
+      if(k==='nationality'&&/^unknown$/i.test(v)) v='';
+      if(k==='sub_date'||k==='stopped_at') v=excelDate(v);
+      if(k==='collect_day') v=v.replace(/\D/g,'');
+      o[k]=v; });
+    if(o.name) out.push(o); });
+  return {rows:out,cols:map.filter(Boolean),ignored:ignored};
+}
+function importDialog(){
+  var m=modal(t('imp_title'),'<p class="muted" style="margin-top:0">'+esc(t('imp_hint'))+'</p><input type="file" id="ifile" accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"><div id="iprev" style="margin-top:12px"></div>',
+    '<button class="btn ghost" data-x>'+esc(t('close'))+'</button><button class="btn hidden" data-go></button>',true);
+  var data=null, running=false;
+  m.foot.addEventListener('click',async function(e){
+    if(e.target.closest('[data-x]')){ if(!running) m.close(); return; }
+    var go=e.target.closest('[data-go]'); if(!go||!data) return;
+    running=true; busy(go,true,t('saving')); $('[data-x]',m.foot).disabled=true;
+    var tot={added:0,updated:0,skipped:0,plans_new:0,errors:[]}, CH=100, bar=$('#ibar i',m.body);
+    try{
+      for(var i=0;i<data.rows.length;i+=CH){
+        var r=await call('motor_import',{p_rows:data.rows.slice(i,i+CH)});
+        tot.added+=r.added; tot.updated+=r.updated; tot.skipped+=r.skipped; tot.plans_new+=r.plans_new;
+        (r.errors||[]).forEach(function(x){ x.row=x.row+i+1; tot.errors.push(x); });
+        bar.style.width=Math.min(100,Math.round((i+CH)/data.rows.length*100))+'%';
+      }
+      $('#ires',m.body).innerHTML='<div class="okmsg">'+esc(t('imp_done',{a:tot.added,u:tot.updated,s:tot.skipped,p:tot.plans_new}))+'</div>'+
+        (tot.plans_new?'<div class="lic" style="margin-top:8px">'+esc(t('imp_plans_note'))+'</div>':'')+
+        (tot.errors.length?'<div class="err" style="margin-top:8px"><b>'+esc(t('err_title'))+'</b>\n'+tot.errors.slice(0,30).map(function(x){return t('row')+' '+x.row+' ('+x.name+'): '+errText(x.error)}).join('\n')+'</div>':'');
+      go.classList.add('hidden');
+      var me=await call('motor_me'); PLANS=me.plans||[]; STAFF=me.staff||[];
+      await loadCustomers(); if(TAB==='customers') VIEWS.customers($('#main'));
+    }catch(err){ $('#ires',m.body).innerHTML='<div class="err">'+esc(errText(err))+'</div>'; busy(go,false); }
+    running=false; $('[data-x]',m.foot).disabled=false;
+  });
+  $('#ifile',m.body).addEventListener('change',async function(){
+    var f=this.files&&this.files[0], pv=$('#iprev',m.body), go=$('[data-go]',m.foot); data=null; go.classList.add('hidden'); if(!f) return;
+    pv.innerHTML='<div class="muted">'+esc(t('loading'))+'</div>';
+    try{
+      var buf=await f.arrayBuffer(), rows=/\.csv$/i.test(f.name)?readCsv(new TextDecoder().decode(buf)):await readXlsx(buf);
+      var b=buildImport(rows); if(b.err){ pv.innerHTML='<div class="err">'+esc(b.err)+'</div>'; return; }
+      data=b;
+      var cols=b.cols.filter(function(v,i,a){return a.indexOf(v)===i}).map(function(k){ return k==='service'?t('plan'):k==='collector_name'?t('collector'):k==='stopped_at'?'⏸':k==='stopped_by'?'⏸ '+t('by'):t(k); });
+      pv.innerHTML='<div><b>'+esc(t('imp_cols'))+':</b> '+cols.map(function(x){return '<span class="chip on">'+esc(x)+'</span>'}).join(' ')+'</div>'+
+        (b.ignored.length?'<div style="margin-top:6px"><b>'+esc(t('imp_ignored'))+':</b> '+b.ignored.map(function(x){return '<span class="chip gray">'+esc(x)+'</span>'}).join(' ')+'</div>':'')+
+        '<div class="tw" style="margin-top:10px"><table><thead><tr><th>'+esc(t('name'))+'</th><th>'+esc(t('plan'))+'</th><th>'+esc(t('barcode'))+'</th><th>'+esc(t('mobile'))+'</th><th>'+esc(t('status'))+'</th><th>'+esc(t('opening_balance'))+'</th></tr></thead><tbody>'+
+        b.rows.slice(0,6).map(function(r){ return '<tr><td>'+esc(r.name)+'</td><td>'+esc(r.service||'')+'</td><td>'+esc(r.barcode||'')+'</td><td class="num">'+esc((r.mobile_cc?'+'+r.mobile_cc+' ':'')+(r.mobile||''))+'</td><td><span class="chip '+(r.is_active===false?'off':'on')+'">'+esc(r.is_active===false?t('inactive'):t('active'))+'</span></td><td class="num">'+esc(r.opening_balance||'')+'</td></tr>'; }).join('')+
+        '</tbody></table></div><div class="pbar" id="ibar" style="margin-top:12px"><i></i></div><div id="ires" style="margin-top:10px"></div>';
+      go.textContent=t('imp_go',{n:b.rows.length}); go.classList.remove('hidden');
+    }catch(e){ pv.innerHTML='<div class="err">'+esc(t('imp_bad'))+' ('+esc(e&&e.message||'')+')</div>'; }
+  });
+}
+
+/* =========================================================
+   جدول عدادات الشهر
+   ========================================================= */
+var MF={period:'',staff:'',q:''};
+VIEWS.month=async function(main){
+  var adm=isAdmin(); if(!MF.period) MF.period=SITE.bill_period;
+  var d=await call('motor_month',{p_period:MF.period});
+  main.innerHTML=(adm?'<div class="card"><div class="row"><div><label>'+esc(t('bill_period'))+'</label><b style="font-size:20px" class="num">'+esc(SITE.bill_period)+'</b></div><span class="sp"></span>'+
+      '<input type="month" id="bp" value="'+esc(SITE.bill_period)+'" style="width:auto"><button class="btn alt" id="bpgo">'+esc(t('change_period'))+'</button><button class="btn ghost" id="bfix">'+esc(t('bill_fixed'))+'</button></div>'+
+      '<div class="row" style="margin-top:10px"><b>'+esc(t('window_all'))+':</b><label style="margin:0">'+esc(t('from'))+'</label><input type="date" id="wf" style="width:auto"><label style="margin:0">'+esc(t('to'))+'</label><input type="date" id="wt" style="width:auto"><button class="btn ghost" id="wgo">'+esc(t('apply'))+'</button></div></div>':'')+
+    '<div class="toolbar"><input type="month" id="mp" value="'+esc(d.period)+'" style="flex:0 1 180px">'+
+      (adm?'<select id="ms"><option value="">'+esc(t('collector'))+': '+esc(t('all'))+'</option>'+STAFF.map(function(s){return '<option value="'+esc(s.id)+'">'+esc(s.name)+'</option>'}).join('')+'</select>':'')+
+      '<input type="search" id="mq" placeholder="'+esc(t('search_ph'))+'" value="'+esc(MF.q)+'"><button class="btn ghost" id="mexp">'+esc(t('export_csv'))+'</button><span class="sp"></span><b id="mcount"></b></div>'+
+    '<div class="tw"><table><thead><tr><th>'+esc(t('time'))+'</th><th>'+esc(t('code'))+'</th><th>'+esc(t('name'))+'</th><th>'+esc(t('box'))+'</th><th>'+esc(t('prev_reading'))+'</th><th>'+esc(t('cur_reading'))+'</th><th>'+esc(t('consumption'))+'</th><th>'+esc(t('inv_amount'))+'</th><th>'+esc(t('photo'))+'</th><th>'+esc(t('map'))+'</th><th>'+esc(t('collector'))+'</th></tr></thead><tbody id="mtb"></tbody></table></div>';
+  if($('#ms',main)) $('#ms',main).value=MF.staff;
+  function rows(){ var q=normS(MF.q); return d.rows.filter(function(r){ return (!MF.staff||r.staff_id===MF.staff)&&(!q||normS(r.name).indexOf(q)>=0||normS(r.barcode).indexOf(q)>=0||normS(r.box)===q); }); }
+  function paint(){
+    var list=rows(), sum=list.reduce(function(s,r){return s+n2(r.amount)},0), kw=list.reduce(function(s,r){return s+n2(r.kwh)},0);
+    $('#mcount',main).textContent=t('read_of',{a:list.length,b:d.total_active})+' · '+fmtN(kw)+' '+t('kwh')+' · '+money(sum);
+    $('#mtb',main).innerHTML=list.map(function(r){
+      var far=SITE.max_distance_m>0&&r.dist_m!=null&&r.dist_m>SITE.max_distance_m;
+      return '<tr><td class="num">'+esc(dt(r.at))+'</td><td class="num">'+esc(r.code)+'</td><td><a href="#" data-cust="'+esc(r.customer_id)+'"><b>'+esc(r.name)+'</b></a></td><td>'+esc(r.box)+'</td>'+
+        '<td class="num">'+esc(fmtN(r.prev_value))+'</td><td class="num"><b>'+esc(fmtN(r.value))+'</b></td><td class="num">'+esc(fmtN(r.kwh))+'</td><td class="num">'+esc(money(r.amount))+'</td>'+
+        '<td>'+(r.photo?'<img class="thumb" loading="lazy" src="'+esc(r.photo)+'?w=160" data-big="'+esc(r.photo)+'" alt="">':'—')+'</td>'+
+        '<td>'+(r.lat!=null?'<a target="_blank" rel="noopener" href="https://maps.google.com/?q='+esc(r.lat)+','+esc(r.lng)+'">📍</a>'+(r.dist_m!=null?' <span class="chip '+(far?'off':'gray')+'">'+esc(fmtN(r.dist_m,0))+' m</span>':''):'—')+'</td><td>'+esc(r.staff)+'</td></tr>'; }).join('')||'<tr><td colspan="11" class="muted">'+esc(t('no_results'))+'</td></tr>';
+  }
+  $('#mp',main).addEventListener('change',function(){ if(/^\d{4}-\d{2}$/.test(this.value)){ MF.period=this.value; go('month'); } });
+  if($('#ms',main)) $('#ms',main).addEventListener('change',function(){ MF.staff=this.value; paint(); });
+  $('#mq',main).addEventListener('input',function(){ MF.q=this.value; paint(); });
+  $('#mtb',main).addEventListener('click',function(e){ var im=e.target.closest('[data-big]'); if(im) lightbox(im.dataset.big); var a=e.target.closest('a[data-cust]'); if(a) e.preventDefault(); });
+  $('#mexp',main).addEventListener('click',function(){ var R=[[t('time'),t('code'),t('name'),t('barcode'),t('box'),t('prev_reading'),t('cur_reading'),t('consumption'),t('inv_amount'),t('lat'),t('lng'),'m',t('collector'),t('photo')]];
+    rows().forEach(function(r){ R.push([dt(r.at),r.code,r.name,r.barcode,r.box,r.prev_value,r.value,r.kwh,r.amount,r.lat,r.lng,r.dist_m,r.staff,r.photo?location.origin+r.photo:'']); }); downloadCsv(R,'readings-'+d.period+'.csv'); });
+  if(adm){
+    $('#bpgo',main).addEventListener('click',async function(){ var p=$('#bp',main).value; if(!/^\d{4}-\d{2}$/.test(p)) return toast(t('period_bad'),'e');
+      if(!(await confirmBox(t('confirm_period',{p:p})))) return; try{ SITE=await call('motor_settings_save',{p_data:{bill_period:p}}); MF.period=p; toast(t('saved'),'s'); loadCustomers(); go('month'); }catch(e){ toast(errText(e),'e'); } });
+    $('#bfix',main).addEventListener('click',async function(){ if(!(await confirmBox(t('confirm_fixed',{p:SITE.bill_period})))) return; var b=this; busy(b,true);
+      try{ var r=await call('motor_bill_fixed'); toast(t('bill_fixed_done',{n:r.count,p:r.period}),'s'); loadCustomers(); }catch(e){ toast(errText(e),'e'); } busy(b,false); });
+    $('#wgo',main).addEventListener('click',async function(){ var b=this; busy(b,true);
+      try{ var r=await call('motor_window_all',{p_from:$('#wf',main).value||null,p_to:$('#wt',main).value||null}); var me=await call('motor_me'); STAFF=me.staff||[]; toast(t('saved')+' ('+r.count+')','s'); }catch(e){ toast(errText(e),'e'); } busy(b,false); });
+  }
+  paint();
+};
+
+/* =========================================================
+   الموظفون
+   ========================================================= */
+VIEWS.staff=async function(main){
+  var me=await call('motor_me'); STAFF=me.staff||[];
+  main.innerHTML='<div class="toolbar"><button class="btn" id="sadd">'+esc(t('new_staff'))+'</button></div><div class="tw"><table><thead><tr><th>'+esc(t('name_user'))+'</th><th>'+esc(t('username'))+'</th><th>'+esc(t('role'))+'</th><th>'+esc(t('read_window'))+'</th><th>'+esc(t('can_collect'))+'</th><th>'+esc(t('status'))+'</th><th>'+esc(t('phone'))+'</th><th></th></tr></thead><tbody>'+
+    (STAFF.map(function(s){ var open=s.read_from&&s.read_to&&TODAY>=s.read_from&&TODAY<=s.read_to;
+      return '<tr><td><b>'+esc(s.name)+'</b></td><td class="num">'+esc(s.username)+'</td><td>'+esc(t('role_'+s.role))+'</td><td>'+(s.role==='collector'?(s.read_from?'<span class="chip '+(open?'on':'gray')+'">'+esc(s.read_from+' → '+s.read_to)+'</span>':'<span class="chip warn">—</span>'):'')+'</td>'+
+        '<td>'+esc(s.can_collect?t('yes'):t('no'))+'</td><td><span class="chip '+(s.is_active?'on':'off')+'">'+esc(s.is_active?t('active'):t('inactive'))+'</span></td><td class="num">'+esc(s.phone)+'</td>'+
+        '<td><button class="btn ghost sm" data-ed="'+esc(s.id)+'">'+esc(t('edit'))+'</button></td></tr>'; }).join('')||'<tr><td colspan="8" class="muted">'+esc(t('no_results'))+'</td></tr>')+'</tbody></table></div>';
+  $('#sadd',main).addEventListener('click',function(){ staffForm(null); });
+  $$('[data-ed]',main).forEach(function(b){ b.addEventListener('click',function(){ staffForm(STAFF.filter(function(s){return s.id===b.dataset.ed})[0]); }); });
+};
+function staffForm(s){
+  var n=!s; s=s||{role:'collector',is_active:true,can_collect:true};
+  var m=modal(n?t('new_staff'):s.name,'<div class="g2">'+
+    '<div><label>'+esc(t('name_user'))+'</label><input id="fn" value="'+esc(s.name||'')+'"></div>'+
+    '<div><label>'+esc(t('phone'))+'</label><input id="fph" type="tel" value="'+esc(s.phone||'')+'"></div>'+
+    '<div><label>'+esc(t('username'))+'</label><input id="fu" autocapitalize="off" spellcheck="false" value="'+esc(s.username||'')+'"></div>'+
+    '<div><label>'+esc(t('password'))+'</label><input id="fp" type="text" autocomplete="new-password" placeholder="'+esc(n?'':t('pass_keep'))+'"></div>'+
+    '<div><label>'+esc(t('role'))+'</label><select id="fr"><option value="collector">'+esc(t('role_collector'))+'</option><option value="admin">'+esc(t('role_admin'))+'</option></select></div>'+
+    '<div><label>&nbsp;</label><label class="chk"><input type="checkbox" id="fa" '+(s.is_active?'checked':'')+'> '+esc(t('active'))+'</label><label class="chk"><input type="checkbox" id="fc" '+(s.can_collect?'checked':'')+'> '+esc(t('can_collect'))+'</label></div>'+
+    '<div><label>'+esc(t('read_window'))+' — '+esc(t('from'))+'</label><input id="ff" type="date" value="'+esc(s.read_from||'')+'"></div>'+
+    '<div><label>'+esc(t('to'))+'</label><input id="ft" type="date" value="'+esc(s.read_to||'')+'"></div>'+
+    '</div><div id="fmsg" class="err msg" style="margin-top:10px"></div>',
+    '<button class="btn ghost" data-x>'+esc(t('cancel'))+'</button>'+(n?'':'<button class="btn danger" data-del>'+esc(t('delete'))+'</button>')+'<button class="btn" data-s>'+esc(t('save'))+'</button>');
+  $('#fr',m.body).value=s.role;
+  m.foot.addEventListener('click',async function(e){
+    if(e.target.closest('[data-x]')) return m.close();
+    if(e.target.closest('[data-del]')){ if(!(await confirmBox(t('confirm_delete')))) return;
+      try{ var r=await call('motor_staff_delete',{p_id:s.id}); toast(r.deactivated?t('staff_deact'):t('saved'),'s'); m.close(); go('staff'); }catch(err){ $('#fmsg',m.body).textContent=errText(err); } return; }
+    var b=e.target.closest('[data-s]'); if(!b) return;
+    var d={id:s.id||'',name:$('#fn',m.body).value.trim(),phone:$('#fph',m.body).value.trim(),username:$('#fu',m.body).value.trim().toLowerCase(),role:$('#fr',m.body).value,
+      is_active:$('#fa',m.body).checked,can_collect:$('#fc',m.body).checked,read_from:$('#ff',m.body).value,read_to:$('#ft',m.body).value};
+    busy(b,true);
+    try{ await call('motor_staff_save',{p_data:d,p_password:$('#fp',m.body).value||null}); toast(t('saved'),'s'); m.close(); go('staff'); }
+    catch(err){ $('#fmsg',m.body).textContent=errText(err); busy(b,false); }
+  });
+}
+
+/* =========================================================
+   كشف حساب الجابي
+   ========================================================= */
+var SF={staff:'',from:'',to:''};
+VIEWS.cstmt=async function(main){
+  var adm=isAdmin();
+  if(!adm) SF.staff=ME.staff_id;
+  if(!SF.from){ SF.from=TODAY.slice(0,8)+'01'; SF.to=TODAY; }
+  var cols=STAFF.filter(function(s){ return adm||s.id===ME.staff_id; });
+  if(adm&&!SF.staff&&cols.length) SF.staff=(cols.filter(function(s){return s.role==='collector'})[0]||cols[0]).id;
+  main.innerHTML='<div class="toolbar">'+(adm?'<select id="xs">'+cols.map(function(s){return '<option value="'+esc(s.id)+'">'+esc(s.name)+' · '+esc(t('role_'+s.role))+'</option>'}).join('')+'</select>':'')+
+    '<label style="margin:0">'+esc(t('from'))+'</label><input type="date" id="xf" value="'+esc(SF.from)+'" style="flex:0 1 160px"><label style="margin:0">'+esc(t('to'))+'</label><input type="date" id="xt" value="'+esc(SF.to)+'" style="flex:0 1 160px">'+
+    (adm?'<button class="btn ok" id="xh">'+esc(t('handover'))+'</button>':'')+'</div><div id="xbody"></div>';
+  if(!SF.staff){ $('#xbody',main).innerHTML='<div class="muted">'+esc(t('choose_staff'))+'</div>'; return; }
+  if($('#xs',main)) $('#xs',main).value=SF.staff;
+  async function load(){
+    var box=$('#xbody',main); box.innerHTML='<div class="muted">'+esc(t('loading'))+'</div>';
+    var d; try{ d=await call('motor_collector_statement',{p_staff:SF.staff,p_from:SF.from||null,p_to:SF.to||null}); }catch(e){ box.innerHTML='<div class="err">'+esc(errText(e))+'</div>'; return; }
+    var run=n2(d.opening), cash=0, hand=0;
+    var trs=d.rows.map(function(r){ if(!r.voided){ run+=n2(r.debit)-n2(r.credit); cash+=n2(r.debit); hand+=n2(r.credit); }
+      var lab=r.t==='pay'?(t('k_pay')+' #'+r.no+' · '+r.customer+(r.method==='whish'?' (Whish — '+money(r.amount)+')':'')):t('m_'+r.kind)+(r.by?' · '+r.by:'');
+      return '<tr class="'+(r.voided?'void':'')+'"><td class="num">'+esc(dt(r.at))+'</td><td>'+esc(lab)+(r.note?' <span class="muted">'+esc(r.note)+'</span>':'')+'</td><td class="num">'+(n2(r.debit)?esc(money(r.debit)):'')+'</td><td class="num">'+(n2(r.credit)?esc(money(r.credit)):'')+'</td><td>'+balHtml(run)+'</td>'+
+        (adm?'<td>'+(r.t==='move'?'<button class="btn ghost sm" data-dm="'+esc(r.id)+'">'+esc(t('delete'))+'</button>':'')+'</td>':'')+'</tr>'; });
+    box.innerHTML='<div class="stats">'+stat(t('opening'),money(d.opening))+stat(t('cash_collected'),money(cash))+stat(t('handed'),money(hand))+stat(t('in_hand'),money(d.balance_now))+stat(t('whish_coll'),money(d.whish_total))+stat(t('readings_n'),fmtN(d.readings,0))+'</div>'+
+      '<div class="tw"><table><thead><tr><th>'+esc(t('date'))+'</th><th>'+esc(t('type'))+'</th><th>'+esc(t('debit'))+'</th><th>'+esc(t('creditc'))+'</th><th>'+esc(t('running'))+'</th>'+(adm?'<th></th>':'')+'</tr></thead><tbody>'+
+      (trs.join('')||'<tr><td colspan="6" class="muted">'+esc(t('no_results'))+'</td></tr>')+'</tbody></table></div>'+
+      '<div class="row" style="margin-top:10px"><button class="btn alt sm" id="xp">'+esc(t('print'))+'</button></div>';
+    $$('[data-dm]',box).forEach(function(b){ b.addEventListener('click',async function(){ if(!(await confirmBox(t('confirm_delete')))) return; try{ await call('motor_move_delete',{p_id:b.dataset.dm}); load(); }catch(e){ toast(errText(e),'e'); } }); });
+    $('#xp',box).addEventListener('click',function(){ printDoc([{t:SITE.name||'',b:1,s:28,c:1},{t:t('nav_cstmt'),b:1,c:1},{t:d.staff.name,c:1},{t:SF.from+' → '+SF.to,c:1,s:19},{hr:1},
+      {kv:[t('opening'),money(d.opening)]},{kv:[t('cash_collected'),money(cash)]},{kv:[t('handed'),money(hand)]},{kv:[t('whish_coll'),money(d.whish_total)]},{kv:[t('readings_n'),fmtN(d.readings,0)]},{hr:1},{kv:[t('in_hand'),money(d.balance_now)],b:1,s:26}]); });
+  }
+  if($('#xs',main)) $('#xs',main).addEventListener('change',function(){ SF.staff=this.value; load(); });
+  $('#xf',main).addEventListener('change',function(){ SF.from=this.value; load(); });
+  $('#xt',main).addEventListener('change',function(){ SF.to=this.value; load(); });
+  if($('#xh',main)) $('#xh',main).addEventListener('click',function(){ moveForm('collector',SF.staff,load); });
+  load();
+};
+function moveForm(account,staff,after){
+  var kinds=account==='collector'?['handover','adjust']:['withdraw','deposit','adjust'];
+  var m=modal(account==='collector'?t('handover')+' — '+staffName(staff):t('nav_whish'),
+    '<label>'+esc(t('type'))+'</label><select id="mk">'+kinds.map(function(k){return '<option value="'+k+'">'+esc(t('m_'+k))+'</option>'}).join('')+'</select>'+
+    '<label style="margin-top:8px">'+esc(t('amount'))+' ('+esc(mainCur())+')</label><input id="ma" type="text" inputmode="decimal"><div class="muted" id="mhint"></div>'+
+    '<label style="margin-top:8px">'+esc(t('note'))+'</label><input id="mn"><div id="mmsg" class="err msg" style="margin-top:8px"></div>',
+    '<button class="btn ghost" data-x>'+esc(t('cancel'))+'</button><button class="btn" data-s>'+esc(t('save'))+'</button>');
+  function hint(){ $('#mhint',m.body).textContent=$('#mk',m.body).value==='adjust'?t('adj_amount'):''; } $('#mk',m.body).addEventListener('change',hint); hint();
+  m.foot.addEventListener('click',async function(e){ if(e.target.closest('[data-x]')) return m.close(); var b=e.target.closest('[data-s]'); if(!b) return;
+    var v=Number($('#ma',m.body).value); if(!v){ $('#mmsg',m.body).textContent=t('e_bad_amount'); return; }
+    busy(b,true); try{ await call('motor_move_add',{p_account:account,p_staff:staff||null,p_kind:$('#mk',m.body).value,p_amount:v,p_note:$('#mn',m.body).value}); toast(t('saved'),'s'); m.close(); after&&after(); }
+    catch(err){ $('#mmsg',m.body).textContent=errText(err); busy(b,false); } });
+}
+
+/* =========================================================
+   كشف حساب Whish
+   ========================================================= */
+var WF={from:'',to:''};
+VIEWS.whish=async function(main){
+  if(!WF.from){ WF.from=TODAY.slice(0,8)+'01'; WF.to=TODAY; }
+  main.innerHTML='<div class="toolbar"><label style="margin:0">'+esc(t('from'))+'</label><input type="date" id="wf2" value="'+esc(WF.from)+'" style="flex:0 1 160px"><label style="margin:0">'+esc(t('to'))+'</label><input type="date" id="wt2" value="'+esc(WF.to)+'" style="flex:0 1 160px">'+
+    '<button class="btn wish" id="wadd">'+esc(t('whish_withdraw'))+' / '+esc(t('m_deposit'))+'</button></div><div id="wbody"></div>';
+  async function load(){
+    var box=$('#wbody',main); box.innerHTML='<div class="muted">'+esc(t('loading'))+'</div>';
+    var d; try{ d=await call('motor_whish_statement',{p_from:WF.from||null,p_to:WF.to||null}); }catch(e){ box.innerHTML='<div class="err">'+esc(errText(e))+'</div>'; return; }
+    var run=n2(d.opening), inn=0, out=0;
+    var trs=d.rows.map(function(r){ if(!r.voided){ run+=n2(r.credit)-n2(r.debit); inn+=n2(r.credit); out+=n2(r.debit); }
+      var lab=r.t==='pay'?t('k_pay')+' #'+r.no+' · '+r.customer+(r.paid_currency!==mainCur()?' ('+money(r.paid_amount,r.paid_currency)+')':''):t('m_'+r.kind);
+      return '<tr class="'+(r.voided?'void':'')+'"><td class="num">'+esc(dt(r.at))+'</td><td>'+esc(lab)+(r.note?' <span class="muted">'+esc(r.note)+'</span>':'')+'</td><td>'+esc(r.staff||'')+'</td><td class="num">'+(n2(r.credit)?esc(money(r.credit)):'')+'</td><td class="num">'+(n2(r.debit)?esc(money(r.debit)):'')+'</td><td class="num"><b>'+esc(money(run))+'</b></td>'+
+        '<td>'+(r.t==='move'?'<button class="btn ghost sm" data-dm="'+esc(r.id)+'">'+esc(t('delete'))+'</button>':'')+'</td></tr>'; });
+    box.innerHTML='<div class="stats">'+stat(t('opening'),money(d.opening))+stat(t('creditc'),money(inn))+stat(t('debit'),money(out))+stat(t('whish_bal'),money(d.balance_now))+'</div>'+
+      '<div class="tw"><table><thead><tr><th>'+esc(t('date'))+'</th><th>'+esc(t('type'))+'</th><th>'+esc(t('by'))+'</th><th>'+esc(t('creditc'))+'</th><th>'+esc(t('debit'))+'</th><th>'+esc(t('running'))+'</th><th></th></tr></thead><tbody>'+
+      (trs.join('')||'<tr><td colspan="7" class="muted">'+esc(t('no_results'))+'</td></tr>')+'</tbody></table></div>';
+    $$('[data-dm]',box).forEach(function(b){ b.addEventListener('click',async function(){ if(!(await confirmBox(t('confirm_delete')))) return; try{ await call('motor_move_delete',{p_id:b.dataset.dm}); load(); }catch(e){ toast(errText(e),'e'); } }); });
+  }
+  $('#wf2',main).addEventListener('change',function(){ WF.from=this.value; load(); });
+  $('#wt2',main).addEventListener('change',function(){ WF.to=this.value; load(); });
+  $('#wadd',main).addEventListener('click',function(){ moveForm('whish',null,load); });
+  load();
+};
+
+/* =========================================================
+   الاشتراكات والأسعار
+   ========================================================= */
+VIEWS.plans=async function(main){
+  var me=await call('motor_me'); PLANS=me.plans||[]; SITE=me.site;
+  main.innerHTML='<div class="card"><h3>⚡ '+esc(t('kwh_general'))+'</h3><div class="row"><input id="kp" type="text" inputmode="decimal" value="'+esc(SITE.kwh_price)+'" style="max-width:200px"><b>'+esc(sym(mainCur()))+' / '+esc(t('kwh'))+'</b><button class="btn" id="kps">'+esc(t('save'))+'</button></div>'+
+    '<p class="muted" style="margin-bottom:0">'+esc(t('plan_hint'))+'</p></div>'+
+    '<div class="toolbar"><b>'+esc(t('plans_t'))+'</b><span class="sp"></span><button class="btn" id="padd">'+esc(t('new_plan'))+'</button></div>'+
+    '<div class="tw"><table><thead><tr><th>'+esc(t('name'))+'</th><th>'+esc(t('amps'))+'</th><th>'+esc(t('kind'))+'</th><th>'+esc(t('fee'))+'</th><th>'+esc(t('kwh_price'))+'</th><th>'+esc(t('status'))+'</th><th></th></tr></thead><tbody>'+
+    (PLANS.map(function(p){ return '<tr><td><b>'+esc(p.name)+'</b></td><td class="num">'+esc(fmtN(p.amps))+'</td><td>'+esc(p.kind==='fixed'?t('kind_fixed'):t('kind_meter'))+'</td><td class="num">'+esc(money(p.fee))+'</td>'+
+      '<td class="num">'+(p.kind==='fixed'?'—':(p.kwh_price!=null?esc(money(p.kwh_price).replace(/\.?0+$/,'')):'<span class="muted">'+esc(fmtN(SITE.kwh_price,4))+' ('+esc(t('kwh_general'))+')</span>'))+'</td>'+
+      '<td><span class="chip '+(p.is_active?'on':'off')+'">'+esc(p.is_active?t('active'):t('inactive'))+'</span></td><td><button class="btn ghost sm" data-pe="'+esc(p.id)+'">'+esc(t('edit'))+'</button></td></tr>'; }).join('')||'<tr><td colspan="7" class="muted">'+esc(t('no_results'))+'</td></tr>')+'</tbody></table></div>';
+  $('#kps',main).addEventListener('click',async function(){ var b=this, v=$('#kp',main).value.trim(); if(v===''||!isFinite(Number(v))) return toast(t('e_bad_amount'),'e');
+    busy(b,true); try{ SITE=await call('motor_settings_save',{p_data:{kwh_price:v}}); toast(t('saved'),'s'); }catch(e){ toast(errText(e),'e'); } busy(b,false); });
+  $('#padd',main).addEventListener('click',function(){ planForm(null); });
+  $$('[data-pe]',main).forEach(function(b){ b.addEventListener('click',function(){ planForm(PLANS.filter(function(p){return p.id===b.dataset.pe})[0]); }); });
+};
+function planForm(p){
+  var n=!p; p=p||{kind:'meter',is_active:true,amps:'',fee:'',kwh_price:null,sort:PLANS.length+1};
+  var m=modal(n?t('new_plan'):p.name,'<div class="g2"><div><label>'+esc(t('name'))+'</label><input id="qn" value="'+esc(p.name||'')+'" placeholder="6A"></div>'+
+    '<div><label>'+esc(t('amps'))+'</label><input id="qa" inputmode="decimal" value="'+esc(p.amps)+'"></div>'+
+    '<div style="grid-column:1/-1"><label>'+esc(t('kind'))+'</label><select id="qk"><option value="meter">'+esc(t('kind_meter'))+'</option><option value="fixed">'+esc(t('kind_fixed'))+'</option></select></div>'+
+    '<div><label>'+esc(t('fee'))+' ('+esc(mainCur())+')</label><input id="qf" inputmode="decimal" value="'+esc(p.fee)+'"></div>'+
+    '<div id="qkpw"><label>'+esc(t('kwh_price'))+'</label><input id="qkp" inputmode="decimal" value="'+esc(p.kwh_price==null?'':p.kwh_price)+'" placeholder="'+esc(t('kwh_blank'))+'"></div>'+
+    '<div><label>'+esc(t('sort'))+'</label><input id="qs" inputmode="numeric" value="'+esc(p.sort)+'"></div>'+
+    '<div><label>&nbsp;</label><label class="chk"><input type="checkbox" id="qact" '+(p.is_active?'checked':'')+'> '+esc(t('active'))+'</label></div></div>'+
+    '<p class="muted">'+esc(t('plan_hint'))+'</p><div id="qmsg" class="err msg"></div>',
+    '<button class="btn ghost" data-x>'+esc(t('cancel'))+'</button>'+(n?'':'<button class="btn danger" data-del>'+esc(t('delete'))+'</button>')+'<button class="btn" data-s>'+esc(t('save'))+'</button>');
+  $('#qk',m.body).value=p.kind;
+  function tog(){ $('#qkpw',m.body).classList.toggle('hidden',$('#qk',m.body).value==='fixed'); } $('#qk',m.body).addEventListener('change',tog); tog();
+  m.foot.addEventListener('click',async function(e){
+    if(e.target.closest('[data-x]')) return m.close();
+    if(e.target.closest('[data-del]')){ if(!(await confirmBox(t('confirm_delete')))) return; try{ await call('motor_plan_delete',{p_id:p.id}); m.close(); go('plans'); }catch(err){ $('#qmsg',m.body).textContent=errText(err); } return; }
+    var b=e.target.closest('[data-s]'); if(!b) return; busy(b,true);
+    try{ await call('motor_plan_save',{p_data:{id:p.id||'',name:$('#qn',m.body).value.trim(),amps:$('#qa',m.body).value,kind:$('#qk',m.body).value,fee:$('#qf',m.body).value,
+        kwh_price:$('#qk',m.body).value==='fixed'?'':$('#qkp',m.body).value.trim(),sort:$('#qs',m.body).value,is_active:$('#qact',m.body).checked}});
+      toast(t('saved'),'s'); m.close(); go('plans'); }catch(err){ $('#qmsg',m.body).textContent=errText(err); busy(b,false); }
+  });
+}
+
+/* =========================================================
+   الإعدادات
+   ========================================================= */
+VIEWS.settings=async function(main){
+  var adm=isAdmin(), S=SITE;
+  var h='';
+  if(adm){
+    h+='<div class="card"><h3>'+esc(t('s_biz'))+'</h3><div class="g2">'+
+      fld('biz_name','name',S.name)+fld('phone','phone',S.phone)+fld('wa_num','whatsapp',S.whatsapp)+fld('address','address',S.address)+fld('logo_url','logo_url',S.logo_url)+
+      '<div><label>'+esc(t('def_lang'))+'</label><select data-s="default_lang"><option value="ar">العربية</option><option value="en">English</option><option value="fr">Français</option></select></div></div></div>'+
+      '<div class="card"><h3>'+esc(t('s_money'))+'</h3><div class="g2">'+
+      '<div><label>'+esc(t('main_cur'))+'</label><select data-s="currency"><option value="USD">USD $</option><option value="LBP">LBP ل.ل</option></select></div>'+
+      fld('lbp_rate','lbp_rate',S.lbp_rate)+fld('round_step','round_step',S.round_step)+fld('barcode_prefix','barcode_prefix',S.barcode_prefix)+
+      '<div style="grid-column:1/-1">'+chk('show_second','show_second',S.show_second)+'</div>'+
+      '<div style="grid-column:1/-1"><label>'+esc(t('invoice_note'))+'</label><textarea data-s="invoice_note">'+esc(S.invoice_note)+'</textarea></div></div></div>'+
+      '<div class="card"><h3>'+esc(t('s_read'))+'</h3>'+chk('require_photo','require_photo',S.require_photo)+chk('first_baseline','first_read_baseline',S.first_read_baseline)+chk('require_gps','require_gps',S.require_gps)+chk('sees_all','collector_sees_all',S.collector_sees_all)+
+      '<div class="g2" style="margin-top:8px">'+fld('max_dist','max_distance_m',S.max_distance_m)+'</div>'+
+      '<div id="smsg" class="msg" style="margin-top:10px"></div><button class="btn" id="ssave" style="margin-top:10px">'+esc(t('save'))+'</button></div>';
+  }
+  h+='<div class="card"><h3>'+esc(t('s_device'))+'</h3><div class="g2"><div><label>'+esc(t('print_mode'))+'</label><select id="pmode"><option value="rawbt">'+esc(t('pm_rawbt'))+'</option><option value="browser">'+esc(t('pm_browser'))+'</option></select></div>'+
+    '<div><label>'+esc(t('paper'))+'</label><select id="ppw"><option value="58">58 mm</option><option value="80">80 mm</option></select></div></div>'+
+    '<p class="muted">'+esc(t('rawbt_hint'))+'</p><button class="btn alt" id="ptest">'+esc(t('test_print'))+'</button></div>';
+  if(ME.staff_id) h+='<div class="card"><h3>'+esc(t('s_pass'))+'</h3><div class="g2"><div><label>'+esc(t('old_pass'))+'</label><input id="op" type="password" autocomplete="current-password"></div><div><label>'+esc(t('new_pass'))+'</label><input id="np" type="password" autocomplete="new-password"></div></div>'+
+    '<div id="pwmsg" class="msg" style="margin-top:8px"></div><button class="btn" id="pwgo" style="margin-top:8px">'+esc(t('save'))+'</button></div>';
+  main.innerHTML=h;
+  function fld(l,k,v){ return '<div><label>'+esc(t(l))+'</label><input data-s="'+k+'" value="'+esc(v==null?'':v)+'"'+(/rate|step|dist/.test(k)?' inputmode="decimal"':'')+'></div>'; }
+  function chk(l,k,v){ return '<label class="chk"><input type="checkbox" data-s="'+k+'" '+(v?'checked':'')+'> '+esc(t(l))+'</label>'; }
+  if(adm){ $('[data-s=default_lang]',main).value=S.default_lang||'ar'; $('[data-s=currency]',main).value=S.currency||'USD';
+    $('#ssave',main).addEventListener('click',async function(){ var b=this, d={}; $$('[data-s]',main).forEach(function(el){ d[el.dataset.s]=el.type==='checkbox'?el.checked:el.value.trim(); });
+      busy(b,true); var msg=$('#smsg',main); msg.className='msg'; msg.textContent='';
+      try{ SITE=await call('motor_settings_save',{p_data:d}); msg.className='okmsg'; msg.textContent=t('saved'); paintShell(); }catch(e){ msg.className='err'; msg.textContent=errText(e); } busy(b,false); }); }
+  $('#pmode',main).value=printMode(); $('#ppw',main).value=lsGet('motor_paper','58');
+  $('#pmode',main).addEventListener('change',function(){ lsSet('motor_print',this.value); });
+  $('#ppw',main).addEventListener('change',function(){ lsSet('motor_paper',this.value); });
+  $('#ptest',main).addEventListener('click',function(){ printDoc([{t:SITE.name||'Motor',b:1,s:30,c:1},{t:t('test_print'),c:1},{hr:1},{kv:[t('total_due'),money(123.45)],b:1},{t:dt(new Date()),c:1,s:19}]); });
+  if($('#pwgo',main)) $('#pwgo',main).addEventListener('click',async function(){ var b=this, msg=$('#pwmsg',main); busy(b,true); msg.className='msg'; msg.textContent='';
+    try{ await call('motor_change_password',{p_old:$('#op',main).value,p_new:$('#np',main).value}); msg.className='okmsg'; msg.textContent=t('saved'); $('#op',main).value=''; $('#np',main).value=''; }
+    catch(e){ msg.className='err'; msg.textContent=errText(e); } busy(b,false); });
+};
+
+window.addEventListener('offline',function(){ toast(t('offline'),'e'); });
+boot();
+})();
+</script>
+</body>
+</html>
