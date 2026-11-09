@@ -382,6 +382,40 @@ create table if not exists public.motor_trash (
 );
 create index if not exists motor_trash_site_idx on public.motor_trash (site_id, deleted_at desc);
 
+-- ---------- v5: قفل الجهاز، المعاشات، المصاريف، المخزون، إقفال اليومية ----------
+alter table public.motor_sites add column if not exists voucher_seq integer not null default 0;
+alter table public.motor_staff add column if not exists is_main      boolean not null default false;  -- المدير الأساسي
+alter table public.motor_staff add column if not exists salary       numeric(14,2) not null default 0;
+alter table public.motor_staff add column if not exists device_id    text;
+alter table public.motor_staff add column if not exists device_label text not null default '';
+alter table public.motor_staff add column if not exists device_at    timestamptz;
+alter table public.motor_moves add column if not exists category  text not null default '';
+alter table public.motor_moves add column if not exists vno       integer;          -- رقم سند الصرف
+alter table public.motor_moves add column if not exists pay_staff uuid;             -- معاش لموظف
+alter table public.motor_moves add column if not exists period    text not null default '';
+create table if not exists public.motor_stock (
+  id         uuid primary key default gen_random_uuid(),
+  site_id    uuid not null references public.motor_sites(id) on delete cascade,
+  name       text not null,
+  category   text not null default '',
+  qty        numeric(14,2) not null default 0,
+  unit_price numeric(14,2) not null default 0,
+  notes      text not null default '',
+  updated_by text not null default '',
+  updated_at timestamptz not null default now(),
+  created_at timestamptz not null default now()
+);
+create index if not exists motor_stock_site_idx on public.motor_stock (site_id, name);
+create table if not exists public.motor_day_closes (
+  id        uuid primary key default gen_random_uuid(),
+  site_id   uuid not null references public.motor_sites(id) on delete cascade,
+  day       date not null,
+  totals    jsonb not null default '{}'::jsonb,
+  closed_by text not null default '',
+  closed_at timestamptz not null default now(),
+  unique (site_id, day)
+);
+
 create table if not exists public.motor_csessions (
   token_hash  text primary key,
   customer_id uuid not null references public.motor_customers(id) on delete cascade,
@@ -396,7 +430,8 @@ declare t text;
 begin
   foreach t in array array['motor_sites','motor_plans','motor_staff','motor_staff_secrets','motor_sessions',
                            'motor_customers','motor_readings','motor_invoices','motor_payments','motor_moves',
-                           'motor_notes','motor_switch_log','motor_customer_secrets','motor_csessions','motor_trash']
+                           'motor_notes','motor_switch_log','motor_customer_secrets','motor_csessions','motor_trash',
+                           'motor_stock','motor_day_closes']
   loop
     execute format('alter table public.%I enable row level security', t);
     execute format('revoke all on public.%I from anon, authenticated', t);
@@ -448,8 +483,8 @@ declare sid uuid;
 begin
   if exists (select 1 from public.motor_staff where site_id = p_site and role = 'admin') then return; end if;
   if exists (select 1 from public.motor_staff where site_id = p_site and lower(username) = 'admin') then return; end if;
-  insert into public.motor_staff (site_id, name, username, role, can_read, can_collect, can_cut)
-  values (p_site, 'المدير', 'admin', 'admin', true, true, true) returning id into sid;
+  insert into public.motor_staff (site_id, name, username, role, can_read, can_collect, can_cut, is_main)
+  values (p_site, 'المدير', 'admin', 'admin', true, true, true, true) returning id into sid;
   insert into public.motor_staff_secrets (staff_id, password_hash) values (sid, public._motor_hash('0000'));
 end $$;
 revoke all on function public._motor_default_admin(uuid) from public, anon, authenticated;
@@ -558,12 +593,21 @@ begin
     using errcode = 'P0001';
 end $$;
 
+-- دورة الفوترة تلقائية: من 26 الشهر لآخره = هالشهر، ومن 1 لـ 25 = الشهر الماضي (قراءات متأخرة)
+create or replace function public._motor_period(d date)
+returns text language sql immutable as $$
+  select to_char(case when extract(day from d) >= 26 then d else (d - interval '1 month')::date end, 'YYYY-MM');
+$$;
+
 create or replace function public._motor_who(p_slug text, p_token text)
 returns jsonb language plpgsql security definer set search_path = public, extensions as $$
 declare st public.motor_sites%rowtype; sf public.motor_staff%rowtype; sid uuid; lic jsonb; cn text;
 begin
   select * into st from public.motor_sites where slug = lower(trim(coalesce(p_slug,'')));
   if not found then perform public._motor_err('not_found'); end if;
+  if st.bill_period <> public._motor_period(public._motor_today()) then
+    update public.motor_sites set bill_period = public._motor_period(public._motor_today()) where id = st.id;
+  end if;
 
   if coalesce(p_token,'') <> '' then
     select s.staff_id into sid from public.motor_sessions s
@@ -587,11 +631,11 @@ begin
   if sf.id is null then
     select coalesce(nullif(c.name,''), 'Owner') into cn from public.clients c where c.id = st.client_id;
     return jsonb_build_object('site_id', st.id, 'role', 'owner', 'staff_id', null, 'name', coalesce(cn,'Owner'),
-                              'is_admin', true, 'can_collect', true, 'can_read', true, 'can_cut', true,
+                              'is_admin', true, 'is_main', true, 'can_collect', true, 'can_read', true, 'can_cut', true,
                               'totp_enabled', false, 'read_from', null, 'read_to', null);
   end if;
   return jsonb_build_object('site_id', st.id, 'role', sf.role, 'staff_id', sf.id, 'name', sf.name,
-                            'is_admin', sf.role = 'admin',
+                            'is_admin', sf.role = 'admin', 'is_main', sf.is_main,
                             'can_collect', sf.role = 'admin' or sf.can_collect,
                             'can_read', sf.role = 'admin' or sf.can_read,
                             'can_cut', sf.role = 'admin' or sf.can_cut,
@@ -708,7 +752,9 @@ begin
 end $$;
 
 drop function if exists public.motor_login(text, text, text);
-create or replace function public.motor_login(p_slug text, p_username text, p_password text, p_totp text default null)
+drop function if exists public.motor_login(text, text, text, text);
+create or replace function public.motor_login(p_slug text, p_username text, p_password text, p_totp text default null,
+  p_device text default null, p_device_label text default '')
 returns jsonb language plpgsql security definer set search_path = public, extensions as $$
 declare st public.motor_sites%rowtype; sf public.motor_staff%rowtype; sc public.motor_staff_secrets%rowtype;
         tok text; lic jsonb; cu public.motor_customers%rowtype; cs public.motor_customer_secrets%rowtype;
@@ -767,6 +813,15 @@ begin
       return jsonb_build_object('ok', false, 'need_totp', true, 'reason', 'bad_totp');
     end if;
   end if;
+  -- قفل الجهاز: كل مستخدم (إلا المدير الأساسي) على جهاز واحد فقط
+  if not sf.is_main then
+    if coalesce(p_device,'') !~ '^[A-Za-z0-9-]{16,64}$' then return jsonb_build_object('ok', false, 'reason', 'device'); end if;
+    if sf.device_id is null then
+      update public.motor_staff set device_id = p_device, device_label = left(coalesce(p_device_label,''), 120), device_at = now() where id = sf.id;
+    elsif sf.device_id <> p_device then
+      return jsonb_build_object('ok', false, 'reason', 'device');
+    end if;
+  end if;
   update public.motor_staff_secrets set failed_count = 0, locked_until = null where staff_id = sf.id;
   delete from public.motor_sessions where staff_id = sf.id and expires_at < now();
   tok := encode(gen_random_bytes(24),'hex');
@@ -818,7 +873,10 @@ begin
                          'username', case when adm then s.username end, 'phone', s.phone,
                          'is_active', s.is_active, 'read_from', s.read_from, 'read_to', s.read_to,
                          'can_collect', s.can_collect, 'can_read', s.can_read, 'can_cut', s.can_cut,
-                         'totp_enabled', s.totp_enabled,
+                         'totp_enabled', s.totp_enabled, 'is_main', s.is_main,
+                         'salary', case when adm then s.salary end,
+                         'device_set', s.device_id is not null, 'device_label', case when adm then s.device_label end,
+                         'device_at', case when adm then s.device_at end,
                          'last_lat', case when adm then s.last_lat end, 'last_lng', case when adm then s.last_lng end,
                          'last_acc', case when adm then s.last_acc end, 'last_seen', case when adm then s.last_seen end)
                          order by s.role, s.name)
@@ -1184,9 +1242,9 @@ begin
     if not st.collector_sees_all and c.collector_id is distinct from (w->>'staff_id')::uuid then
       perform public._motor_err('forbidden');
     end if;
-    if w->>'read_from' is null or w->>'read_to' is null then perform public._motor_err('no_window'); end if;
-    if today < (w->>'read_from')::date or today > (w->>'read_to')::date then
-      perform public._motor_err('out_of_window', (w->>'read_from') || '|' || (w->>'read_to'));
+    -- فترة أخذ العداد ثابتة: من 26 لآخر يوم بالشهر (شباط 28 أو 29)
+    if extract(day from today) < 26 then
+      perform public._motor_err('out_of_window', to_char(today, 'YYYY-MM') || '-26');
     end if;
   end if;
   if not c.is_active then perform public._motor_err('customer_inactive'); end if;
@@ -1337,6 +1395,7 @@ begin
   if cur = '' then cur := st.currency; end if;
   if cur not in ('USD','LBP') then perform public._motor_err('bad_currency'); end if;
   if m not in ('cash','whish') then perform public._motor_err('bad_method'); end if;
+  if m = 'whish' and not (w->>'is_admin')::boolean then perform public._motor_err('whish_admin'); end if;
   if coalesce(p_paid,0) <= 0 then perform public._motor_err('bad_amount'); end if;
   if cur = st.currency then amt := p_paid;
   elsif coalesce(st.lbp_rate,0) <= 0 then perform public._motor_err('no_rate');
@@ -1368,6 +1427,9 @@ begin
   if p.method = 'cash' and p.created_at <= coalesce((select max(created_at) from public.motor_moves
         where site_id = sid and account = 'cash' and kind = 'close'), '-infinity'::timestamptz) then
     perform public._motor_err('closed_period');
+  end if;
+  if exists (select 1 from public.motor_day_closes where site_id = sid and day = (p.created_at at time zone 'Asia/Beirut')::date) then
+    perform public._motor_err('day_closed');
   end if;
   update public.motor_payments set voided = true, voided_at = now(), voided_by = w->>'name' where id = p.id;
   update public.motor_customers set balance = balance + p.amount, updated_at = now() where id = p.customer_id;
@@ -1500,6 +1562,10 @@ begin
   if coalesce(d->>'role','collector') not in ('admin','collector') then perform public._motor_err('bad_role'); end if;
   if exists (select 1 from public.motor_staff x where x.site_id = sid and lower(x.username) = u
              and x.id::text <> coalesce(d->>'id','')) then perform public._motor_err('username_taken'); end if;
+  if not coalesce((w->>'is_main')::boolean,false) and ((coalesce(d->>'role','collector') = 'admin' and coalesce(d->>'id','') <> coalesce(w->>'staff_id',''))
+       or exists (select 1 from public.motor_staff x where x.id::text = coalesce(d->>'id','') and x.role = 'admin' and x.id::text <> coalesce(w->>'staff_id',''))) then
+    perform public._motor_err('main_only');
+  end if;
   if nullif(d->>'read_from','') is not null and nullif(d->>'read_to','') is not null
      and (d->>'read_from')::date > (d->>'read_to')::date then perform public._motor_err('bad_window'); end if;
   if coalesce(d->>'id','') = '' then
@@ -1509,6 +1575,7 @@ begin
             coalesce((d->>'is_active')::boolean,true), nullif(d->>'read_from','')::date, nullif(d->>'read_to','')::date,
             coalesce((d->>'can_collect')::boolean,true), coalesce((d->>'can_read')::boolean,true), coalesce((d->>'can_cut')::boolean,false))
     returning * into s;
+    update public.motor_staff set salary = coalesce(nullif(d->>'salary','')::numeric, 0) where id = s.id returning * into s;
   else
     -- الموظف ما بيقدر يشيل صلاحية المدير عن حالو
     if (d->>'id') = w->>'staff_id' and coalesce(d->>'role','collector') <> 'admin' then perform public._motor_err('self_demote'); end if;
@@ -1517,8 +1584,11 @@ begin
            role = coalesce(d->>'role','collector'), is_active = coalesce((d->>'is_active')::boolean,true),
            read_from = nullif(d->>'read_from','')::date, read_to = nullif(d->>'read_to','')::date,
            can_collect = coalesce((d->>'can_collect')::boolean,true),
-           can_read = coalesce((d->>'can_read')::boolean,true), can_cut = coalesce((d->>'can_cut')::boolean,false)
+           can_read = coalesce((d->>'can_read')::boolean,true), can_cut = coalesce((d->>'can_cut')::boolean,false),
+           salary = coalesce(nullif(d->>'salary','')::numeric, salary)
      where id = (d->>'id')::uuid and site_id = sid returning * into s;
+    -- المدير الأساسي يضل مدير ومفعّل
+    if s.is_main and (s.role <> 'admin' or not s.is_active) then perform public._motor_err('self_demote'); end if;
     if s.id is null then perform public._motor_err('not_found'); end if;
     if length(coalesce(p_password,'')) between 1 and 3 then perform public._motor_err('short_password'); end if;
     if not s.is_active then delete from public.motor_sessions where staff_id = s.id; end if;
@@ -1552,6 +1622,9 @@ begin
   w := public._motor_admin(p_slug, p_token);
   sid := (w->>'site_id')::uuid;
   if p_id::text = w->>'staff_id' then perform public._motor_err('self_demote'); end if;
+  if exists (select 1 from public.motor_staff where id = p_id and (is_main or (role = 'admin' and not coalesce((w->>'is_main')::boolean,false)))) then
+    perform public._motor_err('main_only');
+  end if;
   if exists (select 1 from public.motor_payments where staff_id = p_id)
      or exists (select 1 from public.motor_readings where staff_id = p_id)
      or exists (select 1 from public.motor_moves where staff_id = p_id) then
@@ -1680,6 +1753,10 @@ begin
        or ((m.account = 'cash' or (m.account = 'collector' and m.kind = 'handover')) and m.created_at <= coalesce((select max(created_at)
             from public.motor_moves where site_id = m.site_id and account = 'cash' and kind = 'close'), '-infinity'::timestamptz)))) then
     perform public._motor_err('closed_period');
+  end if;
+  if exists (select 1 from public.motor_moves m join public.motor_day_closes dc on dc.site_id = m.site_id
+              and dc.day = (m.created_at at time zone 'Asia/Beirut')::date where m.id = p_id) then
+    perform public._motor_err('day_closed');
   end if;
   insert into public.motor_trash (site_id, kind, ref_id, label, data, deleted_by)
   select m.site_id, 'move', m.id, m.account || ' / ' || m.kind || ' — ' || m.amount, to_jsonb(m), w->>'name'
@@ -1885,6 +1962,9 @@ begin
   if p_staff is not null and p_staff::text is distinct from w->>'staff_id' then
     if not (w->>'is_admin')::boolean then perform public._motor_err('forbidden'); end if;
     if not exists (select 1 from public.motor_staff where id = p_staff and site_id = sid) then perform public._motor_err('bad_staff'); end if;
+    if exists (select 1 from public.motor_staff where id = p_staff and role = 'admin') and not coalesce((w->>'is_main')::boolean,false) then
+      perform public._motor_err('main_only');
+    end if;
     target := p_staff;
   else
     target := (w->>'staff_id')::uuid;
@@ -2119,6 +2199,9 @@ begin
         where site_id = sid and account = 'cash' and kind = 'close'), '-infinity'::timestamptz) then
     perform public._motor_err('closed_period');
   end if;
+  if exists (select 1 from public.motor_day_closes where site_id = sid and day = (p.created_at at time zone 'Asia/Beirut')::date) then
+    perform public._motor_err('day_closed');
+  end if;
   if p.paid_currency = st.currency then amt := p_paid;
   elsif p.paid_currency = 'LBP' then amt := round(p_paid / nullif(p.rate,0), 2);
   else amt := round(p_paid * p.rate, 0); end if;
@@ -2251,6 +2334,8 @@ begin
     insert into public.motor_plans select (jsonb_populate_record(null::public.motor_plans, tr.data)).*;
   elsif tr.kind = 'staff' then
     insert into public.motor_staff select (jsonb_populate_record(null::public.motor_staff, tr.data)).*;
+  elsif tr.kind = 'stock' then
+    insert into public.motor_stock select (jsonb_populate_record(null::public.motor_stock, tr.data)).*;
   end if;
   delete from public.motor_trash where id = tr.id;
   return jsonb_build_object('ok', true, 'kind', tr.kind);
@@ -2344,6 +2429,233 @@ begin
 end $$;
 
 -- ============================================================
+--  20f) فك قفل الجهاز (المدير الأساسي فقط)
+-- ============================================================
+create or replace function public.motor_device_reset(p_slug text, p_token text, p_staff uuid)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w jsonb; sid uuid;
+begin
+  w := public._motor_admin(p_slug, p_token);
+  sid := (w->>'site_id')::uuid;
+  if not coalesce((w->>'is_main')::boolean,false) then perform public._motor_err('main_only'); end if;
+  update public.motor_staff set device_id = null, device_label = '', device_at = null where id = p_staff and site_id = sid;
+  delete from public.motor_sessions where staff_id = p_staff;
+  return jsonb_build_object('ok', true);
+end $$;
+
+-- ============================================================
+--  20g) المصاريف والمعاشات = سند صرف ينقص من الصندوق أو Whish
+-- ============================================================
+create or replace function public._motor_whish_bal(p_sid uuid, p_before timestamptz default null)
+returns numeric language sql stable security definer set search_path = public as $$
+  select coalesce((select sum(amount) from public.motor_payments where site_id = p_sid and method = 'whish' and not voided
+                     and (p_before is null or created_at < p_before)), 0)
+       + coalesce((select sum(case when kind = 'withdraw' then -abs(amount) else amount end) from public.motor_moves
+                     where site_id = p_sid and account = 'whish' and (p_before is null or created_at < p_before)), 0);
+$$;
+revoke all on function public._motor_whish_bal(uuid, timestamptz) from public, anon, authenticated;
+
+create or replace function public._motor_voucher(p_sid uuid, p_w jsonb, p_account text, p_amount numeric, p_category text,
+  p_note text, p_type text, p_staff uuid, p_period text)
+returns public.motor_moves language plpgsql security definer set search_path = public as $$
+declare seq int; m public.motor_moves%rowtype;
+begin
+  if p_account not in ('cash','whish') then perform public._motor_err('bad_account'); end if;
+  if coalesce(p_amount,0) <= 0 then perform public._motor_err('bad_amount'); end if;
+  update public.motor_sites set voucher_seq = voucher_seq + 1 where id = p_sid returning voucher_seq into seq;
+  insert into public.motor_moves (site_id, account, kind, amount, note, by_name, category, vno, pay_staff, period, extra)
+  values (p_sid, p_account, case when p_account = 'cash' then 'out' else 'withdraw' end, abs(p_amount), coalesce(p_note,''),
+          p_w->>'name', coalesce(p_category,''), seq, p_staff, coalesce(p_period,''), jsonb_build_object('type', p_type))
+  returning * into m;
+  return m;
+end $$;
+revoke all on function public._motor_voucher(uuid, jsonb, text, numeric, text, text, text, uuid, text) from public, anon, authenticated;
+
+create or replace function public.motor_expense_add(p_slug text, p_token text, p_account text, p_category text, p_amount numeric, p_note text default '')
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w jsonb; m public.motor_moves%rowtype;
+begin
+  w := public._motor_admin(p_slug, p_token);
+  if coalesce(trim(p_category),'') = '' then perform public._motor_err('name_required'); end if;
+  m := public._motor_voucher((w->>'site_id')::uuid, w, p_account, p_amount, trim(p_category), p_note, 'expense', null, '');
+  return jsonb_build_object('ok', true, 'move', to_jsonb(m) - 'site_id');
+end $$;
+
+create or replace function public.motor_vouchers(p_slug text, p_token text, p_type text, p_from date default null, p_to date default null)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w jsonb; sid uuid; f date; t date;
+begin
+  w := public._motor_admin(p_slug, p_token);
+  sid := (w->>'site_id')::uuid;
+  f := coalesce(p_from, date '2000-01-01'); t := coalesce(p_to, date '2999-12-31');
+  return coalesce((select jsonb_agg(jsonb_build_object('id', m.id, 'vno', m.vno, 'at', m.created_at, 'account', m.account,
+           'amount', m.amount, 'category', m.category, 'note', m.note, 'by', m.by_name, 'period', m.period,
+           'staff_id', m.pay_staff, 'staff', (select name from public.motor_staff where id = m.pay_staff)) order by m.created_at desc)
+         from public.motor_moves m where m.site_id = sid and m.extra->>'type' = p_type
+          and (m.created_at at time zone 'Asia/Beirut')::date between f and t), '[]'::jsonb);
+end $$;
+
+create or replace function public.motor_salary_pay(p_slug text, p_token text, p_staff uuid, p_amount numeric, p_account text,
+  p_period text, p_note text default '')
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w jsonb; sid uuid; sf public.motor_staff%rowtype; m public.motor_moves%rowtype;
+begin
+  w := public._motor_admin(p_slug, p_token);
+  sid := (w->>'site_id')::uuid;
+  select * into sf from public.motor_staff where id = p_staff and site_id = sid;
+  if not found then perform public._motor_err('bad_staff'); end if;
+  if coalesce(p_period,'') !~ '^\d{4}-\d{2}$' then perform public._motor_err('bad_period'); end if;
+  m := public._motor_voucher(sid, w, p_account, p_amount, 'معاش ' || sf.name, p_note, 'salary', sf.id, p_period);
+  return jsonb_build_object('ok', true, 'move', to_jsonb(m) - 'site_id');
+end $$;
+
+create or replace function public.motor_salaries(p_slug text, p_token text, p_period text)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w jsonb; sid uuid;
+begin
+  w := public._motor_admin(p_slug, p_token);
+  sid := (w->>'site_id')::uuid;
+  return coalesce((select jsonb_agg(jsonb_build_object('id', s.id, 'name', s.name, 'role', s.role, 'is_active', s.is_active,
+           'salary', s.salary,
+           'paid', coalesce((select sum(m.amount) from public.motor_moves m where m.pay_staff = s.id and m.extra->>'type' = 'salary' and m.period = p_period), 0),
+           'payments', coalesce((select jsonb_agg(jsonb_build_object('id', m.id, 'vno', m.vno, 'at', m.created_at, 'amount', m.amount,
+                          'account', m.account, 'note', m.note) order by m.created_at)
+                        from public.motor_moves m where m.pay_staff = s.id and m.extra->>'type' = 'salary' and m.period = p_period), '[]'::jsonb))
+           order by s.name)
+         from public.motor_staff s where s.site_id = sid and (s.is_active or s.salary > 0)), '[]'::jsonb);
+end $$;
+
+-- ============================================================
+--  20h) المخزون (الموجودات)
+-- ============================================================
+create or replace function public.motor_stock_list(p_slug text, p_token text)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w jsonb;
+begin
+  w := public._motor_admin(p_slug, p_token);
+  return coalesce((select jsonb_agg(to_jsonb(x) - 'site_id' order by x.category, x.name) from public.motor_stock x
+                    where x.site_id = (w->>'site_id')::uuid), '[]'::jsonb);
+end $$;
+
+create or replace function public.motor_stock_save(p_slug text, p_token text, p_data jsonb)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w jsonb; sid uuid; d jsonb := coalesce(p_data,'{}'::jsonb); x public.motor_stock%rowtype;
+begin
+  w := public._motor_admin(p_slug, p_token);
+  sid := (w->>'site_id')::uuid;
+  if coalesce(trim(d->>'name'),'') = '' then perform public._motor_err('name_required'); end if;
+  if coalesce(d->>'id','') = '' then
+    insert into public.motor_stock (site_id, name, category, qty, unit_price, notes, updated_by)
+    values (sid, trim(d->>'name'), coalesce(d->>'category',''), coalesce(nullif(d->>'qty','')::numeric,0),
+            coalesce(nullif(d->>'unit_price','')::numeric,0), coalesce(d->>'notes',''), w->>'name')
+    returning * into x;
+  else
+    update public.motor_stock set name = trim(d->>'name'), category = coalesce(d->>'category',''),
+           qty = coalesce(nullif(d->>'qty','')::numeric,0), unit_price = coalesce(nullif(d->>'unit_price','')::numeric,0),
+           notes = coalesce(d->>'notes',''), updated_by = w->>'name', updated_at = now()
+     where id = (d->>'id')::uuid and site_id = sid returning * into x;
+    if x.id is null then perform public._motor_err('not_found'); end if;
+  end if;
+  return to_jsonb(x) - 'site_id';
+end $$;
+
+create or replace function public.motor_stock_delete(p_slug text, p_token text, p_id uuid)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w jsonb; sid uuid;
+begin
+  w := public._motor_admin(p_slug, p_token);
+  sid := (w->>'site_id')::uuid;
+  insert into public.motor_trash (site_id, kind, ref_id, label, data, deleted_by)
+  select sid, 'stock', x.id, x.name || ' × ' || x.qty, to_jsonb(x), w->>'name' from public.motor_stock x where x.id = p_id and x.site_id = sid;
+  delete from public.motor_stock where id = p_id and site_id = sid;
+  return jsonb_build_object('ok', true);
+end $$;
+
+-- ============================================================
+--  20i) اليومية: كل القبض والصرف، وإقفال كل يوم بمجموع الصندوق وWhish
+-- ============================================================
+create or replace function public._motor_day_totals(p_sid uuid, p_day date)
+returns jsonb language sql stable security definer set search_path = public as $$
+  with b as (select (p_day::timestamp at time zone 'Asia/Beirut') as f, ((p_day + 1)::timestamp at time zone 'Asia/Beirut') as t)
+  select jsonb_build_object(
+    'cash_in',  coalesce((select sum(amount) from public.motor_payments, b where site_id = p_sid and not voided and method = 'cash' and created_at >= b.f and created_at < b.t), 0),
+    'whish_in', coalesce((select sum(amount) from public.motor_payments, b where site_id = p_sid and not voided and method = 'whish' and created_at >= b.f and created_at < b.t), 0),
+    'receipts_n', (select count(*) from public.motor_payments, b where site_id = p_sid and not voided and created_at >= b.f and created_at < b.t),
+    'expenses', coalesce((select sum(amount) from public.motor_moves, b where site_id = p_sid and extra->>'type' = 'expense' and created_at >= b.f and created_at < b.t), 0),
+    'salaries', coalesce((select sum(amount) from public.motor_moves, b where site_id = p_sid and extra->>'type' = 'salary' and created_at >= b.f and created_at < b.t), 0),
+    'cash_out', coalesce((select sum(amount) from public.motor_moves, b where site_id = p_sid and account = 'cash' and kind in ('out','close') and created_at >= b.f and created_at < b.t), 0),
+    'whish_out', coalesce((select sum(abs(amount)) from public.motor_moves, b where site_id = p_sid and account = 'whish' and kind = 'withdraw' and created_at >= b.f and created_at < b.t), 0),
+    'handovers', coalesce((select sum(amount) from public.motor_moves, b where site_id = p_sid and account = 'collector' and kind = 'handover' and created_at >= b.f and created_at < b.t), 0),
+    'cash_box_end', public._motor_cash_bal(p_sid, (select t from b)),
+    'whish_end', public._motor_whish_bal(p_sid, (select t from b)),
+    'collectors_hand', coalesce((select sum(p.amount) from public.motor_payments p join public.motor_staff s on s.id = p.staff_id, b
+                                  where p.site_id = p_sid and not p.voided and p.method = 'cash' and s.role <> 'admin' and p.created_at < b.t), 0)
+                     - coalesce((select sum(amount) from public.motor_moves, b where site_id = p_sid and account = 'collector' and created_at < b.t), 0));
+$$;
+revoke all on function public._motor_day_totals(uuid, date) from public, anon, authenticated;
+
+create or replace function public.motor_journal(p_slug text, p_token text, p_from date, p_to date)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w jsonb; sid uuid; f date := coalesce(p_from, public._motor_today()); t date := coalesce(p_to, public._motor_today());
+        ft timestamptz; tt timestamptz;
+begin
+  w := public._motor_admin(p_slug, p_token);
+  sid := (w->>'site_id')::uuid;
+  if t - f > 400 then perform public._motor_err('bad_period'); end if;
+  ft := f::timestamp at time zone 'Asia/Beirut'; tt := (t + 1)::timestamp at time zone 'Asia/Beirut';
+  return jsonb_build_object(
+    'from', f, 'to', t, 'today', public._motor_today(),
+    'cash_open', public._motor_cash_bal(sid, ft), 'whish_open', public._motor_whish_bal(sid, ft),
+    'cash_close', public._motor_cash_bal(sid, tt), 'whish_close', public._motor_whish_bal(sid, tt),
+    'closes', coalesce((select jsonb_agg(jsonb_build_object('day', c.day, 'totals', c.totals, 'by', c.closed_by, 'at', c.closed_at))
+                         from public.motor_day_closes c where c.site_id = sid and c.day between f and t), '[]'::jsonb),
+    'days', coalesce((select jsonb_agg(jsonb_build_object('day', d::date, 'totals', public._motor_day_totals(sid, d::date)) order by d)
+                       from generate_series(f, t, interval '1 day') d), '[]'::jsonb),
+    'rows', coalesce((select jsonb_agg(x order by x->>'at') from (
+        select jsonb_build_object('t','pay','at',p.created_at,'no',p.no,'account',p.method,'in',p.amount,'out',0,
+               'label', c.name, 'code', c.code, 'staff', p.staff_name, 'paid_currency', p.paid_currency, 'paid_amount', p.paid_amount,
+               'note', p.note) as x
+          from public.motor_payments p join public.motor_customers c on c.id = p.customer_id
+         where p.site_id = sid and not p.voided and p.created_at >= ft and p.created_at < tt
+        union all
+        select jsonb_build_object('t', coalesce(m.extra->>'type', m.kind), 'kind', m.kind, 'at', m.created_at, 'no', m.vno,
+               'account', m.account,
+               'in', case when (m.account = 'cash' and (m.kind = 'in' or (m.kind = 'adjust' and m.amount > 0)))
+                            or (m.account = 'whish' and (m.kind = 'deposit' or (m.kind = 'adjust' and m.amount > 0)))
+                            or (m.account = 'collector' and m.kind = 'handover') then abs(m.amount) else 0 end,
+               'out', case when m.kind in ('out','close','withdraw') or (m.kind = 'adjust' and m.amount < 0) then abs(m.amount) else 0 end,
+               'label', coalesce(nullif(m.category,''), case when m.account = 'collector' then (select name from public.motor_staff where id = m.staff_id) else '' end),
+               'staff', m.by_name, 'note', m.note)
+          from public.motor_moves m
+         where m.site_id = sid and m.created_at >= ft and m.created_at < tt
+      ) q), '[]'::jsonb));
+end $$;
+
+create or replace function public.motor_day_close(p_slug text, p_token text, p_day date)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w jsonb; sid uuid; tot jsonb;
+begin
+  w := public._motor_admin(p_slug, p_token);
+  sid := (w->>'site_id')::uuid;
+  if p_day is null or p_day > public._motor_today() then perform public._motor_err('bad_period'); end if;
+  if exists (select 1 from public.motor_day_closes where site_id = sid and day = p_day) then perform public._motor_err('day_closed'); end if;
+  tot := public._motor_day_totals(sid, p_day);
+  insert into public.motor_day_closes (site_id, day, totals, closed_by) values (sid, p_day, tot, w->>'name');
+  return jsonb_build_object('ok', true, 'totals', tot);
+end $$;
+
+-- إعادة فتح يوم مقفل (المدير الأساسي فقط)
+create or replace function public.motor_day_reopen(p_slug text, p_token text, p_day date)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w jsonb;
+begin
+  w := public._motor_admin(p_slug, p_token);
+  if not coalesce((w->>'is_main')::boolean,false) then perform public._motor_err('main_only'); end if;
+  delete from public.motor_day_closes where site_id = (w->>'site_id')::uuid and day = p_day;
+  return jsonb_build_object('ok', true);
+end $$;
+
+-- ============================================================
 --  21) رفع صورة العداد — تستدعيها الـWorker (/api/motor-photo) قبل الرفع
 -- ============================================================
 create or replace function public.motor_upload_ok(p_slug text, p_token text)
@@ -2364,6 +2676,11 @@ end $$;
 do $$ declare r record; begin
   for r in select id from public.motor_sites loop perform public._motor_default_admin(r.id); end loop;
 end $$;
+-- المدير الأساسي لكل مؤسسة: مستخدم admin (أو أقدم مدير)
+update public.motor_staff s set is_main = true
+ where s.id = (select x.id from public.motor_staff x where x.site_id = s.site_id and x.role = 'admin'
+               order by (lower(x.username) = 'admin') desc, x.created_at limit 1)
+   and not exists (select 1 from public.motor_staff y where y.site_id = s.site_id and y.is_main);
 
 -- ============================================================
 --  22) صلاحيات التنفيذ
@@ -2385,7 +2702,7 @@ begin
     'motor_collector_statement(text,text,uuid,date,date)', 'motor_whish_statement(text,text,date,date)',
     'motor_move_add(text,text,text,uuid,text,numeric,text)', 'motor_move_delete(text,text,uuid)',
     'motor_dashboard(text,text)', 'motor_upload_ok(text,text)', 'motor_slug_available(text)',
-    'motor_login(text,text,text,text)', 'motor_changes(text,text,timestamptz)',
+    'motor_changes(text,text,timestamptz)',
     'motor_cash_statement(text,text,date,date)', 'motor_cash_close(text,text,numeric,numeric,text)',
     'motor_set_active(text,text,uuid,boolean,text,double precision,double precision)',
     'motor_note_add(text,text,uuid,text)', 'motor_ping(text,text,double precision,double precision,double precision)',
@@ -2395,7 +2712,12 @@ begin
     'motor_invoice_edit(text,text,uuid,numeric,text)', 'motor_payment_edit(text,text,uuid,numeric,text)',
     'motor_fill_barcodes(text,text)', 'motor_month_report(text,text,text)', 'motor_backup(text,text)',
     'motor_trash_list(text,text)', 'motor_trash_restore(text,text,uuid)', 'motor_trash_purge(text,text,uuid)',
-    'motor_set_prev(text,text,uuid,numeric)', 'motor_set_prev_bulk(text,text,jsonb)']
+    'motor_set_prev(text,text,uuid,numeric)', 'motor_set_prev_bulk(text,text,jsonb)',
+    'motor_login(text,text,text,text,text,text)', 'motor_device_reset(text,text,uuid)',
+    'motor_expense_add(text,text,text,text,numeric,text)', 'motor_vouchers(text,text,text,date,date)',
+    'motor_salary_pay(text,text,uuid,numeric,text,text,text)', 'motor_salaries(text,text,text)',
+    'motor_stock_list(text,text)', 'motor_stock_save(text,text,jsonb)', 'motor_stock_delete(text,text,uuid)',
+    'motor_journal(text,text,date,date)', 'motor_day_close(text,text,date)', 'motor_day_reopen(text,text,date)']
   loop
     execute format('grant execute on function public.%s to anon, authenticated', f);
   end loop;

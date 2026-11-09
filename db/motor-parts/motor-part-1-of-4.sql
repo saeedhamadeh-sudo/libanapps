@@ -1,4 +1,4 @@
--- motorapp — الجزء 1 من 4. شغّل الأجزاء بالترتيب (1 ثم 2 …) كل جزء لحاله في Supabase SQL Editor.
+-- motorapp — الجزء 1 من 4 (شغّل الأجزاء بالترتيب)
 -- ============================================================
 --  LibanApps — برنامج «اشتراكات المولّدات» (motorapp)   code = motor
 --
@@ -383,6 +383,40 @@ create table if not exists public.motor_trash (
 );
 create index if not exists motor_trash_site_idx on public.motor_trash (site_id, deleted_at desc);
 
+-- ---------- v5: قفل الجهاز، المعاشات، المصاريف، المخزون، إقفال اليومية ----------
+alter table public.motor_sites add column if not exists voucher_seq integer not null default 0;
+alter table public.motor_staff add column if not exists is_main      boolean not null default false;  -- المدير الأساسي
+alter table public.motor_staff add column if not exists salary       numeric(14,2) not null default 0;
+alter table public.motor_staff add column if not exists device_id    text;
+alter table public.motor_staff add column if not exists device_label text not null default '';
+alter table public.motor_staff add column if not exists device_at    timestamptz;
+alter table public.motor_moves add column if not exists category  text not null default '';
+alter table public.motor_moves add column if not exists vno       integer;          -- رقم سند الصرف
+alter table public.motor_moves add column if not exists pay_staff uuid;             -- معاش لموظف
+alter table public.motor_moves add column if not exists period    text not null default '';
+create table if not exists public.motor_stock (
+  id         uuid primary key default gen_random_uuid(),
+  site_id    uuid not null references public.motor_sites(id) on delete cascade,
+  name       text not null,
+  category   text not null default '',
+  qty        numeric(14,2) not null default 0,
+  unit_price numeric(14,2) not null default 0,
+  notes      text not null default '',
+  updated_by text not null default '',
+  updated_at timestamptz not null default now(),
+  created_at timestamptz not null default now()
+);
+create index if not exists motor_stock_site_idx on public.motor_stock (site_id, name);
+create table if not exists public.motor_day_closes (
+  id        uuid primary key default gen_random_uuid(),
+  site_id   uuid not null references public.motor_sites(id) on delete cascade,
+  day       date not null,
+  totals    jsonb not null default '{}'::jsonb,
+  closed_by text not null default '',
+  closed_at timestamptz not null default now(),
+  unique (site_id, day)
+);
+
 create table if not exists public.motor_csessions (
   token_hash  text primary key,
   customer_id uuid not null references public.motor_customers(id) on delete cascade,
@@ -397,7 +431,8 @@ declare t text;
 begin
   foreach t in array array['motor_sites','motor_plans','motor_staff','motor_staff_secrets','motor_sessions',
                            'motor_customers','motor_readings','motor_invoices','motor_payments','motor_moves',
-                           'motor_notes','motor_switch_log','motor_customer_secrets','motor_csessions','motor_trash']
+                           'motor_notes','motor_switch_log','motor_customer_secrets','motor_csessions','motor_trash',
+                           'motor_stock','motor_day_closes']
   loop
     execute format('alter table public.%I enable row level security', t);
     execute format('revoke all on public.%I from anon, authenticated', t);
@@ -449,8 +484,8 @@ declare sid uuid;
 begin
   if exists (select 1 from public.motor_staff where site_id = p_site and role = 'admin') then return; end if;
   if exists (select 1 from public.motor_staff where site_id = p_site and lower(username) = 'admin') then return; end if;
-  insert into public.motor_staff (site_id, name, username, role, can_read, can_collect, can_cut)
-  values (p_site, 'المدير', 'admin', 'admin', true, true, true) returning id into sid;
+  insert into public.motor_staff (site_id, name, username, role, can_read, can_collect, can_cut, is_main)
+  values (p_site, 'المدير', 'admin', 'admin', true, true, true, true) returning id into sid;
   insert into public.motor_staff_secrets (staff_id, password_hash) values (sid, public._motor_hash('0000'));
 end $$;
 revoke all on function public._motor_default_admin(uuid) from public, anon, authenticated;
@@ -559,12 +594,21 @@ begin
     using errcode = 'P0001';
 end $$;
 
+-- دورة الفوترة تلقائية: من 26 الشهر لآخره = هالشهر، ومن 1 لـ 25 = الشهر الماضي (قراءات متأخرة)
+create or replace function public._motor_period(d date)
+returns text language sql immutable as $$
+  select to_char(case when extract(day from d) >= 26 then d else (d - interval '1 month')::date end, 'YYYY-MM');
+$$;
+
 create or replace function public._motor_who(p_slug text, p_token text)
 returns jsonb language plpgsql security definer set search_path = public, extensions as $$
 declare st public.motor_sites%rowtype; sf public.motor_staff%rowtype; sid uuid; lic jsonb; cn text;
 begin
   select * into st from public.motor_sites where slug = lower(trim(coalesce(p_slug,'')));
   if not found then perform public._motor_err('not_found'); end if;
+  if st.bill_period <> public._motor_period(public._motor_today()) then
+    update public.motor_sites set bill_period = public._motor_period(public._motor_today()) where id = st.id;
+  end if;
 
   if coalesce(p_token,'') <> '' then
     select s.staff_id into sid from public.motor_sessions s
@@ -588,11 +632,11 @@ begin
   if sf.id is null then
     select coalesce(nullif(c.name,''), 'Owner') into cn from public.clients c where c.id = st.client_id;
     return jsonb_build_object('site_id', st.id, 'role', 'owner', 'staff_id', null, 'name', coalesce(cn,'Owner'),
-                              'is_admin', true, 'can_collect', true, 'can_read', true, 'can_cut', true,
+                              'is_admin', true, 'is_main', true, 'can_collect', true, 'can_read', true, 'can_cut', true,
                               'totp_enabled', false, 'read_from', null, 'read_to', null);
   end if;
   return jsonb_build_object('site_id', st.id, 'role', sf.role, 'staff_id', sf.id, 'name', sf.name,
-                            'is_admin', sf.role = 'admin',
+                            'is_admin', sf.role = 'admin', 'is_main', sf.is_main,
                             'can_collect', sf.role = 'admin' or sf.can_collect,
                             'can_read', sf.role = 'admin' or sf.can_read,
                             'can_cut', sf.role = 'admin' or sf.can_cut,
@@ -709,7 +753,9 @@ begin
 end $$;
 
 drop function if exists public.motor_login(text, text, text);
-create or replace function public.motor_login(p_slug text, p_username text, p_password text, p_totp text default null)
+drop function if exists public.motor_login(text, text, text, text);
+create or replace function public.motor_login(p_slug text, p_username text, p_password text, p_totp text default null,
+  p_device text default null, p_device_label text default '')
 returns jsonb language plpgsql security definer set search_path = public, extensions as $$
 declare st public.motor_sites%rowtype; sf public.motor_staff%rowtype; sc public.motor_staff_secrets%rowtype;
         tok text; lic jsonb; cu public.motor_customers%rowtype; cs public.motor_customer_secrets%rowtype;
@@ -766,6 +812,15 @@ begin
              locked_until = case when failed_count + 1 >= 6 then now() + interval '15 minutes' end
        where staff_id = sf.id;
       return jsonb_build_object('ok', false, 'need_totp', true, 'reason', 'bad_totp');
+    end if;
+  end if;
+  -- قفل الجهاز: كل مستخدم (إلا المدير الأساسي) على جهاز واحد فقط
+  if not sf.is_main then
+    if coalesce(p_device,'') !~ '^[A-Za-z0-9-]{16,64}$' then return jsonb_build_object('ok', false, 'reason', 'device'); end if;
+    if sf.device_id is null then
+      update public.motor_staff set device_id = p_device, device_label = left(coalesce(p_device_label,''), 120), device_at = now() where id = sf.id;
+    elsif sf.device_id <> p_device then
+      return jsonb_build_object('ok', false, 'reason', 'device');
     end if;
   end if;
   update public.motor_staff_secrets set failed_count = 0, locked_until = null where staff_id = sf.id;

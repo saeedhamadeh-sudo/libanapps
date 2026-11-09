@@ -1,4 +1,4 @@
--- motorapp — الجزء 2 من 4. شغّل الأجزاء بالترتيب (1 ثم 2 …) كل جزء لحاله في Supabase SQL Editor.
+-- motorapp — الجزء 2 من 4 (شغّل الأجزاء بالترتيب)
 -- ============================================================
 --  6) بيانات البداية: الهوية + الإعدادات + الأنواع + الموظفين
 -- ============================================================
@@ -20,7 +20,10 @@ begin
                          'username', case when adm then s.username end, 'phone', s.phone,
                          'is_active', s.is_active, 'read_from', s.read_from, 'read_to', s.read_to,
                          'can_collect', s.can_collect, 'can_read', s.can_read, 'can_cut', s.can_cut,
-                         'totp_enabled', s.totp_enabled,
+                         'totp_enabled', s.totp_enabled, 'is_main', s.is_main,
+                         'salary', case when adm then s.salary end,
+                         'device_set', s.device_id is not null, 'device_label', case when adm then s.device_label end,
+                         'device_at', case when adm then s.device_at end,
                          'last_lat', case when adm then s.last_lat end, 'last_lng', case when adm then s.last_lng end,
                          'last_acc', case when adm then s.last_acc end, 'last_seen', case when adm then s.last_seen end)
                          order by s.role, s.name)
@@ -386,9 +389,9 @@ begin
     if not st.collector_sees_all and c.collector_id is distinct from (w->>'staff_id')::uuid then
       perform public._motor_err('forbidden');
     end if;
-    if w->>'read_from' is null or w->>'read_to' is null then perform public._motor_err('no_window'); end if;
-    if today < (w->>'read_from')::date or today > (w->>'read_to')::date then
-      perform public._motor_err('out_of_window', (w->>'read_from') || '|' || (w->>'read_to'));
+    -- فترة أخذ العداد ثابتة: من 26 لآخر يوم بالشهر (شباط 28 أو 29)
+    if extract(day from today) < 26 then
+      perform public._motor_err('out_of_window', to_char(today, 'YYYY-MM') || '-26');
     end if;
   end if;
   if not c.is_active then perform public._motor_err('customer_inactive'); end if;
@@ -539,6 +542,7 @@ begin
   if cur = '' then cur := st.currency; end if;
   if cur not in ('USD','LBP') then perform public._motor_err('bad_currency'); end if;
   if m not in ('cash','whish') then perform public._motor_err('bad_method'); end if;
+  if m = 'whish' and not (w->>'is_admin')::boolean then perform public._motor_err('whish_admin'); end if;
   if coalesce(p_paid,0) <= 0 then perform public._motor_err('bad_amount'); end if;
   if cur = st.currency then amt := p_paid;
   elsif coalesce(st.lbp_rate,0) <= 0 then perform public._motor_err('no_rate');
@@ -570,6 +574,9 @@ begin
   if p.method = 'cash' and p.created_at <= coalesce((select max(created_at) from public.motor_moves
         where site_id = sid and account = 'cash' and kind = 'close'), '-infinity'::timestamptz) then
     perform public._motor_err('closed_period');
+  end if;
+  if exists (select 1 from public.motor_day_closes where site_id = sid and day = (p.created_at at time zone 'Asia/Beirut')::date) then
+    perform public._motor_err('day_closed');
   end if;
   update public.motor_payments set voided = true, voided_at = now(), voided_by = w->>'name' where id = p.id;
   update public.motor_customers set balance = balance + p.amount, updated_at = now() where id = p.customer_id;
@@ -702,6 +709,10 @@ begin
   if coalesce(d->>'role','collector') not in ('admin','collector') then perform public._motor_err('bad_role'); end if;
   if exists (select 1 from public.motor_staff x where x.site_id = sid and lower(x.username) = u
              and x.id::text <> coalesce(d->>'id','')) then perform public._motor_err('username_taken'); end if;
+  if not coalesce((w->>'is_main')::boolean,false) and ((coalesce(d->>'role','collector') = 'admin' and coalesce(d->>'id','') <> coalesce(w->>'staff_id',''))
+       or exists (select 1 from public.motor_staff x where x.id::text = coalesce(d->>'id','') and x.role = 'admin' and x.id::text <> coalesce(w->>'staff_id',''))) then
+    perform public._motor_err('main_only');
+  end if;
   if nullif(d->>'read_from','') is not null and nullif(d->>'read_to','') is not null
      and (d->>'read_from')::date > (d->>'read_to')::date then perform public._motor_err('bad_window'); end if;
   if coalesce(d->>'id','') = '' then
@@ -711,6 +722,7 @@ begin
             coalesce((d->>'is_active')::boolean,true), nullif(d->>'read_from','')::date, nullif(d->>'read_to','')::date,
             coalesce((d->>'can_collect')::boolean,true), coalesce((d->>'can_read')::boolean,true), coalesce((d->>'can_cut')::boolean,false))
     returning * into s;
+    update public.motor_staff set salary = coalesce(nullif(d->>'salary','')::numeric, 0) where id = s.id returning * into s;
   else
     -- الموظف ما بيقدر يشيل صلاحية المدير عن حالو
     if (d->>'id') = w->>'staff_id' and coalesce(d->>'role','collector') <> 'admin' then perform public._motor_err('self_demote'); end if;
@@ -719,8 +731,11 @@ begin
            role = coalesce(d->>'role','collector'), is_active = coalesce((d->>'is_active')::boolean,true),
            read_from = nullif(d->>'read_from','')::date, read_to = nullif(d->>'read_to','')::date,
            can_collect = coalesce((d->>'can_collect')::boolean,true),
-           can_read = coalesce((d->>'can_read')::boolean,true), can_cut = coalesce((d->>'can_cut')::boolean,false)
+           can_read = coalesce((d->>'can_read')::boolean,true), can_cut = coalesce((d->>'can_cut')::boolean,false),
+           salary = coalesce(nullif(d->>'salary','')::numeric, salary)
      where id = (d->>'id')::uuid and site_id = sid returning * into s;
+    -- المدير الأساسي يضل مدير ومفعّل
+    if s.is_main and (s.role <> 'admin' or not s.is_active) then perform public._motor_err('self_demote'); end if;
     if s.id is null then perform public._motor_err('not_found'); end if;
     if length(coalesce(p_password,'')) between 1 and 3 then perform public._motor_err('short_password'); end if;
     if not s.is_active then delete from public.motor_sessions where staff_id = s.id; end if;
@@ -754,6 +769,9 @@ begin
   w := public._motor_admin(p_slug, p_token);
   sid := (w->>'site_id')::uuid;
   if p_id::text = w->>'staff_id' then perform public._motor_err('self_demote'); end if;
+  if exists (select 1 from public.motor_staff where id = p_id and (is_main or (role = 'admin' and not coalesce((w->>'is_main')::boolean,false)))) then
+    perform public._motor_err('main_only');
+  end if;
   if exists (select 1 from public.motor_payments where staff_id = p_id)
      or exists (select 1 from public.motor_readings where staff_id = p_id)
      or exists (select 1 from public.motor_moves where staff_id = p_id) then

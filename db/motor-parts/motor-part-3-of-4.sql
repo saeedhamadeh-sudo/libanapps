@@ -1,4 +1,4 @@
--- motorapp — الجزء 3 من 4. شغّل الأجزاء بالترتيب (1 ثم 2 …) كل جزء لحاله في Supabase SQL Editor.
+-- motorapp — الجزء 3 من 4 (شغّل الأجزاء بالترتيب)
 -- ============================================================
 --  13) كشف حساب الجابي  (له: المقبوض نقداً — عليه: ما سلّمه للمكتب)
 -- ============================================================
@@ -113,6 +113,10 @@ begin
        or ((m.account = 'cash' or (m.account = 'collector' and m.kind = 'handover')) and m.created_at <= coalesce((select max(created_at)
             from public.motor_moves where site_id = m.site_id and account = 'cash' and kind = 'close'), '-infinity'::timestamptz)))) then
     perform public._motor_err('closed_period');
+  end if;
+  if exists (select 1 from public.motor_moves m join public.motor_day_closes dc on dc.site_id = m.site_id
+              and dc.day = (m.created_at at time zone 'Asia/Beirut')::date where m.id = p_id) then
+    perform public._motor_err('day_closed');
   end if;
   insert into public.motor_trash (site_id, kind, ref_id, label, data, deleted_by)
   select m.site_id, 'move', m.id, m.account || ' / ' || m.kind || ' — ' || m.amount, to_jsonb(m), w->>'name'
@@ -318,6 +322,9 @@ begin
   if p_staff is not null and p_staff::text is distinct from w->>'staff_id' then
     if not (w->>'is_admin')::boolean then perform public._motor_err('forbidden'); end if;
     if not exists (select 1 from public.motor_staff where id = p_staff and site_id = sid) then perform public._motor_err('bad_staff'); end if;
+    if exists (select 1 from public.motor_staff where id = p_staff and role = 'admin') and not coalesce((w->>'is_main')::boolean,false) then
+      perform public._motor_err('main_only');
+    end if;
     target := p_staff;
   else
     target := (w->>'staff_id')::uuid;
@@ -552,6 +559,9 @@ begin
         where site_id = sid and account = 'cash' and kind = 'close'), '-infinity'::timestamptz) then
     perform public._motor_err('closed_period');
   end if;
+  if exists (select 1 from public.motor_day_closes where site_id = sid and day = (p.created_at at time zone 'Asia/Beirut')::date) then
+    perform public._motor_err('day_closed');
+  end if;
   if p.paid_currency = st.currency then amt := p_paid;
   elsif p.paid_currency = 'LBP' then amt := round(p_paid / nullif(p.rate,0), 2);
   else amt := round(p_paid * p.rate, 0); end if;
@@ -633,80 +643,5 @@ begin
     'invoices', coalesce((select jsonb_agg(to_jsonb(x) - 'site_id' order by x.created_at) from public.motor_invoices x where x.site_id = sid), '[]'),
     'payments', coalesce((select jsonb_agg(to_jsonb(x) - 'site_id' order by x.created_at) from public.motor_payments x where x.site_id = sid), '[]'),
     'moves', coalesce((select jsonb_agg(to_jsonb(x) - 'site_id' order by x.created_at) from public.motor_moves x where x.site_id = sid), '[]'));
-end $$;
-
--- ============================================================
---  20d) سلة المحذوفات (المدير): إرجاع أو حذف نهائي
--- ============================================================
-create or replace function public.motor_trash_list(p_slug text, p_token text)
-returns jsonb language plpgsql security definer set search_path = public as $$
-declare w jsonb;
-begin
-  w := public._motor_admin(p_slug, p_token);
-  return coalesce((select jsonb_agg(jsonb_build_object('id', t.id, 'kind', t.kind, 'label', t.label, 'by', t.deleted_by,
-           'at', t.deleted_at, 'amount', t.data->'amount') order by t.deleted_at desc)
-         from public.motor_trash t where t.site_id = (w->>'site_id')::uuid), '[]'::jsonb);
-end $$;
-
-create or replace function public.motor_trash_restore(p_slug text, p_token text, p_id uuid)
-returns jsonb language plpgsql security definer set search_path = public as $$
-declare w jsonb; sid uuid; tr public.motor_trash%rowtype; i public.motor_invoices%rowtype; p public.motor_payments%rowtype;
-        r public.motor_readings%rowtype; nid uuid;
-begin
-  w := public._motor_admin(p_slug, p_token);
-  sid := (w->>'site_id')::uuid;
-  select * into tr from public.motor_trash where id = p_id and site_id = sid for update;
-  if not found then perform public._motor_err('not_found'); end if;
-  if tr.kind = 'customer' then
-    update public.motor_customers set deleted_at = null, updated_at = now() where id = tr.ref_id and site_id = sid;
-  elsif tr.kind = 'invoice' then
-    select * into i from public.motor_invoices where id = tr.ref_id and site_id = sid for update;
-    if found and i.voided then
-      if i.voided_reading is not null then
-        r := jsonb_populate_record(null::public.motor_readings, i.voided_reading);
-        if exists (select 1 from public.motor_readings where customer_id = r.customer_id and period = r.period) then
-          perform public._motor_err('already_read', r.period);
-        end if;
-        insert into public.motor_readings values (r.*) returning id into nid;
-      end if;
-      update public.motor_invoices set voided = false, voided_at = null, voided_by = '', reading_id = nid, voided_reading = null where id = i.id;
-      update public.motor_customers set balance = balance + i.amount, updated_at = now() where id = i.customer_id;
-    end if;
-  elsif tr.kind = 'payment' then
-    select * into p from public.motor_payments where id = tr.ref_id and site_id = sid for update;
-    if found and p.voided then
-      update public.motor_payments set voided = false, voided_at = null, voided_by = '' where id = p.id;
-      update public.motor_customers set balance = balance - p.amount, updated_at = now() where id = p.customer_id;
-    end if;
-  elsif tr.kind = 'move' then
-    insert into public.motor_moves select (jsonb_populate_record(null::public.motor_moves, tr.data)).*;
-  elsif tr.kind = 'plan' then
-    insert into public.motor_plans select (jsonb_populate_record(null::public.motor_plans, tr.data)).*;
-  elsif tr.kind = 'staff' then
-    insert into public.motor_staff select (jsonb_populate_record(null::public.motor_staff, tr.data)).*;
-  end if;
-  delete from public.motor_trash where id = tr.id;
-  return jsonb_build_object('ok', true, 'kind', tr.kind);
-end $$;
-
--- حذف نهائي (p_id فاضي = إفراغ السلة كلها)
-create or replace function public.motor_trash_purge(p_slug text, p_token text, p_id uuid default null)
-returns jsonb language plpgsql security definer set search_path = public as $$
-declare w jsonb; sid uuid; tr record; n int := 0;
-begin
-  w := public._motor_admin(p_slug, p_token);
-  sid := (w->>'site_id')::uuid;
-  for tr in select * from public.motor_trash where site_id = sid and (p_id is null or id = p_id) loop
-    if tr.kind = 'customer' then
-      delete from public.motor_customers where id = tr.ref_id and site_id = sid and deleted_at is not null;
-    elsif tr.kind = 'invoice' then
-      delete from public.motor_invoices where id = tr.ref_id and site_id = sid and voided;
-    elsif tr.kind = 'payment' then
-      delete from public.motor_payments where id = tr.ref_id and site_id = sid and voided;
-    end if;
-    delete from public.motor_trash where id = tr.id;
-    n := n + 1;
-  end loop;
-  return jsonb_build_object('ok', true, 'count', n);
 end $$;
 

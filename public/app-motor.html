@@ -114,7 +114,8 @@ body.compact table{font-size:12px} body.compact th,body.compact td{padding:4px 6
 @media (min-width:900px){
   nav.tabs{position:fixed;top:54px;bottom:0;inset-inline-start:0;width:230px;flex-direction:column;flex-wrap:nowrap;padding:8px 8px;margin:0;max-width:none;overflow-y:auto;background:var(--pd);gap:1px;z-index:40}
   nav.tabs button{text-align:start;border-radius:9px;padding:7px 12px;width:100%;font-size:14px;line-height:1.45}
-  @media (max-height:700px){ nav.tabs button{padding:4px 12px;font-size:13px} nav.tabs{padding-block:4px} }
+  @media (max-height:880px){ nav.tabs button{padding:4px 12px;font-size:13px;line-height:1.4} nav.tabs{padding-block:4px} }
+  @media (max-height:640px){ nav.tabs button{padding:2px 12px;font-size:12px;line-height:1.35} }
   main{margin-inline-start:230px;max-width:none;padding-inline:18px}
   .tbar{max-width:none}
   body.side-mini nav.tabs{width:62px;padding-inline:6px}
@@ -2096,6 +2097,48 @@ function setLang(l){ if(!LI.hasOwnProperty(l)) l='ar'; LANG=l; try{ localStorage
 var CFG=window.LIBANAPPS, sb=null;
 try{ sb=window.supabase.createClient(CFG.SUPABASE_URL,CFG.SUPABASE_ANON_KEY); }catch(e){}
 var $=function(s,r){return (r||document).querySelector(s)}, $$=function(s,r){return Array.prototype.slice.call((r||document).querySelectorAll(s))};
+Object.assign(D,{
+ nav_stock:['المخزون','Stock','Stock'], nav_expenses:['المصاريف','Expenses','Dépenses'], nav_salaries:['المعاشات','Salaries','Salaires'], nav_journal:['اليومية','Daily journal','Journal'],
+ dev_unreg:['الجهاز غير مسجل — هذا الحساب مقفل على جهاز آخر. تواصل مع المدير الأساسي لفك القفل','Device not registered — this account is locked to another device. Ask the main admin to unlock it','Appareil non enregistré — ce compte est lié à un autre appareil. Demandez à l’admin principal de le débloquer'],
+ device:['الجهاز','Device','Appareil'], dev_none:['لم يُسجَّل بعد (يُقفل على أول جهاز)','Not set yet (locks on first login)','Pas encore (bloqué au 1er accès)'],
+ dev_any:['أي جهاز','Any device','Tout appareil'], dev_reset:['فك قفل الجهاز','Unlock device','Débloquer l’appareil'],
+ dev_reset_q:['فك قفل جهاز {n}؟ سيتم تسجيل خروجه، وأول جهاز يدخل منه بعد ذلك يصبح جهازه.','Unlock {n}’s device? They will be signed out and the next device they use becomes theirs.','Débloquer l’appareil de {n} ? Il sera déconnecté et le prochain appareil utilisé deviendra le sien.'],
+ main_admin:['المدير الأساسي','Main admin','Admin principal'],
+ e_main_only:['هذه العملية للمدير الأساسي فقط','Only the main admin can do this','Réservé à l’admin principal'],
+ e_whish_admin:['الجابي يقبض نقداً فقط — قبض Whish من المكتب','Collectors take cash only — Whish is collected at the office','Les collecteurs encaissent en espèces uniquement'],
+ e_day_closed:['هذا اليوم مُقفل في اليومية — لا يمكن التعديل','This day is closed in the journal','Cette journée est clôturée'],
+ e_bad_account:['اختر الصندوق أو Whish','Choose cash box or Whish','Choisissez caisse ou Whish'],
+ e_out_of_window:['أخذ العدادات مسموح فقط من يوم 26 حتى آخر الشهر','Readings are allowed only from the 26th to the end of the month','Relevés autorisés seulement du 26 à la fin du mois'],
+ window_fixed:['فترة أخذ العدادات: من 26 حتى آخر يوم في الشهر','Reading period: from the 26th to the last day of the month','Période de relevé : du 26 au dernier jour du mois'],
+ window_open:['الفترة مفتوحة الآن','The period is open now','La période est ouverte'],
+ window_wait:['تفتح يوم {d}','Opens on {d}','Ouvre le {d}'],
+ auto_period:['تتغيّر تلقائياً يوم 26 من كل شهر','Changes automatically on the 26th of each month','Change automatiquement le 26 de chaque mois'],
+ salary:['المعاش الشهري','Monthly salary','Salaire mensuel'], sal_due:['المستحق','Due','Dû'], sal_paid:['المدفوع','Paid','Payé'], sal_rem:['الباقي','Remaining','Reste'],
+ sal_pay:['دفعة معاش','Salary payment','Paiement de salaire'], pay_from:['الدفع من','Pay from','Payer depuis'], acc_cash:['💰 الصندوق','💰 Cash box','💰 Caisse'], acc_whish:['🟣 Whish','🟣 Whish','🟣 Whish'],
+ month:['الشهر','Month','Mois'], payments:['الدفعات','Payments','Paiements'],
+ stock_new:['صنف جديد','New item','Nouvel article'], stock_cat:['الفئة','Category','Catégorie'], qty:['الكمية','Quantity','Quantité'], unit_price:['سعر الوحدة','Unit price','Prix unitaire'],
+ total_value:['القيمة الإجمالية','Total value','Valeur totale'], stock_items:['الأصناف','Items','Articles'], value:['القيمة','Value','Valeur'],
+ stock_ph:['مثال: عداد، كابل 10 ملم، فيوز، زيت…','e.g. meter, 10mm cable, fuse, oil…','ex. compteur, câble 10 mm, fusible, huile…'],
+ exp_new:['مصروف جديد / سند صرف','New expense / voucher','Nouvelle dépense / bon'], exp_cat:['نوع المصروف','Expense type','Type de dépense'],
+ exp_fuel:['محروقات','Fuel','Carburant'], exp_maint:['صيانة','Maintenance','Entretien'], exp_oil:['زيت وفلاتر','Oil & filters','Huile et filtres'], exp_other:['أخرى','Other','Autre'],
+ voucher:['سند صرف','Payment voucher','Bon de décaissement'], voucher_no:['رقم السند','Voucher no.','N° de bon'], print_voucher:['طباعة السند','Print voucher','Imprimer le bon'],
+ v_paid_to:['صُرف إلى','Paid to','Payé à'], v_from:['من','From','Depuis'], v_sign:['التوقيع: ________________','Signature: ________________','Signature : ________________'],
+ j_today:['اليوم','Today','Aujourd’hui'], j_week:['أسبوعي','Weekly','Hebdo'], j_month:['شهري','Monthly','Mensuel'], j_custom:['من تاريخ إلى تاريخ','Custom range','Période'],
+ day_close:['إقفال اليومية','Close the day','Clôturer la journée'], day_closed_chip:['🔒 مُقفل','🔒 Closed','🔒 Clôturé'], day_open_chip:['مفتوح','Open','Ouvert'],
+ day_close_q:['إقفال يوم {d}؟ بعد الإقفال لا يمكن إلغاء أو تعديل حركات هذا اليوم.','Close {d}? After closing, entries of this day cannot be voided or edited.','Clôturer le {d} ? Les opérations de ce jour ne pourront plus être modifiées.'],
+ day_reopen:['إعادة فتح','Reopen','Rouvrir'], day_reopen_q:['إعادة فتح يوم {d}؟','Reopen {d}?','Rouvrir le {d} ?'],
+ j_cash_end:['مجموع الصندوق آخر النهار','Cash box at day end','Caisse en fin de journée'], j_whish_end:['مجموع Whish آخر النهار','Whish at day end','Whish en fin de journée'],
+ j_receipts:['المقبوضات','Receipts','Encaissements'], j_expenses:['المصاريف','Expenses','Dépenses'], j_salaries:['المعاشات','Salaries','Salaires'],
+ j_in:['داخل','In','Entrée'], j_out:['خارج','Out','Sortie'], j_open:['رصيد أول المدة','Opening balance','Solde d’ouverture'], j_close:['رصيد آخر المدة','Closing balance','Solde de clôture'],
+ j_hand:['نقد مع الجباة','Cash with collectors','Espèces chez les collecteurs'], j_n:['عدد الإيصالات','Receipts count','Nb reçus'], j_day_total:['مجموع النهار','Day total','Total du jour'],
+ k_expense:['مصروف','Expense','Dépense'], k_salary:['معاش','Salary','Salaire'], k_handover:['تسليم جابي','Collector handover','Remise collecteur'], k_close:['إقفال صندوق','Cash close','Clôture caisse'],
+ k_in:['إدخال للصندوق','Cash in','Entrée caisse'], k_out:['إخراج من الصندوق','Cash out','Sortie caisse'], k_deposit:['إيداع Whish','Whish deposit','Dépôt Whish'], k_withdraw:['سحب Whish','Whish withdrawal','Retrait Whish'], k_adjust:['تسوية','Adjustment','Ajustement'],
+ send_login:['إرسال بيانات الدخول','Send login details','Envoyer les accès'],
+ send_login_q:['سيتم إنشاء كلمة مرور جديدة لـ {n} وإرسالها مع الرابط عبر واتساب. متابعة؟','A new password will be created for {n} and sent with the link via WhatsApp. Continue?','Un nouveau mot de passe sera créé pour {n} et envoyé avec le lien par WhatsApp. Continuer ?'],
+ login_msg:['مرحباً {c}\nحسابك لدى {s}:\n{u}\nاسم المستخدم: {n}\nكلمة المرور: {p}','Hello {c}\nYour account at {s}:\n{u}\nUsername: {n}\nPassword: {p}','Bonjour {c}\nVotre compte chez {s} :\n{u}\nIdentifiant : {n}\nMot de passe : {p}'],
+ uploading:['جارٍ رفع البيانات إلى السحابة…','Uploading to the cloud…','Envoi vers le cloud…'], uploaded:['✓ كل البيانات محفوظة على السحابة','✓ Everything is saved in the cloud','✓ Tout est enregistré dans le cloud'],
+ upload_wait:['هناك عمليات قيد الرفع — انتظر لحظة قبل الإغلاق','Some operations are still uploading — wait a moment before closing','Des opérations sont en cours d’envoi — patientez']
+});
 var SLUG='', TOKEN='', ME=null, SITE=null, PLANS=[], STAFF=[], CUST=[], LIC=null, TODAY='', TAB='dash';
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]}); }
 function n2(v){ var x=Number(v); return isFinite(x)?x:0; }
@@ -2124,10 +2167,12 @@ function errText(e){
   return m||'Error';
 }
 function isAuthErr(e){ return /MOTOR:(auth|license|inactive)\b/.test(String(e&&e.message||e||'')); }
+var INFLIGHT=0;
+window.addEventListener('beforeunload',function(e){ if(INFLIGHT>0){ e.preventDefault(); e.returnValue=t('upload_wait'); return t('upload_wait'); } });
 async function call(fn,args){
   if(!sb) throw new Error(t('e_network'));
   var a=Object.assign({p_slug:SLUG,p_token:TOKEN||null},args||{});
-  var r=await sb.rpc(fn,a);
+  var r; INFLIGHT++; try{ r=await sb.rpc(fn,a); } finally { INFLIGHT--; }
   if(r.error){ if(isAuthErr(r.error)&&ME){ handleAuthLoss(r.error); } throw r.error; }
   return r.data;
 }
@@ -2217,15 +2262,17 @@ async function enter(quiet){
     return true;
   }catch(e){ if(!quiet && !isAuthErr(e)) gate('<div class="err">'+esc(errText(e))+'</div>',true); return false; }
 }
+function deviceId(){ var d=lsGet('motor_dev',''); if(!/^[A-Za-z0-9-]{16,64}$/.test(d||'')){ d=(crypto.randomUUID?crypto.randomUUID():Array.from(crypto.getRandomValues(new Uint8Array(16))).map(function(b){return b.toString(16).padStart(2,'0')}).join('')); lsSet('motor_dev',d); } return d; }
+function deviceLabel(){ var u=navigator.userAgent, m=u.match(/\(([^)]+)\)/); return ((m?m[1]:'')+' · '+(/Chrome\//.test(u)?'Chrome':/Safari\//.test(u)?'Safari':/Firefox\//.test(u)?'Firefox':'')).slice(0,120); }
 $('#loginForm').addEventListener('submit',async function(e){
   e.preventDefault(); var b=$('#loginBtn'), m=$('#loginMsg'); m.textContent='';
   busy(b,true,t('loading'));
   try{
-    var r=await sb.rpc('motor_login',{p_slug:SLUG,p_username:$('#inUser').value.trim(),p_password:$('#inPass').value,p_totp:$('#inTotp').value.trim()||null});
+    var r=await sb.rpc('motor_login',{p_slug:SLUG,p_username:$('#inUser').value.trim(),p_password:$('#inPass').value,p_totp:$('#inTotp').value.trim()||null,p_device:deviceId(),p_device_label:deviceLabel()});
     if(r.error) throw r.error;
     var d=r.data||{};
     if(!d.ok&&d.need_totp){ $('#totpFld').classList.remove('hidden'); m.textContent=d.reason==='bad_totp'?t('bad_totp'):''; busy(b,false); $('#inTotp').value=''; $('#inTotp').focus(); return; }
-    if(!d.ok){ m.textContent= d.reason==='locked'?t('locked',{m:d.minutes||15}) : d.reason==='inactive_user'?t('inactive_user') : d.reason==='license'?t('r_license') : t('bad_login'); busy(b,false); return; }
+    if(!d.ok){ m.textContent= d.reason==='locked'?t('locked',{m:d.minutes||15}) : d.reason==='inactive_user'?t('inactive_user') : d.reason==='license'?t('r_license') : d.reason==='device'?t('dev_unreg') : t('bad_login'); busy(b,false); return; }
     TOKEN=d.token; lsSet('motor_tok:'+SLUG,TOKEN); lsSet('motor_kind:'+SLUG,d.kind||'staff'); $('#inPass').value=''; $('#inTotp').value=''; $('#totpFld').classList.add('hidden');
     busy(b,false);
     if(!(await (d.kind==='customer'?enterCustomer():enter()))){ m.textContent=t('e_auth'); }
@@ -2253,6 +2300,10 @@ var TABS=[
   {id:'wa',k:'nav_wa',i:'📲',admin:true},
   {id:'cash',k:'nav_cash',i:'💰',admin:true},
   {id:'whish',k:'nav_whish',i:'🟣',admin:true},
+  {id:'journal',k:'nav_journal',i:'📒',admin:true},
+  {id:'expenses',k:'nav_expenses',i:'🧾',admin:true},
+  {id:'salaries',k:'nav_salaries',i:'👷',admin:true},
+  {id:'stock',k:'nav_stock',i:'📦',admin:true},
   {id:'cstmt',k:'nav_cstmt',i:'🧾'},
   {id:'report',k:'nav_report',i:'📊',admin:true},
   {id:'map',k:'nav_map',i:'🗺️',admin:true},
@@ -2508,10 +2559,8 @@ document.addEventListener('visibilitychange',function(){ if(!document.hidden&&ME
 
 function stat(l,v,g){ return '<div class="stat"'+(g?' data-go="'+esc(g)+'"':'')+'><span>'+esc(l)+'</span><b class="num">'+esc(v)+'</b></div>'; }
 function windowNote(){
-  var me=STAFF.filter(function(s){return s.id===ME.staff_id})[0]||ME;
-  if(!me.read_from||!me.read_to) return '<div class="lic">'+esc(t('window_none'))+'</div>';
-  var open=TODAY>=me.read_from&&TODAY<=me.read_to;
-  return '<div class="'+(open?'okmsg':'lic')+'">'+esc(t('window_is',{f:me.read_from,t:me.read_to}))+(open?'':' — '+esc(t('window_closed')))+'</div>';
+  var open=+String(TODAY).slice(8,10)>=26;
+  return '<div class="'+(open?'okmsg':'lic')+'">'+esc(t('window_fixed'))+' — '+esc(open?t('window_open'):t('window_wait',{d:String(TODAY).slice(0,8)+'26'}))+'</div>';
 }
 
 /* ---------- أخذ العداد / القبض / فتح-قطع: مسح أو بحث + قائمة «مين بعد» ---------- */
@@ -2596,7 +2645,7 @@ async function openCustomer(id,barcode,mode){
         '<button class="btn alt" data-a="stmt">'+esc(t('statement'))+'</button>'+
         (c.mobile&&waHere()?'<button class="btn wa sm" data-a="wa">'+esc(t('whatsapp'))+'</button>':'')+
         (adm?'<button class="btn ghost sm" data-a="edit">✏️ '+esc(t('edit'))+'</button>'+(d.read_now?'<button class="btn ghost sm" data-a="redit">🔢 '+esc(t('edit_reading'))+'</button>':'')+
-          '<button class="btn ghost sm" data-a="clogin">🔑 '+esc(t('cust_login'))+(d.has_login?' ✓':'')+'</button><button class="btn ghost sm" data-a="adj">'+esc(t('adjust'))+'</button><button class="btn ghost sm" data-a="label">🏷️ '+esc(t('label_one'))+'</button>':'')+
+          '<button class="btn ghost sm" data-a="clogin">🔑 '+esc(t('cust_login'))+(d.has_login?' ✓':'')+'</button>'+(c.mobile&&waHere()?'<button class="btn wa sm" data-a="sendlogin">📲 '+esc(t('send_login'))+'</button>':'')+'<button class="btn ghost sm" data-a="adj">'+esc(t('adjust'))+'</button><button class="btn ghost sm" data-a="label">🏷️ '+esc(t('label_one'))+'</button>':'')+
       '</div><div id="cstep">'+stepHtml+'</div>'+
       '<div class="sec-t">📝 '+esc(t('notes_t'))+'</div><div class="row"><input id="nbody" placeholder="'+esc(t('add_note'))+'" style="flex:1"><button class="btn sm" data-a="note">'+esc(t('save'))+'</button></div>'+
       (notes.length?'<div class="list" style="margin-top:8px">'+notes.map(function(n){ return '<div class="litem" style="cursor:default"><div style="flex:1"><div>'+esc(n.body)+'</div><div class="sub">'+esc(n.by)+' · '+esc(dt(n.at))+'</div></div></div>'; }).join('')+'</div>':'')+
@@ -2616,7 +2665,17 @@ async function openCustomer(id,barcode,mode){
     else if(a==='note') addNote();
     else if(a==='redit') editReading(d.read_now,function(){ reload().then(function(){ paint(); }); });
     else if(a==='clogin') loginForm();
+    else if(a==='sendlogin') sendLogin();
   });
+  async function sendLogin(){
+    if(!(await confirmBox(t('send_login_q',{n:c.name})))) return;
+    var w=window.open('about:blank','_blank');
+    var user=c.username||('c'+c.code), pass=randCode(6,'23456789');
+    try{ await call('motor_customer_set_login',{p_customer:c.id,p_username:user,p_password:pass}); }
+    catch(e){ if(w) w.close(); toast(errText(e),'e'); return; }
+    var msg=t('login_msg',{c:c.name,s:SITE.name||'',u:location.origin+'/portal-motor/'+encodeURIComponent(SLUG)+'?u='+encodeURIComponent(user),n:user,p:pass});
+    openWa(c.mobile_cc,c.mobile,msg,w); await reload(); paint();
+  }
   function loginForm(){
     var box=$('#cstep',m.body);
     box.innerHTML='<div class="step"><div class="muted" style="margin-bottom:8px">'+esc(t('cust_login_hint'))+'</div><div class="g2"><div><label>'+esc(t('username'))+'</label><input id="clu" autocapitalize="off" spellcheck="false" value="'+esc(c.username||'')+'"></div>'+
@@ -2720,7 +2779,7 @@ async function openCustomer(id,barcode,mode){
     box.innerHTML='<div class="step"><div class="g2"><div><label>'+esc(t('amount'))+'</label><input id="pa" type="text" inputmode="decimal" class="valinput" style="font-size:22px" value="'+esc(def===''?'':String(def))+'"></div>'+
       '<div><label>'+esc(t('currency'))+'</label><select id="pc"><option value="'+cur+'">'+esc(cur+' '+sym(cur))+'</option>'+(rate()?'<option value="'+oth+'">'+esc(oth+' '+sym(oth))+'</option>':'')+'</select></div></div>'+
       '<div id="peq" class="muted" style="margin:6px 0"></div>'+(rate()?'<div class="muted">'+esc(t('rate_t'))+': <b class="num">'+esc(fmtN(rate(),0))+'</b></div>':'')+
-      '<label style="margin-top:8px">'+esc(t('method'))+'</label><div class="row"><label class="chk"><input type="radio" name="pm" value="cash" checked> 💵 '+esc(t('cash'))+'</label><label class="chk"><input type="radio" name="pm" value="whish"> 🟣 '+esc(t('whish'))+'</label></div>'+
+      '<label style="margin-top:8px">'+esc(t('method'))+'</label><div class="row"><label class="chk"><input type="radio" name="pm" value="cash" checked> 💵 '+esc(t('cash'))+'</label>'+(isAdmin()?'<label class="chk"><input type="radio" name="pm" value="whish"> 🟣 '+esc(t('whish'))+'</label>':'')+'</div>'+
       '<div id="wqr" class="hidden" style="text-align:center;margin:8px 0;padding:10px;border-radius:12px;background:var(--wishbg)">'+
         (SITE.whish_qr_url?'<img src="'+esc(SITE.whish_qr_url)+'" alt="Whish QR" style="max-width:240px;width:100%;border-radius:10px;background:#fff">':'<div class="muted">'+esc(t('whish_qr_none'))+'</div>')+
         (SITE.whish_phone?'<div style="font-weight:800;font-size:18px;margin-top:6px" class="num">📞 '+esc(SITE.whish_phone)+'</div>':'')+'</div>'+
@@ -2817,11 +2876,15 @@ function billText(o){
   if(SITE.invoice_note) s.push('', SITE.invoice_note);
   return s.join('\n');
 }
-function openWa(cc,mobile,text){
-  var num=String(mobile||'').replace(/\D/g,''); if(!num){ toast(t('no_mobile'),'e'); return; }
+function randCode(n,abc){ abc=abc||'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; var a=crypto.getRandomValues(new Uint8Array(n||6)), s=''; for(var i=0;i<a.length;i++) s+=abc[a[i]%abc.length]; return s; }
+function waTag(text){ return String(text||'')+'\n\n🔖 '+randCode(6); }   // رمز عشوائي بكعب كل رسالة (يخفّف حظر واتساب)
+function openWa(cc,mobile,text,win){
+  var num=String(mobile||'').replace(/\D/g,''); if(!num){ if(win) win.close(); toast(t('no_mobile'),'e'); return; }
+  text=waTag(text);
   cc=String(cc||'961').replace(/\D/g,'');
   if(num.indexOf('00')===0) num=num.slice(2); else if(!(num.indexOf(cc)===0&&num.length>9)) num=cc+num.replace(/^0+/,'');
   var u='https://wa.me/'+num+(text?'?text='+encodeURIComponent(text):'');
+  if(win){ win.location.href=u; return; }
   var w=window.open(u,'_blank'); if(!w) location.href=u;
 }
 
@@ -3290,8 +3353,8 @@ VIEWS.month=async function(main){
   var adm=isAdmin(); if(!MF.period) MF.period=SITE.bill_period;
   var d=await call('motor_month',{p_period:MF.period});
   main.innerHTML=(adm?'<div class="card"><div class="row"><div><label>'+esc(t('bill_period'))+'</label><b style="font-size:20px" class="num">'+esc(SITE.bill_period)+'</b></div><span class="sp"></span>'+
-      '<input type="month" id="bp" value="'+esc(SITE.bill_period)+'" style="width:auto"><button class="btn alt" id="bpgo">'+esc(t('change_period'))+'</button><button class="btn ghost" id="bfix">'+esc(t('bill_fixed'))+'</button></div>'+
-      '<div class="row" style="margin-top:10px"><b>'+esc(t('window_all'))+':</b><label style="margin:0">'+esc(t('from'))+'</label><input type="date" id="wf" style="width:auto"><label style="margin:0">'+esc(t('to'))+'</label><input type="date" id="wt" style="width:auto"><button class="btn ghost" id="wgo">'+esc(t('apply'))+'</button></div></div>':'')+
+      '<span class="muted">'+esc(t('auto_period'))+'</span><button class="btn ghost" id="bfix">'+esc(t('bill_fixed'))+'</button></div>'+
+      '<div style="margin-top:8px">'+windowNote()+'</div></div>':'')+
     '<div class="toolbar"><input type="month" id="mp" value="'+esc(d.period)+'" style="flex:0 1 180px">'+
       (adm?'<select id="ms"><option value="">'+esc(t('collector'))+': '+esc(t('all'))+'</option>'+STAFF.map(function(s){return '<option value="'+esc(s.id)+'">'+esc(s.name)+'</option>'}).join('')+'</select>':'')+
       '<input type="search" id="mq" placeholder="'+esc(t('search_ph'))+'" value="'+esc(MF.q)+'"><button class="btn ghost" id="mexp">'+esc(t('export_csv'))+'</button><span class="sp"></span><b id="mcount"></b></div>'+
@@ -3318,12 +3381,8 @@ VIEWS.month=async function(main){
   $('#mexp',main).addEventListener('click',function(){ var R=[[t('time'),t('code'),t('name'),t('barcode'),t('box'),t('prev_reading'),t('cur_reading'),t('consumption'),t('inv_amount'),t('lat'),t('lng'),'m',t('collector'),t('photo')]];
     rows().forEach(function(r){ R.push([dt(r.at),r.code,r.name,r.barcode,r.box,r.prev_value,r.value,r.kwh,r.amount,r.lat,r.lng,r.dist_m,r.staff,r.photo?location.origin+r.photo:'']); }); downloadCsv(R,'readings-'+d.period+'.csv'); });
   if(adm){
-    $('#bpgo',main).addEventListener('click',async function(){ var p=$('#bp',main).value; if(!/^\d{4}-\d{2}$/.test(p)) return toast(t('period_bad'),'e');
-      if(!(await confirmBox(t('confirm_period',{p:p})))) return; try{ SITE=await call('motor_settings_save',{p_data:{bill_period:p}}); MF.period=p; toast(t('saved'),'s'); loadCustomers(); go('month'); }catch(e){ toast(errText(e),'e'); } });
     $('#bfix',main).addEventListener('click',async function(){ if(!(await confirmBox(t('confirm_fixed',{p:SITE.bill_period})))) return; var b=this; busy(b,true);
       try{ var r=await call('motor_bill_fixed'); toast(t('bill_fixed_done',{n:r.count,p:r.period}),'s'); loadCustomers(); }catch(e){ toast(errText(e),'e'); } busy(b,false); });
-    $('#wgo',main).addEventListener('click',async function(){ var b=this; busy(b,true);
-      try{ var r=await call('motor_window_all',{p_from:$('#wf',main).value||null,p_to:$('#wt',main).value||null}); var me=await call('motor_me'); STAFF=me.staff||[]; toast(t('saved')+' ('+r.count+')','s'); }catch(e){ toast(errText(e),'e'); } busy(b,false); });
   }
   paint();
 };
@@ -3338,18 +3397,20 @@ VIEWS.staff=async function(main){
     if(s.can_read&&!s.can_collect&&!s.can_cut) return '<span class="chip warn">'+esc(t('role_reader'))+'</span>';
     if(!s.can_read&&s.can_collect&&s.can_cut) return '<span class="chip wish">'+esc(t('role_collector'))+'</span>';
     return [s.can_read?t('can_read'):'',s.can_collect?t('can_collect'):'',s.can_cut?t('can_cut'):''].filter(Boolean).map(function(x){return '<span class="chip gray">'+esc(x)+'</span>'}).join(' '); };
-  main.innerHTML='<div class="toolbar"><button class="btn" id="sadd">'+esc(t('new_staff'))+'</button></div><div class="tw"><table><thead><tr><th>'+esc(t('name_user'))+'</th><th>'+esc(t('username'))+'</th><th>'+esc(t('role'))+'</th><th>'+esc(t('read_window'))+'</th><th>'+esc(t('tfa'))+'</th><th>'+esc(t('status'))+'</th><th>'+esc(t('staff_link'))+'</th><th></th></tr></thead><tbody>'+
-    (STAFF.map(function(s){ var open=s.read_from&&s.read_to&&TODAY>=s.read_from&&TODAY<=s.read_to;
-      return '<tr><td><b>'+esc(s.name)+'</b><div class="muted num">'+esc(s.phone)+'</div></td><td class="num">'+esc(s.username)+'</td><td>'+perms(s)+'</td>'+
-        '<td>'+(s.role!=='admin'&&s.can_read?(s.read_from?'<span class="chip '+(open?'on':'gray')+'">'+esc(s.read_from+' → '+s.read_to)+'</span>':'<span class="chip warn">—</span>'):'')+'</td>'+
-        '<td>'+(s.totp_enabled?'<span class="chip on">'+esc(t('tfa_on'))+'</span> <button class="btn ghost sm" data-tr="'+esc(s.id)+'">'+esc(t('tfa_reset'))+'</button>':'<span class="chip gray">'+esc(t('tfa_off'))+'</span>')+'</td>'+
+  main.innerHTML='<div class="toolbar"><button class="btn" id="sadd">'+esc(t('new_staff'))+'</button></div><div class="tw"><table><thead><tr><th>'+esc(t('name_user'))+'</th><th>'+esc(t('username'))+'</th><th>'+esc(t('role'))+'</th><th>'+esc(t('device'))+'</th><th>'+esc(t('tfa'))+'</th><th>'+esc(t('status'))+'</th><th>'+esc(t('staff_link'))+'</th><th></th></tr></thead><tbody>'+
+    (STAFF.map(function(s){ var lockedAdmin=s.role==='admin'&&!ME.is_main&&s.id!==ME.staff_id;
+      return '<tr><td><b>'+esc(s.name)+'</b>'+(s.is_main?' <span class="chip on">👑 '+esc(t('main_admin'))+'</span>':'')+'<div class="muted num">'+esc(s.phone)+'</div></td><td class="num">'+esc(s.username)+'</td><td>'+perms(s)+'</td>'+
+        '<td>'+(s.is_main?'<span class="chip gray">'+esc(t('dev_any'))+'</span>':s.device_set?'<span class="chip on" title="'+esc(s.device_label||'')+'">📱 '+esc(dt(s.device_at)||'✓')+'</span>'+(ME.is_main?' <button class="btn ghost sm" data-dr="'+esc(s.id)+'">🔓 '+esc(t('dev_reset'))+'</button>':''):'<span class="chip warn">'+esc(t('dev_none'))+'</span>')+'</td>'+
+        '<td>'+(s.totp_enabled?'<span class="chip on">'+esc(t('tfa_on'))+'</span>'+(lockedAdmin?'':' <button class="btn ghost sm" data-tr="'+esc(s.id)+'">'+esc(t('tfa_reset'))+'</button>'):'<span class="chip gray">'+esc(t('tfa_off'))+'</span>')+'</td>'+
         '<td><span class="chip '+(s.is_active?'on':'off')+'">'+esc(s.is_active?t('active'):t('staff_off'))+'</span></td>'+
         '<td><button class="btn alt sm" data-cp="'+esc(s.id)+'">'+esc(t('copy'))+'</button> '+(s.phone?'<button class="btn wa sm" data-sl="'+esc(s.id)+'">'+esc(t('send_link'))+'</button>':'')+'</td>'+
-        '<td><button class="btn ghost sm" data-ed="'+esc(s.id)+'">'+esc(t('edit'))+'</button></td></tr>'; }).join('')||'<tr><td colspan="8" class="muted">'+esc(t('no_results'))+'</td></tr>')+'</tbody></table></div>';
+        '<td>'+(lockedAdmin?'':'<button class="btn ghost sm" data-ed="'+esc(s.id)+'">'+esc(t('edit'))+'</button>')+'</td></tr>'; }).join('')||'<tr><td colspan="8" class="muted">'+esc(t('no_results'))+'</td></tr>')+'</tbody></table></div>';
   var byId=function(id){ return STAFF.filter(function(s){return s.id===id})[0]; };
   $('#sadd',main).addEventListener('click',function(){ staffForm(null); });
   main.addEventListener('click',async function(e){
-    var b=e.target.closest('[data-ed],[data-tr],[data-cp],[data-sl]'); if(!b) return;
+    var b=e.target.closest('[data-ed],[data-tr],[data-cp],[data-sl],[data-dr]'); if(!b) return;
+    if(b.dataset.dr){ var s3=byId(b.dataset.dr); if(!(await confirmBox(t('dev_reset_q',{n:s3.name})))) return;
+      try{ await call('motor_device_reset',{p_staff:s3.id}); toast(t('saved'),'s'); go('staff'); }catch(err){ toast(errText(err),'e'); } return; }
     if(b.dataset.ed) return staffForm(byId(b.dataset.ed));
     if(b.dataset.cp){ var u=staffLink(byId(b.dataset.cp)); try{ await navigator.clipboard.writeText(u); toast(t('copied'),'s'); }catch(err){ prompt(t('staff_link'),u); } return; }
     if(b.dataset.sl){ var s=byId(b.dataset.sl); openWa('961',s.phone,t('link_msg',{s:SITE.name||'',u:staffLink(s),n:s.username})); return; }
@@ -3365,12 +3426,11 @@ function staffForm(s){
     '<div><label>'+esc(t('username'))+'</label><input id="fu" autocapitalize="off" spellcheck="false" value="'+esc(s.username||'')+'"></div>'+
     '<div><label>'+esc(n?t('password'):t('reset_pass'))+'</label><input id="fp" type="text" autocomplete="new-password" placeholder="'+esc(n?'':t('pass_keep'))+'"></div>'+
     '<div class="hidden"><select id="fr"><option value="collector">collector</option><option value="admin">admin</option></select></div>'+
-    '<div style="grid-column:1/-1"><label>'+esc(t('staff_type'))+'</label><select id="ftype"><option value="admin">🛡️ '+esc(t('type_admin'))+'</option><option value="collector">'+esc(t('type_collector'))+'</option><option value="reader">'+esc(t('type_reader'))+'</option><option value="custom">'+esc(t('type_custom'))+'</option></select></div><div id="fperm" style="grid-column:1/-1" class="row"><label class="chk"><input type="checkbox" id="fread" '+(s.can_read?'checked':'')+'> 📷 '+esc(t('can_read'))+'</label><label class="chk"><input type="checkbox" id="fc" '+(s.can_collect?'checked':'')+'> 💵 '+esc(t('can_collect'))+'</label><label class="chk"><input type="checkbox" id="fcut" '+(s.can_cut?'checked':'')+'> 🔌 '+esc(t('can_cut'))+'</label></div>'+
-    '<div><label>'+esc(t('read_window'))+' — '+esc(t('from'))+'</label><input id="ff" type="date" value="'+esc(s.read_from||'')+'"></div>'+
-    '<div><label>'+esc(t('to'))+'</label><input id="ft" type="date" value="'+esc(s.read_to||'')+'"></div>'+
+    '<div style="grid-column:1/-1"><label>'+esc(t('staff_type'))+'</label><select id="ftype">'+(ME.is_main||s.role==='admin'?'<option value="admin">🛡️ '+esc(t('type_admin'))+'</option>':'')+'<option value="collector">'+esc(t('type_collector'))+'</option><option value="reader">'+esc(t('type_reader'))+'</option><option value="custom">'+esc(t('type_custom'))+'</option></select></div><div id="fperm" style="grid-column:1/-1" class="row"><label class="chk"><input type="checkbox" id="fread" '+(s.can_read?'checked':'')+'> 📷 '+esc(t('can_read'))+'</label><label class="chk"><input type="checkbox" id="fc" '+(s.can_collect?'checked':'')+'> 💵 '+esc(t('can_collect'))+'</label><label class="chk"><input type="checkbox" id="fcut" '+(s.can_cut?'checked':'')+'> 🔌 '+esc(t('can_cut'))+'</label></div>'+
+    '<div><label>'+esc(t('salary'))+' ('+esc(mainCur())+')</label><input id="fsal" inputmode="decimal" value="'+esc(s.salary?n2(s.salary):'')+'"></div>'+
     '<div><label class="chk"><input type="checkbox" id="fa" '+(s.is_active?'checked':'')+'> '+esc(t('active'))+'</label></div>'+
     '</div><div id="fmsg" class="err msg" style="margin-top:10px"></div>',
-    '<button class="btn ghost" data-x>'+esc(t('cancel'))+'</button>'+(n?'':'<button class="btn danger" data-del>'+esc(t('delete'))+'</button>')+'<button class="btn" data-s>'+esc(t('save'))+'</button>');
+    '<button class="btn ghost" data-x>'+esc(t('cancel'))+'</button>'+(n||s.is_main?'':'<button class="btn danger" data-del>'+esc(t('delete'))+'</button>')+'<button class="btn" data-s>'+esc(t('save'))+'</button>');
   $('#fr',m.body).value=s.role;
   function tog(){ $('#fperm',m.body).classList.toggle('hidden',$('#fr',m.body).value==='admin'); } $('#fr',m.body).addEventListener('change',tog); tog();
   function curType(){ var r=$('#fread',m.body).checked, c=$('#fc',m.body).checked, x=$('#fcut',m.body).checked; return (!r&&c&&x)?'collector':(r&&!c&&!x)?'reader':'custom'; }
@@ -3383,7 +3443,7 @@ function staffForm(s){
       try{ var r=await call('motor_staff_delete',{p_id:s.id}); toast(r.deactivated?t('staff_deact'):t('saved'),'s'); m.close(); go('staff'); }catch(err){ $('#fmsg',m.body).textContent=errText(err); } return; }
     var b=e.target.closest('[data-s]'); if(!b) return;
     var d={id:s.id||'',name:$('#fn',m.body).value.trim(),phone:$('#fph',m.body).value.trim(),username:$('#fu',m.body).value.trim().toLowerCase(),role:$('#fr',m.body).value,
-      is_active:$('#fa',m.body).checked,can_collect:$('#fc',m.body).checked,can_read:$('#fread',m.body).checked,can_cut:$('#fcut',m.body).checked,read_from:$('#ff',m.body).value,read_to:$('#ft',m.body).value};
+      is_active:$('#fa',m.body).checked,can_collect:$('#fc',m.body).checked,can_read:$('#fread',m.body).checked,can_cut:$('#fcut',m.body).checked,salary:n2($('#fsal',m.body).value)};
     busy(b,true);
     try{ await call('motor_staff_save',{p_data:d,p_password:$('#fp',m.body).value||null}); toast(t('saved'),'s'); m.close(); go('staff'); }
     catch(err){ $('#fmsg',m.body).textContent=errText(err); busy(b,false); }
@@ -3666,7 +3726,7 @@ async function sendBillWa(o,after){
   catch(e){ toast(t('pdf_fail')+' '+errText(e),'e'); }
   var cc=String(o.c.mobile_cc||'961').replace(/\D/g,'');
   if(num.indexOf('00')===0) num=num.slice(2); else if(!(num.indexOf(cc)===0&&num.length>9)) num=cc+num.replace(/^0+/,'');
-  var u='https://wa.me/'+num+'?text='+encodeURIComponent(text);
+  var u='https://wa.me/'+num+'?text='+encodeURIComponent(waTag(text));
   if(w) w.location.href=u; else location.href=u;
   var k=o.pay?'pay':'inv', id=o.pay?o.pay.id:(o.inv&&o.inv.id); if(id) call('motor_wa_mark',{p_kind:k,p_id:id}).then(function(){ after&&after(); }).catch(function(){});
 }
@@ -3715,7 +3775,14 @@ async function backupNow(){
   var d=new Date(), p=function(x){return String(x).padStart(2,'0')};
   downloadBlob(makeXlsx(S),'backup-'+SLUG+'-'+d.getFullYear()+p(d.getMonth()+1)+p(d.getDate())+'-'+p(d.getHours())+p(d.getMinutes())+'.xlsx');
 }
+async function flushUploads(){
+  if(INFLIGHT<=0) return;
+  var m=modal(t('uploading'),'<div class="muted">'+esc(t('uploading'))+'</div>',false);
+  for(var i=0;i<120&&INFLIGHT>0;i++) await new Promise(function(r){ setTimeout(r,250); });
+  m.close();
+}
 async function logoutClick(){
+  await flushUploads();
   if(ME&&ME.is_admin&&TOKEN){
     var m=modal(t('backup_t'),'<div class="muted">'+esc(t('backup_making'))+'</div>',false);
     try{ await backupNow(); m.onclose=null; m.close(); toast(t('backup_done'),'s'); }
@@ -3723,6 +3790,203 @@ async function logoutClick(){
   }
   doLogout(false);
 }
+
+/* =========================================================
+   سند صرف (مصاريف ومعاشات) — طباعة
+   ========================================================= */
+function voucherTicket(v){
+  var T=[]; if(SITE.logo_url) T.push({img:SITE.logo_url});
+  T.push({t:SITE.name||'',b:1,s:30,c:1},{t:t('voucher'),b:1,s:26,c:1},{hr:1},
+    {t:t('voucher_no')+': '+v.vno,b:1,s:24},{t:t('date')+': '+dt(v.at),s:22},
+    {t:(v.staff?t('v_paid_to')+': '+v.staff:t('exp_cat')+': '+v.category),s:22},
+    v.period?{t:t('month')+': '+v.period,s:22}:null,
+    {t:t('amount')+': '+money(v.amount),b:1,s:28},
+    {t:t('v_from')+': '+(v.account==='whish'?'Whish':t('cash')),s:22},
+    v.note?{t:t('note')+': '+v.note,s:20}:null,
+    {t:t('by')+': '+(v.by||''),s:20},{hr:1},{t:t('v_sign'),s:22},{t:' ',s:20});
+  return T.filter(Boolean);
+}
+function accPick(id){ return '<label>'+esc(t('pay_from'))+'</label><div class="row" id="'+id+'"><label class="chk"><input type="radio" name="'+id+'" value="cash" checked> '+esc(t('acc_cash'))+'</label><label class="chk"><input type="radio" name="'+id+'" value="whish"> '+esc(t('acc_whish'))+'</label></div>'; }
+function accVal(box,id){ var r=$('input[name='+id+']:checked',box); return r?r.value:'cash'; }
+function accChip(a){ return '<span class="chip '+(a==='whish'?'wish':'gray')+'">'+esc(a==='whish'?'Whish':t('cash'))+'</span>'; }
+
+/* ---------- المصاريف ---------- */
+var XF={from:'',to:''};
+VIEWS.expenses=async function(main){
+  if(!XF.from){ XF.from=TODAY.slice(0,8)+'01'; XF.to=TODAY; }
+  main.innerHTML='<div class="toolbar"><button class="btn" id="xadd">➕ '+esc(t('exp_new'))+'</button><label style="margin:0">'+esc(t('from'))+'</label><input type="date" id="xf" value="'+esc(XF.from)+'" style="flex:0 1 160px"><label style="margin:0">'+esc(t('to'))+'</label><input type="date" id="xt" value="'+esc(XF.to)+'" style="flex:0 1 160px"><button class="btn ghost" id="xx">'+esc(t('export_xlsx'))+'</button></div><div id="xbody"></div>';
+  var L=[];
+  async function load(){
+    var box=$('#xbody',main); box.innerHTML='<div class="muted">'+esc(t('loading'))+'</div>';
+    try{ L=await call('motor_vouchers',{p_type:'expense',p_from:XF.from||null,p_to:XF.to||null}); }catch(e){ box.innerHTML='<div class="err">'+esc(errText(e))+'</div>'; return; }
+    var by={}, tot=0, cash=0, wh=0; L.forEach(function(v){ tot+=n2(v.amount); if(v.account==='whish') wh+=n2(v.amount); else cash+=n2(v.amount); by[v.category]=(by[v.category]||0)+n2(v.amount); });
+    box.innerHTML='<div class="stats">'+stat(t('total'),money(tot))+stat(t('acc_cash'),money(cash))+stat(t('acc_whish'),money(wh))+
+      Object.keys(by).map(function(k){ return stat(k,money(by[k])); }).join('')+'</div>'+
+      '<div class="tw"><table><thead><tr><th>'+esc(t('voucher_no'))+'</th><th>'+esc(t('date'))+'</th><th>'+esc(t('exp_cat'))+'</th><th>'+esc(t('amount'))+'</th><th>'+esc(t('pay_from'))+'</th><th>'+esc(t('note'))+'</th><th>'+esc(t('by'))+'</th><th></th></tr></thead><tbody>'+
+      (L.map(function(v,i){ return '<tr><td class="num"><b>'+esc(v.vno)+'</b></td><td class="num">'+esc(dt(v.at))+'</td><td>'+esc(v.category)+'</td><td class="num"><b>'+esc(money(v.amount))+'</b></td><td>'+accChip(v.account)+'</td><td>'+esc(v.note)+'</td><td>'+esc(v.by)+'</td>'+
+        '<td><button class="btn ghost sm" data-pv="'+i+'">🖨️</button> <button class="btn ghost sm" data-dv="'+esc(v.id)+'">'+esc(t('delete'))+'</button></td></tr>'; }).join('')||'<tr><td colspan="8" class="muted">'+esc(t('no_results'))+'</td></tr>')+'</tbody></table></div>';
+  }
+  $('#xf',main).addEventListener('change',function(){ XF.from=this.value; load(); });
+  $('#xt',main).addEventListener('change',function(){ XF.to=this.value; load(); });
+  $('#xadd',main).addEventListener('click',function(){ expenseForm(load); });
+  $('#xx',main).addEventListener('click',function(){ var R=[[t('voucher_no'),t('date'),t('exp_cat'),t('amount'),t('pay_from'),t('note'),t('by')]];
+    L.forEach(function(v){ R.push([v.vno,dt(v.at),v.category,n2(v.amount),v.account==='whish'?'Whish':t('cash'),v.note,v.by]); });
+    downloadBlob(makeXlsx([{name:t('nav_expenses'),rows:R}]),'expenses-'+SLUG+'-'+XF.from+'_'+XF.to+'.xlsx'); });
+  $('#xbody',main).addEventListener('click',async function(e){
+    var pv=e.target.closest('[data-pv]'); if(pv) return printDoc(voucherTicket(L[+pv.dataset.pv]));
+    var dv=e.target.closest('[data-dv]'); if(dv){ if(!(await confirmBox(t('confirm_delete')))) return;
+      try{ await call('motor_move_delete',{p_id:dv.dataset.dv}); toast(t('saved'),'s'); load(); }catch(err){ toast(errText(err),'e'); } }
+  });
+  load();
+};
+function expenseForm(after){
+  var cats=[t('exp_fuel'),t('exp_maint'),t('exp_oil'),t('exp_other')];
+  var m=modal(t('exp_new'),'<label>'+esc(t('exp_cat'))+'</label><div class="row" id="xcats">'+cats.map(function(c,i){ return '<label class="chk"><input type="radio" name="xc" value="'+esc(c)+'"'+(i?'':' checked')+'> '+esc(c)+'</label>'; }).join('')+'</div>'+
+    '<input id="xcat" placeholder="'+esc(t('exp_other'))+'…" class="hidden" style="margin-top:6px">'+
+    '<label style="margin-top:8px">'+esc(t('amount'))+' ('+esc(mainCur())+')</label><input id="xa" inputmode="decimal" style="font-size:20px">'+
+    '<div style="margin-top:8px">'+accPick('xacc')+'</div><label style="margin-top:8px">'+esc(t('note'))+'</label><input id="xn"><div id="xmsg" class="err msg" style="margin-top:8px"></div>',
+    '<button class="btn ghost" data-x>'+esc(t('cancel'))+'</button><button class="btn" data-s>'+esc(t('save'))+' + 🖨️</button><button class="btn alt" data-s="np">'+esc(t('save'))+'</button>');
+  $$('input[name=xc]',m.body).forEach(function(r){ r.addEventListener('change',function(){ $('#xcat',m.body).classList.toggle('hidden',this.value!==t('exp_other')); }); });
+  m.foot.addEventListener('click',async function(e){ if(e.target.closest('[data-x]')) return m.close(); var b=e.target.closest('[data-s]'); if(!b) return;
+    var v=n2($('#xa',m.body).value); if(!(v>0)){ $('#xmsg',m.body).textContent=t('e_bad_amount'); return; }
+    var cat=$('input[name=xc]:checked',m.body).value; if(cat===t('exp_other')&&$('#xcat',m.body).value.trim()) cat=$('#xcat',m.body).value.trim();
+    busy(b,true);
+    try{ var r=await call('motor_expense_add',{p_account:accVal(m.body,'xacc'),p_category:cat,p_amount:v,p_note:$('#xn',m.body).value});
+      toast(t('saved')+' — '+t('voucher_no')+' '+r.move.vno,'s'); m.close();
+      if(b.dataset.s!=='np') printDoc(voucherTicket({vno:r.move.vno,at:r.move.created_at,category:cat,amount:v,account:r.move.account,note:r.move.note,by:r.move.by_name}));
+      after&&after(); }
+    catch(err){ $('#xmsg',m.body).textContent=errText(err); busy(b,false); } });
+}
+
+/* ---------- المعاشات ---------- */
+var YF={period:''};
+VIEWS.salaries=async function(main){
+  if(!YF.period) YF.period=TODAY.slice(0,7);
+  main.innerHTML='<div class="toolbar"><label style="margin:0">'+esc(t('month'))+'</label><input type="month" id="yp" value="'+esc(YF.period)+'" style="flex:0 1 180px"><span class="sp"></span><b id="ytot"></b></div><div id="ybody"></div>';
+  var L=[];
+  async function load(){
+    var box=$('#ybody',main); box.innerHTML='<div class="muted">'+esc(t('loading'))+'</div>';
+    try{ L=await call('motor_salaries',{p_period:YF.period}); }catch(e){ box.innerHTML='<div class="err">'+esc(errText(e))+'</div>'; return; }
+    var due=0, paid=0; L.forEach(function(s){ due+=n2(s.salary); paid+=n2(s.paid); });
+    box.innerHTML='<div class="stats">'+stat(t('sal_due'),money(due))+stat(t('sal_paid'),money(paid))+stat(t('sal_rem'),money(due-paid))+'</div>'+
+      '<div class="tw"><table><thead><tr><th>'+esc(t('name_user'))+'</th><th>'+esc(t('salary'))+'</th><th>'+esc(t('sal_paid'))+'</th><th>'+esc(t('sal_rem'))+'</th><th>'+esc(t('payments'))+'</th><th></th></tr></thead><tbody>'+
+      (L.map(function(s,i){ var rem=n2(s.salary)-n2(s.paid);
+        return '<tr><td><b>'+esc(s.name)+'</b></td><td class="num">'+esc(money(s.salary))+'</td><td class="num">'+esc(money(s.paid))+'</td><td class="num"><b style="color:'+(rem>0?'var(--bad)':'var(--ok)')+'">'+esc(money(rem))+'</b></td>'+
+          '<td>'+(s.payments||[]).map(function(p,j){ return '<div class="muted num" style="white-space:nowrap">#'+esc(p.vno)+' · '+esc(dt(p.at))+' · '+esc(money(p.amount))+' '+accChip(p.account)+' <a href="#" data-pp="'+i+'|'+j+'">🖨️</a></div>'; }).join('')+'</td>'+
+          '<td><button class="btn ok sm" data-pay="'+i+'">'+esc(t('sal_pay'))+'</button></td></tr>'; }).join('')||'<tr><td colspan="6" class="muted">'+esc(t('no_results'))+'</td></tr>')+'</tbody></table></div>';
+  }
+  $('#yp',main).addEventListener('change',function(){ if(/^\d{4}-\d{2}$/.test(this.value)){ YF.period=this.value; load(); } });
+  $('#ybody',main).addEventListener('click',function(e){
+    var pp=e.target.closest('[data-pp]'); if(pp){ e.preventDefault(); var q=pp.dataset.pp.split('|'), s=L[+q[0]], p=s.payments[+q[1]];
+      return printDoc(voucherTicket({vno:p.vno,at:p.at,staff:s.name,period:YF.period,amount:p.amount,account:p.account,note:p.note,by:ME.name})); }
+    var b=e.target.closest('[data-pay]'); if(!b) return; var s=L[+b.dataset.pay], rem=Math.max(0,n2(s.salary)-n2(s.paid));
+    var m=modal(t('sal_pay')+' — '+s.name,'<div class="muted">'+esc(t('month'))+': <b class="num">'+esc(YF.period)+'</b> · '+esc(t('sal_rem'))+': <b class="num">'+esc(money(rem))+'</b></div>'+
+      '<label style="margin-top:8px">'+esc(t('amount'))+' ('+esc(mainCur())+')</label><input id="ya" inputmode="decimal" style="font-size:20px" value="'+esc(rem||'')+'">'+
+      '<div style="margin-top:8px">'+accPick('yacc')+'</div><label style="margin-top:8px">'+esc(t('note'))+'</label><input id="yn"><div id="ymsg" class="err msg" style="margin-top:8px"></div>',
+      '<button class="btn ghost" data-x>'+esc(t('cancel'))+'</button><button class="btn" data-s>'+esc(t('save'))+' + 🖨️</button><button class="btn alt" data-s="np">'+esc(t('save'))+'</button>');
+    m.foot.addEventListener('click',async function(ev){ if(ev.target.closest('[data-x]')) return m.close(); var bb=ev.target.closest('[data-s]'); if(!bb) return;
+      var v=n2($('#ya',m.body).value); if(!(v>0)){ $('#ymsg',m.body).textContent=t('e_bad_amount'); return; }
+      busy(bb,true);
+      try{ var r=await call('motor_salary_pay',{p_staff:s.id,p_amount:v,p_account:accVal(m.body,'yacc'),p_period:YF.period,p_note:$('#yn',m.body).value});
+        toast(t('saved')+' — '+t('voucher_no')+' '+r.move.vno,'s'); m.close();
+        if(bb.dataset.s!=='np') printDoc(voucherTicket({vno:r.move.vno,at:r.move.created_at,staff:s.name,period:YF.period,amount:v,account:r.move.account,note:r.move.note,by:r.move.by_name}));
+        load(); }
+      catch(err){ $('#ymsg',m.body).textContent=errText(err); busy(bb,false); } });
+  });
+  load();
+};
+
+/* ---------- المخزون ---------- */
+VIEWS.stock=async function(main){
+  var L=await call('motor_stock_list'), q='';
+  main.innerHTML='<div class="toolbar"><button class="btn" id="kadd">➕ '+esc(t('stock_new'))+'</button><input type="search" id="kq" placeholder="'+esc(t('search_ph'))+'"><button class="btn ghost" id="kx">'+esc(t('export_xlsx'))+'</button><span class="sp"></span></div><div id="kst"></div>'+
+    '<div class="tw"><table><thead><tr><th>'+esc(t('name'))+'</th><th>'+esc(t('stock_cat'))+'</th><th>'+esc(t('qty'))+'</th><th>'+esc(t('unit_price'))+'</th><th>'+esc(t('value'))+'</th><th>'+esc(t('note'))+'</th><th>'+esc(t('date'))+'</th><th></th></tr></thead><tbody id="ktb"></tbody></table></div>';
+  function rows(){ var k=normS(q); return L.filter(function(x){ return !k||normS(x.name).indexOf(k)>=0||normS(x.category).indexOf(k)>=0; }); }
+  function paint(){ var R=rows(), tv=0, tq=0; R.forEach(function(x){ tv+=n2(x.qty)*n2(x.unit_price); tq+=n2(x.qty); });
+    $('#kst',main).innerHTML='<div class="stats">'+stat(t('stock_items'),fmtN(R.length))+stat(t('qty'),fmtN(tq))+stat(t('total_value'),money(tv))+'</div>';
+    $('#ktb',main).innerHTML=R.map(function(x){ return '<tr><td><b>'+esc(x.name)+'</b></td><td>'+esc(x.category)+'</td><td class="num"><b>'+esc(fmtN(x.qty))+'</b></td><td class="num">'+esc(money(x.unit_price))+'</td><td class="num">'+esc(money(n2(x.qty)*n2(x.unit_price)))+'</td><td>'+esc(x.notes)+'</td><td class="num muted">'+esc(dt(x.updated_at))+(x.updated_by?' · '+esc(x.updated_by):'')+'</td><td><button class="btn ghost sm" data-ke="'+esc(x.id)+'">'+esc(t('edit'))+'</button></td></tr>'; }).join('')||'<tr><td colspan="8" class="muted">'+esc(t('no_results'))+'</td></tr>'; }
+  $('#kq',main).addEventListener('input',function(){ q=this.value; paint(); });
+  $('#kadd',main).addEventListener('click',function(){ stockForm(null); });
+  $('#ktb',main).addEventListener('click',function(e){ var b=e.target.closest('[data-ke]'); if(b) stockForm(L.filter(function(x){return x.id===b.dataset.ke})[0]); });
+  $('#kx',main).addEventListener('click',function(){ var R=[[t('name'),t('stock_cat'),t('qty'),t('unit_price'),t('value'),t('note')]];
+    rows().forEach(function(x){ R.push([x.name,x.category,n2(x.qty),n2(x.unit_price),n2(x.qty)*n2(x.unit_price),x.notes]); });
+    downloadBlob(makeXlsx([{name:t('nav_stock'),rows:R}]),'stock-'+SLUG+'.xlsx'); });
+  function stockForm(x){ var n=!x; x=x||{};
+    var cats=Array.from(new Set(L.map(function(y){return y.category}).filter(Boolean)));
+    var m=modal(n?t('stock_new'):x.name,'<div class="g2"><div style="grid-column:1/-1"><label>'+esc(t('name'))+'</label><input id="sn" value="'+esc(x.name||'')+'" placeholder="'+esc(t('stock_ph'))+'"></div>'+
+      '<div><label>'+esc(t('stock_cat'))+'</label><input id="sc" list="scl" value="'+esc(x.category||'')+'"><datalist id="scl">'+cats.map(function(c){return '<option value="'+esc(c)+'">'}).join('')+'</datalist></div>'+
+      '<div><label>'+esc(t('qty'))+'</label><input id="sq" inputmode="decimal" value="'+esc(x.qty!=null?n2(x.qty):'')+'"></div>'+
+      '<div><label>'+esc(t('unit_price'))+' ('+esc(mainCur())+')</label><input id="sp" inputmode="decimal" value="'+esc(x.unit_price!=null?n2(x.unit_price):'')+'"></div>'+
+      '<div><label>'+esc(t('value'))+'</label><b id="sv" class="num" style="font-size:18px"></b></div>'+
+      '<div style="grid-column:1/-1"><label>'+esc(t('note'))+'</label><input id="so" value="'+esc(x.notes||'')+'"></div></div><div id="smsg" class="err msg" style="margin-top:8px"></div>',
+      '<button class="btn ghost" data-x>'+esc(t('cancel'))+'</button>'+(n?'':'<button class="btn danger" data-del>'+esc(t('delete'))+'</button>')+'<button class="btn" data-s>'+esc(t('save'))+'</button>');
+    function val(){ $('#sv',m.body).textContent=money(n2($('#sq',m.body).value)*n2($('#sp',m.body).value)); }
+    $('#sq',m.body).addEventListener('input',val); $('#sp',m.body).addEventListener('input',val); val();
+    m.foot.addEventListener('click',async function(e){ if(e.target.closest('[data-x]')) return m.close();
+      if(e.target.closest('[data-del]')){ if(!(await confirmBox(t('confirm_delete')))) return;
+        try{ await call('motor_stock_delete',{p_id:x.id}); toast(t('saved'),'s'); m.close(); go('stock'); }catch(err){ $('#smsg',m.body).textContent=errText(err); } return; }
+      var b=e.target.closest('[data-s]'); if(!b) return; busy(b,true);
+      try{ await call('motor_stock_save',{p_data:{id:x.id||'',name:$('#sn',m.body).value.trim(),category:$('#sc',m.body).value.trim(),qty:n2($('#sq',m.body).value),unit_price:n2($('#sp',m.body).value),notes:$('#so',m.body).value}});
+        toast(t('saved'),'s'); m.close(); go('stock'); }
+      catch(err){ $('#smsg',m.body).textContent=errText(err); busy(b,false); } });
+  }
+  paint();
+};
+
+/* ---------- اليومية ---------- */
+var JF={mode:'day',from:'',to:''};
+function jRange(mode){ var d=new Date(TODAY+'T12:00:00'), p=function(x){return String(x).padStart(2,'0')}, f=function(x){ return x.getFullYear()+'-'+p(x.getMonth()+1)+'-'+p(x.getDate()); };
+  if(mode==='day') return [TODAY,TODAY];
+  if(mode==='week'){ var s=new Date(d); s.setDate(d.getDate()-6); return [f(s),TODAY]; }
+  if(mode==='month') return [TODAY.slice(0,8)+'01',TODAY];
+  return [JF.from||TODAY,JF.to||TODAY]; }
+function jKind(r){ return r.t==='pay'?t('k_pay'):r.t==='expense'?t('k_expense'):r.t==='salary'?t('k_salary'):t('k_'+(r.kind||r.t)); }
+VIEWS.journal=async function(main){
+  if(!JF.from){ JF.from=TODAY; JF.to=TODAY; }
+  main.innerHTML='<div class="toolbar">'+['day','week','month','custom'].map(function(k){ return '<button class="btn '+(JF.mode===k?'':'ghost')+' sm" data-jm="'+k+'">'+esc(t(k==='day'?'j_today':'j_'+k))+'</button>'; }).join('')+
+    '<span id="jcus" class="row'+(JF.mode==='custom'?'':' hidden')+'" style="gap:6px"><input type="date" id="jf" value="'+esc(JF.from)+'" style="width:auto"><input type="date" id="jt" value="'+esc(JF.to)+'" style="width:auto"></span>'+
+    '<span class="sp"></span><button class="btn ghost" id="jx">'+esc(t('export_xlsx'))+'</button><button class="btn ghost" id="jp">🖨️ '+esc(t('print'))+'</button></div><div id="jbody"></div>';
+  var D0=null;
+  async function load(){
+    var rg=jRange(JF.mode), box=$('#jbody',main); box.innerHTML='<div class="muted">'+esc(t('loading'))+'</div>';
+    try{ D0=await call('motor_journal',{p_from:rg[0],p_to:rg[1]}); }catch(e){ box.innerHTML='<div class="err">'+esc(errText(e))+'</div>'; return; }
+    var d=D0, closed={}; d.closes.forEach(function(c){ closed[c.day]=c; });
+    var byDay={}; d.rows.forEach(function(r){ var k=dt(r.at).slice(0,10); var day=new Date(r.at); var p=function(x){return String(x).padStart(2,'0')};
+      k=day.toLocaleDateString('en-CA',{timeZone:'Asia/Beirut'}); (byDay[k]=byDay[k]||[]).push(r); });
+    var sum={cash_in:0,whish_in:0,expenses:0,salaries:0,n:0};
+    d.days.forEach(function(x){ var tt=x.totals; sum.cash_in+=n2(tt.cash_in); sum.whish_in+=n2(tt.whish_in); sum.expenses+=n2(tt.expenses); sum.salaries+=n2(tt.salaries); sum.n+=n2(tt.receipts_n); });
+    var html='<div class="stats">'+stat(t('j_open')+' 💰',money(d.cash_open))+stat(t('j_receipts')+' 💵',money(sum.cash_in))+stat(t('j_receipts')+' 🟣',money(sum.whish_in))+
+      stat(t('j_expenses'),money(sum.expenses))+stat(t('j_salaries'),money(sum.salaries))+stat(t('j_close')+' 💰',money(d.cash_close))+stat(t('j_close')+' 🟣',money(d.whish_close))+'</div>';
+    d.days.slice().reverse().forEach(function(x){
+      var day=x.day, tt=(closed[day]&&closed[day].totals)||x.totals, rows=(byDay[day]||[]), c=closed[day];
+      if(!rows.length&&!c&&day!==d.today&&d.days.length>1) return;
+      html+='<div class="card" style="margin-top:12px"><div class="row"><b style="font-size:17px" class="num">📅 '+esc(day)+'</b>'+(c?'<span class="chip on">'+esc(t('day_closed_chip'))+'</span><span class="muted">'+esc(c.by)+' · '+esc(dt(c.at))+'</span>':'<span class="chip gray">'+esc(t('day_open_chip'))+'</span>')+
+        '<span class="sp"></span>'+(c?(ME.is_main?'<button class="btn ghost sm" data-ro="'+esc(day)+'">'+esc(t('day_reopen'))+'</button>':''):'<button class="btn sm" data-dc="'+esc(day)+'">🔒 '+esc(t('day_close'))+'</button>')+'</div>'+
+        '<div class="tw" style="margin-top:8px"><table><thead><tr><th>'+esc(t('time'))+'</th><th>'+esc(t('type'))+'</th><th>#</th><th>'+esc(t('name'))+'</th><th>'+esc(t('pay_from'))+'</th><th>'+esc(t('j_in'))+'</th><th>'+esc(t('j_out'))+'</th><th>'+esc(t('by'))+'</th></tr></thead><tbody>'+
+        (rows.map(function(r){ return '<tr><td class="num">'+esc(dt(r.at).slice(-5))+'</td><td>'+esc(jKind(r))+'</td><td class="num">'+esc(r.no==null?'':r.no)+'</td><td>'+esc(r.label||'')+(r.note?' <span class="muted">'+esc(r.note)+'</span>':'')+'</td><td>'+(r.account==='collector'?'<span class="chip gray">'+esc(t('collector'))+'</span>':accChip(r.account))+'</td>'+
+          '<td class="num" style="color:var(--ok)">'+(n2(r['in'])?esc(money(r['in'])):'')+'</td><td class="num" style="color:var(--bad)">'+(n2(r.out)?esc(money(r.out)):'')+'</td><td>'+esc(r.staff||'')+'</td></tr>'; }).join('')||'<tr><td colspan="8" class="muted">'+esc(t('no_results'))+'</td></tr>')+'</tbody></table></div>'+
+        '<div class="stats" style="margin-top:8px">'+stat(t('j_receipts')+' 💵',money(tt.cash_in))+stat(t('j_receipts')+' 🟣',money(tt.whish_in))+stat(t('j_n'),fmtN(tt.receipts_n))+stat(t('j_expenses'),money(tt.expenses))+stat(t('j_salaries'),money(tt.salaries))+
+          stat(t('j_cash_end'),money(tt.cash_box_end))+stat(t('j_whish_end'),money(tt.whish_end))+stat(t('j_hand'),money(tt.collectors_hand))+'</div></div>';
+    });
+    box.innerHTML=html;
+  }
+  main.addEventListener('click',async function(e){
+    var jm=e.target.closest('[data-jm]'); if(jm){ JF.mode=jm.dataset.jm; go('journal'); return; }
+    var dc=e.target.closest('[data-dc]'); if(dc){ if(!(await confirmBox(t('day_close_q',{d:dc.dataset.dc})))) return;
+      try{ await call('motor_day_close',{p_day:dc.dataset.dc}); toast(t('saved'),'s'); load(); }catch(err){ toast(errText(err),'e'); } return; }
+    var ro=e.target.closest('[data-ro]'); if(ro){ if(!(await confirmBox(t('day_reopen_q',{d:ro.dataset.ro})))) return;
+      try{ await call('motor_day_reopen',{p_day:ro.dataset.ro}); toast(t('saved'),'s'); load(); }catch(err){ toast(errText(err),'e'); } }
+  });
+  if($('#jf',main)){ $('#jf',main).addEventListener('change',function(){ JF.from=this.value; load(); }); $('#jt',main).addEventListener('change',function(){ JF.to=this.value; load(); }); }
+  $('#jx',main).addEventListener('click',function(){ if(!D0) return;
+    var R=[[t('date'),t('type'),'#',t('name'),t('pay_from'),t('j_in'),t('j_out'),t('by'),t('note')]];
+    D0.rows.forEach(function(r){ R.push([dt(r.at),jKind(r),r.no==null?'':r.no,r.label||'',r.account,n2(r['in']),n2(r.out),r.staff||'',r.note||'']); });
+    var S=[[t('date'),t('j_receipts')+' cash',t('j_receipts')+' Whish',t('j_n'),t('j_expenses'),t('j_salaries'),t('j_cash_end'),t('j_whish_end'),t('j_hand')]];
+    D0.days.forEach(function(x){ var tt=x.totals; S.push([x.day,n2(tt.cash_in),n2(tt.whish_in),n2(tt.receipts_n),n2(tt.expenses),n2(tt.salaries),n2(tt.cash_box_end),n2(tt.whish_end),n2(tt.collectors_hand)]); });
+    downloadBlob(makeXlsx([{name:t('j_day_total'),rows:S},{name:t('nav_journal'),rows:R}]),'journal-'+SLUG+'-'+D0.from+'_'+D0.to+'.xlsx'); });
+  $('#jp',main).addEventListener('click',function(){ window.print(); });
+  load();
+};
 
 /* كل جدول: تلميح السحب على الهاتف + تثبيت عمود الاسم عند التمرير يميناً/يساراً */
 (function(){ var pend=false;
