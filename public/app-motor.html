@@ -70,6 +70,34 @@ th{background:var(--soft);font-size:12.5px;color:var(--ink2);font-weight:700;pos
 tr.void td{opacity:.45;text-decoration:line-through}
 tbody tr:hover{background:#fafcfe}
 td.wrap{white-space:normal;min-width:180px}
+/* على الكمبيوتر: العناوين والنصوص بتنزل لسطر تاني (بين الكلمات فقط)، والأرقام والكبسات بتضل على سطر */
+@media (min-width:900px){
+  th{white-space:normal;line-height:1.25;vertical-align:bottom}
+  td{white-space:normal;overflow-wrap:normal;word-break:normal}
+  td.num,td .num,td .chip,td .btn,td b.num{white-space:nowrap}
+  td:has(> .btn){white-space:nowrap}
+}
+/* على التلفون: كل سطر كرت */
+@media (max-width:899px){
+  .tw{border:0;background:transparent;overflow:visible;max-height:none}
+  table.cards,table.cards tbody{display:block;width:100%}
+  table.cards thead{display:none}
+  table.cards tr{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:4px 12px;background:#fff;border:1px solid var(--line);border-radius:12px;margin:0 0 8px;padding:8px 10px;box-shadow:0 1px 3px rgba(0,0,0,.04)}
+  table.cards tr.cr-full{display:block;padding:0;border:0;background:transparent;box-shadow:none}
+  table.cards td{display:block;border:0;padding:2px 0;white-space:normal;text-align:start;min-width:0;overflow-wrap:break-word}
+  table.cards td::before{content:attr(data-l);display:block;font-weight:600;color:var(--mut,#64748b);font-size:11px;line-height:1.3;margin-bottom:1px}
+  table.cards td[data-l=""]{grid-column:1/-1}
+  table.cards td[data-l=""]::before{display:none}
+  table.cards td.cr-empty{display:none}
+  table.cards tr.cr-full td{grid-column:auto}
+  table.cards tr.cr-full td::before{display:none}
+  table.cards td .btn{margin:2px 0}
+  table.cards td,table.cards td *{white-space:normal!important;max-width:100%}
+  table.cards td .btn{white-space:nowrap!important}
+  table.cards td.num{text-align:start}
+  table.stick td:nth-child(2){position:static;box-shadow:none}
+  .tw::before{display:none}
+}
 /* الهيكل */
 #gate{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
 .gbox{background:#fff;border-radius:18px;box-shadow:var(--sh);padding:26px 22px;max-width:400px;width:100%;text-align:center}
@@ -4876,10 +4904,32 @@ VIEWS.journal=async function(main){
 };
 
 /* كل جدول: تلميح السحب على الهاتف + تثبيت عمود الاسم عند التمرير يميناً/يساراً */
-(function(){ var pend=false;
-  function fix(){ pend=false; $$('.tw').forEach(function(el){ if(el.dataset.swipe) return; el.dataset.swipe=t('swipe');
-    var tb=el.querySelector('table'); if(tb&&tb.rows[0]&&tb.rows[0].cells.length>5) tb.classList.add('stick'); }); }
-  new MutationObserver(function(){ if(!pend){ pend=true; requestAnimationFrame(fix); } }).observe(document.body,{childList:true,subtree:true});
+/* كل الجداول على قد الشاشة بلا سحب يمين وشمال:
+   - الكمبيوتر: الكتابة بتنزل سطرين بدل ما تمد، وإذا بعد أعرض بيتصغّر الجدول لحالو
+   - التلفون: كل سطر بيصير كرت (اسم العامود : القيمة) */
+(function(){ var pend=false, lastW=0;
+  function cardify(tb){
+    var hr=tb.tHead&&tb.tHead.rows[0]; if(!hr) return false;
+    var hs=Array.prototype.map.call(hr.cells,function(c){ return c.textContent.trim(); });
+    Array.prototype.forEach.call(tb.tBodies,function(b){ Array.prototype.forEach.call(b.rows,function(r){
+      if(r.cells.length<2){ r.classList.add('cr-full'); return; }
+      Array.prototype.forEach.call(r.cells,function(c,i){ if(!c.hasAttribute('data-l')) c.setAttribute('data-l',hs[i]||''); if(!c.textContent.trim()&&!c.querySelector('img,button,input,select,a')) c.classList.add('cr-empty'); else c.classList.remove('cr-empty'); }); }); });
+    tb.classList.add('cards'); return true;
+  }
+  function fit(el){
+    var tb=el.querySelector(':scope > table'); if(!tb) return;
+    if(el.closest('#printArea')) return;
+    if(window.innerWidth<900){ tb.style.zoom=''; if(cardify(tb)){ el.removeAttribute('data-swipe'); return; } }
+    tb.classList.remove('cards'); tb.style.zoom='';
+    var have=el.clientWidth, need=tb.scrollWidth;
+    if(need>have+1) tb.style.zoom=String(Math.max(0.6,(have-2)/need).toFixed(3));
+    if(tb.scrollWidth*(+tb.style.zoom||1)>have+4){ el.dataset.swipe=t('swipe'); if(tb.rows[0]&&tb.rows[0].cells.length>5) tb.classList.add('stick'); }
+    else { el.removeAttribute('data-swipe'); tb.classList.remove('stick'); }
+  }
+  function fix(){ pend=false; $$('.tw').forEach(fit); }
+  function sched(){ if(!pend){ pend=true; requestAnimationFrame(fix); } }
+  new MutationObserver(sched).observe(document.body,{childList:true,subtree:true});
+  window.addEventListener('resize',function(){ if(Math.abs(window.innerWidth-lastW)>20){ lastW=window.innerWidth; $$('.tw table').forEach(function(tb){ tb.style.zoom=''; }); sched(); } });
 })();
 /* قراءة جدول PDF (برنامج الفوترة القديم): لكل صف → مفتاح الاسم + القراءة الأخيرة + السابق + الجوال + العلبة */
 function nameKey(s){
