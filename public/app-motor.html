@@ -2122,6 +2122,12 @@ var CFG=window.LIBANAPPS, sb=null;
 try{ sb=window.supabase.createClient(CFG.SUPABASE_URL,CFG.SUPABASE_ANON_KEY); }catch(e){}
 var $=function(s,r){return (r||document).querySelector(s)}, $$=function(s,r){return Array.prototype.slice.call((r||document).querySelectorAll(s))};
 Object.assign(D,{
+ print_retry:['اضغط «طباعة» مرة ثانية','Press “Print” again','Réessayez « Imprimer »'], print_again:['إعادة الطباعة','Print again','Réimprimer'],
+ ble_timeout:['الطابعة لا ترد — تأكد إنها شغّالة وقريبة','Printer not responding — check it is on and nearby','L’imprimante ne répond pas'],
+ pay_void:['إلغاء الإيصال','Cancel receipt','Annuler le reçu'],
+ pay_void_q:['إلغاء الإيصال #{n} بقيمة {v}؟ يرجع رصيد الزبون كما كان.','Cancel receipt #{n} ({v})? The customer balance goes back as it was.','Annuler le reçu n°{n} ({v}) ? Le solde revient comme avant.'],
+ pay_voided:['✓ أُلغي الإيصال ورجع الرصيد','✓ Receipt cancelled, balance restored','✓ Reçu annulé, solde rétabli'],
+ e_handed_over:['لا يمكن إلغاء هذا الإيصال لأن مبلغه سُلِّم للمكتب (إقفال صندوق) — اطلب من المدير','This receipt was already handed to the office — ask the admin','Déjà remis au bureau — demandez à l’admin'],
  wa_t:['ربط واتساب ويب (إرسال تلقائي)','WhatsApp Web link (auto send)','Lien WhatsApp Web (envoi auto)'],
  wa_linked:['واتساب مربوط','WhatsApp linked','WhatsApp lié'], wa_scan:['امسح رمز QR بتلفونك','Scan the QR with your phone','Scannez le QR'],
  wa_off:['غير مربوط — الرسائل تُفتح في واتساب يدوياً','Not linked — messages open in WhatsApp manually','Non lié — ouverture manuelle'],
@@ -3003,7 +3009,10 @@ async function openCustomer(id,barcode,mode){
       '<button class="btn alt" id="bpr">'+esc(t('print'))+'</button><button class="btn ghost" id="bpdf">'+esc(t('pdf_btn'))+'</button></div></div>';
     $('#bpdf',box).addEventListener('click',function(){ downloadBillPdf(o); });
     var w=$('#bwa',box); if(w) w.addEventListener('click',function(){ sendBillWa(o); });
-    $('#bpr',box).addEventListener('click',function(){ printDoc(billTicket(o)); });
+    $('#bpr',box).addEventListener('click',async function(){ var b=this; b.disabled=true; b.textContent='⏳ '+t('printing'); var ok=await printDoc(billTicket(o)); b.disabled=false; b.textContent=ok===false?'🔁 '+t('print_again'):t('print'); });
+    if(o.pay&&(isAdmin()||can('collect'))){ $('#bpdf',box).insertAdjacentHTML('afterend','<button class="btn danger" id="bvoid">🗑️ '+esc(t('pay_void'))+'</button>');
+      $('#bvoid',box).addEventListener('click',async function(){ if(!(await confirmBox(t('pay_void_q',{n:o.pay.no,v:money(o.pay.amount)})))) return;
+        try{ await call('motor_payment_void',{p_id:o.pay.id}); toast(t('pay_voided'),'s'); await reload(); paint(); }catch(e){ toast(errText(e),'e'); } }); }
   }
   /* ----- القبض ----- */
   function payForm(){
@@ -3211,7 +3220,11 @@ function billTicket(o){
 function printMode(){ var d=/android/i.test(navigator.userAgent)?'rawbt':'browser'; return lsGet('motor_print',d); }
 var PAPER_OVR=null;
 function paperW(){ if(PAPER_OVR) return PAPER_OVR==='80'?576:384; return lsGet('motor_paper','58')==='80'?576:384; }
-function loadImg(src){ return new Promise(function(res){ var im=new Image(); im.onload=function(){ res(im); }; im.onerror=function(){ res(null); }; im.src=src; }); }
+var IMG_CACHE={};
+function loadImg(src){ if(IMG_CACHE[src]) return Promise.resolve(IMG_CACHE[src]);
+  return new Promise(function(res){ var done=false, im=new Image(); var fin=function(v){ if(done) return; done=true; if(v) IMG_CACHE[src]=v; res(v); };
+    im.onload=function(){ fin(im); }; im.onerror=function(){ fin(null); }; setTimeout(function(){ fin(null); },4000); im.src=src; }); }
+function withTimeout(p,ms,code){ return new Promise(function(res,rej){ var tm=setTimeout(function(){ rej(new Error(code||'timeout')); },ms); p.then(function(v){ clearTimeout(tm); res(v); },function(e){ clearTimeout(tm); rej(e); }); }); }
 async function renderTicket(T){
   var W=paperW(), pad=10, rtl=LANG==='ar';
   var cv=document.createElement('canvas'), ctx=cv.getContext('2d');
@@ -3265,8 +3278,8 @@ async function bleConnect(slot){
   if(!P.dev){ var id=lsGet(P.k+'_id','');
     if(id&&navigator.bluetooth.getDevices){ var ds=await navigator.bluetooth.getDevices(); P.dev=ds.filter(function(x){return x.id===id})[0]||null; }
     if(!P.dev) throw new Error(t('ble_none')); }
-  var srv=await P.dev.gatt.connect();
-  var svcs=[]; try{ svcs=await srv.getPrimaryServices(); }catch(e){}
+  var srv=await withTimeout(P.dev.gatt.connect(),10000,'ble_timeout');
+  var svcs=[]; try{ svcs=await withTimeout(srv.getPrimaryServices(),8000); }catch(e){}
   for(var i=0;i<svcs.length;i++){ try{ var chs=await svcs[i].getCharacteristics();
       for(var j=0;j<chs.length;j++){ var p=chs[j].properties; if(p.writeWithoutResponse||p.write){ P.ch=chs[j]; return P.ch; } } }catch(e){} }
   throw new Error('No writable characteristic');
@@ -3285,27 +3298,36 @@ function rawbtSend(bytes){
   a.href=/android/i.test(navigator.userAgent)?'intent:base64,'+b64+'#Intent;scheme=rawbt;package=ru.a402d.rawbtprinter;end;':'rawbt:base64,'+b64;
   document.body.appendChild(a); a.click(); a.remove();
 }
+var PRINT_BUSY=0;
 async function printDoc(T,paper){
-  try{ if(document.fonts&&document.fonts.ready) await document.fonts.ready; }catch(e){}
+  // ما منخلّي الطباعة تعلق: كل خطوة إلها مهلة، ومنقدر نعيد الطباعة فوراً
+  if(PRINT_BUSY&&Date.now()-PRINT_BUSY<35000){ toast(t('printing'),''); return false; }
+  PRINT_BUSY=Date.now();
+  try{ return await printDoc0(T,paper); } finally { PRINT_BUSY=0; }
+}
+async function printDoc0(T,paper){
+  try{ if(document.fonts&&document.fonts.ready) await withTimeout(document.fonts.ready,1500); }catch(e){}
   PAPER_OVR=paper||null;
-  var cv; try{ cv=await renderTicket(T); }catch(e){ PAPER_OVR=null; toast(t('print_fail',{e:e&&e.message||''}),'e'); return; }
+  var cv; try{ cv=await withTimeout(renderTicket(T),10000); }catch(e){ PAPER_OVR=null; toast(t('print_fail',{e:e&&e.message||''})+' — '+t('print_retry'),'e'); return false; }
   var wmm=paperW()===576?'80mm':'58mm'; PAPER_OVR=null;
   var mode=printMode();
   if(mode==='ble'){
-    try{ toast(t('printing')); await bleWrite(canvasToEscPos(cv)); toast('🖨️ ✓','s'); }
-    catch(e){ toast(t('print_fail',{e:e&&e.message||''}),'e'); }
-    return;
+    try{ toast(t('printing')); await withTimeout(bleWrite(canvasToEscPos(cv)),30000,'ble_timeout'); toast('🖨️ ✓','s'); return true; }
+    catch(e){ bleReset('r'); toast(t('print_fail',{e:e&&e.message==='ble_timeout'?t('ble_timeout'):(e&&e.message||'')})+' — '+t('print_retry'),'e'); return false; }
   }
   if(mode==='rawbt'){
-    try{ rawbtSend(canvasToEscPos(cv)); return; }catch(e){ toast(t('print_fail',{e:e&&e.message||''}),'e'); return; }
+    try{ rawbtSend(canvasToEscPos(cv)); return true; }catch(e){ toast(t('print_fail',{e:e&&e.message||''})+' — '+t('print_retry'),'e'); return false; }
   }
   printHtml('<style>@page{margin:0}</style><img src="'+cv.toDataURL('image/png')+'" style="width:'+wmm+'">');
+  return true;
 }
+function bleReset(slot){ var P=BLEP[slot||'r']; try{ if(P.dev&&P.dev.gatt&&P.dev.gatt.connected) P.dev.gatt.disconnect(); }catch(e){} P.ch=null; }
 function printHtml(html){
   var pa=$('#printArea'); pa.innerHTML=html; pa.classList.remove('hidden');
   var imgs=$$('img',pa), left=imgs.length;
-  function go(){ setTimeout(function(){ window.print(); setTimeout(function(){ pa.classList.add('hidden'); pa.innerHTML=''; },500); },80); }
-  if(!left) go(); else imgs.forEach(function(im){ if(im.complete){ if(--left===0) go(); } else im.onload=im.onerror=function(){ if(--left===0) go(); }; });
+  var fired=false;
+  function go(){ if(fired) return; fired=true; setTimeout(function(){ try{ window.print(); }catch(e){} setTimeout(function(){ pa.classList.add('hidden'); pa.innerHTML=''; },500); },80); }
+  if(!left) go(); else { imgs.forEach(function(im){ if(im.complete){ if(--left===0) go(); } else im.onload=im.onerror=function(){ if(--left===0) go(); }; }); setTimeout(go,4000); }
 }
 
 /* ---------- ملصقات الباركود (Code 128) ---------- */
@@ -3409,8 +3431,8 @@ async function printLabels(list){
   if(cfg.mode==='ble'||cfg.mode==='rawbt'){
     try{ var bytes=cfg.lang==='escpos'?labelsEscPos(list,cfg):labelsTspl(list,cfg);
       if(cfg.mode==='rawbt') return rawbtSend(bytes);
-      toast(t('printing')); await bleWrite(bytes,'l'); toast('🏷️ ✓ '+list.length,'s'); }
-    catch(e){ toast(t('print_fail',{e:e&&e.message||''}),'e'); }
+      toast(t('printing')); await withTimeout(bleWrite(bytes,'l'),60000,'ble_timeout'); toast('🏷️ ✓ '+list.length,'s'); }
+    catch(e){ bleReset('l'); toast(t('print_fail',{e:e&&e.message||''})+' — '+t('print_retry'),'e'); }
     return;
   }
   return printLabelsHtml(list,cfg);
@@ -3514,6 +3536,7 @@ async function openStatement(cid){
           '<div class="sc-r">'+(r.staff?'<span class="muted" style="font-size:12px">'+esc(r.staff)+'</span>':'<span></span>')+'<span style="white-space:nowrap">'+
             (r.photo?'<img class="thumb" src="'+esc(r.photo)+'?w=160" data-big="'+esc(r.photo)+'" loading="lazy" alt="" style="height:30px"> ':'')+
             (!r.voided&&(isPay||r.kind==='meter'||r.kind==='fixed')?'<button class="btn ghost sm" data-prow="'+esc(r.id)+'">🖨️</button> ':'')+
+            (!adm&&isPay&&!r.voided&&r.staff===ME.name&&can('collect')?'<button class="btn ghost sm" data-void="pay|'+esc(r.id)+'">🗑️ '+esc(t('pay_void'))+'</button> ':'')+
             (adm&&!r.voided?'<button class="btn ghost sm" data-edamt="'+esc(r.t)+'|'+esc(r.id)+'|'+esc(isPay?r.paid_amount:r.debit)+'">✏️</button> '+(r.kind!=='opening'?'<button class="btn ghost sm" data-void="'+esc(r.t)+'|'+esc(r.id)+'">'+esc(t('void'))+'</button>':''):'')+
             (r.voided?'<span class="chip off">'+esc(t('voided'))+'</span>':'')+'</span></div></div>');
       });
@@ -3530,6 +3553,7 @@ async function openStatement(cid){
         '<td class="num">'+(n2(r.debit)?esc(money(r.debit)):'')+'</td><td class="num">'+(n2(r.credit)?esc(money(r.credit)):'')+'</td><td>'+balHtml(run)+'</td>'+
         '<td>'+(r.photo?'<img class="thumb" src="'+esc(r.photo)+'?w=160" data-big="'+esc(r.photo)+'" loading="lazy" alt="">':'')+'</td><td>'+esc(r.staff||'')+'</td>'+
         '<td>'+(!r.voided&&(r.t==='pay'||r.kind==='meter'||r.kind==='fixed')?'<button class="btn ghost sm" data-prow="'+esc(r.id)+'" title="'+esc(t('print'))+'">🖨️</button>':'')+'</td>'+
+        (!adm&&r.t==='pay'&&!r.voided&&r.staff===ME.name&&can('collect')?'<td><button class="btn ghost sm" data-void="pay|'+esc(r.id)+'">🗑️</button></td>':'')+
         (adm?'<td>'+(!r.voided?'<button class="btn ghost sm" data-edamt="'+esc(r.t)+'|'+esc(r.id)+'|'+esc(r.t==='pay'?r.paid_amount:r.debit)+'">✏️</button> ':'')+(!r.voided&&r.kind!=='opening'?'<button class="btn ghost sm" data-void="'+esc(r.t)+'|'+esc(r.id)+'">'+esc(t('void'))+'</button>':(r.voided?'<span class="chip off">'+esc(t('voided'))+'</span>':''))+'</td>':'')+'</tr>';
     });
     m.body.innerHTML='<div class="row" style="margin-bottom:8px"><b>#'+esc(c.code)+' '+esc(c.name)+'</b><span class="muted">'+esc(c.barcode||'')+(c.plan_name?' · '+esc(c.plan_name):'')+'</span><span class="sp"></span>'+esc(t('balance'))+': '+balHtml(c.balance)+'</div>'+
@@ -3564,11 +3588,11 @@ async function openStatement(cid){
 /* طباعة أي فاتورة أو إيصال قديم من كشف الحساب */
 function stmtInv(r){ return {no:r.no,created_at:r.at,period:r.period,kind:r.kind,fee:r.fee,prev_value:r.prev_value,cur_value:r.cur_value,kwh:r.kwh,kwh_price:r.kwh_price,
   energy:r.energy,discount:r.discount,addition:r.addition,amount:r.debit,balance_before:r.balance_before,balance_after:r.balance_after,note:r.note}; }
-function printStmtRow(d,id){
+async function printStmtRow(d,id){
   var i=-1; d.rows.forEach(function(r,k){ if(r.id===id) i=k; }); if(i<0) return; var r=d.rows[i];
-  if(r.t==='inv') return printDoc(billTicket({c:d.customer,inv:stmtInv(r)}));
+  if(r.t==='inv') return await printDoc(billTicket({c:d.customer,inv:stmtInv(r)}));
   var inv=null; for(var k=i-1;k>=0;k--){ var x=d.rows[k]; if(x.t==='inv'&&!x.voided&&(x.kind==='meter'||x.kind==='fixed')){ inv=stmtInv(x); break; } }
-  printDoc(billTicket({c:d.customer,inv:inv,pay:{no:r.no,created_at:r.at,amount:r.credit,paid_currency:r.paid_currency,paid_amount:r.paid_amount,rate:r.rate,method:r.method,
+  return await printDoc(billTicket({c:d.customer,inv:inv,pay:{no:r.no,created_at:r.at,amount:r.credit,paid_currency:r.paid_currency,paid_amount:r.paid_amount,rate:r.rate,method:r.method,
     balance_before:r.balance_before,balance_after:r.balance_after,note:r.note,staff_name:r.staff}}));
 }
 /* كشف الحساب على الطابعة الحرارية 58/80 ملم: كل الأسطر، شهر بشهر */
@@ -4089,15 +4113,21 @@ VIEWS.cstmt=async function(main){
     var trs=d.rows.map(function(r){ if(!r.voided){ run+=n2(r.debit)-n2(r.credit); cash+=n2(r.debit); hand+=n2(r.credit); }
       var lab=r.t==='pay'?(t('k_pay')+' #'+r.no+' · '+r.customer+(r.method==='whish'?' (Whish — '+money(r.amount)+')':'')):t('m_'+r.kind)+(r.by?' · '+r.by:'');
       return '<tr class="'+(r.voided?'void':'')+'"><td class="num">'+esc(dt(r.at))+'</td><td>'+esc(lab)+(r.note?' <span class="muted">'+esc(r.note)+'</span>':'')+'</td><td class="num">'+(n2(r.debit)?esc(money(r.debit)):'')+'</td><td class="num">'+(n2(r.credit)?esc(money(r.credit)):'')+'</td><td>'+balHtml(run)+'</td>'+
-        (adm?'<td>'+(r.t==='move'?'<button class="btn ghost sm" data-dm="'+esc(r.id)+'">'+esc(t('delete'))+'</button>':'')+'</td>':'')+'</tr>'; });
+        '<td style="white-space:nowrap">'+(r.t==='pay'&&!r.voided?'<button class="btn ghost sm" data-xpr="'+esc(r.customer_id)+'|'+esc(r.id)+'" title="'+esc(t('print'))+'">🖨️</button> <button class="btn ghost sm" data-xv="'+esc(r.id)+'|'+esc(r.no)+'|'+esc(r.amount)+'">🗑️</button>':'')+
+          (adm&&r.t==='move'?'<button class="btn ghost sm" data-dm="'+esc(r.id)+'">'+esc(t('delete'))+'</button>':'')+(r.voided?'<span class="chip off">'+esc(t('voided'))+'</span>':'')+'</td></tr>'; });
     box.innerHTML='<div class="stats">'+stat(t('opening'),money(d.opening))+stat(t('cash_collected'),money(cash))+stat(t('handed'),money(hand))+stat(t('in_hand'),money(d.balance_now))+stat(t('whish_coll'),money(d.whish_total))+stat(t('readings_n'),fmtN(d.readings,0))+'</div>'+
-      '<div class="tw"><table><thead><tr><th>'+esc(t('date'))+'</th><th>'+esc(t('type'))+'</th><th>'+esc(t('debit'))+'</th><th>'+esc(t('creditc'))+'</th><th>'+esc(t('running'))+'</th>'+(adm?'<th></th>':'')+'</tr></thead><tbody>'+
+      '<div class="tw"><table><thead><tr><th>'+esc(t('date'))+'</th><th>'+esc(t('type'))+'</th><th>'+esc(t('debit'))+'</th><th>'+esc(t('creditc'))+'</th><th>'+esc(t('running'))+'</th><th></th></tr></thead><tbody>'+
       (trs.join('')||'<tr><td colspan="6" class="muted">'+esc(t('no_results'))+'</td></tr>')+'</tbody></table></div>'+
       '<div class="row" style="margin-top:10px"><button class="btn alt sm" id="xp">'+esc(t('print'))+'</button><span class="sp"></span>'+
         '<button class="btn danger" id="xclose">🔒 '+esc(t(adm&&SF.staff!==ME.staff_id?'sc_close_other':'sc_close'))+'</button></div>'+
       '<div id="xcl" style="margin-top:12px"></div>';
     $('#xclose',box).addEventListener('click',function(){ staffClose(SF.staff,d.staff.name,load); });
     staffClosesList($('#xcl',box),SF.staff);
+    $$('[data-xpr]',box).forEach(function(b){ b.addEventListener('click',async function(){ var q=b.dataset.xpr.split('|'); b.disabled=true;
+      try{ var sd=await call('motor_statement',{p_customer:q[0]}); await printStmtRow(sd,q[1]); }catch(e){ toast(errText(e),'e'); } b.disabled=false; }); });
+    $$('[data-xv]',box).forEach(function(b){ b.addEventListener('click',async function(){ var q=b.dataset.xv.split('|');
+      if(!(await confirmBox(t('pay_void_q',{n:q[1],v:money(q[2])})))) return;
+      try{ await call('motor_payment_void',{p_id:q[0]}); toast(t('pay_voided'),'s'); load(); loadCustomers(); }catch(e){ toast(errText(e),'e'); } }); });
     $$('[data-dm]',box).forEach(function(b){ b.addEventListener('click',async function(){ if(!(await confirmBox(t('confirm_delete')))) return; try{ await call('motor_move_delete',{p_id:b.dataset.dm}); load(); }catch(e){ toast(errText(e),'e'); } }); });
     $('#xp',box).addEventListener('click',function(){ printDoc([{t:SITE.name||'',b:1,s:28,c:1},{t:t('nav_cstmt'),b:1,c:1},{t:d.staff.name,c:1},{t:SF.from+' → '+SF.to,c:1,s:19},{hr:1},
       {kv:[t('opening'),money(d.opening)]},{kv:[t('cash_collected'),money(cash)]},{kv:[t('handed'),money(hand)]},{kv:[t('whish_coll'),money(d.whish_total)]},{kv:[t('readings_n'),fmtN(d.readings,0)]},{hr:1},{kv:[t('in_hand'),money(d.balance_now)],b:1,s:26}]); });

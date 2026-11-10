@@ -44,11 +44,18 @@ create or replace function public.motor_payment_void(p_slug text, p_token text, 
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare w jsonb; sid uuid; p public.motor_payments%rowtype;
 begin
-  w := public._motor_admin(p_slug, p_token);
+  w := public._motor_who(p_slug, p_token);
   sid := (w->>'site_id')::uuid;
   select * into p from public.motor_payments where id = p_id and site_id = sid for update;
   if not found then perform public._motor_err('not_found'); end if;
   if p.voided then return jsonb_build_object('ok', true); end if;
+  -- الجابي بيلغي إيصالو هوّي بس، قبل ما يسلّم المصاري (قبل إقفال صندوقو أو أي تسليم للمكتب)
+  if not (w->>'is_admin')::boolean then
+    if not coalesce((w->>'can_collect')::boolean, false) or p.staff_id is distinct from (w->>'staff_id')::uuid then perform public._motor_err('forbidden'); end if;
+    if p.created_at <= coalesce((select max(created_at) from public.motor_moves where staff_id = p.staff_id and account = 'collector'), '-infinity'::timestamptz) then
+      perform public._motor_err('handed_over');
+    end if;
+  end if;
   if p.method = 'cash' and p.created_at <= coalesce((select max(created_at) from public.motor_moves
         where site_id = sid and account = 'cash' and kind = 'close'), '-infinity'::timestamptz) then
     perform public._motor_err('closed_period');
@@ -293,7 +300,7 @@ begin
     'whish_total', coalesce((select sum(amount) from public.motor_payments where staff_id = sf.id and method = 'whish'
                    and not voided and (created_at at time zone 'Asia/Beirut')::date between f and t), 0),
     'rows', coalesce((select jsonb_agg(x order by x->>'at') from (
-        select jsonb_build_object('t','pay','id',p.id,'no',p.no,'at',p.created_at,'customer',c.name,'code',c.code,
+        select jsonb_build_object('t','pay','id',p.id,'no',p.no,'at',p.created_at,'customer',c.name,'code',c.code,'customer_id',c.id,
                'method',p.method,'paid_currency',p.paid_currency,'paid_amount',p.paid_amount,
                'debit', case when p.method = 'cash' then p.amount else 0 end, 'credit', 0, 'amount', p.amount,
                'note', p.note, 'voided', p.voided) as x
@@ -327,7 +334,7 @@ begin
                  + coalesce((select sum(case when kind = 'withdraw' then -abs(amount) else amount end) from public.motor_moves
                               where site_id = sid and account = 'whish'), 0),
     'rows', coalesce((select jsonb_agg(x order by x->>'at') from (
-        select jsonb_build_object('t','pay','id',p.id,'no',p.no,'at',p.created_at,'customer',c.name,'code',c.code,
+        select jsonb_build_object('t','pay','id',p.id,'no',p.no,'at',p.created_at,'customer',c.name,'code',c.code,'customer_id',c.id,
                'debit',0,'credit',p.amount,'paid_currency',p.paid_currency,'paid_amount',p.paid_amount,
                'staff',p.staff_name,'note',p.note,'voided',p.voided) as x
           from public.motor_payments p join public.motor_customers c on c.id = p.customer_id
@@ -422,7 +429,7 @@ begin
                      from public.motor_moves m where m.site_id = sid and m.account = 'cash' and m.kind = 'close'
                      order by m.created_at desc limit 1),
     'rows', coalesce((select jsonb_agg(x order by x->>'at') from (
-        select jsonb_build_object('t','pay','id',p.id,'no',p.no,'at',p.created_at,'customer',c.name,'code',c.code,
+        select jsonb_build_object('t','pay','id',p.id,'no',p.no,'at',p.created_at,'customer',c.name,'code',c.code,'customer_id',c.id,
                'credit',p.amount,'debit',0,'paid_currency',p.paid_currency,'paid_amount',p.paid_amount,
                'staff',p.staff_name,'note',p.note,'voided',p.voided) as x
           from public.motor_payments p join public.motor_customers c on c.id = p.customer_id
