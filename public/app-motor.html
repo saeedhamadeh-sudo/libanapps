@@ -2122,6 +2122,7 @@ var CFG=window.LIBANAPPS, sb=null;
 try{ sb=window.supabase.createClient(CFG.SUPABASE_URL,CFG.SUPABASE_ANON_KEY); }catch(e){}
 var $=function(s,r){return (r||document).querySelector(s)}, $$=function(s,r){return Array.prototype.slice.call((r||document).querySelectorAll(s))};
 Object.assign(D,{
+ rep_bal_start:['رصيد أول الشهر','Opening balance','Solde début'], rep_other:['تسويات / رصيد سابق','Adjustments / previous','Ajustements'],
  as_btn:['دخول كـ','Log in as','Se connecter en tant que'],
  as_q:['الدخول على حساب {n} من هذا الجهاز؟ بتشوف البرنامج متل ما هوّي بيشوفو، وبترجع لحسابك بكبسة.','Open {n}’s account on this device? You will see the app as they do and can return with one tap.','Ouvrir le compte de {n} sur cet appareil ?'],
  as_on:['أنت داخل على حساب {n}','You are logged in as {n}','Connecté en tant que {n}'], as_back:['رجوع لحساب المدير','Back to admin','Retour admin'],
@@ -4437,17 +4438,17 @@ async function downloadBillPdf(o){ try{ var cv=await renderTicket(billTicket(o))
    ========================================================= */
 var RF={period:''};
 function reportRows(d){
-  var H=[t('code'),t('name'),t('barcode'),t('box'),t('area'),t('plan'),t('collector'),t('status'),t('prev_reading'),t('cur_reading'),t('consumption'),t('inv_amount'),t('paid'),t('whish'),t('rep_bal_end'),t('balance')];
+  var H=[t('code'),t('name'),t('barcode'),t('box'),t('area'),t('plan'),t('collector'),t('status'),t('prev_reading'),t('cur_reading'),t('consumption'),t('rep_bal_start'),t('inv_amount'),t('rep_other'),t('paid'),t('whish'),t('rep_bal_end'),t('balance')];
   return [H].concat(d.rows.map(function(r){ return [r.code,r.name,r.barcode,r.box,r.area,r.plan||'',r.collector||'',r.is_active?t('active'):t('inactive'),
-    r.prev_value==null?'':n2(r.prev_value),r.cur_value==null?'':n2(r.cur_value),r.kwh==null?'':n2(r.kwh),n2(r.invoiced),n2(r.paid),n2(r.paid_whish),n2(r.balance_end),n2(r.balance_now)]; }));
+    r.prev_value==null?'':n2(r.prev_value),r.cur_value==null?'':n2(r.cur_value),r.kwh==null?'':n2(r.kwh),n2(r.balance_start),n2(r.invoiced),n2(r.other),n2(r.paid),n2(r.paid_whish),n2(r.balance_end),n2(r.balance_now)]; }));
 }
 VIEWS.report=async function(main){
   if(!RF.period) RF.period=SITE.bill_period;
   var d=await call('motor_month_report',{p_period:RF.period});
-  var tot={kwh:0,inv:0,paid:0,wh:0,bal:0,read:0}; d.rows.forEach(function(r){ tot.kwh+=n2(r.kwh); tot.inv+=n2(r.invoiced); tot.paid+=n2(r.paid); tot.wh+=n2(r.paid_whish); tot.bal+=n2(r.balance_end); if(r.cur_value!=null) tot.read++; });
+  var tot={kwh:0,inv:0,paid:0,wh:0,bal:0,read:0,st:0,oth:0}; d.rows.forEach(function(r){ tot.st+=n2(r.balance_start); tot.oth+=n2(r.other); tot.kwh+=n2(r.kwh); tot.inv+=n2(r.invoiced); tot.paid+=n2(r.paid); tot.wh+=n2(r.paid_whish); tot.bal+=n2(r.balance_end); if(r.cur_value!=null) tot.read++; });
   main.innerHTML='<div class="toolbar"><input type="month" id="rp" value="'+esc(d.period)+'" style="flex:0 1 180px"><b>'+esc(monthName(d.period,true))+'</b><span class="sp"></span>'+
     '<button class="btn ok" id="rx">📊 '+esc(t('export_xlsx'))+'</button><button class="btn alt" id="rpdf">📄 PDF</button></div>'+
-    '<div class="stats">'+stat(t('read_of',{a:tot.read,b:d.rows.length}),fmtN(tot.kwh)+' '+t('kwh'))+stat(t('inv_amount'),money(tot.inv))+stat(t('paid'),money(tot.paid))+stat(t('whish'),money(tot.wh))+stat(t('rep_bal_end'),money(tot.bal))+'</div>'+
+    '<div class="stats">'+stat(t('read_of',{a:tot.read,b:d.rows.length}),fmtN(tot.kwh)+' '+t('kwh'))+stat(t('rep_bal_start'),money(tot.st))+stat(t('inv_amount'),money(tot.inv))+(Math.abs(tot.oth)>0.005?stat(t('rep_other'),money(tot.oth)):'')+stat(t('paid'),money(tot.paid))+stat(t('whish'),money(tot.wh))+stat(t('rep_bal_end'),money(tot.bal))+'</div>'+
     '<div class="tw" id="rtw"></div>';
   var R=reportRows(d);
   $('#rtw',main).innerHTML='<table><thead><tr>'+R[0].map(function(h){return '<th>'+esc(h)+'</th>'}).join('')+'</tr></thead><tbody>'+

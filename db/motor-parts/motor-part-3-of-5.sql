@@ -1,77 +1,5 @@
 -- motorapp — الجزء 3 من 5 (شغّل الأجزاء بالترتيب)
 -- ============================================================
---  10) القبض
--- ============================================================
-create or replace function public.motor_pay(p_slug text, p_token text, p_customer uuid, p_paid numeric,
-  p_currency text, p_method text, p_note text default '', p_lat double precision default null, p_lng double precision default null)
-returns jsonb language plpgsql security definer set search_path = public as $$
-declare w jsonb; sid uuid; st public.motor_sites%rowtype; c public.motor_customers%rowtype; amt numeric; seq integer;
-        pay public.motor_payments%rowtype; cur text := upper(coalesce(p_currency,'')); m text := lower(coalesce(p_method,'cash'));
-begin
-  w := public._motor_who(p_slug, p_token);
-  sid := (w->>'site_id')::uuid;
-  if not (w->>'can_collect')::boolean then perform public._motor_err('forbidden'); end if;
-  select * into st from public.motor_sites where id = sid for update;
-  select * into c from public.motor_customers where id = p_customer and site_id = sid for update;
-  if not found then perform public._motor_err('customer_not_found'); end if;
-  if w->>'role' = 'collector' and not st.collector_sees_all and c.collector_id is distinct from (w->>'staff_id')::uuid then
-    perform public._motor_err('forbidden');
-  end if;
-  if cur = '' then cur := st.currency; end if;
-  if cur not in ('USD','LBP') then perform public._motor_err('bad_currency'); end if;
-  if m not in ('cash','whish') then perform public._motor_err('bad_method'); end if;
-  if m = 'whish' and not (w->>'is_admin')::boolean then perform public._motor_err('whish_admin'); end if;
-  if coalesce(p_paid,0) <= 0 then perform public._motor_err('bad_amount'); end if;
-  if cur = st.currency then amt := p_paid;
-  elsif coalesce(st.lbp_rate,0) <= 0 then perform public._motor_err('no_rate');
-  elsif cur = 'LBP' then amt := round(p_paid / st.lbp_rate, 2);      -- أساسي دولار، مقبوض ليرة
-  else amt := round(p_paid * st.lbp_rate, 0);                         -- أساسي ليرة، مقبوض دولار
-  end if;
-  update public.motor_sites set receipt_seq = receipt_seq + 1 where id = sid returning receipt_seq into seq;
-  insert into public.motor_payments (site_id, no, customer_id, amount, paid_currency, paid_amount, rate, method,
-         balance_before, balance_after, note, lat, lng, staff_id, staff_name)
-  values (sid, seq, c.id, amt, cur, p_paid, case when cur = st.currency then 0 else st.lbp_rate end, m,
-          c.balance, c.balance - amt, coalesce(p_note,''), p_lat, p_lng, (w->>'staff_id')::uuid, w->>'name')
-  returning * into pay;
-  update public.motor_customers set balance = balance - amt, updated_at = now() where id = c.id;
-  return jsonb_build_object('ok', true, 'payment', to_jsonb(pay) - 'site_id',
-    'invoice', (select to_jsonb(i) - 'site_id' from public.motor_invoices i
-                 where i.customer_id = c.id and not i.voided and i.kind in ('meter','fixed')
-                 order by i.created_at desc limit 1));
-end $$;
-
-create or replace function public.motor_payment_void(p_slug text, p_token text, p_id uuid)
-returns jsonb language plpgsql security definer set search_path = public as $$
-declare w jsonb; sid uuid; p public.motor_payments%rowtype;
-begin
-  w := public._motor_who(p_slug, p_token);
-  sid := (w->>'site_id')::uuid;
-  select * into p from public.motor_payments where id = p_id and site_id = sid for update;
-  if not found then perform public._motor_err('not_found'); end if;
-  if p.voided then return jsonb_build_object('ok', true); end if;
-  -- الجابي بيلغي إيصالو هوّي بس، قبل ما يسلّم المصاري (قبل إقفال صندوقو أو أي تسليم للمكتب)
-  if not (w->>'is_admin')::boolean then
-    if not coalesce((w->>'can_collect')::boolean, false) or p.staff_id is distinct from (w->>'staff_id')::uuid then perform public._motor_err('forbidden'); end if;
-    if p.created_at <= coalesce((select max(created_at) from public.motor_moves where staff_id = p.staff_id and account = 'collector'), '-infinity'::timestamptz) then
-      perform public._motor_err('handed_over');
-    end if;
-  end if;
-  if p.method = 'cash' and p.created_at <= coalesce((select max(created_at) from public.motor_moves
-        where site_id = sid and account = 'cash' and kind = 'close'), '-infinity'::timestamptz) then
-    perform public._motor_err('closed_period');
-  end if;
-  if exists (select 1 from public.motor_day_closes where site_id = sid and day = (p.created_at at time zone 'Asia/Beirut')::date) then
-    perform public._motor_err('day_closed');
-  end if;
-  update public.motor_payments set voided = true, voided_at = now(), voided_by = w->>'name' where id = p.id;
-  update public.motor_customers set balance = balance + p.amount, updated_at = now() where id = p.customer_id;
-  insert into public.motor_trash (site_id, kind, ref_id, label, data, deleted_by)
-  values (sid, 'payment', p.id, 'إيصال #' || p.no || ' — ' || (select name from public.motor_customers where id = p.customer_id),
-          jsonb_build_object('amount', p.amount), w->>'name');
-  return jsonb_build_object('ok', true);
-end $$;
-
--- ============================================================
 --  11) جدول عدادات الشهر
 -- ============================================================
 create or replace function public.motor_month(p_slug text, p_token text, p_period text)
@@ -670,5 +598,52 @@ begin
     update public.motor_payments set wa_sent_at = now(), wa_sent_by = w->>'name' where id = p_id and site_id = sid;
   else perform public._motor_err('bad_kind'); end if;
   return jsonb_build_object('ok', true);
+end $$;
+
+-- ============================================================
+--  20) لوحة سريعة
+-- ============================================================
+create or replace function public.motor_dashboard(p_slug text, p_token text)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w jsonb; sid uuid; st public.motor_sites%rowtype; mine boolean; me uuid; m0 date; today date := public._motor_today();
+begin
+  w := public._motor_who(p_slug, p_token);
+  sid := (w->>'site_id')::uuid; mine := not (w->>'is_admin')::boolean; me := (w->>'staff_id')::uuid;
+  select * into st from public.motor_sites where id = sid;
+  m0 := date_trunc('month', today)::date;
+  return jsonb_build_object(
+    'period', st.bill_period, 'lbp_rate', st.lbp_rate,
+    'customers_active', (select count(*) from public.motor_customers where site_id = sid and is_active and not archived and deleted_at is null),
+    'customers_total', (select count(*) from public.motor_customers where site_id = sid and deleted_at is null),
+    'read_period', (select count(*) from public.motor_readings where site_id = sid and period = st.bill_period
+                     and (not mine or staff_id = me)),
+    'billed_period', coalesce((select sum(amount) from public.motor_invoices where site_id = sid and period = st.bill_period
+                     and kind in ('meter','fixed') and not voided and (not mine or staff_id = me)), 0),
+    'unpaid_count', (select count(*) from public.motor_customers where site_id = sid and balance > 0 and not archived and deleted_at is null),
+    'debt_total', case when mine then null else coalesce((select sum(balance) from public.motor_customers
+                     where site_id = sid and balance > 0 and deleted_at is null), 0) end,
+    'trash_count', case when mine then null else (select count(*) from public.motor_trash where site_id = sid) end,
+    'cash_box', case when mine then null else public._motor_cash_bal(sid, null) end,
+    'whish_box', case when mine then null else
+                   coalesce((select sum(amount) from public.motor_payments where site_id = sid and method = 'whish' and not voided), 0)
+                 + coalesce((select sum(case when kind = 'withdraw' then -abs(amount) else amount end) from public.motor_moves
+                              where site_id = sid and account = 'whish'), 0) end,
+    'wa_inv', case when mine then null else
+        (select count(*) from public.motor_invoices i where i.site_id = sid and not i.voided and i.kind in ('meter','fixed')
+            and i.wa_sent_at is null and i.created_at > now() - interval '60 days') end,
+    'wa_pending', case when mine then null else
+        (select count(*) from public.motor_invoices i where i.site_id = sid and not i.voided and i.kind in ('meter','fixed')
+            and i.wa_sent_at is null and i.created_at > now() - interval '60 days')
+      + (select count(*) from public.motor_payments p where p.site_id = sid and not p.voided
+            and p.wa_sent_at is null and p.created_at > now() - interval '60 days') end,
+    'cash_today', coalesce((select sum(amount) from public.motor_payments where site_id = sid and method = 'cash' and not voided
+                     and (created_at at time zone 'Asia/Beirut')::date = today and (not mine or staff_id = me)), 0),
+    'whish_today', coalesce((select sum(amount) from public.motor_payments where site_id = sid and method = 'whish' and not voided
+                     and (created_at at time zone 'Asia/Beirut')::date = today and (not mine or staff_id = me)), 0),
+    'collected_month', coalesce((select sum(amount) from public.motor_payments where site_id = sid and not voided
+                     and (created_at at time zone 'Asia/Beirut')::date >= m0 and (not mine or staff_id = me)), 0),
+    'my_cash_in_hand', case when me is null or not mine then null else
+                     coalesce((select sum(amount) from public.motor_payments where staff_id = me and method = 'cash' and not voided), 0)
+                   - coalesce((select sum(amount) from public.motor_moves where staff_id = me and account = 'collector'), 0) end);
 end $$;
 

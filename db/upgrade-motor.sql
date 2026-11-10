@@ -2372,9 +2372,15 @@ begin
                          and p.created_at >= f and p.created_at < t), 0),
       'paid_whish', coalesce((select sum(p.amount) from public.motor_payments p where p.customer_id = c.id and not p.voided
                          and p.method = 'whish' and p.created_at >= f and p.created_at < t), 0),
-      'balance_end', c.balance
-          - coalesce((select sum(i.amount) from public.motor_invoices i where i.customer_id = c.id and not i.voided and i.created_at >= t), 0)
-          + coalesce((select sum(p.amount) from public.motor_payments p where p.customer_id = c.id and not p.voided and p.created_at >= t), 0),
+      -- الرصيد آخر الشهر: الفاتورة بتنحسب بشهرها (period) مش بتاريخ إدخالها — مهم للفواتير المستوردة
+      'balance_end', coalesce((select sum(i.amount) from public.motor_invoices i where i.customer_id = c.id and not i.voided
+                     and (case when i.period <> '' then i.period else to_char(i.created_at at time zone 'Asia/Beirut','YYYY-MM') end) <= per), 0)
+          - coalesce((select sum(p.amount) from public.motor_payments p where p.customer_id = c.id and not p.voided and p.created_at < t), 0),
+      'other', coalesce((select sum(i.amount) from public.motor_invoices i where i.customer_id = c.id and not i.voided and i.kind not in ('meter','fixed')
+                     and (case when i.period <> '' then i.period else to_char(i.created_at at time zone 'Asia/Beirut','YYYY-MM') end) = per), 0),
+      'balance_start', coalesce((select sum(i.amount) from public.motor_invoices i where i.customer_id = c.id and not i.voided
+                     and (case when i.period <> '' then i.period else to_char(i.created_at at time zone 'Asia/Beirut','YYYY-MM') end) < per), 0)
+          - coalesce((select sum(p.amount) from public.motor_payments p where p.customer_id = c.id and not p.voided and p.created_at < f), 0),
       'balance_now', c.balance) order by c.code)
     from public.motor_customers c
     left join public.motor_plans pl on pl.id = c.plan_id
@@ -2382,6 +2388,7 @@ begin
     left join public.motor_readings r on r.customer_id = c.id and r.period = per
     where c.site_id = sid and not c.archived and c.deleted_at is null), '[]'::jsonb));
 end $$;
+
 
 -- نسخة احتياطية كاملة (تُنزَّل كملف Excel عند الخروج)
 create or replace function public.motor_backup(p_slug text, p_token text)
@@ -2986,6 +2993,40 @@ end $$;
 --  الشهر: تاريخ الفاتورة 1–14 = الشهر اللي قبل (02/06 → أيار)، 15 وما فوق = نفس الشهر (فاتورة نص شهر)
 --  الرصيد بعد الاستيراد = «رصيد الحساب الحالي» بالملف بالضبط (الفرق بيروح على سطر الرصيد السابق)
 -- ============================================================
+-- «دفعات مسددة في البرنامج السابق»: منوزّعها شهر بشهر — كل فاتورة (من الأقدم) بتنسدّ بالشهر يلّي بعدها
+-- هيك الكشف الشهري بيطلع رصيد كل شهر منطقي بدل ما ينجمعو كل الدفعات القديمة بآخر شهر
+create or replace function public._motor_spread_old_payments(p_cust uuid)
+returns void language plpgsql security definer set search_path = public as $$
+declare cred numeric; r record; part numeric; tp text; maxp text; cap text; sid uuid; seq int; x record;
+begin
+  select coalesce(-sum(amount),0), (array_agg(site_id))[1] into cred, sid from public.motor_invoices
+   where customer_id = p_cust and imported and kind = 'adjust' and not voided and amount < 0;
+  if cred <= 0 then return; end if;
+  delete from public.motor_invoices where customer_id = p_cust and imported and kind = 'adjust' and amount < 0;
+  select max(period) into maxp from public.motor_invoices where customer_id = p_cust and imported and kind in ('meter','fixed');
+  cap := to_char((now() at time zone 'Asia/Beirut')::date, 'YYYY-MM');
+  create temp table if not exists _spread (per text, amt numeric) on commit drop; truncate _spread;
+  for r in select i.kind, i.period, i.amount, i.created_at from public.motor_invoices i
+            where i.customer_id = p_cust and not i.voided and i.amount > 0 and (i.kind = 'opening' or (i.imported and i.kind in ('meter','fixed')))
+            order by (i.kind = 'opening') desc, i.period, i.created_at loop
+    exit when cred <= 0.004;
+    part := least(cred, r.amount);
+    tp := case when r.kind = 'opening' or r.period = '' then
+                 coalesce((select min(period) from public.motor_invoices where customer_id = p_cust and imported and kind in ('meter','fixed')), cap)
+               else to_char((r.period || '-01')::date + interval '1 month', 'YYYY-MM') end;
+    if tp > cap then tp := cap; end if;
+    insert into _spread values (tp, part); cred := cred - part;
+  end loop;
+  if cred > 0.004 then insert into _spread values (least(coalesce(maxp, cap), cap), cred); end if;
+  for x in select per, sum(amt) amt from _spread group by per order by per loop
+    update public.motor_sites set invoice_seq = invoice_seq + 1 where id = sid returning invoice_seq into seq;
+    insert into public.motor_invoices (site_id, no, customer_id, period, kind, amount, note, staff_name, imported, wa_sent_at, created_at)
+    values (sid, seq, p_cust, x.per, 'adjust', -x.amt, 'دفعات مسددة في البرنامج السابق', 'استيراد', true, now(),
+            least(((x.per || '-01')::timestamp + interval '1 day') at time zone 'Asia/Beirut', now()));
+  end loop;
+end $$;
+revoke all on function public._motor_spread_old_payments(uuid) from public, anon, authenticated;
+
 create or replace function public.motor_import_invoices(p_slug text, p_token text, p_data jsonb)
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare w jsonb; sid uuid; cu jsonb; c public.motor_customers%rowtype;
@@ -3053,10 +3094,11 @@ begin
       if op < 0 then
         if oid is not null then delete from public.motor_invoices where id = oid; oid := null; end if;
         update public.motor_sites set invoice_seq = invoice_seq + 1 where id = sid returning invoice_seq into seq;
-        insert into public.motor_invoices (site_id, no, customer_id, kind, amount, note, staff_name, imported, created_at)
-        values (sid, seq, c.id, 'adjust', op, 'دفعات مسددة في البرنامج السابق', 'استيراد', true,
+        insert into public.motor_invoices (site_id, no, customer_id, period, kind, amount, note, staff_name, imported, created_at)
+        values (sid, seq, c.id, coalesce((select max(per) from _imp), ''), 'adjust', op, 'دفعات مسددة في البرنامج السابق', 'استيراد', true,
                 coalesce(((select max(d) from _imp)::timestamp + interval '13 hours') at time zone 'Asia/Beirut', now()));
         op := 0;
+        perform public._motor_spread_old_payments(c.id);
       end if;
       if oid is null and op <> 0 then
         update public.motor_sites set invoice_seq = invoice_seq + 1 where id = sid returning invoice_seq into seq;
@@ -3339,6 +3381,13 @@ end $$;
 do $$ declare r record; begin
   for r in select id from public.motor_sites loop perform public._motor_default_admin(r.id); end loop;
 end $$;
+-- الاستيراد القديم: «دفعات مسددة في البرنامج السابق» كانت سطر واحد بلا شهر → منوزّعها على الأشهر
+do $$ declare r record; begin
+  for r in select distinct customer_id from public.motor_invoices where imported and kind = 'adjust' and period = '' and amount < 0 loop
+    perform public._motor_spread_old_payments(r.customer_id);
+  end loop;
+end $$;
+
 -- المدير الأساسي لكل مؤسسة: مستخدم admin (أو أقدم مدير)
 update public.motor_staff s set is_main = true
  where s.id = (select x.id from public.motor_staff x where x.site_id = s.site_id and x.role = 'admin'
