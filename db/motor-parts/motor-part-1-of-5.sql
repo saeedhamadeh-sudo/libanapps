@@ -153,6 +153,7 @@ create table if not exists public.motor_sessions (
   expires_at timestamptz not null default now() + interval '30 days'
 );
 create index if not exists motor_sessions_staff_idx on public.motor_sessions (staff_id);
+alter table public.motor_sessions add column if not exists impersonated_by text;   -- دخول المدير الأساسي على حساب موظف
 
 create table if not exists public.motor_customers (
   id              uuid primary key default gen_random_uuid(),

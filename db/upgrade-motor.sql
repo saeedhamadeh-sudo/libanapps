@@ -152,6 +152,7 @@ create table if not exists public.motor_sessions (
   expires_at timestamptz not null default now() + interval '30 days'
 );
 create index if not exists motor_sessions_staff_idx on public.motor_sessions (staff_id);
+alter table public.motor_sessions add column if not exists impersonated_by text;   -- دخول المدير الأساسي على حساب موظف
 
 create table if not exists public.motor_customers (
   id              uuid primary key default gen_random_uuid(),
@@ -2565,6 +2566,26 @@ begin
 end $$;
 
 -- ============================================================
+--  20f2) المدير الأساسي بيفوت على حساب أي موظف من جهازو (بلا كلمة سر وبلا قفل جهاز)
+-- ============================================================
+create or replace function public.motor_impersonate(p_slug text, p_token text, p_staff uuid)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w jsonb; sid uuid; sf public.motor_staff%rowtype; tok text;
+begin
+  w := public._motor_admin(p_slug, p_token);
+  sid := (w->>'site_id')::uuid;
+  if not coalesce((w->>'is_main')::boolean,false) then perform public._motor_err('main_only'); end if;
+  select * into sf from public.motor_staff where id = p_staff and site_id = sid;
+  if not found then perform public._motor_err('bad_staff'); end if;
+  if sf.id::text = w->>'staff_id' then perform public._motor_err('bad_staff'); end if;
+  if not sf.is_active then perform public._motor_err('inactive_user'); end if;
+  tok := encode(gen_random_bytes(24),'hex');
+  insert into public.motor_sessions (token_hash, staff_id, site_id, expires_at, impersonated_by)
+  values (encode(digest(tok,'sha256'),'hex'), sf.id, sid, now() + interval '12 hours', w->>'name');
+  return jsonb_build_object('ok', true, 'token', tok, 'name', sf.name, 'role', sf.role);
+end $$;
+
+-- ============================================================
 --  20g) المصاريف والمعاشات = سند صرف ينقص من الصندوق أو Whish
 -- ============================================================
 create or replace function public._motor_whish_bal(p_sid uuid, p_before timestamptz default null)
@@ -3365,7 +3386,7 @@ begin
     'motor_purchase_add(text,text,jsonb)', 'motor_purchase_void(text,text,uuid)', 'motor_supplier_pay(text,text,uuid,numeric,text,text)',
     'motor_supplier_statement(text,text,uuid)', 'motor_staff_salary_set(text,text,uuid,numeric)', 'motor_salary_due_add(text,text,uuid,text,numeric,text)',
     'motor_salary_due_all(text,text,text)', 'motor_salary_due_delete(text,text,uuid)', 'motor_staff_statement(text,text,uuid)',
-    'motor_import_invoices(text,text,jsonb)', 'motor_staff_close(text,text,uuid)', 'motor_staff_closes(text,text,uuid)',
+    'motor_import_invoices(text,text,jsonb)', 'motor_impersonate(text,text,uuid)', 'motor_staff_close(text,text,uuid)', 'motor_staff_closes(text,text,uuid)',
     'motor_ins_list(text,text)', 'motor_ins_add(text,text,uuid,text,numeric,text,text)', 'motor_ins_delete(text,text,uuid)',
     'motor_ins_import(text,text,jsonb,boolean)', 'motor_ins_link(text,text,text,uuid)']
   loop

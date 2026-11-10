@@ -2122,6 +2122,9 @@ var CFG=window.LIBANAPPS, sb=null;
 try{ sb=window.supabase.createClient(CFG.SUPABASE_URL,CFG.SUPABASE_ANON_KEY); }catch(e){}
 var $=function(s,r){return (r||document).querySelector(s)}, $$=function(s,r){return Array.prototype.slice.call((r||document).querySelectorAll(s))};
 Object.assign(D,{
+ as_btn:['دخول كـ','Log in as','Se connecter en tant que'],
+ as_q:['الدخول على حساب {n} من هذا الجهاز؟ بتشوف البرنامج متل ما هوّي بيشوفو، وبترجع لحسابك بكبسة.','Open {n}’s account on this device? You will see the app as they do and can return with one tap.','Ouvrir le compte de {n} sur cet appareil ?'],
+ as_on:['أنت داخل على حساب {n}','You are logged in as {n}','Connecté en tant que {n}'], as_back:['رجوع لحساب المدير','Back to admin','Retour admin'],
  print_retry:['اضغط «طباعة» مرة ثانية','Press “Print” again','Réessayez « Imprimer »'], print_again:['إعادة الطباعة','Print again','Réimprimer'],
  ble_timeout:['الطابعة لا ترد — تأكد إنها شغّالة وقريبة','Printer not responding — check it is on and nearby','L’imprimante ne répond pas'],
  pay_void:['إلغاء الإيصال','Cancel receipt','Annuler le reçu'],
@@ -2462,6 +2465,11 @@ var WA_PENDING=0, WA_INV=0;
 function visibleTabs(){ return TABS.filter(function(x){ return (!x.admin||isAdmin())&&(!x.p||can(x.p)); }); }
 function paintShell(){
   $('#tName').textContent=SITE.name||SLUG;
+  var asb=$('#asBar'); if(asb) asb.remove();
+  if(lsGet('motor_main:'+SLUG,'')){
+    document.body.insertAdjacentHTML('afterbegin','<div id="asBar" style="position:sticky;top:0;z-index:60;background:#b45309;color:#fff;padding:7px 12px;display:flex;gap:10px;align-items:center;justify-content:center;flex-wrap:wrap;font-weight:700">👤 '+esc(t('as_on',{n:ME.name}))+'<button class="btn sm" id="asBack" style="background:#fff;color:#b45309">↩️ '+esc(t('as_back'))+'</button></div>');
+    $('#asBack').addEventListener('click',backToMain);
+  }
   $('#tWho').innerHTML=esc(ME.role==='owner'?t('role_owner'):ME.name+' · '+roleLabel(ME))+' <span id="liveDot" style="color:#7CFC9A;font-size:11px">'+esc(t('live'))+'</span>';
   if(SITE.logo_url){ $('#tLogo').src=SITE.logo_url; $('#tLogo').classList.remove('hidden'); } else $('#tLogo').classList.add('hidden');
   $('#tLang').value=LANG; $('#tOut').textContent=t('logout');
@@ -2759,6 +2767,7 @@ async function syncNow(){
   SYNC.busy=false;
 }
 function pingNow(){ if(!navigator.geolocation||!TOKEN) return;
+  if(lsGet('motor_main:'+SLUG,'')) return;   // المدير داخل على حساب موظف — ما منسجّل موقعو
   navigator.geolocation.getCurrentPosition(function(p){ call('motor_ping',{p_lat:p.coords.latitude,p_lng:p.coords.longitude,p_acc:Math.round(p.coords.accuracy||0)}).catch(function(){}); },function(){},{enableHighAccuracy:true,timeout:20000,maximumAge:60000}); }
 document.addEventListener('visibilitychange',function(){ if(!document.hidden&&ME) syncNow(); });
 
@@ -4042,7 +4051,7 @@ VIEWS.staff=async function(main){
   main.innerHTML='<div class="toolbar"><button class="btn" id="sadd">'+esc(t('new_staff'))+'</button></div><div class="tw"><table><thead><tr><th>'+esc(t('name_user'))+'</th><th>'+esc(t('username'))+'</th><th>'+esc(t('role'))+'</th><th>'+esc(t('device'))+'</th><th>'+esc(t('tfa'))+'</th><th>'+esc(t('status'))+'</th><th>'+esc(t('staff_link'))+'</th><th></th></tr></thead><tbody>'+
     (STAFF.map(function(s){ var lockedAdmin=s.role==='admin'&&!ME.is_main&&s.id!==ME.staff_id;
       return '<tr><td><b>'+esc(s.name)+'</b>'+(s.is_main?' <span class="chip on">👑 '+esc(t('main_admin'))+'</span>':'')+'<div class="muted num">'+esc(s.phone)+'</div></td><td class="num">'+esc(s.username)+'</td><td>'+perms(s)+'</td>'+
-        '<td>'+(s.is_main?'<span class="chip gray">'+esc(t('dev_any'))+'</span>':s.device_set?'<span class="chip on" title="'+esc(s.device_label||'')+'">📱 '+esc(dt(s.device_at)||'✓')+'</span>'+(ME.is_main?' <button class="btn ghost sm" data-dr="'+esc(s.id)+'">🔓 '+esc(t('dev_reset'))+'</button>':''):'<span class="chip warn">'+esc(t('dev_none'))+'</span>')+'</td>'+
+        '<td>'+(ME.is_main&&!s.is_main&&s.is_active&&s.id!==ME.staff_id?'<button class="btn acc sm" data-as="'+esc(s.id)+'" style="margin-bottom:4px">👤 '+esc(t('as_btn'))+'</button><br>':'')+(s.is_main?'<span class="chip gray">'+esc(t('dev_any'))+'</span>':s.device_set?'<span class="chip on" title="'+esc(s.device_label||'')+'">📱 '+esc(dt(s.device_at)||'✓')+'</span>'+(ME.is_main?' <button class="btn ghost sm" data-dr="'+esc(s.id)+'">🔓 '+esc(t('dev_reset'))+'</button>':''):'<span class="chip warn">'+esc(t('dev_none'))+'</span>')+'</td>'+
         '<td>'+(s.totp_enabled?'<span class="chip on">'+esc(t('tfa_on'))+'</span>'+(lockedAdmin?'':' <button class="btn ghost sm" data-tr="'+esc(s.id)+'">'+esc(t('tfa_reset'))+'</button>'):'<span class="chip gray">'+esc(t('tfa_off'))+'</span>')+'</td>'+
         '<td><span class="chip '+(s.is_active?'on':'off')+'">'+esc(s.is_active?t('active'):t('staff_off'))+'</span></td>'+
         '<td><button class="btn alt sm" data-cp="'+esc(s.id)+'">'+esc(t('copy'))+'</button> '+(s.phone?'<button class="btn wa sm" data-sl="'+esc(s.id)+'">'+esc(t('send_link'))+'</button>':'')+'</td>'+
@@ -4050,7 +4059,8 @@ VIEWS.staff=async function(main){
   var byId=function(id){ return STAFF.filter(function(s){return s.id===id})[0]; };
   $('#sadd',main).addEventListener('click',function(){ staffForm(null); });
   main.addEventListener('click',async function(e){
-    var b=e.target.closest('[data-ed],[data-tr],[data-cp],[data-sl],[data-dr]'); if(!b) return;
+    var b=e.target.closest('[data-ed],[data-tr],[data-cp],[data-sl],[data-dr],[data-as]'); if(!b) return;
+    if(b.dataset.as){ return loginAs(byId(b.dataset.as)); }
     if(b.dataset.dr){ var s3=byId(b.dataset.dr); if(!(await confirmBox(t('dev_reset_q',{n:s3.name})))) return;
       try{ await call('motor_device_reset',{p_staff:s3.id}); toast(t('saved'),'s'); go('staff'); }catch(err){ toast(errText(err),'e'); } return; }
     if(b.dataset.ed) return staffForm(byId(b.dataset.ed));
@@ -4458,7 +4468,24 @@ async function flushUploads(){
   for(var i=0;i<120&&INFLIGHT>0;i++) await new Promise(function(r){ setTimeout(r,250); });
   m.close();
 }
+/* المدير الأساسي بيفوت على حساب موظف من جهازو، وبيرجع لحسابو بكبسة */
+async function loginAs(s){
+  if(!(await confirmBox(t('as_q',{n:s.name})))) return;
+  try{ var r=await call('motor_impersonate',{p_staff:s.id});
+    lsSet('motor_main:'+SLUG,TOKEN); stopSync(); TOKEN=r.token; lsSet('motor_tok:'+SLUG,TOKEN); lsSet('motor_kind:'+SLUG,'staff');
+    lsSet('motor_tab:'+SLUG,null); if(!(await enter())) await backToMain(); }
+  catch(e){ toast(errText(e),'e'); }
+}
+async function backToMain(){
+  var main=lsGet('motor_main:'+SLUG,''); if(!main) return;
+  await flushUploads();
+  try{ await sb.rpc('motor_logout',{p_token:TOKEN}); }catch(e){}
+  stopSync(); lsSet('motor_main:'+SLUG,null); TOKEN=main; lsSet('motor_tok:'+SLUG,TOKEN); lsSet('motor_tab:'+SLUG,'staff');
+  var b=$('#asBar'); if(b) b.remove();
+  if(!(await enter())) doLogout(true);
+}
 async function logoutClick(){
+  if(lsGet('motor_main:'+SLUG,'')) return backToMain();
   await flushUploads();
   if(ME&&ME.is_admin&&TOKEN){
     var m=modal(t('backup_t'),'<div class="muted">'+esc(t('backup_making'))+'</div>',false);

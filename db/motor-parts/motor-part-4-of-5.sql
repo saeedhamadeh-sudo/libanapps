@@ -431,6 +431,26 @@ begin
 end $$;
 
 -- ============================================================
+--  20f2) المدير الأساسي بيفوت على حساب أي موظف من جهازو (بلا كلمة سر وبلا قفل جهاز)
+-- ============================================================
+create or replace function public.motor_impersonate(p_slug text, p_token text, p_staff uuid)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w jsonb; sid uuid; sf public.motor_staff%rowtype; tok text;
+begin
+  w := public._motor_admin(p_slug, p_token);
+  sid := (w->>'site_id')::uuid;
+  if not coalesce((w->>'is_main')::boolean,false) then perform public._motor_err('main_only'); end if;
+  select * into sf from public.motor_staff where id = p_staff and site_id = sid;
+  if not found then perform public._motor_err('bad_staff'); end if;
+  if sf.id::text = w->>'staff_id' then perform public._motor_err('bad_staff'); end if;
+  if not sf.is_active then perform public._motor_err('inactive_user'); end if;
+  tok := encode(gen_random_bytes(24),'hex');
+  insert into public.motor_sessions (token_hash, staff_id, site_id, expires_at, impersonated_by)
+  values (encode(digest(tok,'sha256'),'hex'), sf.id, sid, now() + interval '12 hours', w->>'name');
+  return jsonb_build_object('ok', true, 'token', tok, 'name', sf.name, 'role', sf.role);
+end $$;
+
+-- ============================================================
 --  20g) المصاريف والمعاشات = سند صرف ينقص من الصندوق أو Whish
 -- ============================================================
 create or replace function public._motor_whish_bal(p_sid uuid, p_before timestamptz default null)
@@ -604,155 +624,5 @@ begin
            'purchase_no', (select p.no from public.motor_purchases p where p.id = m.purchase_id)) order by m.created_at desc)
          from public.motor_stock_moves m where m.site_id = sid and (p_item is null or m.item_id = p_item)
           and (m.created_at at time zone 'Asia/Beirut')::date between coalesce(p_from, date '2000-01-01') and coalesce(p_to, date '2999-12-31')), '[]'::jsonb);
-end $$;
-
--- ============================================================
---  20h3) الموردون، فواتير المشتريات، الدفعات (سند صرف من الصندوق أو Whish)
--- ============================================================
-create or replace function public._motor_sup_bal(p_sup uuid)
-returns numeric language sql stable security definer set search_path = public as $$
-  select coalesce((select sum(total) from public.motor_purchases where supplier_id = p_sup and not voided), 0)
-       - coalesce((select sum(amount) from public.motor_moves where supplier_id = p_sup and extra->>'type' = 'supplier'), 0);
-$$;
-revoke all on function public._motor_sup_bal(uuid) from public, anon, authenticated;
-
-create or replace function public.motor_suppliers(p_slug text, p_token text)
-returns jsonb language plpgsql security definer set search_path = public as $$
-declare w jsonb; sid uuid;
-begin
-  w := public._motor_admin(p_slug, p_token);
-  sid := (w->>'site_id')::uuid;
-  return coalesce((select jsonb_agg(jsonb_build_object('id', s.id, 'name', s.name, 'phone', s.phone, 'notes', s.notes,
-           'purchases', coalesce((select sum(total) from public.motor_purchases where supplier_id = s.id and not voided), 0),
-           'paid', coalesce((select sum(amount) from public.motor_moves where supplier_id = s.id and extra->>'type' = 'supplier'), 0),
-           'balance', public._motor_sup_bal(s.id),
-           'count', (select count(*) from public.motor_purchases where supplier_id = s.id and not voided)) order by s.name)
-         from public.motor_suppliers s where s.site_id = sid), '[]'::jsonb);
-end $$;
-
-create or replace function public.motor_supplier_save(p_slug text, p_token text, p_data jsonb)
-returns jsonb language plpgsql security definer set search_path = public as $$
-declare w jsonb; sid uuid; d jsonb := coalesce(p_data,'{}'::jsonb); x public.motor_suppliers%rowtype;
-begin
-  w := public._motor_admin(p_slug, p_token);
-  sid := (w->>'site_id')::uuid;
-  if coalesce(trim(d->>'name'),'') = '' then perform public._motor_err('name_required'); end if;
-  if coalesce(d->>'id','') = '' then
-    insert into public.motor_suppliers (site_id, name, phone, notes) values (sid, trim(d->>'name'), coalesce(d->>'phone',''), coalesce(d->>'notes',''))
-    returning * into x;
-  else
-    update public.motor_suppliers set name = trim(d->>'name'), phone = coalesce(d->>'phone',''), notes = coalesce(d->>'notes','')
-     where id = (d->>'id')::uuid and site_id = sid returning * into x;
-    if x.id is null then perform public._motor_err('not_found'); end if;
-  end if;
-  return to_jsonb(x) - 'site_id';
-end $$;
-
-create or replace function public.motor_supplier_delete(p_slug text, p_token text, p_id uuid)
-returns jsonb language plpgsql security definer set search_path = public as $$
-declare w jsonb; sid uuid;
-begin
-  w := public._motor_admin(p_slug, p_token);
-  sid := (w->>'site_id')::uuid;
-  if exists (select 1 from public.motor_purchases where supplier_id = p_id and not voided)
-     or exists (select 1 from public.motor_moves where supplier_id = p_id) then perform public._motor_err('has_history'); end if;
-  delete from public.motor_purchases where supplier_id = p_id and site_id = sid;
-  delete from public.motor_suppliers where id = p_id and site_id = sid;
-  return jsonb_build_object('ok', true);
-end $$;
-
--- فاتورة مشتريات: p_data = {supplier_id, ref, day, note, to_stock, items:[{item_id|name, category, qty, unit_price}], pay_amount, pay_account}
-create or replace function public.motor_purchase_add(p_slug text, p_token text, p_data jsonb)
-returns jsonb language plpgsql security definer set search_path = public as $$
-declare w jsonb; sid uuid; d jsonb := coalesce(p_data,'{}'::jsonb); sup public.motor_suppliers%rowtype; it jsonb; x public.motor_stock%rowtype;
-        seq int; pid uuid; tot numeric := 0; items jsonb := '[]'::jsonb; q numeric; pr numeric; nm text; tostk boolean; m public.motor_moves%rowtype;
-begin
-  w := public._motor_admin(p_slug, p_token);
-  sid := (w->>'site_id')::uuid;
-  select * into sup from public.motor_suppliers where id = (d->>'supplier_id')::uuid and site_id = sid;
-  if not found then perform public._motor_err('not_found'); end if;
-  if jsonb_typeof(d->'items') <> 'array' or jsonb_array_length(d->'items') = 0 then perform public._motor_err('no_items'); end if;
-  tostk := coalesce((d->>'to_stock')::boolean, true);
-  update public.motor_sites set purchase_seq = purchase_seq + 1 where id = sid returning purchase_seq into seq;
-  pid := gen_random_uuid();
-  for it in select * from jsonb_array_elements(d->'items') loop
-    q := coalesce(nullif(it->>'qty','')::numeric, 0); pr := coalesce(nullif(it->>'unit_price','')::numeric, 0);
-    nm := trim(coalesce(it->>'name',''));
-    if q <= 0 then continue; end if;
-    x := null;
-    if coalesce(it->>'item_id','') <> '' then select * into x from public.motor_stock where id = (it->>'item_id')::uuid and site_id = sid; end if;
-    if x.id is null and nm <> '' then select * into x from public.motor_stock where site_id = sid and lower(name) = lower(nm) limit 1; end if;
-    if x.id is null and nm = '' then perform public._motor_err('name_required'); end if;
-    if tostk then
-      if x.id is null then
-        insert into public.motor_stock (site_id, name, category, qty, unit_price, updated_by)
-        values (sid, nm, coalesce(it->>'category',''), q, pr, w->>'name') returning * into x;
-      else
-        update public.motor_stock set qty = qty + q, unit_price = case when pr > 0 then pr else unit_price end,
-               updated_by = w->>'name', updated_at = now() where id = x.id returning * into x;
-      end if;
-      insert into public.motor_stock_moves (site_id, item_id, item_name, kind, qty, unit_price, taker, purchase_id, note, by_name)
-      values (sid, x.id, x.name, 'purchase', q, pr, sup.name, pid, coalesce(d->>'ref',''), w->>'name');
-    end if;
-    items := items || jsonb_build_array(jsonb_build_object('item_id', x.id, 'name', coalesce(x.name, nm), 'qty', q, 'unit_price', pr, 'total', round(q*pr, 2)));
-    tot := tot + round(q*pr, 2);
-  end loop;
-  if jsonb_array_length(items) = 0 then perform public._motor_err('no_items'); end if;
-  insert into public.motor_purchases (id, site_id, supplier_id, no, ref, day, items, total, to_stock, note, by_name)
-  values (pid, sid, sup.id, seq, coalesce(d->>'ref',''), coalesce(nullif(d->>'day','')::date, public._motor_today()), items, tot, tostk,
-          coalesce(d->>'note',''), w->>'name');
-  if coalesce(nullif(d->>'pay_amount','')::numeric, 0) > 0 then
-    m := public._motor_voucher(sid, w, coalesce(d->>'pay_account','cash'), (d->>'pay_amount')::numeric, 'دفعة للمورد ' || sup.name,
-                               'فاتورة مشتريات #' || seq, 'supplier', null, '');
-    update public.motor_moves set supplier_id = sup.id where id = m.id;
-  end if;
-  return jsonb_build_object('ok', true, 'no', seq, 'total', tot, 'vno', m.vno);
-end $$;
-
-create or replace function public.motor_purchase_void(p_slug text, p_token text, p_id uuid)
-returns jsonb language plpgsql security definer set search_path = public as $$
-declare w jsonb; sid uuid; pu public.motor_purchases%rowtype; mv record;
-begin
-  w := public._motor_admin(p_slug, p_token);
-  sid := (w->>'site_id')::uuid;
-  select * into pu from public.motor_purchases where id = p_id and site_id = sid and not voided for update;
-  if not found then perform public._motor_err('not_found'); end if;
-  for mv in select * from public.motor_stock_moves where purchase_id = pu.id and kind = 'purchase' loop
-    update public.motor_stock set qty = qty - mv.qty, updated_by = w->>'name', updated_at = now() where id = mv.item_id;
-    insert into public.motor_stock_moves (site_id, item_id, item_name, kind, qty, unit_price, taker, purchase_id, note, by_name)
-    values (sid, mv.item_id, mv.item_name, 'void', -mv.qty, mv.unit_price, mv.taker, pu.id, 'إلغاء فاتورة مشتريات #' || pu.no, w->>'name');
-  end loop;
-  update public.motor_purchases set voided = true where id = pu.id;
-  return jsonb_build_object('ok', true);
-end $$;
-
-create or replace function public.motor_supplier_pay(p_slug text, p_token text, p_supplier uuid, p_amount numeric, p_account text, p_note text default '')
-returns jsonb language plpgsql security definer set search_path = public as $$
-declare w jsonb; sid uuid; sup public.motor_suppliers%rowtype; m public.motor_moves%rowtype;
-begin
-  w := public._motor_admin(p_slug, p_token);
-  sid := (w->>'site_id')::uuid;
-  select * into sup from public.motor_suppliers where id = p_supplier and site_id = sid;
-  if not found then perform public._motor_err('not_found'); end if;
-  m := public._motor_voucher(sid, w, p_account, p_amount, 'دفعة للمورد ' || sup.name, p_note, 'supplier', null, '');
-  update public.motor_moves set supplier_id = sup.id where id = m.id returning * into m;
-  return jsonb_build_object('ok', true, 'move', to_jsonb(m) - 'site_id', 'balance', public._motor_sup_bal(sup.id));
-end $$;
-
-create or replace function public.motor_supplier_statement(p_slug text, p_token text, p_supplier uuid)
-returns jsonb language plpgsql security definer set search_path = public as $$
-declare w jsonb; sid uuid; sup public.motor_suppliers%rowtype;
-begin
-  w := public._motor_admin(p_slug, p_token);
-  sid := (w->>'site_id')::uuid;
-  select * into sup from public.motor_suppliers where id = p_supplier and site_id = sid;
-  if not found then perform public._motor_err('not_found'); end if;
-  return jsonb_build_object('supplier', to_jsonb(sup) - 'site_id', 'balance', public._motor_sup_bal(sup.id),
-    'rows', coalesce((select jsonb_agg(x order by x->>'at') from (
-       select jsonb_build_object('t','purchase','id',p.id,'at',p.created_at,'day',p.day,'no',p.no,'ref',p.ref,'items',p.items,'total',p.total,
-              'to_stock',p.to_stock,'note',p.note,'by',p.by_name,'voided',p.voided) x from public.motor_purchases p where p.supplier_id = sup.id
-       union all
-       select jsonb_build_object('t','pay','id',m.id,'at',m.created_at,'vno',m.vno,'amount',m.amount,'account',m.account,'note',m.note,'by',m.by_name)
-         from public.motor_moves m where m.supplier_id = sup.id and m.extra->>'type' = 'supplier') q), '[]'::jsonb));
 end $$;
 
