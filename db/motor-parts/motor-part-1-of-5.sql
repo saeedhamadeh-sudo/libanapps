@@ -467,6 +467,26 @@ create index if not exists motor_salary_dues_idx on public.motor_salary_dues (st
 alter table public.motor_invoices add column if not exists imported boolean not null default false;
 alter table public.motor_readings add column if not exists imported boolean not null default false;
 
+-- ---------- v8: التأمينات ----------
+create table if not exists public.motor_insurance (
+  id           uuid primary key default gen_random_uuid(),
+  site_id      uuid not null references public.motor_sites(id) on delete cascade,
+  customer_id  uuid references public.motor_customers(id) on delete set null,
+  name         text not null default '',             -- اسم المشترك كما هو
+  kind         text not null check (kind in ('in','out')),   -- in = قبض تأمين، out = إعادة تأمين
+  amount       numeric(14,2) not null,
+  account      text not null default '',             -- cash / whish ('' = مستورد)
+  ref_no       text not null default '',
+  service      text not null default '',
+  note         text not null default '',
+  move_id      uuid,
+  by_name      text not null default '',
+  imported     boolean not null default false,
+  created_at   timestamptz not null default now()
+);
+create index if not exists motor_insurance_idx on public.motor_insurance (site_id, created_at);
+create index if not exists motor_insurance_cust_idx on public.motor_insurance (customer_id);
+
 create table if not exists public.motor_day_closes (
   id        uuid primary key default gen_random_uuid(),
   site_id   uuid not null references public.motor_sites(id) on delete cascade,
@@ -492,7 +512,7 @@ begin
   foreach t in array array['motor_sites','motor_plans','motor_staff','motor_staff_secrets','motor_sessions',
                            'motor_customers','motor_readings','motor_invoices','motor_payments','motor_moves',
                            'motor_notes','motor_switch_log','motor_customer_secrets','motor_csessions','motor_trash',
-                           'motor_stock','motor_day_closes','motor_stock_moves','motor_suppliers','motor_purchases','motor_salary_dues']
+                           'motor_stock','motor_day_closes','motor_stock_moves','motor_suppliers','motor_purchases','motor_salary_dues','motor_insurance']
   loop
     execute format('alter table public.%I enable row level security', t);
     execute format('revoke all on public.%I from anon, authenticated', t);

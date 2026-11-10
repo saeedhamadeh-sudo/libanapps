@@ -241,6 +241,7 @@ begin
   return jsonb_build_object(
     'customer', to_jsonb(c) - 'site_id',
     'has_login', exists (select 1 from public.motor_customer_secrets x where x.customer_id = c.id) and c.username <> '',
+    'insurance', coalesce((select sum(case when kind = 'in' then amount else -amount end) from public.motor_insurance where customer_id = c.id), 0),
     'plan', case when pl.id is null then null else to_jsonb(pl) - 'site_id' end,
     'collector_name', coalesce((select name from public.motor_staff where id = c.collector_id), c.collector_name),
     'prev_value', coalesce(c.next_prev, lr.value, c.initial_reading),
@@ -478,13 +479,14 @@ begin
         select jsonb_build_object('t','inv','id',i.id,'no',i.no,'at',i.created_at,'kind',i.kind,'period',i.period,
                'prev_value',i.prev_value,'cur_value',i.cur_value,'kwh',i.kwh,'kwh_price',i.kwh_price,'fee',i.fee,
                'energy',i.energy,'discount',i.discount,'addition',i.addition,
-               'debit',greatest(i.amount,0),'credit',greatest(-i.amount,0),
+               'debit',greatest(i.amount,0),'credit',greatest(-i.amount,0),'balance_before',i.balance_before,'balance_after',i.balance_after,
                'note',i.note,'staff',i.staff_name,'voided',i.voided,
                'photo', (select r.photo_url from public.motor_readings r where r.id = i.reading_id)) as x
           from public.motor_invoices i where i.customer_id = c.id
         union all
         select jsonb_build_object('t','pay','id',p.id,'no',p.no,'at',p.created_at,'method',p.method,
                'paid_currency',p.paid_currency,'paid_amount',p.paid_amount,'rate',p.rate,
+               'balance_before',p.balance_before,'balance_after',p.balance_after,
                'debit',0,'credit',p.amount,'note',p.note,'staff',p.staff_name,'voided',p.voided)
           from public.motor_payments p where p.customer_id = c.id
       ) q), '[]'::jsonb));

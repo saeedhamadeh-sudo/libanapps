@@ -181,7 +181,8 @@ body.compact table{font-size:12px} body.compact th,body.compact td{padding:4px 6
 .inv-box .ln{display:flex;justify-content:space-between;gap:10px;padding:3px 0}
 .inv-box .ln.tot{border-top:1px dashed #c9b37a;margin-top:6px;padding-top:8px;font-weight:800;font-size:16px}
 .lb-img{max-width:100%;max-height:75vh;display:block;margin:0 auto;border-radius:10px}
-@media print{body *{visibility:hidden}#printArea,#printArea *{visibility:visible}#printArea{position:absolute;inset:0}}
+@media print{html,body{height:auto!important;min-height:0!important;overflow:visible!important;background:#fff!important}body>*:not(#printArea){display:none!important}#printArea{display:block!important;position:static!important}}
+.wl{height:1.35em;width:auto;vertical-align:middle;border-radius:4px;margin-inline-end:3px}
 </style>
 <script>
 window.LIBANAPPS = {
@@ -2098,6 +2099,28 @@ var CFG=window.LIBANAPPS, sb=null;
 try{ sb=window.supabase.createClient(CFG.SUPABASE_URL,CFG.SUPABASE_ANON_KEY); }catch(e){}
 var $=function(s,r){return (r||document).querySelector(s)}, $$=function(s,r){return Array.prototype.slice.call((r||document).querySelectorAll(s))};
 Object.assign(D,{
+ print_ticket:['طباعة إيصال','Print ticket','Imprimer ticket'], print_a4:['طباعة A4','Print A4','Imprimer A4'],
+ nav_insurance:['التأمينات','Deposits','Cautions'],
+ ins_in:['قبض تأمين','Receive deposit','Encaisser caution'], ins_out:['إعادة تأمين','Refund deposit','Rembourser caution'], ins_imp:['استيراد Excel','Import Excel','Importer Excel'],
+ ins_link:['ربط بزبون','Link to customer','Lier au client'],
+ ins_by_cust:['حسب المشترك','By subscriber','Par abonné'], ins_ledger:['كشف الحساب','Ledger','Grand livre'],
+ ins_total_in:['مجموع المقبوض','Total received','Total encaissé'], ins_total_out:['مجموع المُعاد','Total refunded','Total remboursé'], ins_held:['رصيد صندوق التأمين','Deposits held','Cautions détenues'],
+ ins_people:['مشتركون لهم تأمين','Subscribers with deposit','Abonnés avec caution'], ins_in_c:['مقبوض','Received','Encaissé'], ins_out_c:['مُعاد','Refunded','Remboursé'],
+ ins_bal:['التأمين','Deposit','Caution'], ins_unlinked:['غير مربوط بزبون','Not linked','Non lié'], ins_imported:['مستورد','Imported','Importé'],
+ ins_k_in:['قبض تأمين','Deposit received','Caution encaissée'], ins_k_out:['إعادة تأمين','Deposit refund','Remboursement'],
+ ins_rcpt_in:['إيصال قبض تأمين','Deposit receipt','Reçu de caution'], ins_rcpt_out:['سند إعادة تأمين','Deposit refund voucher','Bon de remboursement'],
+ ins_to:['يدخل إلى','Goes to','Vers'], ins_note_in:['تأمين لتوصيل خط جديد','Deposit for a new line','Caution nouvelle ligne'], ins_note_out:['إعادة التأمين','Deposit refund','Remboursement de caution'],
+ e_customer_not_found:['اختر الزبون من القائمة','Pick the customer from the list','Choisissez le client'],
+ ins_imp_hint:['كشف حساب صندوق التأمين من البرنامج السابق (Excel): التاريخ، مدين، دائن، الخدمة، الوصف.\n• مدين = قبض تأمين، دائن = إعادة تأمين.\n• اسم المشترك يُؤخذ من آخر الوصف ويُربط بالزبون إذا وُجد.\n• إعادة الاستيراد تستبدل السطور المستوردة قبل، ولا تلمس ما أُدخل من البرنامج.\n• السطور المستوردة لا تغيّر رصيد الصندوق.','Deposit account statement from the old program (Excel): date, debit, credit, service, description.\n• Debit = deposit received, credit = refund.\n• The subscriber name at the end of the description is linked to the customer when found.\n• Re-import replaces earlier imported rows only.\n• Imported rows do not change the cash box.','Relevé du compte cautions (Excel).\n• Débit = caution encaissée, crédit = remboursement.\n• Le nom en fin de description est lié au client s’il existe.\n• Réimporter remplace seulement les lignes importées.\n• N’affecte pas la caisse.'],
+ ins_imp_unlinked:['أسماء لم تُربط بزبون (تبقى بالاسم)','Names not linked to a customer (kept by name)','Noms non liés (gardés)'],
+ ins_imp_go:['استيراد {n} حركة','Import {n} entries','Importer {n} lignes'], ins_imp_q:['استيراد {n} حركة تأمين؟','Import {n} deposit entries?','Importer {n} lignes ?'], ins_imp_done:['✓ تم استيراد {n} حركة','✓ {n} entries imported','✓ {n} lignes importées'],
+ sc_close:['إقفال صندوقي وطباعة التقرير','Close my box & print report','Clôturer ma caisse'], sc_close_other:['إقفال صندوق الموظف وطباعة التقرير','Close this staff box & print','Clôturer la caisse de l’employé'],
+ sc_q:['إقفال صندوق {n}؟ كل النقد الموجود معه يُسجَّل تسليماً للمكتب ويصبح صندوقه صفراً، ويُطبع التقرير.','Close {n}’s box? All cash in hand is handed to the office, the box goes to zero, and the report prints.','Clôturer la caisse de {n} ? Tout l’argent est remis au bureau et la caisse revient à zéro.'],
+ sc_done:['✓ تم الإقفال — المُسلَّم {v}','✓ Closed — handed {v}','✓ Clôturé — remis {v}'], sc_report:['تقرير إقفال صندوق','Box closing report','Rapport de clôture'],
+ sc_count:['عدد الإيصالات','Receipts','Reçus'], sc_cash:['مقبوض نقداً','Cash collected','Espèces'], sc_whish:['مقبوض Whish','Whish collected','Whish'],
+ sc_handed_before:['سُلِّم خلال الفترة','Handed during period','Remis pendant la période'], sc_handed:['المبلغ المُسلَّم للمكتب','Handed to office','Remis au bureau'], sc_after:['رصيد الصندوق بعد الإقفال','Box after closing','Caisse après clôture'],
+ sc_sign_staff:['توقيع الموظف: ____________','Staff signature: ____________','Signature employé : ________'], sc_sign_office:['توقيع المستلم: ____________','Received by: ____________','Reçu par : ________'],
+ sc_prev:['الإقفالات السابقة','Previous closings','Clôtures précédentes'],
  inv_imp:['استيراد فواتير البرنامج السابق','Import previous invoices','Importer les anciennes factures'],
  inv_imp_hint:['ملف Excel فيه سطر لكل فاتورة: الاسم، رقم العداد، المنطقة، الحالي، السابق، تاريخ الفاتورة، إجمالي الفاتورة، رصيد الحساب الحالي.\n• المطابقة بالاسم كما هو (مع «- 1» و«- 2»…)، والأسماء غير المسجلة لا تُدخل.\n• تاريخ الفاتورة من 1 إلى 14 = فاتورة الشهر السابق (02/06 ← أيار)، ومن 15 فما فوق = فاتورة الشهر نفسه.\n• الاستهلاك = الحالي − السابق.\n• بعد الاستيراد يصبح رصيد كل زبون مطابقاً لـ«رصيد الحساب الحالي» في الملف.\n• يمكن إعادة الاستيراد: الفواتير المستوردة سابقاً تُستبدل، والأشهر التي فيها قراءة من البرنامج لا تُلمس.','Excel file with one row per invoice: name, meter no., area, current, previous, invoice date, invoice total, current balance.\n• Matching by exact name (including “- 1”, “- 2”…); unknown names are skipped.\n• Invoice dated 1–14 = previous month’s bill (02/06 → May); 15 or later = same month.\n• Consumption = current − previous.\n• After import each balance equals the file’s current balance.\n• Re-import replaces earlier imported invoices; months read in this program are not touched.','Fichier Excel, une ligne par facture : nom, compteur, zone, actuel, précédent, date, total, solde actuel.\n• Correspondance par nom exact ; noms inconnus ignorés.\n• Facture du 1 au 14 = mois précédent (02/06 → mai) ; 15 et plus = même mois.\n• Consommation = actuel − précédent.\n• Après import, chaque solde = solde actuel du fichier.\n• Réimporter remplace les factures importées ; les mois relevés ici ne sont pas touchés.'],
  inv_imp_bad:['لم أجد أعمدة الاسم / الحالي / السابق / تاريخ الفاتورة / إجمالي الفاتورة في الملف','Columns name / current / previous / invoice date / total not found','Colonnes introuvables'],
@@ -2202,6 +2225,7 @@ Object.assign(D,{
  uploading:['جارٍ رفع البيانات إلى السحابة…','Uploading to the cloud…','Envoi vers le cloud…'], uploaded:['✓ كل البيانات محفوظة على السحابة','✓ Everything is saved in the cloud','✓ Tout est enregistré dans le cloud'],
  upload_wait:['هناك عمليات قيد الرفع — انتظر لحظة قبل الإغلاق','Some operations are still uploading — wait a moment before closing','Des opérations sont en cours d’envoi — patientez']
 });
+var WL='<img src="/assets/whish.png" alt="Whish" class="wl">';
 var SLUG='', TOKEN='', ME=null, SITE=null, PLANS=[], STAFF=[], CUST=[], LIC=null, TODAY='', TAB='dash';
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]}); }
 function n2(v){ var x=Number(v); return isFinite(x)?x:0; }
@@ -2369,6 +2393,7 @@ var TABS=[
   {id:'salaries',k:'nav_salaries',i:'👷',admin:true},
   {id:'stock',k:'nav_stock',i:'📦',admin:true},
   {id:'suppliers',k:'nav_suppliers',i:'🚚',admin:true},
+  {id:'insurance',k:'nav_insurance',i:'🛡️',admin:true},
   {id:'cstmt',k:'nav_cstmt',i:'🧾'},
   {id:'report',k:'nav_report',i:'📊',admin:true},
   {id:'map',k:'nav_map',i:'🗺️',admin:true},
@@ -2739,8 +2764,7 @@ async function openCustomer(id,barcode,mode){
     var info=[
       [t('code'),'#'+c.code],[t('barcode'),c.barcode],[t('meter_no'),c.meter_no],[t('box'),c.box],
       [t('plan'),d.plan?(d.plan.name+(d.plan.kind==='fixed'?' · '+t('kind_fixed'):'')):'—'],[t('area'),[c.area,c.location_name].filter(Boolean).join(' · ')],
-      [t('collector'),d.collector_name],[t('mobile'),c.mobile?('+'+c.mobile_cc+' '+c.mobile):''],[t('prev_reading'),fmtN(d.prev_value)]
-    ].filter(function(x){return x[1]!==''&&x[1]!=null});
+      [t('collector'),d.collector_name],[t('mobile'),c.mobile?('+'+c.mobile_cc+' '+c.mobile):''],[t('prev_reading'),fmtN(d.prev_value)]].concat(n2(d.insurance)?[[t('ins_bal'),money(d.insurance)]]:[]).filter(function(x){return x[1]!==''&&x[1]!=null});
     var notes=(d.notes||[]), sw=(d.switches||[]);
     m.body.innerHTML=
       '<div class="row"><span class="chip '+(c.is_active?'on':'off')+'">'+esc(c.is_active?t('active'):t('inactive'))+'</span>'+(c.archived?' <span class="chip gray">'+esc(t('archived'))+'</span>':'')+
@@ -2902,8 +2926,8 @@ async function openCustomer(id,barcode,mode){
     box.innerHTML='<div class="step"><div class="g2"><div><label>'+esc(t('amount'))+'</label><input id="pa" type="text" inputmode="decimal" class="valinput" style="font-size:22px" value="'+esc(def===''?'':String(def))+'"></div>'+
       '<div><label>'+esc(t('currency'))+'</label><select id="pc"><option value="'+cur+'">'+esc(cur+' '+sym(cur))+'</option>'+(rate()?'<option value="'+oth+'">'+esc(oth+' '+sym(oth))+'</option>':'')+'</select></div></div>'+
       '<div id="peq" class="muted" style="margin:6px 0"></div>'+(rate()?'<div class="muted">'+esc(t('rate_t'))+': <b class="num">'+esc(fmtN(rate(),0))+'</b></div>':'')+
-      '<label style="margin-top:8px">'+esc(t('method'))+'</label><div class="row"><label class="chk"><input type="radio" name="pm" value="cash" checked> 💵 '+esc(t('cash'))+'</label>'+(isAdmin()?'<label class="chk"><input type="radio" name="pm" value="whish"> 🟣 '+esc(t('whish'))+'</label>':'')+'</div>'+
-      '<div id="wqr" class="hidden muted" style="margin:6px 0;padding:8px 10px;border-radius:10px;background:var(--wishbg)">🟣 '+esc(t('whish_to_stmt'))+'</div>'+
+      '<label style="margin-top:8px">'+esc(t('method'))+'</label><div class="row"><label class="chk"><input type="radio" name="pm" value="cash" checked> 💵 '+esc(t('cash'))+'</label>'+(isAdmin()?'<label class="chk"><input type="radio" name="pm" value="whish"> '+WL+esc(t('whish'))+'</label>':'')+'</div>'+
+      '<div id="wqr" class="hidden muted" style="margin:6px 0;padding:8px 10px;border-radius:10px;background:var(--wishbg)">'+WL+esc(t('whish_to_stmt'))+'</div>'+
       '<label>'+esc(t('note'))+'</label><input id="pn">'+
       '<div id="pmsg" class="err msg" style="margin-top:8px"></div><button class="btn ok full lg" id="pgo" style="margin-top:10px">'+esc(t('pay_save'))+'</button></div>';
     $$('input[name=pm]',box).forEach(function(r){ r.addEventListener('change',function(){ $('#wqr',box).classList.toggle('hidden',$('input[name=pm]:checked',box).value!=='whish'); }); });
@@ -3320,7 +3344,7 @@ async function openStatement(cid){
     var rows=d.rows.map(function(r){
       if(!r.voided) run+=n2(r.debit)-n2(r.credit);
       var mk=(r.t==='inv'&&r.period)?r.period:String(dt(r.at)).slice(0,7), sep='';
-      if(mk&&mk!==lastM){ lastM=mk; sep='<tr><td colspan="9" style="background:var(--soft);font-weight:800;color:var(--p)">📅 '+esc(monthName(mk,true))+'</td></tr>'; }
+      if(mk&&mk!==lastM){ lastM=mk; sep='<tr><td colspan="11" style="background:var(--soft);font-weight:800;color:var(--p)">📅 '+esc(monthName(mk,true))+'</td></tr>'; }
       var kind=r.t==='pay'?t('k_pay')+' ('+(r.method==='whish'?t('whish'):t('cash'))+')':t('k_'+r.kind);
       var det=r.t==='inv'&&r.kind==='meter'? t('prev_reading')+' <b class="num">'+esc(fmtN(r.prev_value))+'</b> → <b class="num">'+esc(fmtN(r.cur_value))+'</b> = '+esc(fmtN(r.kwh))+' '+esc(t('kwh'))
         : (r.t==='pay'&&r.paid_currency!==mainCur()? esc(money(r.paid_amount,r.paid_currency)) : '');
@@ -3328,12 +3352,15 @@ async function openStatement(cid){
         '<td>'+det+(r.note?' <span class="muted">'+esc(r.note)+'</span>':'')+'</td>'+
         '<td class="num">'+(n2(r.debit)?esc(money(r.debit)):'')+'</td><td class="num">'+(n2(r.credit)?esc(money(r.credit)):'')+'</td><td>'+balHtml(run)+'</td>'+
         '<td>'+(r.photo?'<img class="thumb" src="'+esc(r.photo)+'?w=160" data-big="'+esc(r.photo)+'" loading="lazy" alt="">':'')+'</td><td>'+esc(r.staff||'')+'</td>'+
+        '<td>'+(!r.voided&&(r.t==='pay'||r.kind==='meter'||r.kind==='fixed')?'<button class="btn ghost sm" data-prow="'+esc(r.id)+'" title="'+esc(t('print'))+'">🖨️</button>':'')+'</td>'+
         (adm?'<td>'+(!r.voided?'<button class="btn ghost sm" data-edamt="'+esc(r.t)+'|'+esc(r.id)+'|'+esc(r.t==='pay'?r.paid_amount:r.debit)+'">✏️</button> ':'')+(!r.voided&&r.kind!=='opening'?'<button class="btn ghost sm" data-void="'+esc(r.t)+'|'+esc(r.id)+'">'+esc(t('void'))+'</button>':(r.voided?'<span class="chip off">'+esc(t('voided'))+'</span>':''))+'</td>':'')+'</tr>';
     });
     m.body.innerHTML='<div class="row" style="margin-bottom:8px"><b>#'+esc(c.code)+' '+esc(c.name)+'</b><span class="muted">'+esc(c.barcode||'')+(c.plan_name?' · '+esc(c.plan_name):'')+'</span><span class="sp"></span>'+esc(t('balance'))+': '+balHtml(c.balance)+'</div>'+
-      '<div class="tw"><table><thead><tr><th>'+esc(t('date'))+'</th><th>'+esc(t('type'))+'</th><th></th><th>'+esc(t('debit'))+'</th><th>'+esc(t('creditc'))+'</th><th>'+esc(t('running'))+'</th><th>'+esc(t('photo'))+'</th><th>'+esc(t('by'))+'</th>'+(adm?'<th></th>':'')+'</tr></thead><tbody>'+
-      (rows.join('')||'<tr><td colspan="9" class="muted">'+esc(t('no_results'))+'</td></tr>')+'</tbody></table></div>'+
-      '<div class="row" style="margin-top:10px">'+(waHere()?'<button class="btn wa sm" id="swa">'+esc(t('send_wa'))+'</button>':'')+'<button class="btn alt sm" id="spr">'+esc(t('print'))+'</button></div>';
+      '<div class="tw"><table><thead><tr><th>'+esc(t('date'))+'</th><th>'+esc(t('type'))+'</th><th></th><th>'+esc(t('debit'))+'</th><th>'+esc(t('creditc'))+'</th><th>'+esc(t('running'))+'</th><th>'+esc(t('photo'))+'</th><th>'+esc(t('by'))+'</th><th></th>'+(adm?'<th></th>':'')+'</tr></thead><tbody>'+
+      (rows.join('')||'<tr><td colspan="10" class="muted">'+esc(t('no_results'))+'</td></tr>')+'</tbody></table></div>'+
+      '<div class="row" style="margin-top:10px">'+(waHere()?'<button class="btn wa sm" id="swa">'+esc(t('send_wa'))+'</button>':'')+'<button class="btn alt sm" id="spr">🧾 '+esc(t('print_ticket'))+'</button><button class="btn sm" id="spa4">🖨️ '+esc(t('print_a4'))+'</button></div>';
+    $$('[data-prow]',m.body).forEach(function(b){ b.addEventListener('click',function(){ printStmtRow(d,b.dataset.prow); }); });
+    $('#spa4',m.body).addEventListener('click',function(){ printStatementA4(d); });
     if($('#swa',m.body)) $('#swa',m.body).addEventListener('click',function(){
       var s=['*'+(SITE.name||'')+'*',t('statement')+' — '+c.name+' (#'+c.code+')'], rb=0;
       d.rows.filter(function(r){return !r.voided}).slice(-12).forEach(function(r){ s.push(dt(r.at).slice(0,10)+' · '+(r.t==='pay'?t('k_pay'):t('k_'+r.kind)+(r.period?' '+r.period:''))+(r.kind==='meter'?' ('+fmtN(r.prev_value)+'→'+fmtN(r.cur_value)+')':'')+': '+(n2(r.debit)?'+'+money(r.debit):'−'+money(r.credit))); });
@@ -3355,6 +3382,180 @@ async function openStatement(cid){
   }
   m.body.addEventListener('click',function(e){ var im=e.target.closest('[data-big]'); if(im) lightbox(im.dataset.big); });
   load();
+}
+/* طباعة أي فاتورة أو إيصال قديم من كشف الحساب */
+function stmtInv(r){ return {no:r.no,created_at:r.at,period:r.period,kind:r.kind,fee:r.fee,prev_value:r.prev_value,cur_value:r.cur_value,kwh:r.kwh,kwh_price:r.kwh_price,
+  energy:r.energy,discount:r.discount,addition:r.addition,amount:r.debit,balance_before:r.balance_before,balance_after:r.balance_after,note:r.note}; }
+function printStmtRow(d,id){
+  var i=-1; d.rows.forEach(function(r,k){ if(r.id===id) i=k; }); if(i<0) return; var r=d.rows[i];
+  if(r.t==='inv') return printDoc(billTicket({c:d.customer,inv:stmtInv(r)}));
+  var inv=null; for(var k=i-1;k>=0;k--){ var x=d.rows[k]; if(x.t==='inv'&&!x.voided&&(x.kind==='meter'||x.kind==='fixed')){ inv=stmtInv(x); break; } }
+  printDoc(billTicket({c:d.customer,inv:inv,pay:{no:r.no,created_at:r.at,amount:r.credit,paid_currency:r.paid_currency,paid_amount:r.paid_amount,rate:r.rate,method:r.method,
+    balance_before:r.balance_before,balance_after:r.balance_after,note:r.note,staff_name:r.staff}}));
+}
+/* كشف الحساب على ورقة A4: كل الأعمدة وكل الأسطر */
+function printStatementA4(d){
+  var c=d.customer, run=0, lastM='';
+  var trs=d.rows.filter(function(r){ return !r.voided; }).map(function(r){ run+=n2(r.debit)-n2(r.credit);
+    var mk=(r.t==='inv'&&r.period)?r.period:String(dt(r.at)).slice(0,7), sep='';
+    if(mk&&mk!==lastM){ lastM=mk; sep='<tr class="m"><td colspan="11">'+esc(monthName(mk,true))+'</td></tr>'; }
+    var kind=r.t==='pay'?t('k_pay')+' ('+(r.method==='whish'?'Whish':t('cash'))+')':t('k_'+r.kind);
+    var mtr=r.t==='inv'&&r.kind==='meter';
+    return sep+'<tr><td>'+esc(dt(r.at))+'</td><td>'+esc(kind)+'</td><td>'+esc(r.no)+'</td><td>'+esc(r.period?monthName(r.period,true):'')+'</td>'+
+      '<td>'+(mtr?esc(fmtN(r.prev_value)):'')+'</td><td>'+(mtr?esc(fmtN(r.cur_value)):'')+'</td><td>'+(mtr?esc(fmtN(r.kwh)):'')+'</td>'+
+      '<td>'+(n2(r.debit)?esc(money(r.debit)):'')+'</td><td>'+(n2(r.credit)?esc(money(r.credit)):'')+'</td><td><b>'+esc(money(run))+'</b></td><td class="w">'+esc(r.note||'')+(r.staff?' — '+esc(r.staff):'')+'</td></tr>'; });
+  var dir=LANG==='ar'?'rtl':'ltr';
+  printHtml('<style>@page{size:A4 portrait;margin:9mm}#printArea{font-family:Cairo,Tahoma,Arial,sans-serif;direction:'+dir+';color:#000}'+
+    '#printArea h2{margin:0 0 2px;font-size:17px}#printArea .hd{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:6px;font-size:11px}'+
+    '#printArea table{border-collapse:collapse;width:100%;font-size:9.5px;table-layout:auto}#printArea th,#printArea td{border:1px solid #888;padding:2px 3px;text-align:center;white-space:nowrap}'+
+    '#printArea td.w{white-space:normal;text-align:start;min-width:80px}#printArea th{background:#e9e9e9}#printArea tr.m td{background:#f3f3f3;font-weight:700;text-align:start}'+
+    '#printArea thead{display:table-header-group}#printArea tr{page-break-inside:avoid}</style>'+
+    '<div class="hd"><div><h2>'+esc(SITE.name||'')+'</h2><div>'+esc(t('statement'))+' — <b>'+esc(c.name)+'</b> #'+esc(c.code)+(c.box?' · '+esc(t('box'))+' '+esc(c.box):'')+(c.meter_no?' · '+esc(t('meter_no'))+' '+esc(c.meter_no):'')+'</div></div>'+
+    '<div>'+esc(t('date'))+': '+esc(TODAY)+'<br><b>'+esc(t('balance'))+': '+esc(money(c.balance))+'</b></div></div>'+
+    '<table><thead><tr><th>'+esc(t('date'))+'</th><th>'+esc(t('type'))+'</th><th>#</th><th>'+esc(t('month'))+'</th><th>'+esc(t('b_prev'))+'</th><th>'+esc(t('b_cur'))+'</th><th>'+esc(t('b_cons'))+'</th>'+
+    '<th>'+esc(t('debit'))+'</th><th>'+esc(t('creditc'))+'</th><th>'+esc(t('running'))+'</th><th>'+esc(t('note'))+'</th></tr></thead><tbody>'+trs.join('')+'</tbody></table>');
+}
+/* إقفال صندوق الموظف: يسلّم كل النقد ويصفّر صندوقو + تقرير */
+function closeTicket(r){
+  var T=[]; if(SITE.logo_url) T.push({img:SITE.logo_url});
+  T.push({t:SITE.name||'',b:1,s:30,c:1},{t:t('sc_report'),b:1,s:26,c:1},{t:r.staff,c:1,s:22},
+    {t:(r.from?dt(r.from):'—')+' → '+dt(r.to),c:1,s:19},{hr:1});
+  (r.rows||[]).forEach(function(p){ T.push({kv:['#'+p.no+' '+p.customer,(p.method==='whish'?'W ':'')+money(p.amount)],s:19}); });
+  if((r.rows||[]).length) T.push({hr:1});
+  T.push({kv:[t('sc_count'),fmtN(r.count,0)]},{kv:[t('sc_cash'),money(r.cash)]},{kv:[t('sc_whish'),money(r.whish)]},{kv:[t('readings_n'),fmtN(r.readings,0)]});
+  if(n2(r.handed_before)) T.push({kv:[t('sc_handed_before'),money(r.handed_before)]});
+  T.push({hr:1},{kv:[t('sc_handed'),money(r.handed)],b:1,s:26},{kv:[t('sc_after'),money(0)],b:1},{hr:1},
+    {t:t('sc_sign_staff'),s:20},{t:' ',s:12},{t:t('sc_sign_office'),s:20},{t:' ',s:20});
+  return T;
+}
+async function staffClose(staffId,name,after){
+  if(!(await confirmBox(t('sc_q',{n:name})))) return;
+  try{ var r=await call('motor_staff_close',{p_staff:staffId||null}); toast(t('sc_done',{v:money(r.handed)}),'s'); printDoc(closeTicket(r)); after&&after(); }
+  catch(e){ toast(errText(e),'e'); }
+}
+async function staffClosesList(box,staffId){
+  if(!box) return; var L=[]; try{ L=await call('motor_staff_closes',{p_staff:staffId||null}); }catch(e){ return; }
+  if(!L.length) return;
+  box.innerHTML='<div class="sec-t">🔒 '+esc(t('sc_prev'))+'</div><div class="tw"><table><thead><tr><th>'+esc(t('date'))+'</th><th>'+esc(t('sc_count'))+'</th><th>'+esc(t('sc_cash'))+'</th><th>'+esc(t('sc_whish'))+'</th><th>'+esc(t('sc_handed'))+'</th><th>'+esc(t('by'))+'</th><th></th></tr></thead><tbody>'+
+    L.map(function(r,i){ return '<tr><td class="num">'+esc(dt(r.at))+'</td><td class="num">'+esc(fmtN(r.count,0))+'</td><td class="num">'+esc(money(r.cash))+'</td><td class="num">'+esc(money(r.whish))+'</td><td class="num"><b>'+esc(money(r.handed))+'</b></td><td>'+esc(r.by||'')+'</td><td><button class="btn ghost sm" data-rp="'+i+'">🖨️</button></td></tr>'; }).join('')+'</tbody></table></div>';
+  box.addEventListener('click',function(e){ var b=e.target.closest('[data-rp]'); if(b) printDoc(closeTicket(L[+b.dataset.rp])); });
+}
+
+/* =========================================================
+   التأمينات
+   ========================================================= */
+VIEWS.insurance=async function(main){
+  var d=await call('motor_ins_list'), q='', mode='cust';
+  var rows=d.rows, per={}, tin=0, tout=0;
+  rows.forEach(function(r){ var k=r.customer_id||('n:'+r.name); var p=per[k]=per[k]||{id:r.customer_id,name:r.name,code:r.code,inn:0,out:0,last:r.at,n:0};
+    if(r.kind==='in'){ p.inn+=n2(r.amount); tin+=n2(r.amount); } else { p.out+=n2(r.amount); tout+=n2(r.amount); } p.last=r.at; p.n++; });
+  main.innerHTML='<div class="toolbar"><button class="btn ok" id="iin">➕ '+esc(t('ins_in'))+'</button><button class="btn danger" id="iout">↩️ '+esc(t('ins_out'))+'</button>'+
+    '<button class="btn alt" id="iimp">📥 '+esc(t('ins_imp'))+'</button><input type="search" id="iq" placeholder="'+esc(t('search_ph'))+'">'+
+    '<select id="im" style="flex:0 1 200px"><option value="cust">'+esc(t('ins_by_cust'))+'</option><option value="all">'+esc(t('ins_ledger'))+'</option></select><span class="sp"></span><button class="btn ghost" id="ix">'+esc(t('export_xlsx'))+'</button></div>'+
+    '<div class="stats">'+stat(t('ins_total_in'),money(tin))+stat(t('ins_total_out'),money(tout))+stat(t('ins_held'),money(tin-tout))+stat(t('ins_people'),fmtN(Object.keys(per).filter(function(k){ return Math.abs(per[k].inn-per[k].out)>0.005; }).length,0))+'</div><div id="ib"></div>';
+  function paint(){ var k=normS(q), box=$('#ib',main);
+    if(mode==='cust'){
+      var L=Object.keys(per).map(function(x){ return per[x]; }).filter(function(p){ return !k||normS(p.name).indexOf(k)>=0||String(p.code)===k; }).sort(function(a,b){ return (b.inn-b.out)-(a.inn-a.out); });
+      box.innerHTML='<div class="tw"><table><thead><tr><th>'+esc(t('name'))+'</th><th>'+esc(t('ins_in_c'))+'</th><th>'+esc(t('ins_out_c'))+'</th><th>'+esc(t('ins_bal'))+'</th><th>'+esc(t('date'))+'</th><th></th></tr></thead><tbody>'+
+        (L.map(function(p){ var b=p.inn-p.out; return '<tr><td><b>'+esc(p.name)+'</b>'+(p.code?' <span class="muted">#'+esc(p.code)+'</span>':(p.id?'':' <span class="chip warn">'+esc(t('ins_unlinked'))+'</span>'))+'</td><td class="num">'+esc(money(p.inn))+'</td><td class="num">'+esc(money(p.out))+'</td><td class="num"><b style="color:'+(b>0?'var(--ok)':'inherit')+'">'+esc(money(b))+'</b></td><td class="num muted">'+esc(dt(p.last).slice(0,10))+'</td>'+
+          '<td style="white-space:nowrap">'+(p.id?'<button class="btn ghost sm" data-ii="'+esc(p.id)+'">➕</button> '+(b>0?'<button class="btn ghost sm" data-io="'+esc(p.id)+'|'+b+'">↩️</button>':''):'<button class="btn alt sm" data-il="'+esc(p.name)+'">🔗 '+esc(t('ins_link'))+'</button>')+'</td></tr>'; }).join('')||'<tr><td colspan="6" class="muted">'+esc(t('no_results'))+'</td></tr>')+'</tbody></table></div>';
+    } else {
+      var run=0, L2=rows.map(function(r){ run+=r.kind==='in'?n2(r.amount):-n2(r.amount); return {r:r,run:run}; }).filter(function(x){ return !k||normS(x.r.name).indexOf(k)>=0||String(x.r.ref_no)===k; }).reverse();
+      box.innerHTML='<div class="tw"><table><thead><tr><th>'+esc(t('date'))+'</th><th>'+esc(t('type'))+'</th><th>#</th><th>'+esc(t('name'))+'</th><th>'+esc(t('ins_in_c'))+'</th><th>'+esc(t('ins_out_c'))+'</th><th>'+esc(t('running'))+'</th><th>'+esc(t('pay_from'))+'</th><th>'+esc(t('note'))+'</th><th></th></tr></thead><tbody>'+
+        (L2.map(function(x){ var r=x.r; return '<tr><td class="num">'+esc(dt(r.at))+'</td><td>'+esc(t(r.kind==='in'?'ins_k_in':'ins_k_out'))+'</td><td class="num">'+esc(r.ref_no)+'</td><td><b>'+esc(r.name)+'</b></td>'+
+          '<td class="num" style="color:var(--ok)">'+(r.kind==='in'?esc(money(r.amount)):'')+'</td><td class="num" style="color:var(--bad)">'+(r.kind==='out'?esc(money(r.amount)):'')+'</td><td class="num"><b>'+esc(money(x.run))+'</b></td>'+
+          '<td>'+(r.account?accChip(r.account):'<span class="muted">'+esc(t('ins_imported'))+'</span>')+'</td><td class="muted">'+esc(r.note||r.service||'')+'</td>'+
+          '<td style="white-space:nowrap"><button class="btn ghost sm" data-ip="'+esc(r.id)+'">🖨️</button> <button class="btn ghost sm" data-id="'+esc(r.id)+'">'+esc(t('delete'))+'</button></td></tr>'; }).join('')||'<tr><td colspan="10" class="muted">'+esc(t('no_results'))+'</td></tr>')+'</tbody></table></div>';
+    }
+  }
+  $('#iq',main).addEventListener('input',function(){ q=this.value; paint(); });
+  $('#im',main).addEventListener('change',function(){ mode=this.value; paint(); });
+  $('#iin',main).addEventListener('click',function(){ insForm('in',null,0); });
+  $('#iout',main).addEventListener('click',function(){ insForm('out',null,0); });
+  $('#iimp',main).addEventListener('click',insImportDialog);
+  $('#ix',main).addEventListener('click',function(){ var R=[[t('date'),t('type'),'#',t('name'),t('ins_in_c'),t('ins_out_c'),t('running'),t('note')]], run=0;
+    rows.forEach(function(r){ run+=r.kind==='in'?n2(r.amount):-n2(r.amount); R.push([dt(r.at),t(r.kind==='in'?'ins_k_in':'ins_k_out'),r.ref_no,r.name,r.kind==='in'?n2(r.amount):0,r.kind==='out'?n2(r.amount):0,run,r.note||r.service||'']); });
+    downloadBlob(makeXlsx([{name:t('nav_insurance'),rows:R}]),'insurance-'+SLUG+'.xlsx'); });
+  $('#ib',main).addEventListener('click',async function(e){
+    var a=e.target.closest('[data-ii]'); if(a) return insForm('in',a.dataset.ii,0);
+    var o=e.target.closest('[data-io]'); if(o){ var p=o.dataset.io.split('|'); return insForm('out',p[0],+p[1]); }
+    var lk=e.target.closest('[data-il]'); if(lk){ var nm=lk.dataset.il;
+      var m2=modal(t('ins_link')+' — '+nm,'<label>'+esc(t('name'))+'</label><input id="ilk" list="ilkl" autocomplete="off" placeholder="'+esc(t('search_ph'))+'"><datalist id="ilkl">'+CUST.map(function(c){ return '<option value="#'+c.code+' '+esc(c.name)+'">'; }).join('')+'</datalist><div id="ilm" class="err msg" style="margin-top:8px"></div>',
+        '<button class="btn ghost" data-x>'+esc(t('cancel'))+'</button><button class="btn" data-s>'+esc(t('save'))+'</button>');
+      m2.foot.addEventListener('click',async function(ev){ if(ev.target.closest('[data-x]')) return m2.close(); if(!ev.target.closest('[data-s]')) return;
+        var mm=$('#ilk',m2.body).value.match(/^#(\d+)/), c=mm?CUST.filter(function(x){ return String(x.code)===mm[1]; })[0]:null;
+        if(!c){ $('#ilm',m2.body).textContent=t('e_customer_not_found'); return; }
+        try{ await call('motor_ins_link',{p_name:nm,p_customer:c.id}); toast(t('saved'),'s'); m2.close(); go('insurance',true); }catch(err){ $('#ilm',m2.body).textContent=errText(err); } });
+      return; }
+    var pr=e.target.closest('[data-ip]'); if(pr){ var r=rows.filter(function(x){return x.id===pr.dataset.ip})[0]; return printDoc(insTicket(r)); }
+    var dl=e.target.closest('[data-id]'); if(dl){ if(!(await confirmBox(t('confirm_delete')))) return;
+      try{ await call('motor_ins_delete',{p_id:dl.dataset.id}); toast(t('saved'),'s'); go('insurance',true); }catch(err){ toast(errText(err),'e'); } }
+  });
+  paint();
+};
+function insTicket(r){
+  var T=[]; if(SITE.logo_url) T.push({img:SITE.logo_url});
+  T.push({t:SITE.name||'',b:1,s:30,c:1},{t:t(r.kind==='in'?'ins_rcpt_in':'ins_rcpt_out'),b:1,s:25,c:1},{hr:1},
+    {kv:[t('date'),dt(r.at)]},r.ref_no?{kv:['#',r.ref_no]}:null,{kv:[t('name'),r.name]},{kv:[t('amount'),money(r.amount)],b:1,s:26},
+    r.account?{kv:[t('pay_from'),r.account==='whish'?'Whish':t('cash')]}:null,(r.note||r.service)?{t:r.note||r.service,s:19}:null,{kv:[t('by'),r.by||'']},{hr:1},{t:t('v_sign'),s:20},{t:' ',s:20});
+  return T.filter(Boolean);
+}
+function insForm(kind,cid,maxv){
+  var m=modal(t(kind==='in'?'ins_in':'ins_out'),'<label>'+esc(t('name'))+'</label><input id="isr" list="isl" placeholder="'+esc(t('search_ph'))+'" autocomplete="off"><datalist id="isl">'+CUST.map(function(c){ return '<option value="#'+c.code+' '+esc(c.name)+'">'; }).join('')+'</datalist>'+
+    '<label style="margin-top:8px">'+esc(t('amount'))+' ('+esc(mainCur())+')</label><input id="ia" inputmode="decimal" style="font-size:20px" value="'+(kind==='out'&&maxv?esc(n2(maxv)):'')+'">'+
+    '<div style="margin-top:8px">'+accPick('iacc').replace(esc(t('pay_from')),esc(t(kind==='in'?'ins_to':'pay_from')))+'</div><label style="margin-top:8px">'+esc(t('note'))+'</label><input id="inn" value="'+esc(t(kind==='in'?'ins_note_in':'ins_note_out'))+'"><div id="imsg" class="err msg" style="margin-top:8px"></div>',
+    '<button class="btn ghost" data-x>'+esc(t('cancel'))+'</button><button class="btn" data-s>'+esc(t('save'))+' + 🖨️</button><button class="btn alt" data-s="np">'+esc(t('save'))+'</button>');
+  if(cid){ var c0=CUST.filter(function(c){return c.id===cid})[0]; if(c0) $('#isr',m.body).value='#'+c0.code+' '+c0.name; }
+  m.foot.addEventListener('click',async function(e){ if(e.target.closest('[data-x]')) return m.close(); var b=e.target.closest('[data-s]'); if(!b) return;
+    var mm=$('#isr',m.body).value.match(/^#(\d+)/), c=mm?CUST.filter(function(x){ return String(x.code)===mm[1]; })[0]:null;
+    if(!c){ $('#imsg',m.body).textContent=t('e_customer_not_found'); return; }
+    var v=n2($('#ia',m.body).value); if(!(v>0)){ $('#imsg',m.body).textContent=t('e_bad_amount'); return; }
+    busy(b,true);
+    try{ var r=await call('motor_ins_add',{p_customer:c.id,p_kind:kind,p_amount:v,p_account:accVal(m.body,'iacc'),p_note:$('#inn',m.body).value});
+      toast(t('saved')+' — '+t('ins_bal')+': '+money(r.balance),'s'); m.close();
+      if(b.dataset.s!=='np') printDoc(insTicket({kind:kind,at:r.row.created_at,ref_no:r.row.ref_no,name:c.name,amount:v,account:r.row.account,note:r.row.note,by:r.row.by_name}));
+      go('insurance',true); }
+    catch(err){ $('#imsg',m.body).textContent=errText(err); busy(b,false); } });
+}
+/* استيراد كشف حساب صندوق التأمين (Excel) */
+function insImportDialog(){
+  var m=modal(t('ins_imp'),'<p class="muted" style="margin-top:0;white-space:pre-line">'+esc(t('ins_imp_hint'))+'</p><input type="file" id="iif2" accept=".xlsx"><div id="iiv2" style="margin-top:12px"></div>',
+    '<button class="btn ghost" data-x>'+esc(t('close'))+'</button><button class="btn hidden" data-gob></button>',true);
+  var plan=null;
+  m.foot.addEventListener('click',async function(e){ if(e.target.closest('[data-x]')) return m.close(); var gb=e.target.closest('[data-gob]'); if(!gb||!plan) return;
+    if(!(await confirmBox(t('ins_imp_q',{n:plan.length})))) return; busy(gb,true,t('saving'));
+    try{ var r=await call('motor_ins_import',{p_rows:plan,p_replace:true}); toast(t('ins_imp_done',{n:r.count}),'s'); m.close(); go('insurance',true); }
+    catch(err){ $('#iiv2',m.body).insertAdjacentHTML('beforeend','<div class="err">'+esc(errText(err))+'</div>'); busy(gb,false); } });
+  $('#iif2',m.body).addEventListener('change',async function(){
+    var file=this.files&&this.files[0], pv=$('#iiv2',m.body), gb=$('[data-gob]',m.foot); plan=null; gb.classList.add('hidden'); if(!file) return;
+    try{
+      var rows=await readXlsx(await file.arrayBuffer()), hi=-1, H={};
+      for(var i=0;i<Math.min(rows.length,10);i++){ var r=rows[i].map(function(x){return String(x||'').trim()}); if(r.some(function(x){return /مدين/.test(x)})&&r.some(function(x){return /دائن/.test(x)})){ hi=i; r.forEach(function(x,j){ H[x]=j; }); break; } }
+      if(hi<0) throw new Error(t('inv_imp_bad'));
+      function col(re){ for(var k in H) if(re.test(k)) return H[k]; return -1; }
+      var C={d:col(/^ال?(تاريخ|ناريخ)/),dr:col(/مدين/),cr:col(/دائن/),sv:col(/الخدمة/),ds:col(/الوصف|البيان/)};
+      if(C.d<0) C.d=0;
+      var byName={}; CUST.forEach(function(c){ var k=impNameKey(c.name); (byName[k]=byName[k]||[]).push(c); });
+      var out=[], opening=0, unl=[];
+      for(var j=hi+1;j<rows.length;j++){ var x=rows[j], ds=String(x[C.ds]||'').trim(), dr=impNum(x[C.dr])||0, cr=impNum(x[C.cr])||0, dv=String(x[C.d]||'').trim();
+        if(/الرصيد السابق/.test(dv)){ opening=impNum(x[col(/رصيد/)])||0; continue; }
+        var dd=impDate(dv); if(!dd) continue;
+        var tm=(dv.match(/(\d{1,2}:\d{2})/)||[])[1]||'12:00';
+        var refm=ds.match(/الرقم\s*(\d+)/), parts=ds.split(/\s,\s/), txt=parts[parts.length-1]||ds;
+        var nm=''; var mm=txt.match(/^(.*?)\s*-\s*(.+)$/)||txt.match(/^(.*?(?:التأمين|تأمين))\s+(?:الى|إلى)\s+(.+)$/);
+        if(mm){ nm=mm[2].trim(); txt=mm[1].trim(); }
+        var c=nm?(byName[impNameKey(nm)]||[]):[]; if(c.length!==1&&nm){ var k2=impNameKey(nm); var cand=CUST.filter(function(z){ var zk=impNameKey(z.name); return zk.indexOf(k2)>=0||k2.indexOf(zk)>=0; }); if(cand.length===1) c=cand; }
+        if(c.length!==1&&nm) unl.push(nm);
+        if(dr) out.push({at:dd+' '+tm,kind:'in',amount:dr,ref_no:refm?refm[1]:'',service:String(C.sv>=0?x[C.sv]||'':''),note:txt,name:c.length===1?c[0].name:(nm||txt),customer_id:c.length===1?c[0].id:null});
+        if(cr) out.push({at:dd+' '+tm,kind:'out',amount:cr,ref_no:refm?refm[1]:'',service:String(C.sv>=0?x[C.sv]||'':''),note:txt,name:c.length===1?c[0].name:(nm||txt),customer_id:c.length===1?c[0].id:null});
+      }
+      if(opening) out.unshift({at:(out[0]?out[0].at.slice(0,10):TODAY)+' 00:00',kind:opening>0?'in':'out',amount:Math.abs(opening),note:t('opening'),name:t('opening'),customer_id:null});
+      plan=out; var ti=0, to=0; out.forEach(function(r){ if(r.kind==='in') ti+=r.amount; else to+=r.amount; });
+      pv.innerHTML='<div class="stats">'+stat(t('inv_imp_rows'),fmtN(out.length,0))+stat(t('ins_total_in'),money(ti))+stat(t('ins_total_out'),money(to))+stat(t('ins_held'),money(ti-to))+'</div>'+
+        (unl.length?'<div class="lic">'+esc(t('ins_imp_unlinked'))+':<br>'+Array.from(new Set(unl)).map(esc).join('<br>')+'</div>':'');
+      if(out.length){ gb.textContent=t('ins_imp_go',{n:out.length}); gb.classList.remove('hidden'); }
+    }catch(err){ pv.innerHTML='<div class="err">'+esc(errText(err))+'</div>'; }
+  });
 }
 function lightbox(src){ modal(t('photo'),'<img class="lb-img" src="'+esc(src)+'" alt="">',false,true); }
 
@@ -3426,7 +3627,7 @@ function downloadCsv(rows,name){
 }
 
 var CFIELDS=[
-  ['sec_basic',[['name','text',1],['alt_name'],['mobile_cc','tel'],['mobile','tel'],['mobile2','tel'],['phone','tel'],['email','email'],['nationality'],['address','text',1],['notes','area',1]]],
+  ['sec_basic',[['name','text',1],['alt_name'],['mobile_cc','cc'],['mobile','tel'],['mobile2','tel'],['phone','tel'],['email','email'],['nationality'],['address','text',1],['notes','area',1]]],
   ['sec_sub',[['plan_id','plan'],['collector_id','staff'],['sub_date','date'],['collect_day','number'],['credit_limit','number'],['initial_reading','number'],['opening_balance','number'],['is_active','bool'],['archived','bool']]],
   ['sec_meter',[['barcode'],['meter_no'],['box'],['generator'],['breaker_no'],['building'],['floor'],['side'],['location_name'],['location_code'],['area'],['area_code'],['zone'],['category'],['category2'],['lat','number'],['lng','number']]],
   ['sec_disc',[['charge_discount','number'],['discount_desc'],['charge_addition','number'],['addition_desc']]]
@@ -3442,6 +3643,7 @@ async function editCustomer(id){
       if(ty==='plan') return '<div><label>'+esc(t('plan'))+'</label><select data-f="plan_id"><option value="">'+esc(t('none'))+'</option>'+PLANS.map(function(p){return '<option value="'+esc(p.id)+'" '+(p.id===v?'selected':'')+'>'+esc(p.name)+'</option>'}).join('')+'</select></div>';
       if(ty==='staff') return '<div><label>'+esc(t('collector'))+'</label><select data-f="collector_id"><option value="">'+esc(c.collector_name||t('none'))+'</option>'+STAFF.map(function(s){return '<option value="'+esc(s.id)+'" '+(s.id===v?'selected':'')+'>'+esc(s.name)+'</option>'}).join('')+'</select></div>';
       if(ty==='area') return '<div'+st+'><label>'+esc(t(k))+'</label><textarea data-f="'+k+'">'+esc(v)+'</textarea></div>';
+      if(ty==='cc') return '<div><label>'+esc(t(k))+'</label>'+ccSelect(v||'961','data-f="'+k+'"')+'</div>';
       return '<div'+st+'><label>'+esc(t(k))+'</label><input data-f="'+k+'" type="'+(ty==='number'?'text':ty)+'"'+(ty==='number'?' inputmode="decimal"':'')+' value="'+esc(v)+'"></div>';
     }).join('')+(sec[0]==='sec_meter'?'<div><label>&nbsp;</label><button class="btn alt full" type="button" id="cgeo">'+esc(t('my_location'))+'</button></div>':'')+'</div>';
   }).join('')+'<div id="cmsg" class="err msg" style="margin-top:10px"></div>';
@@ -3700,7 +3902,11 @@ VIEWS.cstmt=async function(main){
     box.innerHTML='<div class="stats">'+stat(t('opening'),money(d.opening))+stat(t('cash_collected'),money(cash))+stat(t('handed'),money(hand))+stat(t('in_hand'),money(d.balance_now))+stat(t('whish_coll'),money(d.whish_total))+stat(t('readings_n'),fmtN(d.readings,0))+'</div>'+
       '<div class="tw"><table><thead><tr><th>'+esc(t('date'))+'</th><th>'+esc(t('type'))+'</th><th>'+esc(t('debit'))+'</th><th>'+esc(t('creditc'))+'</th><th>'+esc(t('running'))+'</th>'+(adm?'<th></th>':'')+'</tr></thead><tbody>'+
       (trs.join('')||'<tr><td colspan="6" class="muted">'+esc(t('no_results'))+'</td></tr>')+'</tbody></table></div>'+
-      '<div class="row" style="margin-top:10px"><button class="btn alt sm" id="xp">'+esc(t('print'))+'</button></div>';
+      '<div class="row" style="margin-top:10px"><button class="btn alt sm" id="xp">'+esc(t('print'))+'</button><span class="sp"></span>'+
+        '<button class="btn danger" id="xclose">🔒 '+esc(t(adm&&SF.staff!==ME.staff_id?'sc_close_other':'sc_close'))+'</button></div>'+
+      '<div id="xcl" style="margin-top:12px"></div>';
+    $('#xclose',box).addEventListener('click',function(){ staffClose(SF.staff,d.staff.name,load); });
+    staffClosesList($('#xcl',box),SF.staff);
     $$('[data-dm]',box).forEach(function(b){ b.addEventListener('click',async function(){ if(!(await confirmBox(t('confirm_delete')))) return; try{ await call('motor_move_delete',{p_id:b.dataset.dm}); load(); }catch(e){ toast(errText(e),'e'); } }); });
     $('#xp',box).addEventListener('click',function(){ printDoc([{t:SITE.name||'',b:1,s:28,c:1},{t:t('nav_cstmt'),b:1,c:1},{t:d.staff.name,c:1},{t:SF.from+' → '+SF.to,c:1,s:19},{hr:1},
       {kv:[t('opening'),money(d.opening)]},{kv:[t('cash_collected'),money(cash)]},{kv:[t('handed'),money(hand)]},{kv:[t('whish_coll'),money(d.whish_total)]},{kv:[t('readings_n'),fmtN(d.readings,0)]},{hr:1},{kv:[t('in_hand'),money(d.balance_now)],b:1,s:26}]); });
@@ -4021,9 +4227,9 @@ function voucherTicket(v){
     {t:t('by')+': '+(v.by||''),s:20},{hr:1},{t:t('v_sign'),s:22},{t:' ',s:20});
   return T.filter(Boolean);
 }
-function accPick(id){ return '<label>'+esc(t('pay_from'))+'</label><div class="row" id="'+id+'"><label class="chk"><input type="radio" name="'+id+'" value="cash" checked> '+esc(t('acc_cash'))+'</label><label class="chk"><input type="radio" name="'+id+'" value="whish"> '+esc(t('acc_whish'))+'</label></div>'; }
+function accPick(id){ return '<label>'+esc(t('pay_from'))+'</label><div class="row" id="'+id+'"><label class="chk"><input type="radio" name="'+id+'" value="cash" checked> '+esc(t('acc_cash'))+'</label><label class="chk"><input type="radio" name="'+id+'" value="whish"> '+WL+'Whish</label></div>'; }
 function accVal(box,id){ var r=$('input[name='+id+']:checked',box); return r?r.value:'cash'; }
-function accChip(a){ return '<span class="chip '+(a==='whish'?'wish':'gray')+'">'+esc(a==='whish'?'Whish':t('cash'))+'</span>'; }
+function accChip(a){ return '<span class="chip '+(a==='whish'?'wish':'gray')+'">'+(a==='whish'?WL+'Whish':esc(t('cash')))+'</span>'; }
 
 /* ---------- المصاريف ---------- */
 var XF={from:'',to:''};
@@ -4426,10 +4632,23 @@ function loadPdfJs(){ if(pdfjsP) return pdfjsP;
     m.GlobalWorkerOptions.workerSrc='https://cdn.jsdelivr.net/npm/pdfjs-dist@'+PDFJS_V+'/build/pdf.worker.min.mjs'; return m; })
     .catch(function(e){ pdfjsP=null; throw e; });
   return pdfjsP; }
+/* رموز الدول (بدون إسرائيل) — الاسم من المتصفح حسب لغة البرنامج */
+var CC_LIST='LB961 SY963 JO962 PS970 IQ964 SA966 AE971 KW965 QA974 BH973 OM968 YE967 EG20 LY218 TN216 DZ213 MA212 SD249 TR90 CY357 FR33 DE49 GB44 US1 CA1 AU61 BR55 AR54 VE58 CO57 MX52 IT39 ES34 BE32 NL31 SE46 NO47 DK45 CH41 AT43 GR30 PT351 IE353 PL48 RO40 BG359 RU7 UA380 AM374 GE995 AZ994 IR98 PK92 IN91 BD880 LK94 PH63 ID62 MY60 SG65 TH66 VN84 CN86 JP81 KR82 HK852 ZA27 NG234 GH233 CI225 SN221 KE254 ET251 TZ255 UG256 CM237 GA241 CG242 CD243 AO244 ML223 BF226 NE227 TD235 GN224 SL232 LR231 BJ229 TG228 MR222 GM220 GW245 CV238 ST239 GQ240 CF236 RW250 BI257 SO252 DJ253 ER291 SS211 MG261 MU230 SC248 KM269 MZ258 ZM260 ZW263 MW265 BW267 NA264 LS266 SZ268 AF93 AL355 AD376 AG1 BS1 BB1 BY375 BZ501 BT975 BO591 BA387 BN673 KH855 CL56 CR506 HR385 CU53 CZ420 DM1 DO1 EC593 SV503 EE372 FJ679 FI358 GD1 GT502 GY592 HT509 HN504 HU36 IS354 JM1 KZ7 KI686 KG996 LA856 LV371 LI423 LT370 LU352 MO853 MV960 MT356 MH692 FM691 MD373 MC377 MN976 ME382 MM95 NR674 NP977 NZ64 NI505 KP850 MK389 PW680 PA507 PG675 PY595 PE51 KN1 LC1 VC1 WS685 SM378 RS381 SK421 SI386 SB677 SR597 TW886 TJ992 TL670 TO676 TT1 TM993 TV688 UY598 UZ998 VU678 VA39 XK383'.split(' ').map(function(x){ return {iso:x.slice(0,2),dial:x.slice(2)}; });
+function ccSelect(v,attr){
+  var dn=null; try{ dn=new Intl.DisplayNames([LANG==='ar'?'ar':LANG],{type:'region'}); }catch(e){}
+  var name=function(iso){ try{ return dn?dn.of(iso):iso; }catch(e){ return iso; } };
+  var top=CC_LIST.slice(0,16), rest=CC_LIST.slice(16).sort(function(a,b){ return name(a.iso).localeCompare(name(b.iso),LANG); });
+  v=String(v||'').replace(/\D/g,''); var found=false;
+  function opt(c){ var sel=!found&&c.dial===v; if(sel) found=true; return '<option value="'+c.dial+'"'+(sel?' selected':'')+'>'+esc(name(c.iso))+' +'+c.dial+'</option>'; }
+  var html=top.map(opt).join('')+'<option disabled>──────────</option>'+rest.map(opt).join('');
+  if(!found&&v) html='<option value="'+esc(v)+'" selected>+'+esc(v)+'</option>'+html;
+  return '<select '+attr+' dir="auto">'+html+'</select>';
+}
+
 /* =========================================================
    استيراد فواتير البرنامج السابق (Excel): كل سطر فاتورة، مطابقة بالاسم
    ========================================================= */
-function impNameKey(s){ s=String(s||''); for(var i=0;i<4&&/&amp;/.test(s);i++) s=s.replace(/&amp;/g,'&'); return s.replace(/\s*-\s*/g,' - ').replace(/[\u064B-\u0652\u0640]/g,'').replace(/\s+/g,' ').trim().toLowerCase(); }
+function impNameKey(s){ s=String(s||''); for(var i=0;i<4&&/&amp;/.test(s);i++) s=s.replace(/&amp;/g,'&'); return s.replace(/[إأآٱ]/g,'ا').replace(/ى/g,'ي').replace(/ة(?=\s|$)/g,'ه').replace(/\s*-\s*/g,' - ').replace(/[\u064B-\u0652\u0640]/g,'').replace(/\s+/g,' ').trim().toLowerCase(); }
 function impNum(v){ if(v==null||v==='') return null; var x=String(v).replace(/[^\d.\-]/g,''); return x===''||x==='-'?null:+x; }
 function impDate(v){ v=String(v||'').trim(); if(!v) return '';
   if(/^\d{4,5}(\.\d+)?$/.test(v)) return excelDate(v);
