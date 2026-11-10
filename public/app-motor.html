@@ -3332,8 +3332,25 @@ async function printDoc0(T,paper){
   return true;
 }
 function bleReset(slot){ var P=BLEP[slot||'r']; try{ if(P.dev&&P.dev.gatt&&P.dev.gatt.connected) P.dev.gatt.disconnect(); }catch(e){} P.ch=null; }
+/* A4 أفقي: المحتوى بيتصغّر لحالو ليوسع بعرض الصفحة (بلا ما تلعب بالـ margins) */
+var A4_CSS='@page{size:A4 landscape;margin:7mm}#printArea .a4{width:283mm;box-sizing:border-box;font-family:Cairo,Tahoma,Arial,sans-serif;color:#000}'+
+  '#printArea .a4 table{border-collapse:collapse;width:100%;font-size:10px}#printArea .a4 th,#printArea .a4 td{border:1px solid #888;padding:2px 4px;text-align:center;vertical-align:middle}'+
+  '#printArea .a4 th{background:#e9e9e9;white-space:nowrap}#printArea .a4 thead{display:table-header-group}#printArea .a4 tr{page-break-inside:avoid}'+
+  '#printArea .a4 button,#printArea .a4 .btn,#printArea .a4 input,#printArea .a4 select{display:none!important}#printArea .a4 .tw{overflow:visible!important;max-height:none!important}'+
+  '#printArea .a4 .stats{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}#printArea .a4 .stat{border:1px solid #bbb;border-radius:6px;padding:4px 8px;min-width:0}'+
+  '#printArea .a4 .card{border:1px solid #ccc;border-radius:8px;padding:6px;margin:6px 0;box-shadow:none}';
+function printA4(inner,extraCss){
+  printHtml('<style>'+A4_CSS+(extraCss||'')+'</style><div class="a4" dir="'+(LANG==='ar'?'rtl':'ltr')+'">'+inner+'</div>');
+}
+function fitA4(pa){
+  var box=pa.querySelector('.a4'); if(!box) return;
+  box.style.zoom=''; var avail=box.clientWidth, need=box.scrollWidth;
+  $$('table',box).forEach(function(tb){ need=Math.max(need,tb.scrollWidth); });
+  if(need>avail+2) box.style.zoom=String(Math.max(0.45,(avail/need)*0.98).toFixed(3));
+}
 function printHtml(html){
   var pa=$('#printArea'); pa.innerHTML=html; pa.classList.remove('hidden');
+  try{ fitA4(pa); }catch(e){}
   var imgs=$$('img',pa), left=imgs.length;
   var fired=false;
   function go(){ if(fired) return; fired=true; setTimeout(function(){ try{ window.print(); }catch(e){} setTimeout(function(){ pa.classList.add('hidden'); pa.innerHTML=''; },500); },80); }
@@ -3632,11 +3649,7 @@ function printStatementA4(d){
       '<td>'+(mtr?esc(fmtN(r.prev_value)):'')+'</td><td>'+(mtr?esc(fmtN(r.cur_value)):'')+'</td><td>'+(mtr?esc(fmtN(r.kwh)):'')+'</td>'+
       '<td>'+(n2(r.debit)?esc(money(r.debit)):'')+'</td><td>'+(n2(r.credit)?esc(money(r.credit)):'')+'</td><td><b>'+esc(money(run))+'</b></td><td class="w">'+esc(r.note||'')+(r.staff?' — '+esc(r.staff):'')+'</td></tr>'; });
   var dir=LANG==='ar'?'rtl':'ltr';
-  printHtml('<style>@page{size:A4 portrait;margin:9mm}#printArea{font-family:Cairo,Tahoma,Arial,sans-serif;direction:'+dir+';color:#000}'+
-    '#printArea h2{margin:0 0 2px;font-size:17px}#printArea .hd{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:6px;font-size:11px}'+
-    '#printArea table{border-collapse:collapse;width:100%;font-size:9.5px;table-layout:auto}#printArea th,#printArea td{border:1px solid #888;padding:2px 3px;text-align:center;white-space:nowrap}'+
-    '#printArea td.w{white-space:normal;text-align:start;min-width:80px}#printArea th{background:#e9e9e9}#printArea tr.m td{background:#f3f3f3;font-weight:700;text-align:start}'+
-    '#printArea thead{display:table-header-group}#printArea tr{page-break-inside:avoid}</style>'+
+  printA4('<style>#printArea .hd{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:6px;font-size:12px}#printArea h2{margin:0 0 2px;font-size:18px}#printArea td.w{text-align:start;min-width:120px}#printArea tr.m td{background:#f3f3f3;font-weight:700;text-align:start}#printArea td{white-space:nowrap}#printArea td.w{white-space:normal}</style>'+
     '<div class="hd"><div><h2>'+esc(SITE.name||'')+'</h2><div>'+esc(t('statement'))+' — <b>'+esc(c.name)+'</b> #'+esc(c.code)+(c.box?' · '+esc(t('box'))+' '+esc(c.box):'')+(c.meter_no?' · '+esc(t('meter_no'))+' '+esc(c.meter_no):'')+'</div></div>'+
     '<div>'+esc(t('date'))+': '+esc(TODAY)+'<br><b>'+esc(t('balance'))+': '+esc(money(c.balance))+'</b></div></div>'+
     '<table><thead><tr><th>'+esc(t('date'))+'</th><th>'+esc(t('type'))+'</th><th>#</th><th>'+esc(t('month'))+'</th><th>'+esc(t('b_prev'))+'</th><th>'+esc(t('b_cur'))+'</th><th>'+esc(t('b_cons'))+'</th>'+
@@ -4442,7 +4455,7 @@ VIEWS.report=async function(main){
   $('#rp',main).addEventListener('change',function(){ if(/^\d{4}-\d{2}$/.test(this.value)){ RF.period=this.value; go('report'); } });
   $('#rx',main).addEventListener('click',function(){ downloadBlob(makeXlsx([{name:monthName(d.period,true),rows:R}]),'motor-'+SLUG+'-'+d.period+'.xlsx'); });
   $('#rpdf',main).addEventListener('click',function(){
-    printHtml('<style>@page{size:A4 landscape;margin:8mm}#printArea{font-family:Cairo,Arial;direction:'+(LANG==='ar'?'rtl':'ltr')+'}#printArea table{border-collapse:collapse;width:100%;font-size:9px}#printArea th,#printArea td{border:1px solid #999;padding:2px 4px;white-space:nowrap}#printArea th{background:#eee}</style>'+
+    printA4('<style>#printArea .a4 td{white-space:nowrap}</style>'+'<div style="display:none"></div>'+'<style>#printArea table{border-collapse:collapse;width:100%;font-size:9px}#printArea th,#printArea td{border:1px solid #999;padding:2px 4px;white-space:nowrap}#printArea th{background:#eee}</style>'+
       '<h3 style="margin:0 0 6px">'+esc(SITE.name||'')+' — '+esc(t('nav_report'))+' '+esc(monthName(d.period,true))+'</h3>'+$('#rtw',main).innerHTML+
       '<p style="font-size:10px">'+esc(t('inv_amount'))+': '+esc(money(tot.inv))+' · '+esc(t('paid'))+': '+esc(money(tot.paid))+' · '+esc(t('rep_bal_end'))+': '+esc(money(tot.bal))+'</p>'); });
 };
@@ -4857,7 +4870,7 @@ VIEWS.journal=async function(main){
     var S=[[t('date'),t('j_receipts')+' cash',t('j_receipts')+' Whish',t('j_n'),t('j_expenses'),t('j_salaries'),t('j_cash_end'),t('j_whish_end'),t('j_hand')]];
     D0.days.forEach(function(x){ var tt=x.totals; S.push([x.day,n2(tt.cash_in),n2(tt.whish_in),n2(tt.receipts_n),n2(tt.expenses),n2(tt.salaries),n2(tt.cash_box_end),n2(tt.whish_end),n2(tt.collectors_hand)]); });
     downloadBlob(makeXlsx([{name:t('j_day_total'),rows:S},{name:t('nav_journal'),rows:R}]),'journal-'+SLUG+'-'+D0.from+'_'+D0.to+'.xlsx'); });
-  $('#jp',main).addEventListener('click',function(){ window.print(); });
+  $('#jp',main).addEventListener('click',function(){ if(!D0) return; printA4('<h3 style="margin:0 0 6px">'+esc(SITE.name||'')+' — '+esc(t('nav_journal'))+' '+esc(D0.from===D0.to?D0.from:D0.from+' → '+D0.to)+'</h3>'+$('#jbody',main).innerHTML); });
   load();
 };
 
