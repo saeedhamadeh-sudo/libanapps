@@ -700,7 +700,7 @@ function moneyTargetOptions(opts){
   const sh = currentUserShift();
   const o = [];
   if(opts.drawer!==false && !myDrawerIsPersonal()) o.push(`<option value="drawer" ${sh? '' : 'disabled'}>💵 صندوقي${currentUser? ' ('+escapeHtml(currentUser.username)+')' : ''}${sh? '' : ' — مسكّر'}</option>`);
-  if(opts.main!==false && canUseSafe()) o.push(`<option value="main">🗄 ${MAIN_BOX_NAME}</option>`);
+  if(opts.main!==false && (canUseSafe() || opts.out)) o.push(`<option value="main">🗄 ${MAIN_BOX_NAME}</option>`);   // الدفع: كل الموظفين بيدفعوا من الصندوق الأساسي
   moneyAccounts().forEach(a=>{ if(a.kind==='owner' && !hasPermission('owner_pay')) return;
     if(a.kind==='whish'){ if(opts.whish!==false) o.push(`<option value="${a.code}">📱 Whish (${a.code})</option>`); return; }
     if(a.kind==='personal' && opts.drawer===false && myDrawerIsPersonal()) return;   // نفس الصندوق يلي عم نشتغل عليه
@@ -754,7 +754,7 @@ function nextPaySourceAsk(){
     <h3>${incoming? '💰 لوين دخلت المصاري؟' : '💸 من وين دفعت؟'}</h3>
     <div style="font-size:15px; margin-bottom:10px;">${escapeHtml(eff.label)} — <b class="num">${fmt(eff.currency, eff.amt)}</b></div>
     <div class="field"><label>${incoming? 'الحساب يلي دخلت عليه' : 'الحساب يلي طلعت منو'} *</label>
-      <select id="ps_t" style="font-size:16px; padding:10px;"><option value="">— اختار —</option>${moneyTargetOptions({none:true})}</select></div>
+      <select id="ps_t" style="font-size:16px; padding:10px;"><option value="">— اختار —</option>${moneyTargetOptions({none:true, out:!incoming})}</select></div>
     <div id="ps_err" style="color:var(--debit); font-size:13px; min-height:18px;"></div>
     <div class="row"><button class="btn btn-primary" id="ps_ok" style="width:100%; justify-content:center;">✅ تأكيد</button></div>
   </div>`;
@@ -770,7 +770,7 @@ function nextPaySourceAsk(){
 }
 // المدفوعات بتطلع افتراضياً من الصندوق الأساسي (إذا عندك صلاحية عليه) — المقبوضات على صندوقك
 function defaultPaySrc(incoming){
-  if(!incoming && canUseSafe()) return 'main';
+  if(!incoming) return 'main';   // أي دفع (فاتورة مشتريات، سند صرف، مصروف…) بيطلع من الصندوق الأساسي
   if(currentUserShift()) return myDrawerIsPersonal()? '53103' : 'drawer';
   return canUseSafe()? 'main' : '';
 }
@@ -802,6 +802,52 @@ function outgoingDocs(days){
   });
   return out.sort((a,b)=>(b.d.createdAt||0)-(a.d.createdAt||0));
 }
+// حركة مصاري بتنقدر تتعدّل (من وين انصرفت / لوين دخلت): سحب/إيداع/دفع — مش البيع ولا الإقفالات
+function moveEditable(m){ return !!(m && !m.deleted && ['safe_in','safe_out','acct_in','acct_out','withdraw','deposit'].includes(m.type) && !String(m.note||'').includes(WHISH_TO_MAIN)); }
+function moveDocOf(m){ if(!m || !isDocMirrorMove(m) || !m.refSaleId) return null;
+  for(const k of Object.keys(DOC_BOX_KEYS)){ const d = (DB[k]||[]).find(x=>x.id===m.refSaleId); if(d) return { key:k, d }; } return null; }
+function moveTargetOf(m){ if(m.type==='safe_in' || m.type==='safe_out') return 'main'; const a = moneyAcctOf(m); if(a) return a; return 'drawer'; }
+function moveWhereLabel(m){ const t = moveTargetOf(m); if(t==='main') return '🗄 '+MAIN_BOX_NAME; if(t===WHISH_CODE) return '📱 Whish';
+  if(t==='drawer'){ const sh = (DB.cashierShifts||[]).find(x=>x.id===m.shiftId); return '💵 صندوق '+(sh? sh.username : ''); } const c = coaFind(t); return t+' '+(c? c.name : ''); }
+function openMoveEditModal(mid){
+  const m = (DB.cashMovements||[]).find(x=>x.id===mid); if(!moveEditable(m)) return;
+  if(!canUseSafe()){ toast('ما عندك صلاحية'); return; }
+  const dir = ['safe_in','acct_in','deposit'].includes(m.type)? 'in' : 'out';
+  const a = Math.abs(Number(m.amount)||0), cur = m.currency;
+  const wrap = document.createElement('div'); wrap.className = 'modal-bg';
+  wrap.innerHTML = `<div class="modal" style="max-width:440px;"><h3>✏️ تعديل الحركة</h3>
+    <div style="font-size:13.5px; line-height:1.8; margin-bottom:8px;">${escapeHtml(stripUserOfNote(m.note))}<br>
+      المبلغ: <b class="num">${cur==='USD'? '$'+a.toFixed(2) : fmtNum(a)+' '+escapeHtml(secCurLabel())}</b> · ${dir==='in'? 'دخلت على' : 'انصرفت من'}: <b>${escapeHtml(moveWhereLabel(m))}</b>${userOfNote(m.note)? ' · الموظف: <b>'+escapeHtml(userOfNote(m.note))+'</b>' : ''}</div>
+    <div class="field"><label>${dir==='in'? 'لوين دخلت فعلياً؟' : 'من وين انصرفت فعلياً؟'}</label>
+      <select id="me_t" style="font-size:16px; padding:10px;"><option value="">— اختار —</option>${moneyTargetOptions({out:true})}</select></div>
+    <div style="font-size:12px; color:var(--ink-soft);">بترجع المصاري عالمحل القديم، وبتنحسب عالمحل الجديد — نفس المبلغ ونفس التاريخ.</div>
+    <div id="me_err" style="color:var(--debit); font-size:13px; min-height:16px;"></div>
+    <div class="row"><button class="btn" id="me_x">إلغاء</button><button class="btn btn-primary" id="me_ok">✅ حفظ</button></div></div>`;
+  document.body.appendChild(wrap);
+  wrap.querySelector('#me_x').addEventListener('click', ()=>wrap.remove());
+  wrap.querySelector('#me_ok').addEventListener('click', async ()=>{
+    const t = wrap.querySelector('#me_t').value; const err = x=>{ wrap.querySelector('#me_err').textContent = x; };
+    if(!t){ err('اختار'); return; }
+    if(t===moveTargetOf(m) && t!=='drawer'){ err('هيدا نفس المحل'); return; }
+    if(t==='drawer' && !currentUserShift()){ err('ما عندك صندوق مفتوح'); return; }
+    wrap.remove(); await moveMovementTo(m, t); toast('تم تعديل الحركة ✅'); render();
+  });
+}
+async function moveMovementTo(m, t){
+  const doc = moveDocOf(m);
+  if(doc){ const by0 = userOfNote(m.note); await changePaySource(doc.key, doc.d.id, t);
+    const nm = paySrcOf(doc.d.id); if(nm && nm.m){ if(by0 && currentUser && by0!==currentUser.username) nm.m.note = nm.m.note.replace(' — '+currentUser.username, ' — '+by0); nm.m.note += ' ✏️'+(currentUser? currentUser.username : ''); await save(KEYS.cashMovements, DB.cashMovements); }
+    return; }
+  const dir = ['safe_in','acct_in','deposit'].includes(m.type)? 'in' : 'out', a = Math.abs(Number(m.amount)||0);
+  const by = userOfNote(m.note), label = stripUserOfNote(m.note);
+  m.deleted = true; m.note = String(m.note||'') + ' [منقولة]';
+  if(m.shiftId) _shiftAdd(m.shiftId, m.currency, dir==='in'? -a : a);
+  const nm = pushMoneyMove(t, dir, m.currency, a, { label, refId:m.refSaleId||null, at:m.createdAt, date:m.date, rate:m.rate });
+  if(nm && by && currentUser && by!==currentUser.username) nm.note = nm.note.replace(' — '+currentUser.username, ' — '+by);
+  if(nm) nm.note += ' ✏️'+(currentUser? currentUser.username : '');
+  await Promise.all([save(KEYS.cashMovements, DB.cashMovements), save(KEYS.cashierShifts, DB.cashierShifts)]);
+}
+document.addEventListener('click', e=>{ const b = e.target.closest && e.target.closest('[data-move-edit]'); if(!b) return; e.preventDefault(); e.stopPropagation(); openMoveEditModal(b.getAttribute('data-move-edit')); });
 function paidFromCard(){
   if(!canUseSafe()) return '';
   const list = outgoingDocs(14); if(!list.length) return '';
@@ -825,7 +871,7 @@ document.addEventListener('click', e=>{
   wrap.innerHTML = `<div class="modal" style="max-width:420px;"><h3>💸 من وين انصرفت؟</h3>
     <div style="font-size:14px; margin-bottom:8px;">${escapeHtml(eff.label)} — <b class="num">${eff.currency==='LBP'? fmtNum(eff.amt)+' '+escapeHtml(secCurLabel()) : '$'+eff.amt.toFixed(2)}</b></div>
     ${cur? `<div style="font-size:12.5px; color:var(--ink-soft); margin-bottom:6px;">هلق: ${escapeHtml(cur.label)} — بس تغيّر، بترجع المصاري عليه وبتنخصم من الجديد.</div>` : ''}
-    <select id="pc_t" style="font-size:16px; padding:10px;"><option value="">— اختار —</option>${moneyTargetOptions({none:true})}</select>
+    <select id="pc_t" style="font-size:16px; padding:10px;"><option value="">— اختار —</option>${moneyTargetOptions({none:true, out:true})}</select>
     <div id="pc_err" style="color:var(--debit); font-size:13px; min-height:16px;"></div>
     <div class="row"><button class="btn" id="pc_x">إلغاء</button><button class="btn btn-primary" id="pc_ok">✅ حفظ</button></div></div>`;
   document.body.appendChild(wrap);
@@ -5745,6 +5791,8 @@ function render(){
   /* ---------- Warehouse (المستودع) ---------- */
   } else if(parts[0]==='pos'){
     html += crumbs([['الرئيسية','#/'],['نقطة البيع (POS)',null]]) + posView();
+  } else if(parts[0]==='statement' && hasPermission('reports')){
+    html += crumbs([['الرئيسية','#/'],['كشف حساب',null]]) + statementView();
   } else if(parts[0]==='whish' && canSeeSafe()){
     html += crumbs([['الرئيسية','#/'],['كشف حساب Whish',null]]) + whishStatementView();
   } else if(parts[0]==='safe' && canSeeSafe()){
@@ -5937,6 +5985,11 @@ function hubView(){
       <div class="hub-title">الصندوق الأساسي</div>
       <div class="hub-sub">يلي انتقل من الصناديق</div>
       <div class="hub-amt num" style="color:var(--steel)">${fmtNum(safeBalance().lbp)} ${secCurLabel()}</div>
+    </div>`},
+    {key:'statement', perm:'reports', html:`<div class="hub-card" data-nav="#/statement">
+      <div class="hub-icon">📒</div>
+      <div class="hub-title">كشف حساب</div>
+      <div class="hub-sub">أي حساب: زبون، مورد، عامل، موظف، مصاريف، صندوق…</div>
     </div>`},
     ...(whishEnabled()? [{key:'whish', perm:'__safe__', html:`<div class="hub-card" data-nav="#/whish">
       <div class="hub-icon">📱</div>
@@ -9684,7 +9737,7 @@ function safeMoves(){
     if(m.deleted || !SAFE_MOVE_TYPES.includes(m.type)) return;
     if(m.type==='whish_close') return;   // إقفال Whish بينزل بكشف Whish بس — مش بالصندوق الأساسي
     if(m.type==='shift_close'){ const i = shiftCloseInfo(m)||{}; if(i.legacy) return;   // الإقفالات القديمة بالسجل بس، ما بتحرّك رصيد الصندوق الأساسي
-      out.push({id:m.id, at:m.createdAt, date:m.date, kind:'in', lbp:Number(i.toSafeLBP)||0, usd:Number(i.toSafeUSD)||0, label:'إقفال صندوق '+(i.user||'')+' — أقفله: '+(i.by||'')}); }
+      out.push({id:m.id, at:m.createdAt, date:m.date, kind:'in', lbp:Number(i.toSafeLBP)||0, usd:Number(i.toSafeUSD)||0, label:'إقفال صندوق '+(i.user||''), by:i.by||''}); }
     else { const sign = m.type==='safe_in'? 1 : -1, a = Math.abs(Number(m.amount)||0);
       out.push({id:m.id, at:m.createdAt, date:m.date, kind:m.type==='safe_in'?'in':'out', lbp: m.currency==='LBP'? sign*a : 0, usd: m.currency==='USD'? sign*a : 0, label: isDocMirrorMove(m)? (m.type==='safe_in'? 'قبض: ' : 'صرف: ')+String(m.note).slice(DOC_MIRROR_TAG.length) : (m.type==='safe_in'?'إيداع بالصندوق الأساسي':'سحب من الصندوق الأساسي')+(m.note? ' — '+m.note : '')}); }
   });
@@ -9699,6 +9752,9 @@ function safeMoves(){
   let bl = 0, bu = 0; out.forEach(r=>{ bl += r.lbp; bu += r.usd; r.balLBP = bl; r.balUSD = bu; });
   return out;
 }
+// مين عمل الحركة: آخر « — اسم» بالملاحظة
+function userOfNote(note){ const t = String(note||'').replace(/\s*\[منقولة\]/,'').replace(/\s*✏️\S*\s*$/,'').replace(/\s*⟨\d+⟩\s*$/,'').replace(/\s*⟪main⟫/,''); const m = t.match(/ — ([^—]+?)\s*$/); return m? m[1].trim() : ''; }
+function stripUserOfNote(note){ const by = userOfNote(note); let t = String(note||'').replace(/\s*\[منقولة\]/,'').replace(/\s*✏️\S*\s*$/,'').replace(/\s*⟨\d+⟩\s*$/,''); if(by) t = t.replace(new RegExp(' — '+by.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\s*$'),''); return t.replace(DOC_MIRROR_TAG,'').replace(/^\[حساب\] /,'').trim(); }
 function safeBalance(){ const m = safeMoves(); const l = m[m.length-1]; return l ? {lbp:l.balLBP, usd:l.balUSD} : {lbp:0, usd:0}; }
 // الخزنة مع مين: المدير دايماً، ومستخدم بيختارو المدير من الإعدادات
 // الخزنة: كل مستخدم إلو صلاحية «رؤية الخزنة» بيشوفها، وبس يلي إلو «السحب من الخزنة» بيقدر يسحب ويدفع منها (المدير دايماً)
@@ -9723,12 +9779,15 @@ function safeViewMain(){
       <button class="btn" data-whish-withdraw="1" style="background:#fdeef3; border-color:#e7a3bb; color:#a3174a; font-weight:800;">📱 سحب من Whish</button>
     </div>` : ''}
     <div class="table-scroll"><table>
-      <thead><tr><th>التاريخ والساعة</th><th>الحركة</th><th>المبلغ</th><th>الرصيد بعدها</th></tr></thead>
-      <tbody>${moves.length? moves.map(r=>`<tr>
+      <thead><tr><th>التاريخ والساعة</th><th>الحركة</th><th>الموظف</th><th>المبلغ</th><th>الرصيد بعدها</th>${canUseSafe()? '<th></th>' : ''}</tr></thead>
+      <tbody>${moves.length? moves.map(r=>{ const mv = (DB.cashMovements||[]).find(x=>x.id===r.id); const by = r.by || (mv? userOfNote(mv.note) : '');
+        return `<tr>
         <td class="num">${new Date(r.at||0).toLocaleString('en-GB',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})}</td>
-        <td>${escapeHtml(r.label)}</td>
+        <td>${escapeHtml(by? String(r.label).replace(' — '+by,'') : r.label)}</td>
+        <td>${by? '<b>'+escapeHtml(by)+'</b>' : '—'}</td>
         <td class="num" style="color:${(r.lbp+r.usd)>=0?'var(--credit)':'var(--debit)'};">${(r.lbp+r.usd)>=0?'+':'−'} ${fmtBoth(Math.abs(r.lbp), Math.abs(r.usd))}</td>
-        <td class="num"><b>${fmtBoth(r.balLBP, r.balUSD)}</b></td></tr>`).join('') : `<tr><td colspan="4" style="text-align:center; color:var(--ink-soft);">الصندوق الأساسي فاضي — بتتعبّى لما تقفل صندوق</td></tr>`}</tbody>
+        <td class="num"><b>${fmtBoth(r.balLBP, r.balUSD)}</b></td>
+        ${canUseSafe()? `<td>${moveEditable(mv)? `<button class="btn btn-sm" data-move-edit="${mv.id}" title="غيّر من وين انصرفت">✏️</button>` : ''}</td>` : ''}</tr>`; }).join('') : `<tr><td colspan="6" style="text-align:center; color:var(--ink-soft);">الصندوق الأساسي فاضي — بتتعبّى لما تقفل صندوق</td></tr>`}</tbody>
     </table></div>
   </div>`;
 }
@@ -9946,6 +10005,86 @@ function coaAccountRows(a){
   let b = 0; rows.forEach(x=>{ b += x.dr - x.cr; x.bal = b; });
   return rows;
 }
+/* ===== 📒 كشف حساب: لأي حساب (زبون، مورد، عامل، موظف، مصاريف، محروقات، صندوق، Whish…) بالتفاصيل والرصيد ===== */
+function stmtAccountList(){
+  const out = coaAccounts().map(a=>({ id:a.code, label:a.code+' — '+a.name, a }));
+  // صناديق كل الموظفين (حتى المسكّرة)
+  Array.from(new Set((DB.cashierShifts||[]).filter(s=>!s.deleted && !isPersonalShift(s)).map(s=>s.username))).forEach(u=>{
+    if(!out.some(x=>x.a && x.a.kind==='drawer' && x.a.ref===u)) out.push({ id:'u:'+u, label:'💵 صندوق الموظف '+u, a:{ kind:'drawer', ref:u, code:'u:'+u, name:'صندوق الموظف '+u } }); });
+  return out;
+}
+// صفوف موحّدة: {at, date, desc, by, dr (داخل/مدين), cr (طالع/دائن), mid} — بالدولار الداخلي
+function stmtRows(a){
+  const r = curRate(), rows = [];
+  // الزبون: الفاتورة عليه (مدين). المورد والعامل: الفاتورة/اليومية إلن (دائن) والدفعة مدين
+  const fromLedger = (L, flip)=> (L && L.rows || []).forEach(x=>{ const t = Number(x.to)||0, f = Number(x.from)||0;
+    rows.push({ at:x.sortKey||0, date:x.date, desc:(x.type? x.type+' — ' : '')+(x.label||'')+(x.number? ' #'+x.number : ''), dr: flip? f : t, cr: flip? t : f }); });
+  if(a.kind==='customer') fromLedger(buildLedger(a.ref), false);
+  else if(a.kind==='supplier') fromLedger(buildSupplierLedger(a.ref), true);
+  else if(a.kind==='worker') fromLedger(buildWorkerLedger(a.ref), true);
+  else if(a.kind==='budget'){ const c = (DB.budgetCategories||[]).find(x=>x.id===a.ref); if(c){ const inc = c.type==='income';
+      (DB.budgetEntries||[]).filter(e=>!e.deleted && e.categoryId===c.id).forEach(e=>{ const v = Math.abs(Number(e.amount)||0); const src = paySrcOf(e.id);
+        rows.push({ at:e.createdAt||0, date:e.date, desc:(e.bill? '🧾 ' : '')+(e.note||'مصروف')+(e.number? ' #'+e.number : '')+(src? ' — من: '+src.label : ''), by: src? userOfNote(src.m.note) : '', dr: inc? 0 : v, cr: inc? v : 0, mid: src? src.m.id : null }); }); } }
+  else if(a.kind==='mainLBP' || a.kind==='mainUSD'){ safeMoves().forEach(m=>{ const v = a.kind==='mainLBP'? (m.lbp||0)/r : (m.usd||0); if(!v) return; const mv = (DB.cashMovements||[]).find(x=>x.id===m.id);
+      const by = m.by || (mv? userOfNote(mv.note) : ''); rows.push({ at:m.at, date:m.date, desc: by? String(m.label).replace(' — '+by,'') : m.label, by, dr: v>0? v : 0, cr: v<0? -v : 0, mid:m.id }); }); }
+  else if(a.kind==='whish'){ whishStatementRows().forEach(x=>{ const v = x.lbp/r + x.usd; rows.push({ at:x.at, date:x.date, desc:x.label, by:x.by, dr: v>0? v : 0, cr: v<0? -v : 0, mid:x.mid||null }); }); }
+  else if(a.kind==='drawer'){ const ids = new Set((DB.cashierShifts||[]).filter(s=>!s.deleted && s.username===a.ref).map(s=>s.id));
+    (DB.cashierShifts||[]).filter(s=>ids.has(s.id)).forEach(sh=>{ const op = (Number(sh.openingLBP)||0)/r + (Number(sh.openingUSD)||0); if(op) rows.push({ at:sh.openedAt, date:new Date(sh.openedAt||0).toISOString().slice(0,10), desc:'فتح صندوق — رصيد افتتاح', by:sh.username, dr:op, cr:0 }); });
+    (DB.cashMovements||[]).forEach(m=>{ if(m.deleted || !ids.has(m.shiftId)) return; const v = Math.abs(Number(m.amount)||0)/(m.currency==='LBP'? r : 1);
+      if(m.type==='sale') rows.push({ at:m.createdAt, date:m.date, desc:'💰 بيع', by:a.ref, dr:v, cr:0 });
+      else if(m.type==='return') rows.push({ at:m.createdAt, date:m.date, desc:'↩ استرجاع', by:a.ref, dr:0, cr:v });
+      else if(m.type==='deposit' || m.type==='withdraw') rows.push({ at:m.createdAt, date:m.date, desc:stripUserOfNote(m.note)||(m.type==='deposit'? 'إيداع' : 'سحب'), by:userOfNote(m.note), dr: m.type==='deposit'? v : 0, cr: m.type==='withdraw'? v : 0, mid:m.id }); });
+    (DB.cashMovements||[]).forEach(m=>{ if(m.deleted || m.type!=='shift_close' || !ids.has(m.refSaleId)) return; const i = shiftCloseInfo(m)||{}; const v = (Number(i.toSafeLBP)||0)/r + (Number(i.toSafeUSD)||0); if(!v) return;
+      rows.push({ at:m.createdAt, date:m.date, desc:'🔒 إقفال — انتقل عالصندوق الأساسي', by:i.by||'', dr:0, cr:v }); }); }
+  else coaAccountRows(a).forEach(x=>rows.push({ at:x.at||0, date:x.date, desc:x.desc, dr:x.dr||0, cr:x.cr||0 }));
+  rows.sort((x,y)=>(x.at||0)-(y.at||0) || String(x.date).localeCompare(String(y.date)));
+  return rows;
+}
+function statementView(){
+  const qs = new URLSearchParams(location.hash.split('?')[1]||''); const acc = qs.get('acc')||'', from = qs.get('from')||'', to = qs.get('to')||'';
+  const list = stmtAccountList(); const cur = list.find(x=>x.id===acc);
+  const base = '#/statement'+(acc? '?acc='+encodeURIComponent(acc) : '');
+  let body = '';
+  if(cur){
+    const all = stmtRows(cur.a);
+    const inP = x=> (!from || (x.date||'')>=from) && (!to || (x.date||'')<=to);
+    const before = all.filter(x=>from && (x.date||'')<from);
+    const open = before.reduce((t,x)=>t+x.dr-x.cr, 0);
+    const rows = all.filter(inP); let b = open; rows.forEach(x=>{ b += x.dr - x.cr; x.bal = b; });
+    const tdr = rows.reduce((t,x)=>t+x.dr,0), tcr = rows.reduce((t,x)=>t+x.cr,0);
+    const cash = ['mainLBP','mainUSD','whish','drawer','personal'].includes(cur.a.kind);
+    const H = cash? ['داخل','طالع'] : ['مدين','دائن'];
+    const edit = canUseSafe();
+    body = `
+    <div class="stats">
+      <div class="stat-card"><div class="label">رصيد أول الفترة</div><div class="value">${coaFmtBal(open)}</div></div>
+      <div class="stat-card"><div class="label">مجموع ${H[0]}</div><div class="value num" style="color:var(--credit);">${fmtPrim(tdr)}</div></div>
+      <div class="stat-card"><div class="label">مجموع ${H[1]}</div><div class="value num" style="color:var(--debit);">${fmtPrim(tcr)}</div></div>
+      <div class="stat-card"><div class="label">الرصيد آخر الفترة</div><div class="value">${coaFmtBal(b)}</div></div>
+    </div>
+    <div class="doc">
+      ${docHead('كشف حساب — '+cur.label)}
+      <div class="doc-info"><div class="r"><span>الفترة:</span><b class="num">${from? fmtDate(from) : 'من الأول'} → ${to? fmtDate(to) : fmtDate(todayISO())}</b></div><div class="r"><span>عدد الحركات:</span><b class="num">${rows.length}</b></div></div>
+      <div class="table-scroll"><table><thead><tr><th>#</th><th>التاريخ</th><th>البيان</th><th>الموظف</th><th>${H[0]}</th><th>${H[1]}</th><th>الرصيد</th>${edit? '<th class="no-print"></th>' : ''}</tr></thead><tbody>
+        <tr style="background:var(--paper);"><td></td><td></td><td><b>رصيد أول الفترة</b></td><td></td><td></td><td></td><td>${coaFmtBal(open)}</td>${edit? '<td class="no-print"></td>' : ''}</tr>
+        ${rows.map((x,i)=>`<tr><td class="num">${i+1}</td><td class="num" style="font-size:12px; white-space:nowrap;">${fmtDate(x.date)}${x.at? '<div style="font-size:11px; color:var(--ink-soft);" dir="ltr">'+fmtTime12(x.at)+'</div>' : ''}</td>
+          <td>${escapeHtml(x.desc||'')}</td><td>${escapeHtml(x.by||'')}</td>
+          <td class="num" style="color:var(--credit);">${x.dr? fmtPrim(x.dr) : ''}</td><td class="num" style="color:var(--debit);">${x.cr? fmtPrim(x.cr) : ''}</td><td>${coaFmtBal(x.bal)}</td>
+          ${edit? `<td class="no-print">${x.mid && moveEditable((DB.cashMovements||[]).find(m=>m.id===x.mid))? `<button class="btn btn-sm" data-move-edit="${x.mid}" title="غيّر من وين انصرفت">✏️</button>` : ''}</td>` : ''}</tr>`).join('')}
+      </tbody><tfoot><tr style="background:var(--paper); font-weight:800;"><td colspan="4">المجموع</td><td class="num">${fmtPrim(tdr)}</td><td class="num">${fmtPrim(tcr)}</td><td>${coaFmtBal(b)}</td>${edit? '<td class="no-print"></td>' : ''}</tr></tfoot></table></div>
+    </div>`;
+  }
+  return `<div class="card no-print">
+    <h2><span class="dot"></span> 📒 كشف حساب</h2>
+    <p style="font-size:12.5px; color:var(--ink-soft);">اختار أي حساب: زبون، مورد، عامل، صندوق موظف، الصندوق الأساسي، Whish، بند مصاريف (محروقات، صيانة…)، أو أي حساب بلوحة الحسابات.</p>
+    <datalist id="stmt_accs">${list.map(x=>`<option value="${escapeHtml(x.label)}">`).join('')}</datalist>
+    <div class="action-row" style="margin-bottom:10px;"><input type="text" id="stmtAcc" list="stmt_accs" placeholder="🔍 اكتب اسم الحساب أو رقمو" value="${cur? escapeHtml(cur.label) : ''}" style="flex:1; min-width:220px; font-size:15px;">
+      ${cur? `<button class="btn btn-primary" onclick="printWithFilename('Statement-${escapeHtml(String(cur.id).replace(/[^\w-]/g,''))}')">🖨 طباعة</button>` : ''}</div>
+    ${cur? periodPickerHtml(base, from, to) : ''}
+  </div>${body}`;
+}
+document.addEventListener('change', e=>{ const t = e.target; if(!t || t.id!=='stmtAcc') return; const v = t.value.trim(); const hit = stmtAccountList().find(x=>x.label===v) || stmtAccountList().find(x=>x.id===v.split(' ')[0]);
+  if(hit){ const qs = new URLSearchParams(location.hash.split('?')[1]||''); const q = new URLSearchParams({acc:hit.id}); if(qs.get('from')) q.set('from', qs.get('from')); if(qs.get('to')) q.set('to', qs.get('to')); go('#/statement?'+q.toString()); } });
 function coaAccountView(code){
   const a = coaFind(code);
   if(!a) return emptyState('لم يتم العثور على هذا الحساب');
@@ -10216,13 +10355,40 @@ function whishStatementRows(){
   // سحب/دفع/قبض مباشر على حساب Whish
   (DB.cashMovements||[]).forEach(m=>{ if(!isWhishAcctMove(m)) return; const a = Math.abs(Number(m.amount)||0), sign = m.type==='acct_in'? 1 : -1;
     const toMain = String(m.note||'').includes(WHISH_TO_MAIN);
-    rows.push({ at:m.createdAt||0, date:m.date, kind: sign>0? 'in' : 'out', lbp: m.currency==='USD'? 0 : sign*a, usd: m.currency==='USD'? sign*a : 0,
-      label: (toMain? '💵 ' : (isDocMirrorMove(m)? (sign>0? '📥 ' : '📤 ') : '↔ ')) + String(m.note||'').replace(DOC_MIRROR_TAG,'').replace(/^\[حساب\] /,'').replace(WHISH_TO_MAIN,'').replace(/\s*⟨\d+⟩/,'').trim(), by:'' });
+    rows.push({ mid:m.id, at:m.createdAt||0, date:m.date, kind: sign>0? 'in' : 'out', lbp: m.currency==='USD'? 0 : sign*a, usd: m.currency==='USD'? sign*a : 0,
+      label: (toMain? '💵 ' : (isDocMirrorMove(m)? (sign>0? '📥 ' : '📤 ') : '↔ ')) + stripUserOfNote(m.note), by:userOfNote(m.note) });
   });
   rows.sort((a,b)=>a.at-b.at);
   let bl = 0, bu = 0; rows.forEach(r=>{ if(r.kind==='in'){ r.lbp = Math.abs(r.lbp); r.usd = Math.abs(r.usd); } bl += r.kind==='in'? r.lbp : r.lbp; bu += r.kind==='in'? r.usd : r.usd; r.balLbp = bl; r.balUsd = bu; });
   return rows;
 }
+// اختيار الفترة: من يوم ليوم، أو من شهر لشهر، أو بكبسة (اليوم، هالشهر…) — بيرجع ?from&to بالرابط
+function periodPickerHtml(base, from, to){
+  const ym = d=> d? d.slice(0,7) : '';
+  const today = todayISO(), mStart = today.slice(0,8)+'01';
+  const pm = (()=>{ const d = new Date(); d.setDate(1); d.setMonth(d.getMonth()-1); const s = d.toISOString().slice(0,10); const e = new Date(d.getFullYear(), d.getMonth()+1, 0); return [s.slice(0,8)+'01', e.getFullYear()+'-'+String(e.getMonth()+1).padStart(2,'0')+'-'+String(e.getDate()).padStart(2,'0')]; })();
+  const link = (f,t)=> base + (base.includes('?')? '&' : '?') + new URLSearchParams(Object.assign({}, f? {from:f} : {}, t? {to:t} : {})).toString();
+  return `<div class="no-print" data-period-base="${escapeHtml(base)}" style="display:flex; flex-wrap:wrap; gap:8px; align-items:end; margin-bottom:10px; padding:8px 10px; border:1px dashed var(--line); border-radius:10px;">
+    <label style="font-size:12.5px;">من يوم<br><input type="date" class="pp-from" value="${from||''}" style="width:auto;"></label>
+    <label style="font-size:12.5px;">لـ يوم<br><input type="date" class="pp-to" value="${to||''}" style="width:auto;"></label>
+    <label style="font-size:12.5px;">أو من شهر<br><input type="month" class="pp-mfrom" value="${ym(from)}" style="width:auto;"></label>
+    <label style="font-size:12.5px;">لـ شهر<br><input type="month" class="pp-mto" value="${ym(to)}" style="width:auto;"></label>
+    <button class="btn btn-sm btn-primary pp-apply" type="button">عرض</button>
+    <span style="display:flex; gap:4px; flex-wrap:wrap;">
+      <button class="btn btn-sm" type="button" data-nav="${escapeHtml(link(today, today))}">اليوم</button>
+      <button class="btn btn-sm" type="button" data-nav="${escapeHtml(link(mStart, today))}">هالشهر</button>
+      <button class="btn btn-sm" type="button" data-nav="${escapeHtml(link(pm[0], pm[1]))}">الشهر الماضي</button>
+      <button class="btn btn-sm" type="button" data-nav="${escapeHtml(link(today.slice(0,4)+'-01-01', today))}">هالسنة</button>
+      <button class="btn btn-sm" type="button" data-nav="${escapeHtml(link('', ''))}">الكل</button>
+    </span>
+  </div>`;
+}
+document.addEventListener('change', e=>{ const t = e.target; if(!t || !t.closest) return; const w = t.closest('[data-period-base]'); if(!w) return;
+  if(t.classList.contains('pp-mfrom') && t.value) w.querySelector('.pp-from').value = t.value+'-01';
+  if(t.classList.contains('pp-mto') && t.value){ const [y,mo] = t.value.split('-').map(Number); const e2 = new Date(y, mo, 0); w.querySelector('.pp-to').value = t.value+'-'+String(e2.getDate()).padStart(2,'0'); } });
+document.addEventListener('click', e=>{ const b = e.target.closest && e.target.closest('.pp-apply'); if(!b) return; const w = b.closest('[data-period-base]'); const base = w.getAttribute('data-period-base');
+  const f = w.querySelector('.pp-from').value, t = w.querySelector('.pp-to').value; const q = new URLSearchParams(); if(f) q.set('from', f); if(t) q.set('to', t);
+  go(base + (q.toString()? (base.includes('?')? '&' : '?') + q.toString() : '')); });
 function whishStatementView(){
   const L = secCurLabel(), lbpOnly = currencyMode()==='SEC';
   const qs = new URLSearchParams(location.hash.split('?')[1]||''); const from = qs.get('from')||'', to = qs.get('to')||'';
@@ -10242,17 +10408,24 @@ function whishStatementView(){
     <div style="font-size:12.5px; color:var(--ink-soft); margin-bottom:8px;">كل بيعة أو إيصال قبض عبر Whish بينزل هون دغري، وكل سند صرف أو سحب عبر Whish كمان — بلا ما نستنى إقفال الصندوق، وإقفال الصندوق ما بيكرّرهن.</div>
     <div class="action-row no-print" style="margin-bottom:10px; align-items:end; flex-wrap:wrap;">
       ${canUseSafe()? `<button class="btn" data-whish-withdraw="1" style="background:#fdeef3; border-color:#e7a3bb; color:#a3174a; font-weight:800;">📱 سحب من Whish</button>` : ''}
-      <label style="font-size:12.5px;">من <input type="date" id="wsFrom" value="${from}" style="width:auto;"></label>
-      <label style="font-size:12.5px;">لـ <input type="date" id="wsTo" value="${to}" style="width:auto;"></label>
-      <button class="btn btn-sm" id="wsApply">عرض</button>
       <button class="btn btn-sm btn-primary" onclick="printWithFilename('Whish-${todayISO()}')">🖨 طباعة</button>
     </div>
-    ${list.length? `<div class="table-scroll"><table><thead><tr><th>التاريخ</th><th>البيان</th><th>الموظف</th><th>داخل</th><th>طالع</th><th>الرصيد</th></tr></thead><tbody>
+    ${periodPickerHtml('#/whish', from, to)}
+    ${(from||to)? `<div style="font-size:13px; margin-bottom:6px;">الفترة: <b class="num">${from? fmtDate(from) : 'من الأول'}</b> → <b class="num">${to? fmtDate(to) : 'لهلّق'}</b></div>` : ''}
+    ${list.length? `<div class="table-scroll"><table><thead><tr><th>التاريخ</th><th>البيان</th><th>الموظف</th><th>داخل</th><th>طالع</th><th>الرصيد</th>${canUseSafe()? '<th></th>' : ''}</tr></thead><tbody>
       ${list.map(r=>`<tr><td class="num" style="font-size:12px; white-space:nowrap;">${r.at? fmtDateTime12(r.at) : fmtDate(r.date)}</td><td>${escapeHtml(r.label)}</td><td>${escapeHtml(r.by||'')}</td>
         <td class="num" style="color:var(--credit);">${r.kind==='in'? money(r.lbp, r.usd) : ''}</td>
         <td class="num" style="color:var(--debit);">${r.kind==='out'? money(Math.abs(r.lbp), Math.abs(r.usd)) : ''}</td>
-        <td class="num" style="font-weight:700;">${money(r.balLbp, r.balUsd)}</td></tr>`).join('')}
-    </tbody></table></div>` : `<div class="empty"><div class="big">ما في حركات Whish بعد</div></div>`}
+        <td class="num" style="font-weight:700;">${money(r.balLbp, r.balUsd)}</td>
+        ${canUseSafe()? `<td>${r.mid && moveEditable((DB.cashMovements||[]).find(x=>x.id===r.mid))? `<button class="btn btn-sm" data-move-edit="${r.mid}" title="غيّر من وين انصرفت">✏️</button>` : ''}</td>` : ''}</tr>`).join('')}
+    </tbody><tfoot>
+      ${(()=>{ const uin = list.filter(r=>r.kind==='in').reduce((a,r)=>a+r.usd,0), uout = list.filter(r=>r.kind==='out').reduce((a,r)=>a+Math.abs(r.usd),0);
+        const first = list[list.length-1]; const open = first? { l:first.balLbp - (first.kind==='in'? first.lbp : first.lbp), u:first.balUsd - first.usd } : { l:0, u:0 };
+        const close = list[0]? { l:list[0].balLbp, u:list[0].balUsd } : open;
+        return `<tr style="background:var(--paper); font-weight:700;"><td colspan="3">رصيد أول الفترة</td><td colspan="3" class="num">${money(open.l, open.u)}</td>${canUseSafe()? '<td></td>' : ''}</tr>
+        <tr style="background:var(--paper); font-weight:800;"><td colspan="3">المجموع بالفترة</td><td class="num" style="color:var(--credit);">${money(tin, uin)}</td><td class="num" style="color:var(--debit);">${money(tout, uout)}</td><td class="num">الصافي: ${money(tin-tout, uin-uout)}</td>${canUseSafe()? '<td></td>' : ''}</tr>
+        <tr style="background:#fdeef3; font-weight:800;"><td colspan="3">📱 رصيد Whish آخر الفترة</td><td colspan="3" class="num" style="color:#a3174a;">${money(close.l, close.u)}</td>${canUseSafe()? '<td></td>' : ''}</tr>`; })()}
+    </tfoot></table></div>` : `<div class="empty"><div class="big">ما في حركات بهالفترة</div></div>`}
   </div>`;
 }
 document.addEventListener('click', e=>{ const b = e.target.closest && e.target.closest('#wsApply'); if(!b) return;
@@ -11575,7 +11748,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-11-09 · 16:00 · v88';
+const APP_TRADE_BUILD = '2026-11-11 · 00:40 · v89';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 function settingsView(){
   const s = DB.settings;
@@ -13376,7 +13549,7 @@ function openBudgetBillModal(categoryId){
       <div id="bb_acc_hint" style="display:none; font-size:12px; color:var(--ink-soft); margin-top:4px;">ما رح ينقص شي من الصندوق هلق. بتنسجّل مصروف، ولما تدفعها بتكبس «💸 دفع الفاتورة» من صفحتها.</div>
     </div>
     <div class="field" id="bb_src_wrap"><label>💸 من وين دفعت؟ *</label>
-      <select id="bb_t"><option value="">— اختار —</option>${moneyTargetOptions({other:true})}</select>
+      <select id="bb_t"><option value="">— اختار —</option>${moneyTargetOptions({other:true, out:true})}</select>
       <input type="text" id="bb_src_other" placeholder="مثلاً: من البنك، من جيبي..." style="display:none; margin-top:6px;">
     </div>
     <div id="bb_err" style="color:var(--debit); font-size:13px; min-height:16px;"></div>
@@ -13451,7 +13624,7 @@ function openBillPayModal(entryId){
     <div style="font-size:13.5px; margin-bottom:8px;">المجموع: <b class="num">${fmtMoney(e.amount)}</b> · بقي: <b class="num" style="color:var(--debit);">${fmtMoney(left)}</b></div>
     <div class="field"><label>المبلغ ${primSym()} *</label><input type="number" id="bp_amt" class="num" step="any" value="${inPrim(left)}"></div>
     <div class="field"><label>التاريخ</label><input type="date" id="bp_date" value="${todayISO()}"></div>
-    <div class="field"><label>💸 من وين دفعت؟ *</label><select id="bp_t"><option value="">— اختار —</option>${moneyTargetOptions({})}</select></div>
+    <div class="field"><label>💸 من وين دفعت؟ *</label><select id="bp_t"><option value="">— اختار —</option>${moneyTargetOptions({out:true})}</select></div>
     <div style="font-size:12px; color:var(--ink-soft);">الدفعة بتنقص من الصندوق بس، وما بتنحسب مصروف جديد (المصروف محسوب بالفاتورة).</div>
     <div id="bp_err" style="color:var(--debit); font-size:13px; min-height:16px;"></div>
     <div class="row"><button class="btn" id="bp_cancel">إلغاء</button><button class="btn btn-primary" id="bp_ok">💾 تسجيل الدفعة</button></div>
@@ -13524,7 +13697,7 @@ function openAddBudgetEntryModal(categoryId){
     <div class="field"><label>التاريخ</label><input type="date" id="be_date" value="${todayISO()}"></div>
     <div class="field"><label>ملاحظة</label><input type="text" id="be_note"></div>
     <div class="field"><label>${cat.type==='income'? '💰 لوين دخلت المصاري؟' : '💸 من وين دفعت؟'} *</label>
-      <select id="be_t"><option value="">— اختار —</option>${moneyTargetOptions({other:true})}</select>
+      <select id="be_t"><option value="">— اختار —</option>${moneyTargetOptions({other:true, out:true})}</select>
       <input type="text" id="be_src_other" placeholder="مثلاً: من البنك، من جيبي، من محل تاني..." style="display:none; margin-top:6px;">
     </div>
     <div id="be_err" style="color:var(--debit); font-size:13px; min-height:16px;"></div>
