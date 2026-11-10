@@ -182,6 +182,11 @@ body.compact table{font-size:12px} body.compact th,body.compact td{padding:4px 6
 .inv-box .ln.tot{border-top:1px dashed #c9b37a;margin-top:6px;padding-top:8px;font-weight:800;font-size:16px}
 .lb-img{max-width:100%;max-height:75vh;display:block;margin:0 auto;border-radius:10px}
 @media print{html,body{height:auto!important;min-height:0!important;overflow:visible!important;background:#fff!important}body>*:not(#printArea){display:none!important}#printArea{display:block!important;position:static!important}}
+.sc-list{max-height:62vh;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding:2px}
+.sc-m{font-weight:800;color:var(--p);background:var(--soft);border-radius:10px;padding:6px 10px;position:sticky;top:0;z-index:1}
+.sc-c{border:1px solid var(--line);border-radius:12px;padding:9px 11px;background:var(--card,#fff);display:flex;flex-direction:column;gap:5px}
+.sc-c.pay{border-inline-start:4px solid var(--ok)}.sc-c.void{opacity:.5;text-decoration:line-through}
+.sc-h,.sc-r{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}.sc-r span{white-space:nowrap}
 .wl{height:1.35em;width:auto;vertical-align:middle;border-radius:4px;margin-inline-end:3px}
 </style>
 <script>
@@ -2099,6 +2104,9 @@ var CFG=window.LIBANAPPS, sb=null;
 try{ sb=window.supabase.createClient(CFG.SUPABASE_URL,CFG.SUPABASE_ANON_KEY); }catch(e){}
 var $=function(s,r){return (r||document).querySelector(s)}, $$=function(s,r){return Array.prototype.slice.call((r||document).querySelectorAll(s))};
 Object.assign(D,{
+ old_prog:['البيانات من البرنامج السابق','Data from the previous program','Données de l’ancien logiciel'],
+ old_prog_hint:['إدخال العداد السابق من ملف PDF، واستيراد كل الفواتير القديمة من ملف Excel.','Load previous readings from a PDF and import all old invoices from Excel.','Relevés précédents depuis un PDF et anciennes factures depuis Excel.'],
+ mm:['ملم','mm','mm'],
  print_ticket:['طباعة إيصال','Print ticket','Imprimer ticket'], print_a4:['طباعة A4','Print A4','Imprimer A4'],
  nav_insurance:['التأمينات','Deposits','Cautions'],
  ins_in:['قبض تأمين','Receive deposit','Encaisser caution'], ins_out:['إعادة تأمين','Refund deposit','Rembourser caution'], ins_imp:['استيراد Excel','Import Excel','Importer Excel'],
@@ -3052,7 +3060,8 @@ function billTicket(o){
   return T;
 }
 function printMode(){ var d=/android/i.test(navigator.userAgent)?'rawbt':'browser'; return lsGet('motor_print',d); }
-function paperW(){ return lsGet('motor_paper','58')==='80'?576:384; }
+var PAPER_OVR=null;
+function paperW(){ if(PAPER_OVR) return PAPER_OVR==='80'?576:384; return lsGet('motor_paper','58')==='80'?576:384; }
 function loadImg(src){ return new Promise(function(res){ var im=new Image(); im.onload=function(){ res(im); }; im.onerror=function(){ res(null); }; im.src=src; }); }
 async function renderTicket(T){
   var W=paperW(), pad=10, rtl=LANG==='ar';
@@ -3127,9 +3136,11 @@ function rawbtSend(bytes){
   a.href=/android/i.test(navigator.userAgent)?'intent:base64,'+b64+'#Intent;scheme=rawbt;package=ru.a402d.rawbtprinter;end;':'rawbt:base64,'+b64;
   document.body.appendChild(a); a.click(); a.remove();
 }
-async function printDoc(T){
+async function printDoc(T,paper){
   try{ if(document.fonts&&document.fonts.ready) await document.fonts.ready; }catch(e){}
-  var cv; try{ cv=await renderTicket(T); }catch(e){ toast(t('print_fail',{e:e&&e.message||''}),'e'); return; }
+  PAPER_OVR=paper||null;
+  var cv; try{ cv=await renderTicket(T); }catch(e){ PAPER_OVR=null; toast(t('print_fail',{e:e&&e.message||''}),'e'); return; }
+  var wmm=paperW()===576?'80mm':'58mm'; PAPER_OVR=null;
   var mode=printMode();
   if(mode==='ble'){
     try{ toast(t('printing')); await bleWrite(canvasToEscPos(cv)); toast('🖨️ ✓','s'); }
@@ -3139,7 +3150,7 @@ async function printDoc(T){
   if(mode==='rawbt'){
     try{ rawbtSend(canvasToEscPos(cv)); return; }catch(e){ toast(t('print_fail',{e:e&&e.message||''}),'e'); return; }
   }
-  printHtml('<img src="'+cv.toDataURL('image/png')+'" style="width:'+(paperW()===576?'80mm':'58mm')+'">');
+  printHtml('<style>@page{margin:0}</style><img src="'+cv.toDataURL('image/png')+'" style="width:'+wmm+'">');
 }
 function printHtml(html){
   var pa=$('#printArea'); pa.innerHTML=html; pa.classList.remove('hidden');
@@ -3339,8 +3350,25 @@ async function openStatement(cid){
   var m=modal(t('statement'),'<div class="muted">'+esc(t('loading'))+'</div>',false,true);
   async function load(){
     var d; try{ d=await call('motor_statement',{p_customer:cid}); }catch(e){ m.body.innerHTML='<div class="err">'+esc(errText(e))+'</div>'; return; }
-    var c=d.customer, run=0, adm=isAdmin(), lastM='';
+    var c=d.customer, run=0, adm=isAdmin(), lastM='', narrow=window.innerWidth<760, cards=[], lastC='';
     $('h3',m.el).textContent=t('statement')+' — '+c.name;
+    if(narrow){ var run2=0;
+      d.rows.forEach(function(r){ if(!r.voided) run2+=n2(r.debit)-n2(r.credit);
+        var mk=(r.t==='inv'&&r.period)?r.period:String(dt(r.at)).slice(0,7);
+        if(mk&&mk!==lastC){ lastC=mk; cards.push('<div class="sc-m">📅 '+esc(monthName(mk,true))+'</div>'); }
+        var isPay=r.t==='pay', kind=isPay?t('k_pay'):t('k_'+r.kind), mtr=r.t==='inv'&&r.kind==='meter';
+        cards.push('<div class="sc-c'+(r.voided?' void':'')+(isPay?' pay':'')+'"><div class="sc-h"><b>'+esc(kind)+(isPay?' '+(r.method==='whish'?WL:'💵'):'')+'</b><span class="muted num">#'+esc(r.no)+' · '+esc(dt(r.at).slice(0,10))+'</span></div>'+
+          (mtr?'<div class="sc-r"><span>'+esc(t('b_prev'))+' <b class="num">'+esc(fmtN(r.prev_value))+'</b></span><span>'+esc(t('b_cur'))+' <b class="num">'+esc(fmtN(r.cur_value))+'</b></span><span><b class="num">'+esc(fmtN(r.kwh))+'</b> '+esc(t('kwh'))+'</span></div>':'')+
+          (r.note?'<div class="muted" style="font-size:12px">'+esc(r.note)+'</div>':'')+
+          '<div class="sc-r"><span class="num" style="font-size:17px;font-weight:800;color:'+(isPay||n2(r.credit)?'var(--ok)':'var(--bad)')+'">'+(n2(r.debit)?'+ '+esc(money(r.debit)):'− '+esc(money(r.credit)))+'</span>'+
+          '<span class="muted">'+esc(t('running'))+': '+balHtml(run2)+'</span></div>'+
+          '<div class="sc-r">'+(r.staff?'<span class="muted" style="font-size:12px">'+esc(r.staff)+'</span>':'<span></span>')+'<span style="white-space:nowrap">'+
+            (r.photo?'<img class="thumb" src="'+esc(r.photo)+'?w=160" data-big="'+esc(r.photo)+'" loading="lazy" alt="" style="height:30px"> ':'')+
+            (!r.voided&&(isPay||r.kind==='meter'||r.kind==='fixed')?'<button class="btn ghost sm" data-prow="'+esc(r.id)+'">🖨️</button> ':'')+
+            (adm&&!r.voided?'<button class="btn ghost sm" data-edamt="'+esc(r.t)+'|'+esc(r.id)+'|'+esc(isPay?r.paid_amount:r.debit)+'">✏️</button> '+(r.kind!=='opening'?'<button class="btn ghost sm" data-void="'+esc(r.t)+'|'+esc(r.id)+'">'+esc(t('void'))+'</button>':''):'')+
+            (r.voided?'<span class="chip off">'+esc(t('voided'))+'</span>':'')+'</span></div></div>');
+      });
+    }
     var rows=d.rows.map(function(r){
       if(!r.voided) run+=n2(r.debit)-n2(r.credit);
       var mk=(r.t==='inv'&&r.period)?r.period:String(dt(r.at)).slice(0,7), sep='';
@@ -3356,19 +3384,20 @@ async function openStatement(cid){
         (adm?'<td>'+(!r.voided?'<button class="btn ghost sm" data-edamt="'+esc(r.t)+'|'+esc(r.id)+'|'+esc(r.t==='pay'?r.paid_amount:r.debit)+'">✏️</button> ':'')+(!r.voided&&r.kind!=='opening'?'<button class="btn ghost sm" data-void="'+esc(r.t)+'|'+esc(r.id)+'">'+esc(t('void'))+'</button>':(r.voided?'<span class="chip off">'+esc(t('voided'))+'</span>':''))+'</td>':'')+'</tr>';
     });
     m.body.innerHTML='<div class="row" style="margin-bottom:8px"><b>#'+esc(c.code)+' '+esc(c.name)+'</b><span class="muted">'+esc(c.barcode||'')+(c.plan_name?' · '+esc(c.plan_name):'')+'</span><span class="sp"></span>'+esc(t('balance'))+': '+balHtml(c.balance)+'</div>'+
+      (narrow?'<div class="sc-list">'+(cards.slice().join('')||'<div class="muted">'+esc(t('no_results'))+'</div>')+'</div>':
       '<div class="tw"><table><thead><tr><th>'+esc(t('date'))+'</th><th>'+esc(t('type'))+'</th><th></th><th>'+esc(t('debit'))+'</th><th>'+esc(t('creditc'))+'</th><th>'+esc(t('running'))+'</th><th>'+esc(t('photo'))+'</th><th>'+esc(t('by'))+'</th><th></th>'+(adm?'<th></th>':'')+'</tr></thead><tbody>'+
-      (rows.join('')||'<tr><td colspan="10" class="muted">'+esc(t('no_results'))+'</td></tr>')+'</tbody></table></div>'+
-      '<div class="row" style="margin-top:10px">'+(waHere()?'<button class="btn wa sm" id="swa">'+esc(t('send_wa'))+'</button>':'')+'<button class="btn alt sm" id="spr">🧾 '+esc(t('print_ticket'))+'</button><button class="btn sm" id="spa4">🖨️ '+esc(t('print_a4'))+'</button></div>';
+      (rows.join('')||'<tr><td colspan="10" class="muted">'+esc(t('no_results'))+'</td></tr>')+'</tbody></table></div>')+
+      '<div class="row" style="margin-top:10px">'+(waHere()?'<button class="btn wa sm" id="swa">'+esc(t('send_wa'))+'</button>':'')+'<span class="muted">'+esc(t('print'))+':</span>'+
+        ['58','80'].map(function(w){ var def=lsGet('motor_paper','58')===w; return '<button class="btn '+(def?'':'alt')+' sm" data-spw="'+w+'">'+w+' '+esc(t('mm'))+'</button>'; }).join('')+
+        '<button class="btn alt sm" id="spa4">A4</button></div>';
+    if(narrow){ var sl=$('.sc-list',m.body); if(sl) sl.scrollTop=sl.scrollHeight; }
     $$('[data-prow]',m.body).forEach(function(b){ b.addEventListener('click',function(){ printStmtRow(d,b.dataset.prow); }); });
     $('#spa4',m.body).addEventListener('click',function(){ printStatementA4(d); });
     if($('#swa',m.body)) $('#swa',m.body).addEventListener('click',function(){
       var s=['*'+(SITE.name||'')+'*',t('statement')+' — '+c.name+' (#'+c.code+')'], rb=0;
       d.rows.filter(function(r){return !r.voided}).slice(-12).forEach(function(r){ s.push(dt(r.at).slice(0,10)+' · '+(r.t==='pay'?t('k_pay'):t('k_'+r.kind)+(r.period?' '+r.period:''))+(r.kind==='meter'?' ('+fmtN(r.prev_value)+'→'+fmtN(r.cur_value)+')':'')+': '+(n2(r.debit)?'+'+money(r.debit):'−'+money(r.credit))); });
       s.push('*'+t('balance')+': '+money(c.balance)+'*'); openWa(c.mobile_cc,c.mobile,s.join('\n')); });
-    $('#spr',m.body).addEventListener('click',function(){
-      var T=[{t:SITE.name||'',b:1,s:28,c:1},{t:t('statement'),b:1,c:1},{t:c.name+' #'+c.code,c:1},{hr:1}];
-      d.rows.filter(function(r){return !r.voided}).slice(-20).forEach(function(r){ T.push({kv:[dt(r.at).slice(0,10)+' '+(r.t==='pay'?t('k_pay'):(r.period||t('k_'+r.kind))),(n2(r.debit)?'+'+money(r.debit):'−'+money(r.credit))],s:19}); if(r.kind==='meter') T.push({kv:['',fmtN(r.prev_value)+' → '+fmtN(r.cur_value)],s:18}); });
-      T.push({hr:1},{kv:[t('balance'),money(c.balance)],b:1,s:26}); printDoc(T); });
+    $$('[data-spw]',m.body).forEach(function(b){ b.addEventListener('click',function(){ printDoc(stmtTicket(d),b.dataset.spw); }); });
     $$('[data-edamt]',m.body).forEach(function(b){ b.addEventListener('click',function(){ var p=b.dataset.edamt.split('|');
       var mm=modal(t('edit_amount'),'<label>'+esc(t('amount'))+'</label><input id="ea" class="valinput" inputmode="decimal" value="'+esc(p[2])+'"><label style="margin-top:8px">'+esc(t('note'))+'</label><input id="en"><div id="emsg" class="err msg" style="margin-top:8px"></div>',
         '<button class="btn ghost" data-x>'+esc(t('cancel'))+'</button><button class="btn" data-s>'+esc(t('save'))+'</button>');
@@ -3392,6 +3421,21 @@ function printStmtRow(d,id){
   var inv=null; for(var k=i-1;k>=0;k--){ var x=d.rows[k]; if(x.t==='inv'&&!x.voided&&(x.kind==='meter'||x.kind==='fixed')){ inv=stmtInv(x); break; } }
   printDoc(billTicket({c:d.customer,inv:inv,pay:{no:r.no,created_at:r.at,amount:r.credit,paid_currency:r.paid_currency,paid_amount:r.paid_amount,rate:r.rate,method:r.method,
     balance_before:r.balance_before,balance_after:r.balance_after,note:r.note,staff_name:r.staff}}));
+}
+/* كشف الحساب على الطابعة الحرارية 58/80 ملم: كل الأسطر، شهر بشهر */
+function stmtTicket(d){
+  var c=d.customer, T=[], run=0, lastM='';
+  if(SITE.logo_url) T.push({img:SITE.logo_url});
+  T.push({t:SITE.name||'',b:1,s:28,c:1},{t:t('statement'),b:1,s:24,c:1},{t:c.name+' #'+c.code,c:1,s:21},{t:t('date')+': '+TODAY,c:1,s:18},{hr:1});
+  d.rows.filter(function(r){return !r.voided}).forEach(function(r){ run+=n2(r.debit)-n2(r.credit);
+    var mk=(r.t==='inv'&&r.period)?r.period:String(dt(r.at)).slice(0,7);
+    if(mk&&mk!==lastM){ lastM=mk; T.push({t:'— '+monthName(mk,true)+' —',b:1,c:1,s:20}); }
+    T.push({kv:[dt(r.at).slice(5,10).replace('-','/')+' '+(r.t==='pay'?t('k_pay')+(r.method==='whish'?' Whish':''):t('k_'+r.kind)),(n2(r.debit)?'+'+money(r.debit):'−'+money(r.credit))],s:19});
+    if(r.kind==='meter') T.push({kv:[fmtN(r.prev_value)+' → '+fmtN(r.cur_value),fmtN(r.kwh)+' '+t('b_kwh_unit')],s:17});
+    T.push({kv:[t('running'),money(run)],s:17});
+  });
+  T.push({hr:1},{kv:[t('balance'),money(c.balance)],b:1,s:26},{t:' ',s:16});
+  return T;
 }
 /* كشف الحساب على ورقة A4: كل الأعمدة وكل الأسطر */
 function printStatementA4(d){
@@ -3576,7 +3620,7 @@ VIEWS.customers=async function(main){
     '<select id="car"><option value="">'+esc(t('area'))+': '+esc(t('all'))+'</option>'+Object.keys(areas).sort().map(function(a){return '<option>'+esc(a)+'</option>'}).join('')+'</select>'+
     '</div><div class="toolbar">'+
     (adm?'<button class="btn" id="cadd">'+esc(t('new_customer'))+'</button><button class="btn alt" id="cimp">'+esc(t('import_excel'))+'</button>':'')+
-    '<button class="btn ghost" id="cexp">'+esc(t('export_csv'))+'</button>'+(adm?'<button class="btn ghost" id="clbl">'+esc(t('labels'))+'</button><button class="btn ghost" id="cfill">'+esc(t('fill_barcodes'))+'</button><button class="btn acc" id="cprevpdf">📄 '+esc(t('prev_pdf'))+'</button><button class="btn acc" id="cinvimp">🧾 '+esc(t('inv_imp'))+'</button>':'')+
+    '<button class="btn ghost" id="cexp">'+esc(t('export_csv'))+'</button>'+(adm?'<button class="btn ghost" id="clbl">'+esc(t('labels'))+'</button><button class="btn ghost" id="cfill">'+esc(t('fill_barcodes'))+'</button>':'')+
     '<span class="sp"></span><span class="muted" id="ccount"></span></div><div class="tw"><table><thead><tr><th>'+esc(t('code'))+'</th><th>'+esc(t('name'))+'</th><th>'+esc(t('barcode'))+'</th><th>'+esc(t('plan'))+'</th><th>'+esc(t('box'))+'</th><th>'+esc(t('area'))+'</th><th>'+esc(t('collector'))+'</th><th>'+esc(t('status'))+'</th><th>'+esc(t('balance'))+'</th><th>'+esc(t('prev_reading'))+'</th><th>'+esc(t('cur_reading'))+' ('+esc(monthName(SITE.bill_period,true))+')</th></tr></thead><tbody id="ctb"></tbody></table></div><div id="cmore" style="text-align:center;margin-top:10px"></div>';
   $('#cst',main).value=CF.st; $('#cpl',main).value=CF.plan; if($('#ccol',main)) $('#ccol',main).value=CF.col; $('#car',main).value=CF.area;
   function filtered(){
@@ -3612,8 +3656,6 @@ VIEWS.customers=async function(main){
   ['cst','cpl','ccol','car'].forEach(function(id){ var el=$('#'+id,main); if(el) el.addEventListener('change',function(){ CF[{cst:'st',cpl:'plan',ccol:'col',car:'area'}[id]]=this.value; CF.lim=200; paint(); }); });
   if(adm){ $('#cadd',main).addEventListener('click',function(){ editCustomer(null); }); $('#cimp',main).addEventListener('click',importDialog);
     $('#clbl',main).addEventListener('click',function(){ printLabels(filtered().slice(0,500)); });
-    $('#cprevpdf',main).addEventListener('click',prevPdfDialog);
-    $('#cinvimp',main).addEventListener('click',invImportDialog);
     $('#cfill',main).addEventListener('click',async function(){ try{ var r=await call('motor_fill_barcodes'); toast(t('fill_done',{n:r.count}),'s'); await loadCustomers(); go('customers'); }catch(e){ toast(errText(e),'e'); } }); }
   $('#cexp',main).addEventListener('click',function(){
     var rows=[[t('code'),t('name'),t('barcode'),t('meter_no'),t('plan'),t('box'),t('area'),t('location_name'),t('collector'),t('mobile'),t('status'),t('balance'),t('prev_reading'),t('cur_reading')]];
@@ -4028,6 +4070,8 @@ VIEWS.settings=async function(main){
     '<p class="muted">'+esc(t('ble_hint'))+'</p></div>'+
     '<p class="muted" id="rawhint">'+esc(t('rawbt_hint'))+'</p><button class="btn alt" id="ptest">'+esc(t('test_print'))+'</button>'+
     '</div>'+lblCard()+
+    (adm?'<div class="card"><h3>📥 '+esc(t('old_prog'))+'</h3><p class="muted" style="margin-top:0">'+esc(t('old_prog_hint'))+'</p><div class="row">'+
+      '<button class="btn acc" id="cprevpdf">📄 '+esc(t('prev_pdf'))+'</button><button class="btn acc" id="cinvimp">🧾 '+esc(t('inv_imp'))+'</button></div></div>':'')+
     (adm?'<div class="card"><button class="btn" id="bkn">'+esc(t('backup_now'))+'</button></div>':'');
   if(ME.staff_id){
     h+='<div class="card"><h3>🔐 '+esc(t('tfa'))+' — <span class="chip '+(ME.totp_enabled?'on':'gray')+'">'+esc(ME.totp_enabled?t('tfa_on'):t('tfa_off'))+'</span></h3><div id="tfabox">'+
@@ -4054,6 +4098,8 @@ VIEWS.settings=async function(main){
   $('#ppw',main).addEventListener('change',function(){ lsSet('motor_paper',this.value); });
   $('#blech',main).addEventListener('change',function(){ lsSet('motor_ble_chunk',this.value); });
   lblBind(main);
+  if($('#cprevpdf',main)) $('#cprevpdf',main).addEventListener('click',prevPdfDialog);
+  if($('#cinvimp',main)) $('#cinvimp',main).addEventListener('click',invImportDialog);
   if($('#bkn',main)) $('#bkn',main).addEventListener('click',async function(){ var b=this; busy(b,true,t('backup_making')); try{ await backupNow(); toast(t('backup_done'),'s'); }catch(e){ toast(errText(e),'e'); } busy(b,false); });
   $('#bledl',main).addEventListener('change',function(){ lsSet('motor_ble_delay',this.value); });
   $('#blepick',main).addEventListener('click',async function(){ try{ var nm=await blePick(); toast(t('ble_cur',{n:nm}),'s'); pmTog(); }catch(e){ if(!/cancel/i.test(String(e&&e.message))) toast(errText(e),'e'); } });
