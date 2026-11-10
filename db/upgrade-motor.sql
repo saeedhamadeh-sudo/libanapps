@@ -466,6 +466,7 @@ create index if not exists motor_salary_dues_idx on public.motor_salary_dues (st
 -- ---------- v7: استيراد فواتير البرنامج السابق ----------
 alter table public.motor_invoices add column if not exists imported boolean not null default false;
 alter table public.motor_readings add column if not exists imported boolean not null default false;
+alter table public.motor_readings add column if not exists remote boolean not null default false;   -- قراءة عن بعد (صورة من الزبون)
 
 -- ---------- v8: التأمينات ----------
 create table if not exists public.motor_insurance (
@@ -1311,8 +1312,10 @@ end $$;
 -- ============================================================
 --  9) أخذ العداد → قراءة + فاتورة بعملية واحدة
 -- ============================================================
+drop function if exists public.motor_read(text,text,uuid,numeric,text,double precision,double precision,double precision);
 create or replace function public.motor_read(p_slug text, p_token text, p_customer uuid, p_value numeric,
-  p_photo text, p_lat double precision, p_lng double precision, p_accuracy double precision default null)
+  p_photo text, p_lat double precision, p_lng double precision, p_accuracy double precision default null,
+  p_remote boolean default false)
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare w jsonb; sid uuid; st public.motor_sites%rowtype; c public.motor_customers%rowtype;
         pl public.motor_plans%rowtype; prev numeric; d integer; rid uuid; seq integer;
@@ -1343,7 +1346,9 @@ begin
   if coalesce(p_photo,'') <> '' and p_photo !~ ('^/img/motor/' || sid::text || '/') then
     perform public._motor_err('bad_photo');
   end if;
-  if st.require_gps and not public._motor_geo_ok(p_lat, p_lng) and not (w->>'is_admin')::boolean then perform public._motor_err('gps_required'); end if;
+  -- قراءة عن بعد: الزبون بعت صورة العداد — لا موقع ولا فحص مسافة
+  if coalesce(p_remote, false) then p_lat := null; p_lng := null; p_accuracy := null; end if;
+  if st.require_gps and not coalesce(p_remote, false) and not public._motor_geo_ok(p_lat, p_lng) and not (w->>'is_admin')::boolean then perform public._motor_err('gps_required'); end if;
 
   select value into prev from public.motor_readings where customer_id = c.id order by created_at desc limit 1;
   if not found then
@@ -1356,18 +1361,17 @@ begin
 
   d := null;
   if public._motor_geo_ok(p_lat, p_lng) and public._motor_geo_ok(c.lat, c.lng) then
-    d := public._motor_dist(c.lat, c.lng, p_lat, p_lng);
-    if st.max_distance_m > 0 and d > st.max_distance_m and not (w->>'is_admin')::boolean then perform public._motor_err('too_far', d::text); end if;
+    d := public._motor_dist(c.lat, c.lng, p_lat, p_lng);   -- تسجيل المسافة فقط، بلا منع
   end if;
 
   insert into public.motor_readings (site_id, customer_id, period, prev_value, value, photo_url, lat, lng, accuracy,
-                                     dist_m, staff_id, staff_name)
+                                     dist_m, staff_id, staff_name, remote)
   values (sid, c.id, st.bill_period, prev, p_value, coalesce(p_photo,''), p_lat, p_lng, p_accuracy, d,
-          (w->>'staff_id')::uuid, w->>'name')
+          (w->>'staff_id')::uuid, w->>'name', coalesce(p_remote, false))
   returning id into rid;
 
-  -- أول قراءة لزبون بلا موقع: منثبّت موقعه
-  if not public._motor_geo_ok(c.lat, c.lng) and public._motor_geo_ok(p_lat, p_lng) then
+  -- أول قراءة ميدانية لزبون بلا موقع: منثبّت موقعه (الدقة لازم تكون منيحة)
+  if not public._motor_geo_ok(c.lat, c.lng) and public._motor_geo_ok(p_lat, p_lng) and coalesce(p_accuracy, 0) <= 60 then
     update public.motor_customers set lat = p_lat, lng = p_lng where id = c.id;
   end if;
 
@@ -1548,7 +1552,7 @@ begin
     select jsonb_agg(jsonb_build_object(
       'id', r.id, 'at', r.created_at, 'customer_id', c.id, 'code', c.code, 'name', c.name, 'barcode', c.barcode,
       'box', c.box, 'area', c.area, 'prev_value', r.prev_value, 'value', r.value, 'kwh', r.value - r.prev_value,
-      'photo', r.photo_url, 'lat', r.lat, 'lng', r.lng, 'accuracy', r.accuracy, 'dist_m', r.dist_m,
+      'photo', r.photo_url, 'lat', r.lat, 'lng', r.lng, 'accuracy', r.accuracy, 'dist_m', r.dist_m, 'remote', r.remote,
       'staff_id', r.staff_id, 'staff', r.staff_name,
       'invoice_id', i.id, 'invoice_no', i.no, 'amount', i.amount, 'balance_after', i.balance_after)
       order by r.created_at desc)
@@ -3405,7 +3409,7 @@ begin
     'motor_change_password(text,text,text,text)', 'motor_me(text,text)', 'motor_customers(text,text)',
     'motor_customer_get(text,text,uuid,text)', 'motor_customer_save(text,text,jsonb)',
     'motor_customer_delete(text,text,uuid)', 'motor_import(text,text,jsonb)', 'motor_statement(text,text,uuid)',
-    'motor_read(text,text,uuid,numeric,text,double precision,double precision,double precision)',
+    'motor_read(text,text,uuid,numeric,text,double precision,double precision,double precision,boolean)',
     'motor_bill_fixed(text,text)', 'motor_invoice_void(text,text,uuid)', 'motor_adjust(text,text,uuid,numeric,text)',
     'motor_pay(text,text,uuid,numeric,text,text,text,double precision,double precision)',
     'motor_payment_void(text,text,uuid)', 'motor_month(text,text,text)', 'motor_settings_save(text,text,jsonb)',
@@ -3458,4 +3462,4 @@ select 'motor product' as item, exists (select 1 from public.products where code
 union all select 'motor plan', exists (select 1 from public.plans where product_code = 'motor')
 union all select 'motor tables', to_regclass('public.motor_customers') is not null and to_regclass('public.motor_moves') is not null
 union all select 'portal link ok', pg_get_functiondef('public.my_client_id()'::regprocedure) like '%portal_users%'
-union all select 'read function', to_regprocedure('public.motor_read(text,text,uuid,numeric,text,double precision,double precision,double precision)') is not null;
+union all select 'read function', to_regprocedure('public.motor_read(text,text,uuid,numeric,text,double precision,double precision,double precision,boolean)') is not null;

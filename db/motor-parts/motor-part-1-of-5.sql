@@ -467,6 +467,7 @@ create index if not exists motor_salary_dues_idx on public.motor_salary_dues (st
 -- ---------- v7: استيراد فواتير البرنامج السابق ----------
 alter table public.motor_invoices add column if not exists imported boolean not null default false;
 alter table public.motor_readings add column if not exists imported boolean not null default false;
+alter table public.motor_readings add column if not exists remote boolean not null default false;   -- قراءة عن بعد (صورة من الزبون)
 
 -- ---------- v8: التأمينات ----------
 create table if not exists public.motor_insurance (

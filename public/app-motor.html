@@ -1786,7 +1786,7 @@ var D={
  s_read:['ضوابط أخذ العداد','Reading rules','Règles de relevé'],
  require_photo:['الصورة إلزامية','Photo required','Photo obligatoire'],
  require_gps:['الموقع الجغرافي إلزامي','GPS required','GPS obligatoire'],
- max_dist:['أقصى بعد عن موقع الزبون بالمتر (0 = تسجيل فقط)','Max distance from customer in m (0 = record only)','Distance max en m (0 = enregistrer seulement)'],
+ max_dist:['تمييز القراءة البعيدة عن موقع الزبون بالمتر (للتنبيه فقط، بلا منع)','Highlight readings farther than (m) from the customer — warning only, never blocks','Signaler les relevés plus loin que (m) du client — avertissement seulement'],
  sees_all:['الجابي يرى كل الزبائن (وإلا زبائنه فقط)','Collectors see all customers (otherwise only theirs)','Le releveur voit tous les clients'],
  baseline_note:['أول قراءة لهذا الزبون — تُعتمد عداداً أولياً ولا يُحسب استهلاك (يُفوتر الاشتراك الأساسي فقط)','First reading for this customer — it becomes the starting reading, no consumption is billed (base fee only)','Premier relevé — il devient l’index de départ, sans consommation facturée (abonnement seul)'],
  first_read:['قراءة أولى — عداد أولي','First reading — starting reading','Premier relevé — index de départ'],
@@ -2004,6 +2004,10 @@ Object.assign(D,{
  type_collector:['جابي (قبض + فتح/قطع)','Collector (payments + connect/cut)','Encaisseur (paiements + brancher/couper)'],
  type_reader:['قارئ عداد (أخذ العداد فقط)','Meter reader (readings only)','Releveur (relevés seulement)'],
  type_custom:['مخصّص','Custom','Personnalisé'],
+ remote_read:['📷 قراءة عن بعد — الزبون أرسل صورة العداد','📷 Remote reading — customer sent a photo of the meter','📷 Relevé à distance — le client a envoyé une photo du compteur'],
+ remote_note:['لن يُسجَّل موقعك ولن يُفحص البعد. اختر صورة العداد التي أرسلها الزبون.','Your location will not be recorded or checked. Choose the meter photo the customer sent.','Votre position ne sera ni enregistrée ni vérifiée. Choisissez la photo envoyée par le client.'],
+ remote_pick:['اختيار صورة العداد','Choose meter photo','Choisir la photo du compteur'],
+ remote_chip:['عن بعد','Remote','À distance'],
  save_no_photo:['حفظ بدون صورة وموقع (للمدير)','Save without photo & location (admin)','Enregistrer sans photo ni position (admin)'],
  edit_reading:['تعديل العداد','Edit reading','Modifier le relevé'],
  edit_reading_t:['تعديل قراءة العداد — السابق: {p}','Edit reading — previous: {p}','Modifier — précédent : {p}'],
@@ -3004,12 +3008,18 @@ async function openCustomer(id,barcode,mode){
     box.innerHTML='<div class="step"><label>'+esc(t('enter_value'))+' — '+esc(t('prev_reading'))+': <b class="num">'+esc(fmtN(d.prev_value))+'</b></label>'+
       '<input id="rv" class="valinput" type="text" inputmode="decimal" autocomplete="off" placeholder="'+esc(fmtN(d.prev_value))+'">'+
       (d.baseline?'<div class="lic" style="margin-top:8px">'+esc(t('baseline_note'))+'</div>':'')+
-      '<div id="rest" class="muted" style="margin:8px 0"></div><div id="gpsLine" style="margin:6px 0"></div>'+
+      '<div id="rest" class="muted" style="margin:8px 0"></div>'+
+      '<label class="chk" style="margin:6px 0"><input type="checkbox" id="rremote"> '+esc(t('remote_read'))+'</label><div id="rremn" class="muted hidden" style="font-size:13px">'+esc(t('remote_note'))+'</div>'+
+      '<div id="gpsLine" style="margin:6px 0"></div>'+
       '<div id="rph"></div><div id="rmsg" class="err msg"></div>'+
       '<button class="btn full" id="rnext" style="margin-top:8px">'+esc(t('next_photo'))+'</button>'+
       (isAdmin()?'<button class="btn ghost full" id="rnophoto" style="margin-top:8px">'+esc(t('save_no_photo'))+'</button>':'')+'</div>';
     startGeo();
-    var np=$('#rnophoto',box); if(np) np.addEventListener('click',function(){ var v=inp.value.trim(); if(v===''||!isFinite(Number(v))){ $('#rmsg',box).textContent=t('e_bad_value'); return; } photoBlob=null; saveReading(Number(v),true); });
+    var remote=false;
+    $('#rremote',box).addEventListener('change',function(){ remote=this.checked; $('#rremn',box).classList.toggle('hidden',!remote);
+      if(remote){ geo=null; $('#gpsLine',box).innerHTML='<span class="chip gray">📷 '+esc(t('remote_chip'))+'</span>'; } else startGeo();
+      if(!photoBlob) $('#rnext',box).innerHTML=esc(remote?t('remote_pick'):t('next_photo')); });
+    var np=$('#rnophoto',box); if(np) np.addEventListener('click',function(){ var v=inp.value.trim(); if(v===''||!isFinite(Number(v))){ $('#rmsg',box).textContent=t('e_bad_value'); return; } photoBlob=null; saveReading(Number(v),true,$('#rremote',box).checked); });
     var inp=$('#rv',box); setTimeout(function(){ inp.focus(); },60);
     inp.addEventListener('input',function(){ inp.value=inp.value.replace(/[٠-٩]/g,function(x){return '٠١٢٣٤٥٦٧٨٩'.indexOf(x)}).replace(/[^0-9.]/g,'');
       var v=inp.value; if(!v){ $('#rest',box).textContent=''; return; } var e=estimate(v);
@@ -3018,22 +3028,23 @@ async function openCustomer(id,barcode,mode){
       var msg=$('#rmsg',box); msg.textContent='';
       var v=inp.value.trim(); if(v===''||!isFinite(Number(v))){ msg.textContent=t('e_bad_value'); return; }
       if(!d.baseline&&Number(v)<n2(d.prev_value)){ msg.textContent=t('e_lower_than_prev',{x:fmtN(d.prev_value)}); return; }
-      if(photoBlob){ return saveReading(Number(v)); }
-      var blob=await takePhoto(); if(!blob) return;
+      if(photoBlob){ return saveReading(Number(v),false,remote); }
+      var blob=remote?await pickGallery():await takePhoto(); if(!blob) return;
       photoBlob=blob; inp.readOnly=true;
       $('#rph',box).innerHTML='<img class="prev-img" src="'+URL.createObjectURL(blob)+'" alt=""><div class="row" style="justify-content:center"><button class="btn ghost sm" id="rretake">'+esc(t('retake'))+'</button></div>';
-      $('#rretake',box).addEventListener('click',async function(){ var b2=await takePhoto(); if(b2){ photoBlob=b2; $('.prev-img',box).src=URL.createObjectURL(b2); } });
+      $('#rretake',box).addEventListener('click',async function(){ var b2=remote?await pickGallery():await takePhoto(); if(b2){ photoBlob=b2; $('.prev-img',box).src=URL.createObjectURL(b2); } });
       $('#rnext',box).innerHTML=esc(t('upload_save')); $('#rnext',box).classList.add('ok');
     });
   }
-  async function saveReading(v,adminSkip){
+  async function saveReading(v,adminSkip,remote){
     var box=$('#cstep',m.body), btn=adminSkip?$('#rnophoto',box):$('#rnext',box), msg=$('#rmsg',box); msg.textContent='';
-    if(SITE.require_gps&&!geo&&!isAdmin()){ msg.textContent=t('e_gps_required'); startGeo(); return; }
+    if(remote) geo=null;
+    else if(SITE.require_gps&&!geo&&!isAdmin()){ msg.textContent=t('e_gps_required'); startGeo(); return; }
     busy(btn,true,t('uploading'));
     try{
       var path=photoBlob?await uploadPhoto(photoBlob):'';
       btn.textContent=t('saving');
-      var r=await call('motor_read',{p_customer:c.id,p_value:v,p_photo:path,p_lat:geo?geo.lat:null,p_lng:geo?geo.lng:null,p_accuracy:geo?geo.acc:null});
+      var r=await call('motor_read',{p_customer:c.id,p_value:v,p_photo:path,p_lat:geo?geo.lat:null,p_lng:geo?geo.lng:null,p_accuracy:geo?geo.acc:null,p_remote:!!remote});
       toast(t('read_saved'),'s');
       await reload(); paint();
       showBill({inv:r.invoice,c:c,dist:r.dist_m,title:t('read_saved')});
@@ -3535,6 +3546,12 @@ function scanBarcode(){ return new Promise(function(resolve){
     }catch(e){ $('#smsg',m.body).textContent=t('scan_unsupported'); $('.cam',m.body).classList.add('hidden'); setTimeout(function(){ $('#sman',m.body).focus(); },50); }
   })();
 }); }
+function pickGallery(){ return new Promise(function(resolve){
+  var f=document.createElement('input'); f.type='file'; f.accept='image/*'; f.style.display='none'; document.body.appendChild(f);
+  var done=false; function fin(b){ if(done) return; done=true; f.remove(); resolve(b); }
+  f.addEventListener('change',async function(){ var x=f.files&&f.files[0]; if(!x) return fin(null); try{ fin(await shrink(x)); }catch(e){ toast(errText(e),'e'); fin(null); } });
+  window.addEventListener('focus',function(){ setTimeout(function(){ if(!(f.files&&f.files.length)) fin(null); },1500); },{once:true});
+  f.click(); }); }
 function takePhoto(){ return new Promise(function(resolve){
   var m=modal(t('camera_title'),'<div class="cam"><video id="pv" playsinline muted autoplay></video></div><div id="pmsg2" class="muted" style="margin:8px 0"></div>'+
     '<div class="row"><button class="btn lg" id="pcap" style="flex:1">'+esc(t('capture'))+'</button></div>'+
@@ -4062,7 +4079,7 @@ VIEWS.month=async function(main){
       return '<tr><td class="num">'+esc(dt(r.at))+'</td><td class="num">'+esc(r.code)+'</td><td><a href="#" data-cust="'+esc(r.customer_id)+'"><b>'+esc(r.name)+'</b></a></td><td>'+esc(r.box)+'</td>'+
         '<td class="num">'+esc(fmtN(r.prev_value))+'</td><td class="num"><b>'+esc(fmtN(r.value))+'</b></td><td class="num">'+esc(fmtN(r.kwh))+'</td><td class="num">'+esc(money(r.amount))+'</td>'+
         '<td>'+(r.photo?'<img class="thumb" loading="lazy" src="'+esc(r.photo)+'?w=160" data-big="'+esc(r.photo)+'" alt="">':'—')+'</td>'+
-        '<td>'+(r.lat!=null?'<a target="_blank" rel="noopener" href="https://maps.google.com/?q='+esc(r.lat)+','+esc(r.lng)+'">📍</a>'+(r.dist_m!=null?' <span class="chip '+(far?'off':'gray')+'">'+esc(fmtN(r.dist_m,0))+' m</span>':''):'—')+'</td><td>'+esc(r.staff)+'</td>'+
+        '<td>'+(r.remote?'<span class="chip gray">📷 '+esc(t('remote_chip'))+'</span>':r.lat!=null?'<a target="_blank" rel="noopener" href="https://maps.google.com/?q='+esc(r.lat)+','+esc(r.lng)+'">📍</a>'+(r.dist_m!=null?' <span class="chip '+(far?'off':'gray')+'">'+esc(fmtN(r.dist_m,0))+' m</span>':''):'—')+'</td><td>'+esc(r.staff)+'</td>'+
         (adm?'<td><button class="btn ghost sm" data-er="'+esc(r.id)+'">🔢 '+esc(t('edit'))+'</button>'+(r.invoice_id?' <button class="btn ghost sm" data-vr="'+esc(r.invoice_id)+'|'+esc(r.name)+'">'+esc(t('void_reading'))+'</button>':'')+'</td>':'')+'</tr>'; }).join('')||'<tr><td colspan="11" class="muted">'+esc(t('no_results'))+'</td></tr>';
   }
   $('#mp',main).addEventListener('change',function(){ if(/^\d{4}-\d{2}$/.test(this.value)){ MF.period=this.value; go('month'); } });

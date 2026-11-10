@@ -495,8 +495,10 @@ end $$;
 -- ============================================================
 --  9) أخذ العداد → قراءة + فاتورة بعملية واحدة
 -- ============================================================
+drop function if exists public.motor_read(text,text,uuid,numeric,text,double precision,double precision,double precision);
 create or replace function public.motor_read(p_slug text, p_token text, p_customer uuid, p_value numeric,
-  p_photo text, p_lat double precision, p_lng double precision, p_accuracy double precision default null)
+  p_photo text, p_lat double precision, p_lng double precision, p_accuracy double precision default null,
+  p_remote boolean default false)
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare w jsonb; sid uuid; st public.motor_sites%rowtype; c public.motor_customers%rowtype;
         pl public.motor_plans%rowtype; prev numeric; d integer; rid uuid; seq integer;
@@ -527,7 +529,9 @@ begin
   if coalesce(p_photo,'') <> '' and p_photo !~ ('^/img/motor/' || sid::text || '/') then
     perform public._motor_err('bad_photo');
   end if;
-  if st.require_gps and not public._motor_geo_ok(p_lat, p_lng) and not (w->>'is_admin')::boolean then perform public._motor_err('gps_required'); end if;
+  -- قراءة عن بعد: الزبون بعت صورة العداد — لا موقع ولا فحص مسافة
+  if coalesce(p_remote, false) then p_lat := null; p_lng := null; p_accuracy := null; end if;
+  if st.require_gps and not coalesce(p_remote, false) and not public._motor_geo_ok(p_lat, p_lng) and not (w->>'is_admin')::boolean then perform public._motor_err('gps_required'); end if;
 
   select value into prev from public.motor_readings where customer_id = c.id order by created_at desc limit 1;
   if not found then
@@ -540,18 +544,17 @@ begin
 
   d := null;
   if public._motor_geo_ok(p_lat, p_lng) and public._motor_geo_ok(c.lat, c.lng) then
-    d := public._motor_dist(c.lat, c.lng, p_lat, p_lng);
-    if st.max_distance_m > 0 and d > st.max_distance_m and not (w->>'is_admin')::boolean then perform public._motor_err('too_far', d::text); end if;
+    d := public._motor_dist(c.lat, c.lng, p_lat, p_lng);   -- تسجيل المسافة فقط، بلا منع
   end if;
 
   insert into public.motor_readings (site_id, customer_id, period, prev_value, value, photo_url, lat, lng, accuracy,
-                                     dist_m, staff_id, staff_name)
+                                     dist_m, staff_id, staff_name, remote)
   values (sid, c.id, st.bill_period, prev, p_value, coalesce(p_photo,''), p_lat, p_lng, p_accuracy, d,
-          (w->>'staff_id')::uuid, w->>'name')
+          (w->>'staff_id')::uuid, w->>'name', coalesce(p_remote, false))
   returning id into rid;
 
-  -- أول قراءة لزبون بلا موقع: منثبّت موقعه
-  if not public._motor_geo_ok(c.lat, c.lng) and public._motor_geo_ok(p_lat, p_lng) then
+  -- أول قراءة ميدانية لزبون بلا موقع: منثبّت موقعه (الدقة لازم تكون منيحة)
+  if not public._motor_geo_ok(c.lat, c.lng) and public._motor_geo_ok(p_lat, p_lng) and coalesce(p_accuracy, 0) <= 60 then
     update public.motor_customers set lat = p_lat, lng = p_lng where id = c.id;
   end if;
 

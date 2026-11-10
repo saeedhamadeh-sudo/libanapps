@@ -486,7 +486,7 @@ begin
     'motor_change_password(text,text,text,text)', 'motor_me(text,text)', 'motor_customers(text,text)',
     'motor_customer_get(text,text,uuid,text)', 'motor_customer_save(text,text,jsonb)',
     'motor_customer_delete(text,text,uuid)', 'motor_import(text,text,jsonb)', 'motor_statement(text,text,uuid)',
-    'motor_read(text,text,uuid,numeric,text,double precision,double precision,double precision)',
+    'motor_read(text,text,uuid,numeric,text,double precision,double precision,double precision,boolean)',
     'motor_bill_fixed(text,text)', 'motor_invoice_void(text,text,uuid)', 'motor_adjust(text,text,uuid,numeric,text)',
     'motor_pay(text,text,uuid,numeric,text,text,text,double precision,double precision)',
     'motor_payment_void(text,text,uuid)', 'motor_month(text,text,text)', 'motor_settings_save(text,text,jsonb)',
@@ -539,4 +539,4 @@ select 'motor product' as item, exists (select 1 from public.products where code
 union all select 'motor plan', exists (select 1 from public.plans where product_code = 'motor')
 union all select 'motor tables', to_regclass('public.motor_customers') is not null and to_regclass('public.motor_moves') is not null
 union all select 'portal link ok', pg_get_functiondef('public.my_client_id()'::regprocedure) like '%portal_users%'
-union all select 'read function', to_regprocedure('public.motor_read(text,text,uuid,numeric,text,double precision,double precision,double precision)') is not null;
+union all select 'read function', to_regprocedure('public.motor_read(text,text,uuid,numeric,text,double precision,double precision,double precision,boolean)') is not null;

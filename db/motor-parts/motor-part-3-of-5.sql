@@ -14,7 +14,7 @@ begin
     select jsonb_agg(jsonb_build_object(
       'id', r.id, 'at', r.created_at, 'customer_id', c.id, 'code', c.code, 'name', c.name, 'barcode', c.barcode,
       'box', c.box, 'area', c.area, 'prev_value', r.prev_value, 'value', r.value, 'kwh', r.value - r.prev_value,
-      'photo', r.photo_url, 'lat', r.lat, 'lng', r.lng, 'accuracy', r.accuracy, 'dist_m', r.dist_m,
+      'photo', r.photo_url, 'lat', r.lat, 'lng', r.lng, 'accuracy', r.accuracy, 'dist_m', r.dist_m, 'remote', r.remote,
       'staff_id', r.staff_id, 'staff', r.staff_name,
       'invoice_id', i.id, 'invoice_no', i.no, 'amount', i.amount, 'balance_after', i.balance_after)
       order by r.created_at desc)
