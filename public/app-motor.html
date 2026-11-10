@@ -3219,7 +3219,8 @@ function billTicket(o){
 }
 function printMode(){ var d=/android/i.test(navigator.userAgent)?'rawbt':'browser'; return lsGet('motor_print',d); }
 var PAPER_OVR=null;
-function paperW(){ if(PAPER_OVR) return PAPER_OVR==='80'?576:384; return lsGet('motor_paper','58')==='80'?576:384; }
+// الموظفين (غير المدير) طابعتهم 58 ملم دايماً
+function paperW(){ if(ME&&!ME.is_admin) return 384; if(PAPER_OVR) return PAPER_OVR==='80'?576:384; return lsGet('motor_paper','58')==='80'?576:384; }
 var IMG_CACHE={};
 function loadImg(src){ if(IMG_CACHE[src]) return Promise.resolve(IMG_CACHE[src]);
   return new Promise(function(res){ var done=false, im=new Image(); var fin=function(v){ if(done) return; done=true; if(v) IMG_CACHE[src]=v; res(v); };
@@ -3561,11 +3562,11 @@ async function openStatement(cid){
       '<div class="tw"><table><thead><tr><th>'+esc(t('date'))+'</th><th>'+esc(t('type'))+'</th><th></th><th>'+esc(t('debit'))+'</th><th>'+esc(t('creditc'))+'</th><th>'+esc(t('running'))+'</th><th>'+esc(t('photo'))+'</th><th>'+esc(t('by'))+'</th><th></th>'+(adm?'<th></th>':'')+'</tr></thead><tbody>'+
       (rows.join('')||'<tr><td colspan="10" class="muted">'+esc(t('no_results'))+'</td></tr>')+'</tbody></table></div>')+
       '<div class="row" style="margin-top:10px">'+(waHere()?'<button class="btn wa sm" id="swa">'+esc(t('send_wa'))+'</button>':'')+'<span class="muted">'+esc(t('print'))+':</span>'+
-        ['58','80'].map(function(w){ var def=lsGet('motor_paper','58')===w; return '<button class="btn '+(def?'':'alt')+' sm" data-spw="'+w+'">'+w+' '+esc(t('mm'))+'</button>'; }).join('')+
-        '<button class="btn alt sm" id="spa4">A4</button></div>';
+        (isAdmin()?['58','80']:['58']).map(function(w){ var def=!isAdmin()||lsGet('motor_paper','58')===w; return '<button class="btn '+(def?'':'alt')+' sm" data-spw="'+w+'">'+w+' '+esc(t('mm'))+'</button>'; }).join('')+
+        (isAdmin()?'<button class="btn alt sm" id="spa4">A4</button>':'')+'</div>';
     if(narrow){ var sl=$('.sc-list',m.body); if(sl) sl.scrollTop=sl.scrollHeight; }
     $$('[data-prow]',m.body).forEach(function(b){ b.addEventListener('click',function(){ printStmtRow(d,b.dataset.prow); }); });
-    $('#spa4',m.body).addEventListener('click',function(){ printStatementA4(d); });
+    if($('#spa4',m.body)) $('#spa4',m.body).addEventListener('click',function(){ printStatementA4(d); });
     if($('#swa',m.body)) $('#swa',m.body).addEventListener('click',function(){
       var s=['*'+(SITE.name||'')+'*',t('statement')+' — '+c.name+' (#'+c.code+')'], rb=0;
       d.rows.filter(function(r){return !r.voided}).slice(-12).forEach(function(r){ s.push(dt(r.at).slice(0,10)+' · '+(r.t==='pay'?t('k_pay'):t('k_'+r.kind)+(r.period?' '+r.period:''))+(r.kind==='meter'?' ('+fmtN(r.prev_value)+'→'+fmtN(r.cur_value)+')':'')+': '+(n2(r.debit)?'+'+money(r.debit):'−'+money(r.credit))); });
@@ -4243,7 +4244,7 @@ VIEWS.settings=async function(main){
   }
   var pm=printMode();
   h+='<div class="card"><h3>🖨️ '+esc(t('s_device'))+'</h3><div class="g2"><div><label>'+esc(t('print_mode'))+'</label><select id="pmode"><option value="ble">'+esc(t('pm_ble'))+'</option><option value="rawbt">'+esc(t('pm_rawbt'))+'</option><option value="browser">'+esc(t('pm_browser'))+'</option></select></div>'+
-    '<div><label>'+esc(t('paper'))+'</label><select id="ppw"><option value="58">58 mm</option><option value="80">80 mm</option></select></div></div>'+
+    '<div><label>'+esc(t('paper'))+'</label><select id="ppw"><option value="58">58 mm</option>'+(isAdmin()?'<option value="80">80 mm</option>':'')+'</select></div></div>'+
     '<div id="blebox" style="margin-top:10px"><div class="row"><button class="btn" id="blepick">'+esc(t('ble_pick'))+'</button><b id="blename"></b></div>'+
     '<div class="g2" style="margin-top:8px"><div><label>'+esc(t('ble_chunk'))+'</label><input id="blech" inputmode="numeric" value="'+esc(lsGet('motor_ble_chunk','100'))+'"></div><div><label>'+esc(t('ble_delay'))+'</label><input id="bledl" inputmode="numeric" value="'+esc(lsGet('motor_ble_delay','20'))+'"></div></div>'+
     '<p class="muted">'+esc(t('ble_hint'))+'</p></div>'+
@@ -4272,7 +4273,7 @@ VIEWS.settings=async function(main){
       try{ SITE=await call('motor_settings_save',{p_data:d}); msg.className='okmsg'; msg.textContent=t('saved'); paintShell(); }catch(e){ msg.className='err'; msg.textContent=errText(e); } busy(b,false); }); }
   function pmTog(){ var v=$('#pmode',main).value; $('#blebox',main).classList.toggle('hidden',v!=='ble'); $('#rawhint',main).classList.toggle('hidden',v!=='rawbt');
     $('#blename',main).textContent=lsGet('motor_ble_name','')?t('ble_cur',{n:lsGet('motor_ble_name','')}):''; }
-  $('#pmode',main).value=pm; $('#ppw',main).value=lsGet('motor_paper','58'); pmTog();
+  $('#pmode',main).value=pm; $('#ppw',main).value=isAdmin()?lsGet('motor_paper','58'):'58'; pmTog();
   $('#pmode',main).addEventListener('change',function(){ lsSet('motor_print',this.value); pmTog(); });
   $('#ppw',main).addEventListener('change',function(){ lsSet('motor_paper',this.value); });
   $('#blech',main).addEventListener('change',function(){ lsSet('motor_ble_chunk',this.value); });
