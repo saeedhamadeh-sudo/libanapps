@@ -700,7 +700,7 @@ function moneyTargetOptions(opts){
   const sh = currentUserShift();
   const o = [];
   if(opts.drawer!==false && !myDrawerIsPersonal()) o.push(`<option value="drawer" ${sh? '' : 'disabled'}>💵 صندوقي${currentUser? ' ('+escapeHtml(currentUser.username)+')' : ''}${sh? '' : ' — مسكّر'}</option>`);
-  if(opts.main!==false && (canUseSafe() || opts.out)) o.push(`<option value="main">🗄 ${MAIN_BOX_NAME}</option>`);   // الدفع: كل الموظفين بيدفعوا من الصندوق الأساسي
+  if(opts.main!==false && canUseSafe()) o.push(`<option value="main">🗄 ${MAIN_BOX_NAME}</option>`);   // بس يلي عندو صلاحية «السحب من الخزنة»
   moneyAccounts().forEach(a=>{ if(a.kind==='owner' && !hasPermission('owner_pay')) return;
     if(a.kind==='whish'){ if(opts.whish!==false) o.push(`<option value="${a.code}">📱 Whish (${a.code})</option>`); return; }
     if(a.kind==='personal' && opts.drawer===false && myDrawerIsPersonal()) return;   // نفس الصندوق يلي عم نشتغل عليه
@@ -770,7 +770,7 @@ function nextPaySourceAsk(){
 }
 // المدفوعات بتطلع افتراضياً من الصندوق الأساسي (إذا عندك صلاحية عليه) — المقبوضات على صندوقك
 function defaultPaySrc(incoming){
-  if(!incoming) return 'main';   // أي دفع (فاتورة مشتريات، سند صرف، مصروف…) بيطلع من الصندوق الأساسي
+  if(!incoming && canUseSafe()) return 'main';   // الدفع بيطلع من الصندوق الأساسي — بس للموظف يلي عندو صلاحية
   if(currentUserShift()) return myDrawerIsPersonal()? '53103' : 'drawer';
   return canUseSafe()? 'main' : '';
 }
@@ -11748,7 +11748,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-11-11 · 00:40 · v89';
+const APP_TRADE_BUILD = '2026-11-11 · 00:50 · v90';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 function settingsView(){
   const s = DB.settings;
