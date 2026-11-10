@@ -463,6 +463,10 @@ create table if not exists public.motor_salary_dues (
 );
 create index if not exists motor_salary_dues_idx on public.motor_salary_dues (staff_id, period);
 
+-- ---------- v7: استيراد فواتير البرنامج السابق ----------
+alter table public.motor_invoices add column if not exists imported boolean not null default false;
+alter table public.motor_readings add column if not exists imported boolean not null default false;
+
 create table if not exists public.motor_day_closes (
   id        uuid primary key default gen_random_uuid(),
   site_id   uuid not null references public.motor_sites(id) on delete cascade,

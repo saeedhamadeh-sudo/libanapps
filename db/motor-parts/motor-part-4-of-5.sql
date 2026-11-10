@@ -577,3 +577,56 @@ begin
          from public.motor_staff s where s.site_id = sid and (s.is_active or s.salary > 0)), '[]'::jsonb);
 end $$;
 
+-- ============================================================
+--  20h) المخزون (الموجودات)
+-- ============================================================
+create or replace function public.motor_stock_list(p_slug text, p_token text)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w jsonb;
+begin
+  w := public._motor_admin(p_slug, p_token);
+  return coalesce((select jsonb_agg(to_jsonb(x) - 'site_id' order by x.category, x.name) from public.motor_stock x
+                    where x.site_id = (w->>'site_id')::uuid), '[]'::jsonb);
+end $$;
+
+create or replace function public.motor_stock_save(p_slug text, p_token text, p_data jsonb)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w jsonb; sid uuid; d jsonb := coalesce(p_data,'{}'::jsonb); x public.motor_stock%rowtype;
+begin
+  w := public._motor_admin(p_slug, p_token);
+  sid := (w->>'site_id')::uuid;
+  if coalesce(trim(d->>'name'),'') = '' then perform public._motor_err('name_required'); end if;
+  if coalesce(d->>'id','') = '' then
+    insert into public.motor_stock (site_id, name, category, qty, unit_price, notes, updated_by)
+    values (sid, trim(d->>'name'), coalesce(d->>'category',''), coalesce(nullif(d->>'qty','')::numeric,0),
+            coalesce(nullif(d->>'unit_price','')::numeric,0), coalesce(d->>'notes',''), w->>'name')
+    returning * into x;
+    if x.qty <> 0 then
+      insert into public.motor_stock_moves (site_id, item_id, item_name, kind, qty, unit_price, note, by_name)
+      values (sid, x.id, x.name, 'adjust', x.qty, x.unit_price, 'رصيد أول', w->>'name');
+    end if;
+  else
+    insert into public.motor_stock_moves (site_id, item_id, item_name, kind, qty, unit_price, note, by_name)
+    select sid, o.id, trim(d->>'name'), 'adjust', coalesce(nullif(d->>'qty','')::numeric,0) - o.qty, o.unit_price, 'تعديل يدوي', w->>'name'
+      from public.motor_stock o where o.id = (d->>'id')::uuid and o.site_id = sid and o.qty <> coalesce(nullif(d->>'qty','')::numeric,0);
+    update public.motor_stock set name = trim(d->>'name'), category = coalesce(d->>'category',''),
+           qty = coalesce(nullif(d->>'qty','')::numeric,0), unit_price = coalesce(nullif(d->>'unit_price','')::numeric,0),
+           notes = coalesce(d->>'notes',''), updated_by = w->>'name', updated_at = now()
+     where id = (d->>'id')::uuid and site_id = sid returning * into x;
+    if x.id is null then perform public._motor_err('not_found'); end if;
+  end if;
+  return to_jsonb(x) - 'site_id';
+end $$;
+
+create or replace function public.motor_stock_delete(p_slug text, p_token text, p_id uuid)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w jsonb; sid uuid;
+begin
+  w := public._motor_admin(p_slug, p_token);
+  sid := (w->>'site_id')::uuid;
+  insert into public.motor_trash (site_id, kind, ref_id, label, data, deleted_by)
+  select sid, 'stock', x.id, x.name || ' × ' || x.qty, to_jsonb(x), w->>'name' from public.motor_stock x where x.id = p_id and x.site_id = sid;
+  delete from public.motor_stock where id = p_id and site_id = sid;
+  return jsonb_build_object('ok', true);
+end $$;
+

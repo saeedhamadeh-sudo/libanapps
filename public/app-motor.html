@@ -2098,6 +2098,18 @@ var CFG=window.LIBANAPPS, sb=null;
 try{ sb=window.supabase.createClient(CFG.SUPABASE_URL,CFG.SUPABASE_ANON_KEY); }catch(e){}
 var $=function(s,r){return (r||document).querySelector(s)}, $$=function(s,r){return Array.prototype.slice.call((r||document).querySelectorAll(s))};
 Object.assign(D,{
+ inv_imp:['استيراد فواتير البرنامج السابق','Import previous invoices','Importer les anciennes factures'],
+ inv_imp_hint:['ملف Excel فيه سطر لكل فاتورة: الاسم، رقم العداد، المنطقة، الحالي، السابق، تاريخ الفاتورة، إجمالي الفاتورة، رصيد الحساب الحالي.\n• المطابقة بالاسم كما هو (مع «- 1» و«- 2»…)، والأسماء غير المسجلة لا تُدخل.\n• تاريخ الفاتورة من 1 إلى 14 = فاتورة الشهر السابق (02/06 ← أيار)، ومن 15 فما فوق = فاتورة الشهر نفسه.\n• الاستهلاك = الحالي − السابق.\n• بعد الاستيراد يصبح رصيد كل زبون مطابقاً لـ«رصيد الحساب الحالي» في الملف.\n• يمكن إعادة الاستيراد: الفواتير المستوردة سابقاً تُستبدل، والأشهر التي فيها قراءة من البرنامج لا تُلمس.','Excel file with one row per invoice: name, meter no., area, current, previous, invoice date, invoice total, current balance.\n• Matching by exact name (including “- 1”, “- 2”…); unknown names are skipped.\n• Invoice dated 1–14 = previous month’s bill (02/06 → May); 15 or later = same month.\n• Consumption = current − previous.\n• After import each balance equals the file’s current balance.\n• Re-import replaces earlier imported invoices; months read in this program are not touched.','Fichier Excel, une ligne par facture : nom, compteur, zone, actuel, précédent, date, total, solde actuel.\n• Correspondance par nom exact ; noms inconnus ignorés.\n• Facture du 1 au 14 = mois précédent (02/06 → mai) ; 15 et plus = même mois.\n• Consommation = actuel − précédent.\n• Après import, chaque solde = solde actuel du fichier.\n• Réimporter remplace les factures importées ; les mois relevés ici ne sont pas touchés.'],
+ inv_imp_bad:['لم أجد أعمدة الاسم / الحالي / السابق / تاريخ الفاتورة / إجمالي الفاتورة في الملف','Columns name / current / previous / invoice date / total not found','Colonnes introuvables'],
+ inv_imp_rows:['سطور الملف','File rows','Lignes'], inv_imp_matched:['زبائن متطابقون','Matched customers','Clients trouvés'], inv_imp_missing:['أسماء غير مسجلة','Unknown names','Noms inconnus'],
+ inv_imp_invs:['فواتير ستُدخل','Invoices to import','Factures à importer'], inv_imp_baldiff:['أرصدة ستتغير','Balances that change','Soldes modifiés'],
+ inv_imp_months:['الأشهر','Months','Mois'], inv_imp_bal:['مجموع الأرصدة الآن {a} ← بعد الاستيراد {b}','Total balances now {a} → after import {b}','Total des soldes {a} → {b}'],
+ inv_imp_bymeter:['تطابق برقم العداد (الاسم مكتوب بشكل مختلف)','Matched by meter number (name spelled differently)','Trouvés par n° de compteur'],
+ inv_imp_skip_names:['هذه الأسماء غير مسجلة ولن تُدخل','These names are not registered and will be skipped','Noms non enregistrés, ignorés'],
+ inv_imp_go:['استيراد فواتير {n} زبون','Import invoices of {n} customers','Importer {n} clients'],
+ inv_imp_q:['استيراد فواتير {n} زبون ومطابقة أرصدتهم مع الملف؟','Import invoices of {n} customers and match their balances to the file?','Importer {n} clients et aligner leurs soldes ?'],
+ inv_imp_done:['✓ تم: {c} زبون، {i} فاتورة، {r} قراءة','✓ Done: {c} customers, {i} invoices, {r} readings','✓ Terminé : {c} clients, {i} factures, {r} relevés'],
+ inv_imp_skipped:['{n} فاتورة لم تُدخل لأن شهرها فيه قراءة مأخوذة من البرنامج','{n} invoices skipped because that month was already read in this program','{n} factures ignorées (mois déjà relevé)'],
  sw_notify:['إشعار موظف عبر واتساب ليقوم بالعملية','Notify a staff member on WhatsApp to do it','Prévenir un employé par WhatsApp'],
  sw_no_notify:['بدون إشعار','No notification','Sans notification'],
  sw_no_team:['لا يوجد موظف أخذ عداد له رقم هاتف — أضف الرقم في تبويب الموظفين','No meter staff with a phone number — add it in the Staff tab','Aucun employé avec numéro — ajoutez-le dans Personnel'],
@@ -2946,8 +2958,8 @@ function billLines(o){
     L.push({hr:1},{t:t('b_details')},{hr:1});
     if(n2(inv.fee)) L.push({k:t('b_fee'),v:money(inv.fee)});
     if(inv.kind==='meter'){
-      L.push({k:t('b_prev'),v:fmtN(inv.prev_value)},{k:t('b_cur'),v:fmtN(inv.cur_value)},{k:t('b_cons'),v:fmtN(inv.kwh)+' '+t('b_kwh_unit')},
-        {k:t('b_price'),v:priceStr(inv.kwh_price)},{k:t('b_energy'),v:money(inv.energy)});
+      L.push({k:t('b_prev'),v:fmtN(inv.prev_value)},{k:t('b_cur'),v:fmtN(inv.cur_value)},{k:t('b_cons'),v:fmtN(inv.kwh)+' '+t('b_kwh_unit')});
+      if(n2(inv.kwh_price)||n2(inv.energy)) L.push({k:t('b_price'),v:priceStr(inv.kwh_price)},{k:t('b_energy'),v:money(inv.energy)});
     }
     if(n2(inv.discount)) L.push({k:t('discount'),v:'−'+money(inv.discount)});
     if(n2(inv.addition)) L.push({k:t('addition'),v:money(inv.addition)});
@@ -3363,7 +3375,7 @@ VIEWS.customers=async function(main){
     '<select id="car"><option value="">'+esc(t('area'))+': '+esc(t('all'))+'</option>'+Object.keys(areas).sort().map(function(a){return '<option>'+esc(a)+'</option>'}).join('')+'</select>'+
     '</div><div class="toolbar">'+
     (adm?'<button class="btn" id="cadd">'+esc(t('new_customer'))+'</button><button class="btn alt" id="cimp">'+esc(t('import_excel'))+'</button>':'')+
-    '<button class="btn ghost" id="cexp">'+esc(t('export_csv'))+'</button>'+(adm?'<button class="btn ghost" id="clbl">'+esc(t('labels'))+'</button><button class="btn ghost" id="cfill">'+esc(t('fill_barcodes'))+'</button><button class="btn acc" id="cprevpdf">📄 '+esc(t('prev_pdf'))+'</button>':'')+
+    '<button class="btn ghost" id="cexp">'+esc(t('export_csv'))+'</button>'+(adm?'<button class="btn ghost" id="clbl">'+esc(t('labels'))+'</button><button class="btn ghost" id="cfill">'+esc(t('fill_barcodes'))+'</button><button class="btn acc" id="cprevpdf">📄 '+esc(t('prev_pdf'))+'</button><button class="btn acc" id="cinvimp">🧾 '+esc(t('inv_imp'))+'</button>':'')+
     '<span class="sp"></span><span class="muted" id="ccount"></span></div><div class="tw"><table><thead><tr><th>'+esc(t('code'))+'</th><th>'+esc(t('name'))+'</th><th>'+esc(t('barcode'))+'</th><th>'+esc(t('plan'))+'</th><th>'+esc(t('box'))+'</th><th>'+esc(t('area'))+'</th><th>'+esc(t('collector'))+'</th><th>'+esc(t('status'))+'</th><th>'+esc(t('balance'))+'</th><th>'+esc(t('prev_reading'))+'</th><th>'+esc(t('cur_reading'))+' ('+esc(monthName(SITE.bill_period,true))+')</th></tr></thead><tbody id="ctb"></tbody></table></div><div id="cmore" style="text-align:center;margin-top:10px"></div>';
   $('#cst',main).value=CF.st; $('#cpl',main).value=CF.plan; if($('#ccol',main)) $('#ccol',main).value=CF.col; $('#car',main).value=CF.area;
   function filtered(){
@@ -3400,6 +3412,7 @@ VIEWS.customers=async function(main){
   if(adm){ $('#cadd',main).addEventListener('click',function(){ editCustomer(null); }); $('#cimp',main).addEventListener('click',importDialog);
     $('#clbl',main).addEventListener('click',function(){ printLabels(filtered().slice(0,500)); });
     $('#cprevpdf',main).addEventListener('click',prevPdfDialog);
+    $('#cinvimp',main).addEventListener('click',invImportDialog);
     $('#cfill',main).addEventListener('click',async function(){ try{ var r=await call('motor_fill_barcodes'); toast(t('fill_done',{n:r.count}),'s'); await loadCustomers(); go('customers'); }catch(e){ toast(errText(e),'e'); } }); }
   $('#cexp',main).addEventListener('click',function(){
     var rows=[[t('code'),t('name'),t('barcode'),t('meter_no'),t('plan'),t('box'),t('area'),t('location_name'),t('collector'),t('mobile'),t('status'),t('balance'),t('prev_reading'),t('cur_reading')]];
@@ -4413,6 +4426,86 @@ function loadPdfJs(){ if(pdfjsP) return pdfjsP;
     m.GlobalWorkerOptions.workerSrc='https://cdn.jsdelivr.net/npm/pdfjs-dist@'+PDFJS_V+'/build/pdf.worker.min.mjs'; return m; })
     .catch(function(e){ pdfjsP=null; throw e; });
   return pdfjsP; }
+/* =========================================================
+   استيراد فواتير البرنامج السابق (Excel): كل سطر فاتورة، مطابقة بالاسم
+   ========================================================= */
+function impNameKey(s){ s=String(s||''); for(var i=0;i<4&&/&amp;/.test(s);i++) s=s.replace(/&amp;/g,'&'); return s.replace(/\s*-\s*/g,' - ').replace(/[\u064B-\u0652\u0640]/g,'').replace(/\s+/g,' ').trim().toLowerCase(); }
+function impNum(v){ if(v==null||v==='') return null; var x=String(v).replace(/[^\d.\-]/g,''); return x===''||x==='-'?null:+x; }
+function impDate(v){ v=String(v||'').trim(); if(!v) return '';
+  if(/^\d{4,5}(\.\d+)?$/.test(v)) return excelDate(v);
+  var m=v.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/); if(m) return m[1]+'-'+m[2].padStart(2,'0')+'-'+m[3].padStart(2,'0');
+  m=v.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{4})/); if(m) return m[3]+'-'+m[2].padStart(2,'0')+'-'+m[1].padStart(2,'0');
+  return ''; }
+function impPeriod(d){ var y=+d.slice(0,4), mo=+d.slice(5,7), dd=+d.slice(8,10); if(dd<15){ mo--; if(!mo){ mo=12; y--; } } return y+'-'+String(mo).padStart(2,'0'); }
+function parseInvSheet(rows){
+  var hi=-1, H={};
+  for(var i=0;i<Math.min(rows.length,15);i++){ var r=rows[i].map(function(x){return String(x||'').trim()});
+    if(r.indexOf('الاسم')>=0&&r.some(function(x){return /تاريخ/.test(x)})){ hi=i; r.forEach(function(x,j){ H[x]=j; }); break; } }
+  if(hi<0) throw new Error(t('inv_imp_bad'));
+  function col(re){ for(var k in H) if(re.test(k)) return H[k]; return -1; }
+  var C={name:H['الاسم'],meter:col(/رقم العداد/),box:col(/العلبة/),area:col(/المنطقة/),plan:col(/الخدمة/),cur:col(/^الحالي$/),prev:col(/^السابق$/),
+         date:col(/تاريخ/),total:col(/إجمالي|اجمالي/),bal:col(/رصيد/)};
+  if(C.cur<0||C.prev<0||C.date<0||C.total<0) throw new Error(t('inv_imp_bad'));
+  var out=[];
+  for(var i2=hi+1;i2<rows.length;i2++){ var r2=rows[i2], nm=String(r2[C.name]||'').trim(), d=impDate(r2[C.date]);
+    if(!nm||!d) continue;
+    out.push({name:nm,meter:String(C.meter>=0?r2[C.meter]||'':'').trim(),area:C.area>=0?String(r2[C.area]||'').trim():'',plan:C.plan>=0?String(r2[C.plan]||'').trim():'',
+      cur:impNum(r2[C.cur]),prev:impNum(r2[C.prev]),date:d,total:impNum(r2[C.total])||0,bal:C.bal>=0?impNum(r2[C.bal]):null}); }
+  return out;
+}
+function invImportDialog(){
+  var m=modal(t('inv_imp'),'<p class="muted" style="margin-top:0;white-space:pre-line">'+esc(t('inv_imp_hint'))+'</p><input type="file" id="iif" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"><div id="iiv" style="margin-top:12px"></div>',
+    '<button class="btn ghost" data-x>'+esc(t('close'))+'</button><button class="btn hidden" data-gob></button>',true);
+  var plan=null, running=false;
+  m.foot.addEventListener('click',async function(e){
+    if(e.target.closest('[data-x]')){ if(!running) m.close(); return; }
+    var gb=e.target.closest('[data-gob]'); if(!gb||!plan) return;
+    if(!(await confirmBox(t('inv_imp_q',{n:plan.length})))) return;
+    running=true; busy(gb,true,t('saving')); var tot={customers:0,invoices:0,readings:0,skipped:0};
+    try{
+      for(var i=0;i<plan.length;i+=40){
+        var r=await call('motor_import_invoices',{p_data:plan.slice(i,i+40)});
+        ['customers','invoices','readings','skipped'].forEach(function(k){ tot[k]+=r[k]||0; });
+        $('#iibar i',m.body).style.width=Math.min(100,Math.round((i+40)/plan.length*100))+'%';
+      }
+      $('#iires',m.body).innerHTML='<div class="okmsg">'+esc(t('inv_imp_done',{c:tot.customers,i:tot.invoices,r:tot.readings}))+(tot.skipped?'<br>'+esc(t('inv_imp_skipped',{n:tot.skipped})):'')+'</div>';
+      gb.classList.add('hidden'); await loadCustomers(); if(TAB==='customers') go('customers',true);
+    }catch(err){ $('#iires',m.body).innerHTML='<div class="err">'+esc(errText(err))+'</div>'; busy(gb,false); }
+    running=false;
+  });
+  $('#iif',m.body).addEventListener('change',async function(){
+    var file=this.files&&this.files[0], pv=$('#iiv',m.body), gb=$('[data-gob]',m.foot); plan=null; gb.classList.add('hidden'); if(!file) return;
+    pv.innerHTML='<div class="muted">'+esc(t('loading'))+'</div>';
+    try{
+      var rows=parseInvSheet(await readXlsx(await file.arrayBuffer()));
+      var byName={}; CUST.forEach(function(c){ var k=impNameKey(c.name); (byName[k]=byName[k]||[]).push(c); });
+      var byMeter={}; CUST.forEach(function(c){ if(c.meter_no) (byMeter[String(c.meter_no)]=byMeter[String(c.meter_no)]||[]).push(c); });
+      var groups={}, order=[];
+      rows.forEach(function(r){ var k=r.name+'|'+r.meter; if(!groups[k]){ groups[k]={name:r.name,meter:r.meter,rows:[]}; order.push(k); } groups[k].rows.push(r); });
+      var ok=[], miss=[], byMeterHits=[], dupe={};
+      order.forEach(function(k){ var g=groups[k], c=byName[impNameKey(g.name)]||[], how='name';
+        if(c.length>1) c=c.filter(function(x){ return String(x.meter_no)===g.meter; });
+        if(!c.length){ var mm=byMeter[g.meter]||[]; if(mm.length===1&&impNameKey(mm[0].name).split(' ')[0]===impNameKey(g.name).split(' ')[0]){ c=mm; how='meter'; } }
+        if(c.length!==1||dupe[c[0].id]){ miss.push(g); return; }
+        dupe[c[0].id]=1; if(how==='meter') byMeterHits.push(g.name+' ← '+c[0].name);
+        var last=g.rows[g.rows.length-1];
+        ok.push({c:c[0],g:g,bal:g.rows.reduce(function(a,r){ return r.bal!=null?r.bal:a; },null),area:last.area}); });
+      plan=ok.map(function(x){ return {customer_id:x.c.id,area:x.area,balance:x.bal,rows:x.g.rows.map(function(r){ return {date:r.date,prev:r.prev,cur:r.cur,total:r.total,plan:r.plan}; })}; });
+      var nInv=0, pers={}, sumOld=0, sumNew=0, nDiff=0;
+      ok.forEach(function(x){ nInv+=x.g.rows.length; x.g.rows.forEach(function(r){ var p=impPeriod(r.date); pers[p]=(pers[p]||0)+1; });
+        if(x.bal!=null){ sumOld+=n2(x.c.balance); sumNew+=x.bal; if(Math.abs(n2(x.c.balance)-x.bal)>0.005) nDiff++; } });
+      var sample=ok.slice(0,1).map(function(x){ return '<div class="muted" style="margin-top:6px"><b>'+esc(x.c.name)+'</b>: '+x.g.rows.slice().sort(function(a,b){return a.date<b.date?-1:1}).map(function(r){ return esc(r.date+' → '+monthName(impPeriod(r.date),true)+' ('+(r.prev==null?'—':fmtN(r.prev))+' → '+(r.cur==null?'—':fmtN(r.cur))+') = '+money(r.total)); }).join('<br>')+'</div>'; }).join('');
+      pv.innerHTML='<div class="stats">'+stat(t('inv_imp_rows'),fmtN(rows.length,0))+stat(t('inv_imp_matched'),fmtN(ok.length,0))+stat(t('inv_imp_missing'),fmtN(miss.length,0))+stat(t('inv_imp_invs'),fmtN(nInv,0))+stat(t('inv_imp_baldiff'),fmtN(nDiff,0))+'</div>'+
+        '<div class="muted">'+esc(t('inv_imp_months'))+': '+Object.keys(pers).sort().map(function(p){ return esc(monthName(p,true))+' ('+pers[p]+')'; }).join(' · ')+'</div>'+
+        '<div class="muted" style="margin-top:4px">'+esc(t('inv_imp_bal',{a:money(sumOld),b:money(sumNew)}))+'</div>'+sample+
+        (byMeterHits.length?'<div class="lic" style="margin-top:8px">'+esc(t('inv_imp_bymeter'))+':<br>'+byMeterHits.map(esc).join('<br>')+'</div>':'')+
+        (miss.length?'<div class="err" style="margin-top:8px">'+esc(t('inv_imp_skip_names'))+':<br>'+miss.map(function(g){ return esc(g.name+' ('+g.meter+')'); }).join('<br>')+'</div>':'')+
+        '<div class="pbar" id="iibar" style="margin-top:12px"><i></i></div><div id="iires" style="margin-top:8px"></div>';
+      if(ok.length){ gb.textContent=t('inv_imp_go',{n:ok.length}); gb.classList.remove('hidden'); }
+    }catch(err){ pv.innerHTML='<div class="err">'+esc(errText(err))+'</div>'; }
+  });
+}
+
 function prevPdfDialog(){
   var m=modal(t('prev_pdf'),'<p class="muted" style="margin-top:0">'+esc(t('prev_pdf_hint'))+'</p><input type="file" id="ppf" accept="application/pdf,.pdf"><div id="ppv" style="margin-top:12px"></div>',
     '<button class="btn ghost" data-x>'+esc(t('close'))+'</button><button class="btn hidden" data-gob></button>',true);

@@ -477,7 +477,8 @@ begin
     'rows', coalesce((select jsonb_agg(x order by x->>'at', x->>'t') from (
         select jsonb_build_object('t','inv','id',i.id,'no',i.no,'at',i.created_at,'kind',i.kind,'period',i.period,
                'prev_value',i.prev_value,'cur_value',i.cur_value,'kwh',i.kwh,'kwh_price',i.kwh_price,'fee',i.fee,
-               'energy',i.energy,'discount',i.discount,'addition',i.addition,'debit',i.amount,'credit',0,
+               'energy',i.energy,'discount',i.discount,'addition',i.addition,
+               'debit',greatest(i.amount,0),'credit',greatest(-i.amount,0),
                'note',i.note,'staff',i.staff_name,'voided',i.voided,
                'photo', (select r.photo_url from public.motor_readings r where r.id = i.reading_id)) as x
           from public.motor_invoices i where i.customer_id = c.id

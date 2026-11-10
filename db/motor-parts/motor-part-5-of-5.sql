@@ -1,58 +1,5 @@
 -- motorapp — الجزء 5 من 5 (شغّل الأجزاء بالترتيب)
 -- ============================================================
---  20h) المخزون (الموجودات)
--- ============================================================
-create or replace function public.motor_stock_list(p_slug text, p_token text)
-returns jsonb language plpgsql security definer set search_path = public as $$
-declare w jsonb;
-begin
-  w := public._motor_admin(p_slug, p_token);
-  return coalesce((select jsonb_agg(to_jsonb(x) - 'site_id' order by x.category, x.name) from public.motor_stock x
-                    where x.site_id = (w->>'site_id')::uuid), '[]'::jsonb);
-end $$;
-
-create or replace function public.motor_stock_save(p_slug text, p_token text, p_data jsonb)
-returns jsonb language plpgsql security definer set search_path = public as $$
-declare w jsonb; sid uuid; d jsonb := coalesce(p_data,'{}'::jsonb); x public.motor_stock%rowtype;
-begin
-  w := public._motor_admin(p_slug, p_token);
-  sid := (w->>'site_id')::uuid;
-  if coalesce(trim(d->>'name'),'') = '' then perform public._motor_err('name_required'); end if;
-  if coalesce(d->>'id','') = '' then
-    insert into public.motor_stock (site_id, name, category, qty, unit_price, notes, updated_by)
-    values (sid, trim(d->>'name'), coalesce(d->>'category',''), coalesce(nullif(d->>'qty','')::numeric,0),
-            coalesce(nullif(d->>'unit_price','')::numeric,0), coalesce(d->>'notes',''), w->>'name')
-    returning * into x;
-    if x.qty <> 0 then
-      insert into public.motor_stock_moves (site_id, item_id, item_name, kind, qty, unit_price, note, by_name)
-      values (sid, x.id, x.name, 'adjust', x.qty, x.unit_price, 'رصيد أول', w->>'name');
-    end if;
-  else
-    insert into public.motor_stock_moves (site_id, item_id, item_name, kind, qty, unit_price, note, by_name)
-    select sid, o.id, trim(d->>'name'), 'adjust', coalesce(nullif(d->>'qty','')::numeric,0) - o.qty, o.unit_price, 'تعديل يدوي', w->>'name'
-      from public.motor_stock o where o.id = (d->>'id')::uuid and o.site_id = sid and o.qty <> coalesce(nullif(d->>'qty','')::numeric,0);
-    update public.motor_stock set name = trim(d->>'name'), category = coalesce(d->>'category',''),
-           qty = coalesce(nullif(d->>'qty','')::numeric,0), unit_price = coalesce(nullif(d->>'unit_price','')::numeric,0),
-           notes = coalesce(d->>'notes',''), updated_by = w->>'name', updated_at = now()
-     where id = (d->>'id')::uuid and site_id = sid returning * into x;
-    if x.id is null then perform public._motor_err('not_found'); end if;
-  end if;
-  return to_jsonb(x) - 'site_id';
-end $$;
-
-create or replace function public.motor_stock_delete(p_slug text, p_token text, p_id uuid)
-returns jsonb language plpgsql security definer set search_path = public as $$
-declare w jsonb; sid uuid;
-begin
-  w := public._motor_admin(p_slug, p_token);
-  sid := (w->>'site_id')::uuid;
-  insert into public.motor_trash (site_id, kind, ref_id, label, data, deleted_by)
-  select sid, 'stock', x.id, x.name || ' × ' || x.qty, to_jsonb(x), w->>'name' from public.motor_stock x where x.id = p_id and x.site_id = sid;
-  delete from public.motor_stock where id = p_id and site_id = sid;
-  return jsonb_build_object('ok', true);
-end $$;
-
--- ============================================================
 --  20h2) سحب من المخزون (لازم مين سحب) + سجل حركات المخزون
 -- ============================================================
 create or replace function public.motor_stock_out(p_slug text, p_token text, p_item uuid, p_qty numeric,
@@ -308,6 +255,118 @@ begin
 end $$;
 
 -- ============================================================
+--  20j) استيراد فواتير البرنامج السابق (Excel): كل سطر = فاتورة
+--  p_data = [{customer_id, area, balance, rows:[{date:'YYYY-MM-DD', prev, cur, total, plan}]}]
+--  الشهر: تاريخ الفاتورة 1–14 = الشهر اللي قبل (02/06 → أيار)، 15 وما فوق = نفس الشهر (فاتورة نص شهر)
+--  الرصيد بعد الاستيراد = «رصيد الحساب الحالي» بالملف بالضبط (الفرق بيروح على سطر الرصيد السابق)
+-- ============================================================
+create or replace function public.motor_import_invoices(p_slug text, p_token text, p_data jsonb)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w jsonb; sid uuid; cu jsonb; c public.motor_customers%rowtype;
+        seq int; rid uuid; first_d date; bal numeric; op numeric;
+        n_inv int := 0; n_read int := 0; n_skip int := 0; n_cust int := 0; n_bal int := 0; r record; run numeric;
+        best jsonb; grp record; oid uuid;
+begin
+  w := public._motor_admin(p_slug, p_token);
+  sid := (w->>'site_id')::uuid;
+  if jsonb_typeof(p_data) <> 'array' then perform public._motor_err('bad_data'); end if;
+  perform 1 from public.motor_sites where id = sid for update;
+  for cu in select * from jsonb_array_elements(p_data) loop
+    select * into c from public.motor_customers where id = (cu->>'customer_id')::uuid and site_id = sid and deleted_at is null for update;
+    if not found then continue; end if;
+    n_cust := n_cust + 1;
+    -- إعادة الاستيراد: امسح يلّي انستورد قبل لهالزبون
+    delete from public.motor_invoices where customer_id = c.id and imported;
+    delete from public.motor_readings where customer_id = c.id and imported;
+    first_d := null;
+    -- كل سطر مع شهرو
+    create temp table if not exists _imp (ord int, d date, per text, prevv numeric, curv numeric, tot numeric, plan text) on commit drop;
+    truncate _imp;
+    insert into _imp
+    select x.ordinality, (x.value->>'date')::date,
+           to_char(case when extract(day from (x.value->>'date')::date) >= 15 then (x.value->>'date')::date
+                        else ((x.value->>'date')::date - interval '1 month')::date end, 'YYYY-MM'),
+           nullif(x.value->>'prev','')::numeric, nullif(x.value->>'cur','')::numeric,
+           coalesce(nullif(x.value->>'total','')::numeric, 0), coalesce(x.value->>'plan','')
+      from jsonb_array_elements(cu->'rows') with ordinality x
+     where coalesce(x.value->>'date','') ~ '^\d{4}-\d{2}-\d{2}$';
+    -- شهر فيه قراءة حقيقية من البرنامج: ما منلمسو
+    delete from _imp i where exists (select 1 from public.motor_readings rr where rr.customer_id = c.id and rr.period = i.per and not rr.imported);
+    get diagnostics seq = row_count; n_skip := n_skip + seq;
+    for grp in select per, max(d) md from _imp group by per loop
+      rid := null;
+      -- القراءة = آخر سطر بالشهر (إذا في عداد حالي)
+      select * into r from _imp where per = grp.per order by d desc, ord desc limit 1;
+      if r.curv is not null then
+        insert into public.motor_readings (site_id, customer_id, period, prev_value, value, staff_name, imported, created_at)
+        values (sid, c.id, grp.per, coalesce(r.prevv, 0), r.curv, 'استيراد', true, (r.d::timestamp + interval '12 hours') at time zone 'Asia/Beirut')
+        returning id into rid;
+        n_read := n_read + 1;
+      end if;
+      for r in select * from _imp where per = grp.per order by d, ord loop
+        update public.motor_sites set invoice_seq = invoice_seq + 1 where id = sid returning invoice_seq into seq;
+        insert into public.motor_invoices (site_id, no, customer_id, period, kind, reading_id, plan_name, prev_value, cur_value, kwh,
+               amount, note, staff_name, imported, wa_sent_at, created_at)
+        values (sid, seq, c.id, r.per, case when r.curv is null then 'fixed' else 'meter' end,
+                case when r.d = grp.md then rid end, r.plan,
+                case when r.curv is not null then coalesce(r.prevv, 0) end, r.curv,
+                case when r.curv is not null then greatest(r.curv - coalesce(r.prevv, 0), 0) else 0 end,
+                r.tot, 'مستوردة من البرنامج السابق', 'استيراد', true, now(), (r.d::timestamp + interval '12 hours') at time zone 'Asia/Beirut');
+        n_inv := n_inv + 1;
+      end loop;
+    end loop;
+    select min(d) into first_d from _imp;
+    -- مطابقة الرصيد مع «رصيد الحساب الحالي»
+    if nullif(cu->>'balance','') is not null then
+      bal := (cu->>'balance')::numeric;
+      op := bal - coalesce((select sum(amount) from public.motor_invoices where customer_id = c.id and not voided and kind <> 'opening'), 0)
+                + coalesce((select sum(amount) from public.motor_payments where customer_id = c.id and not voided), 0);
+      select id into oid from public.motor_invoices where customer_id = c.id and kind = 'opening' and not voided order by created_at limit 1;
+      delete from public.motor_invoices where customer_id = c.id and kind = 'opening' and not voided and id is distinct from oid;
+      -- الفرق بالسالب = دفعات انقبضت بالبرنامج السابق → سطر «له» بعد آخر فاتورة مستوردة
+      if op < 0 then
+        if oid is not null then delete from public.motor_invoices where id = oid; oid := null; end if;
+        update public.motor_sites set invoice_seq = invoice_seq + 1 where id = sid returning invoice_seq into seq;
+        insert into public.motor_invoices (site_id, no, customer_id, kind, amount, note, staff_name, imported, created_at)
+        values (sid, seq, c.id, 'adjust', op, 'دفعات مسددة في البرنامج السابق', 'استيراد', true,
+                coalesce(((select max(d) from _imp)::timestamp + interval '13 hours') at time zone 'Asia/Beirut', now()));
+        op := 0;
+      end if;
+      if oid is null and op <> 0 then
+        update public.motor_sites set invoice_seq = invoice_seq + 1 where id = sid returning invoice_seq into seq;
+        insert into public.motor_invoices (site_id, no, customer_id, kind, amount, note, staff_name)
+        values (sid, seq, c.id, 'opening', op, '', w->>'name') returning id into oid;
+      end if;
+      if oid is not null then
+        if op = 0 then delete from public.motor_invoices where id = oid;
+        else
+          update public.motor_invoices set amount = op, note = 'رصيد سابق (مطابقة مع البرنامج السابق)',
+                 created_at = coalesce(((first_d - 1)::timestamp + interval '12 hours') at time zone 'Asia/Beirut', created_at)
+           where id = oid;
+        end if;
+      end if;
+      n_bal := n_bal + 1;
+    end if;
+    -- الرصيد الجاري لكل فاتورة (للطباعة)
+    run := 0;
+    for r in select 'i' t, i.id, i.amount, i.created_at from public.motor_invoices i where i.customer_id = c.id and not i.voided
+             union all select 'p', p.id, -p.amount, p.created_at from public.motor_payments p where p.customer_id = c.id and not p.voided
+             order by 4, 1 loop
+      if r.t = 'i' then
+        update public.motor_invoices set balance_before = run, balance_after = run + r.amount where id = r.id and (imported or kind = 'opening');
+      end if;
+      run := run + r.amount;
+    end loop;
+    update public.motor_customers set balance = run,
+           area = coalesce(nullif(trim(coalesce(cu->>'area','')), ''), area),
+           next_prev = case when exists (select 1 from public.motor_readings where customer_id = c.id and imported) then null else next_prev end,
+           updated_at = now()
+     where id = c.id;
+  end loop;
+  return jsonb_build_object('ok', true, 'customers', n_cust, 'invoices', n_inv, 'readings', n_read, 'skipped', n_skip, 'balanced', n_bal);
+end $$;
+
+-- ============================================================
 --  20i) اليومية: كل القبض والصرف، وإقفال كل يوم بمجموع الصندوق وWhish
 -- ============================================================
 create or replace function public._motor_day_totals(p_sid uuid, p_day date)
@@ -459,7 +518,8 @@ begin
     'motor_suppliers(text,text)', 'motor_supplier_save(text,text,jsonb)', 'motor_supplier_delete(text,text,uuid)',
     'motor_purchase_add(text,text,jsonb)', 'motor_purchase_void(text,text,uuid)', 'motor_supplier_pay(text,text,uuid,numeric,text,text)',
     'motor_supplier_statement(text,text,uuid)', 'motor_staff_salary_set(text,text,uuid,numeric)', 'motor_salary_due_add(text,text,uuid,text,numeric,text)',
-    'motor_salary_due_all(text,text,text)', 'motor_salary_due_delete(text,text,uuid)', 'motor_staff_statement(text,text,uuid)']
+    'motor_salary_due_all(text,text,text)', 'motor_salary_due_delete(text,text,uuid)', 'motor_staff_statement(text,text,uuid)',
+    'motor_import_invoices(text,text,jsonb)']
   loop
     execute format('grant execute on function public.%s to anon, authenticated', f);
   end loop;
