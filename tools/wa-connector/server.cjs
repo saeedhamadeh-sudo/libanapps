@@ -3,10 +3,21 @@
    البرنامج على libanapps.com بيحكي معو بمفتاح سري (config.json). */
 'use strict';
 const http = require('http'), fs = require('fs'), path = require('path'), crypto = require('crypto');
-const B = require('@whiskeysockets/baileys');
-const makeWASocket = B.default || B.makeWASocket;
-const { useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, Browsers } = B;
-const pino = require('pino');
+// Baileys 7 (بلا git) — منحمّلو بـ import حتى يشتغل سواء كان ESM أو CommonJS
+let B = null, makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, Browsers, makeCacheableSignalKeyStore, pino;
+async function lib() {
+  if (B) return;
+  const m = await import('@whiskeysockets/baileys');
+  const d = (m.default && m.default.default) ? m.default : m;
+  makeWASocket = (typeof m.makeWASocket === 'function' && m.makeWASocket) || (typeof m.default === 'function' && m.default) || (d.default && typeof d.default === 'function' && d.default) || d.makeWASocket;
+  useMultiFileAuthState = m.useMultiFileAuthState || d.useMultiFileAuthState;
+  DisconnectReason = m.DisconnectReason || d.DisconnectReason;
+  fetchLatestBaileysVersion = m.fetchLatestBaileysVersion || d.fetchLatestBaileysVersion;
+  Browsers = m.Browsers || d.Browsers;
+  makeCacheableSignalKeyStore = m.makeCacheableSignalKeyStore || d.makeCacheableSignalKeyStore;
+  const pm = await import('pino'); pino = pm.default || pm;
+  B = m;
+}
 
 const DIR = __dirname, CFG = path.join(DIR, 'config.json'), AUTH = path.join(DIR, 'auth');
 let cfg = {}; try { cfg = JSON.parse(fs.readFileSync(CFG, 'utf8')); } catch (e) {}
@@ -23,10 +34,13 @@ const S = { status: 'starting', qr: null, me: null, sent: 0, lastError: null };
 async function start() {
   if (starting) return; starting = true;
   try {
+    await lib();
     const { state, saveCreds } = await useMultiFileAuthState(AUTH);
     let version; try { ({ version } = await fetchLatestBaileysVersion()); } catch (e) {}
-    sock = makeWASocket({ auth: state, version, logger: pino({ level: 'silent' }), browser: Browsers.windows('LibanApps'),
-      printQRInTerminal: false, markOnlineOnConnect: false, syncFullHistory: false });
+    const logger = pino({ level: 'silent' });
+    const auth = makeCacheableSignalKeyStore ? { creds: state.creds, keys: makeCacheableSignalKeyStore(state.keys, logger) } : state;
+    sock = makeWASocket({ auth, version, logger, browser: Browsers ? Browsers.windows('LibanApps') : ['LibanApps', 'Chrome', '1.0'],
+      printQRInTerminal: false, markOnlineOnConnect: false, syncFullHistory: false, getMessage: async () => undefined });
     sock.ev.on('creds.update', saveCreds);
     sock.ev.on('connection.update', (u) => {
       if (u.qr) { S.qr = u.qr; S.status = 'qr'; console.log('📱 امسح رمز QR من إعدادات البرنامج (واتساب ← الأجهزة المرتبطة)'); }
@@ -39,7 +53,7 @@ async function start() {
         starting = false; setTimeout(start, 2500);
       }
     });
-  } catch (e) { S.lastError = String(e && e.message || e); starting = false; setTimeout(start, 5000); return; }
+  } catch (e) { S.lastError = String(e && e.message || e); console.log('⚠️', S.lastError); starting = false; setTimeout(start, 5000); return; }
   starting = false;
 }
 
