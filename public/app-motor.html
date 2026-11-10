@@ -2098,6 +2098,11 @@ var CFG=window.LIBANAPPS, sb=null;
 try{ sb=window.supabase.createClient(CFG.SUPABASE_URL,CFG.SUPABASE_ANON_KEY); }catch(e){}
 var $=function(s,r){return (r||document).querySelector(s)}, $$=function(s,r){return Array.prototype.slice.call((r||document).querySelectorAll(s))};
 Object.assign(D,{
+ sw_notify:['إشعار موظف عبر واتساب ليقوم بالعملية','Notify a staff member on WhatsApp to do it','Prévenir un employé par WhatsApp'],
+ sw_no_notify:['بدون إشعار','No notification','Sans notification'],
+ sw_no_team:['لا يوجد موظف أخذ عداد له رقم هاتف — أضف الرقم في تبويب الموظفين','No meter staff with a phone number — add it in the Staff tab','Aucun employé avec numéro — ajoutez-le dans Personnel'],
+ sw_msg_cut:['✂️ أمر قطع اشتراك — {s}\n\n{w}، الرجاء قطع الاشتراك:\nالمشترك: {n} (#{k})\nالعلبة: {b}\nالمنطقة: {a}\nرقم العداد: {m}\nالسبب: {r}','✂️ Disconnect order — {s}\n\n{w}, please disconnect:\nSubscriber: {n} (#{k})\nBox: {b}\nArea: {a}\nMeter no.: {m}\nReason: {r}','✂️ Ordre de coupure — {s}\n\n{w}, merci de couper :\nAbonné : {n} (#{k})\nBoîte : {b}\nZone : {a}\nN° compteur : {m}\nMotif : {r}'],
+ sw_msg_on:['🔌 أمر وصل اشتراك — {s}\n\n{w}، الرجاء وصل الاشتراك:\nالمشترك: {n} (#{k})\nالعلبة: {b}\nالمنطقة: {a}\nرقم العداد: {m}\nملاحظة: {r}','🔌 Reconnect order — {s}\n\n{w}, please reconnect:\nSubscriber: {n} (#{k})\nBox: {b}\nArea: {a}\nMeter no.: {m}\nNote: {r}','🔌 Ordre de rebranchement — {s}\n\n{w}, merci de rebrancher :\nAbonné : {n} (#{k})\nBoîte : {b}\nZone : {a}\nN° compteur : {m}\nNote : {r}'],
  nav_bills:['إرسال قيمة الفاتورة','Send bill amount','Envoyer le montant'],
  bills_hint:['كل عداد يُسجَّل يظهر هنا. «إرسال» يفتح واتساب برسالة فيها عدد الفواتير المتراكمة وقيمتها والأشهر حسب كشف حساب الزبون.','Every new reading appears here. “Send” opens WhatsApp with the number of unpaid bills, the amount and the months, from the customer’s statement.','Chaque relevé apparaît ici. « Envoyer » ouvre WhatsApp avec le nombre de factures impayées, le montant et les mois.'],
  due_count:['الفواتير المتراكمة','Unpaid bills','Factures impayées'],
@@ -2787,14 +2792,28 @@ async function openCustomer(id,barcode,mode){
     try{ await call('motor_note_add',{p_customer:c.id,p_body:v}); toast(t('note_saved'),'s'); await reload(); paint(true); }catch(e){ toast(errText(e),'e'); } }
   function switchForm(on){
     var box=$('#cstep',m.body);
-    box.innerHTML='<div class="step"><label>'+esc(t('cut_reason'))+'</label><input id="swn"><div id="swmsg" class="err msg" style="margin-top:8px"></div>'+
+    // إشعار واتساب لموظف أخذ العداد حتى يروح يقطع أو يوصل
+    var team=STAFF.filter(function(s){ return s.is_active&&s.phone&&s.id!==ME.staff_id&&(s.can_cut||s.can_read)&&s.role!=='admin'; });
+    var last=team.some(function(s){return s.id===c.collector_id})?c.collector_id:lsGet('motor_sw_staff',''); if(!team.some(function(s){return s.id===last})) last=team[0]?team[0].id:'';
+    box.innerHTML='<div class="step"><label>'+esc(t('cut_reason'))+'</label><input id="swn">'+
+      (waHere()?'<label style="margin-top:8px">📲 '+esc(t('sw_notify'))+'</label><select id="sws"><option value="">— '+esc(t('sw_no_notify'))+' —</option>'+
+        team.map(function(s){ return '<option value="'+esc(s.id)+'"'+(s.id===last?' selected':'')+'>'+esc(s.name)+' · '+esc(s.phone)+'</option>'; }).join('')+'</select>'+
+        (team.length?'':'<div class="muted" style="margin-top:4px">'+esc(t('sw_no_team'))+'</div>'):'')+
+      '<div id="swmsg" class="err msg" style="margin-top:8px"></div>'+
       '<button class="btn full lg '+(on?'acc':'danger')+'" id="swgo" style="margin-top:8px">'+esc(t(on?'connect':'cut'))+'</button></div>';
     $('#swgo',box).addEventListener('click',async function(){
       if(!(await confirmBox(t(on?'confirm_connect':'confirm_cut',{n:c.name})))) return;
+      var sel=$('#sws',box), sf=sel&&sel.value?team.filter(function(s){return s.id===sel.value})[0]:null;
+      var win=sf?window.open('about:blank','_blank'):null;
+      if(sel) lsSet('motor_sw_staff',sel.value);
+      var note=$('#swn',box).value;
       var btn=this; busy(btn,true); var g=await quickGeo();
-      try{ await call('motor_set_active',{p_customer:c.id,p_active:on,p_note:$('#swn',box).value,p_lat:g?g.lat:null,p_lng:g?g.lng:null});
-        toast(t(on?'connect_done':'cut_done'),'s'); await reload(); paint(); }
-      catch(e){ $('#swmsg',box).textContent=errText(e); busy(btn,false); }
+      try{ await call('motor_set_active',{p_customer:c.id,p_active:on,p_note:note+(sf?(note?' — ':'')+'📲 '+sf.name:''),p_lat:g?g.lat:null,p_lng:g?g.lng:null});
+        toast(t(on?'connect_done':'cut_done'),'s');
+        if(sf){ var loc=(c.lat!=null&&c.lng!=null)?'\n📍 https://maps.google.com/?q='+c.lat+','+c.lng:'';
+          openWa('961',sf.phone,t(on?'sw_msg_on':'sw_msg_cut',{s:SITE.name||'',w:sf.name,n:c.name,k:c.code,b:c.box||'—',a:c.area||'—',m:c.meter_no||'—',r:note||'—'})+loc+'\n'+t('by')+': '+(ME.name||''),win); }
+        await reload(); paint(); }
+      catch(e){ if(win) win.close(); $('#swmsg',box).textContent=errText(e); busy(btn,false); }
     });
   }
 
