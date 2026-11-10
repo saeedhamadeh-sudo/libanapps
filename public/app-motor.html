@@ -182,6 +182,24 @@ body.compact table{font-size:12px} body.compact th,body.compact td{padding:4px 6
 .inv-box .ln.tot{border-top:1px dashed #c9b37a;margin-top:6px;padding-top:8px;font-weight:800;font-size:16px}
 .lb-img{max-width:100%;max-height:75vh;display:block;margin:0 auto;border-radius:10px}
 @media print{html,body{height:auto!important;min-height:0!important;overflow:visible!important;background:#fff!important}body>*:not(#printArea){display:none!important}#printArea{display:block!important;position:static!important}}
+.modal.cm-modal.wide{max-width:1180px}
+.cm-grid{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);grid-template-areas:"main side";gap:16px;align-items:start}
+#cmMain{grid-area:main}.cm-step{grid-area:step;display:none}.cm-side{grid-area:side}
+.cm-grid.has-step .cm-step{display:block}.cm-grid.has-step .kv{grid-template-columns:repeat(3,minmax(0,1fr))}.cm-grid.has-step{grid-template-areas:"main side" "step side"}
+.cm-step #cstep .step{margin-top:0}
+@media (min-width:1100px){.cm-grid.has-step{grid-template-columns:minmax(0,1.15fr) minmax(0,1fr) minmax(0,.85fr);grid-template-areas:"main step side"}.cm-grid.has-step .cm-map{height:240px}}
+.cm-grid .kv{grid-template-columns:repeat(4,minmax(0,1fr));gap:4px 12px;margin:4px 0;font-size:13px}
+.cm-modal .mb{padding-top:10px;padding-bottom:10px}
+.cm-modal .bigbal{padding:8px 12px;margin:6px 0}.cm-modal .bigbal b{font-size:24px}
+.cm-modal #cmMain>.row .btn{padding:7px 12px;min-height:0}
+.cm-modal #cstep .step{padding:10px 12px;margin-top:8px}.cm-modal #cstep label{margin-top:4px}
+.cm-side{display:flex;flex-direction:column;gap:6px;position:sticky;top:0}
+.cm-map{position:relative;height:300px;border-radius:14px;overflow:hidden;background:#dfe6ee;border:1px solid var(--line)}
+.cm-mapin{position:absolute;inset:0}.cm-maplink{position:absolute;z-index:500;bottom:8px;inset-inline-start:8px;background:#fff;border-radius:8px;padding:3px 8px;font-size:12px;font-weight:700;text-decoration:none;color:var(--p);box-shadow:0 1px 4px rgba(0,0,0,.25)}
+.cm-nomap{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;color:var(--mut,#64748b);font-size:13px;text-align:center;padding:10px}.cm-nomap{font-size:30px}.cm-nomap div{font-size:13px}
+.cm-pin{background:none;border:0}.cm-pinb{font-size:34px;filter:drop-shadow(0 2px 3px rgba(0,0,0,.6));line-height:1;text-align:center}
+.cm-pinb:after{content:'';display:block;width:10px;height:10px;margin:-4px auto 0;border-radius:50%;background:#e11d48;border:2px solid #fff}
+@media (max-width:900px){.cm-grid,.cm-grid.has-step{grid-template-columns:1fr;grid-template-areas:"main" "step" "side"}.cm-side{position:static}.cm-map{height:220px}.cm-grid .kv{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .sc-list{max-height:62vh;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding:2px}
 .sc-m{font-weight:800;color:var(--p);background:var(--soft);border-radius:10px;padding:6px 10px;position:sticky;top:0;z-index:1}
 .sc-c{border:1px solid var(--line);border-radius:12px;padding:9px 11px;background:var(--card,#fff);display:flex;flex-direction:column;gap:5px}
@@ -1842,7 +1860,7 @@ Object.assign(D,{
  e_closed_period:['هذه الحركة ضمن فترة مُقفلة في الصندوق — لا يمكن تعديلها','This entry is in a closed cash period','Opération dans une période clôturée'],
  nav_switch:['فتح/قطع اشتراك','Connect / cut','Brancher / couper'],
  nav_cash:['الصندوق','Cash box','Caisse'],
- nav_wa:['واتساب المكتب','Office WhatsApp','WhatsApp bureau'],
+ nav_wa:['إرسال إشعارات الدفع عبر واتساب','Payment notices via WhatsApp','Avis de paiement WhatsApp'],
  nav_map:['مواقع الموظفين','Staff map','Carte du personnel'],
  remaining_read:['لم يُقرأ عدادهم بعد ({n})','Not read yet ({n})','Pas encore relevés ({n})'],
  remaining_pay:['لم يدفعوا بعد ({n})','Not paid yet ({n})','Pas encore payé ({n})'],
@@ -2104,6 +2122,30 @@ var CFG=window.LIBANAPPS, sb=null;
 try{ sb=window.supabase.createClient(CFG.SUPABASE_URL,CFG.SUPABASE_ANON_KEY); }catch(e){}
 var $=function(s,r){return (r||document).querySelector(s)}, $$=function(s,r){return Array.prototype.slice.call((r||document).querySelectorAll(s))};
 Object.assign(D,{
+ wa_t:['ربط واتساب ويب (إرسال تلقائي)','WhatsApp Web link (auto send)','Lien WhatsApp Web (envoi auto)'],
+ wa_linked:['واتساب مربوط','WhatsApp linked','WhatsApp lié'], wa_scan:['امسح رمز QR بتلفونك','Scan the QR with your phone','Scannez le QR'],
+ wa_off:['غير مربوط — الرسائل تُفتح في واتساب يدوياً','Not linked — messages open in WhatsApp manually','Non lié — ouverture manuelle'],
+ wa_badkey:['مفتاح الربط غير صحيح — اضغط «ربط»','Wrong link key — press “Link”','Clé incorrecte — cliquez « Lier »'],
+ wa_down:['برنامج واتساب على الكمبيوتر غير شغّال','The WhatsApp connector on this computer is not running','Le connecteur WhatsApp ne tourne pas'],
+ wa_starting:['جارٍ التشغيل…','Starting…','Démarrage…'],
+ wa_pair:['ربط مع برنامج واتساب','Link to WhatsApp connector','Lier au connecteur'], wa_logout:['فك ربط واتساب','Unlink WhatsApp','Délier WhatsApp'],
+ wa_logout_q:['فك ربط واتساب من هذا البرنامج؟ لإعادة الربط تمسح QR مرة ثانية.','Unlink WhatsApp? You will need to scan the QR again.','Délier WhatsApp ? Il faudra rescanner le QR.'],
+ wa_paired:['✓ تم ربط البرنامج — امسح QR إذا ظهر','✓ Linked — scan the QR if shown','✓ Lié — scannez le QR'],
+ wa_pair_fail:['ما وصل رد من برنامج واتساب — تأكد إنو START-WHATSAPP شغّال على هذا الكمبيوتر واسمح للمتصفح بالوصول للشبكة المحلية','No reply from the connector — make sure START-WHATSAPP is running on this computer and allow local network access','Pas de réponse du connecteur'],
+ wa_scan_hint:['واتساب على التلفون ← الإعدادات ← الأجهزة المرتبطة ← ربط جهاز','Phone WhatsApp → Settings → Linked devices → Link a device','WhatsApp → Appareils connectés → Connecter'],
+ wac_hint:['حتى يبعت البرنامج رسائل واتساب لحالو (بلا ما يفتح صفحة واتساب):\n1) نزّل «برنامج واتساب للمكتب» وشغّل START-WHATSAPP.bat على كمبيوتر المكتب (يلزمه Node.js).\n2) اضغط «ربط مع برنامج واتساب» وامسح رمز QR من تلفونك.\nبعدها أي كبسة واتساب بالبرنامج بتبعت مباشرة، والإرسال الجماعي بيصير 50 رسالة بالدفعة.','To let the program send WhatsApp messages by itself:\n1) Download the office WhatsApp connector and run START-WHATSAPP.bat on the office computer (needs Node.js).\n2) Press “Link” and scan the QR with your phone.\nThen every WhatsApp button sends directly, and bulk sending goes 50 at a time.','Pour envoyer automatiquement : lancez le connecteur au bureau puis liez et scannez le QR.'],
+ wa_download:['تنزيل برنامج واتساب للمكتب','Download office connector','Télécharger le connecteur'], wa_dl_short:['شغّل START-WHATSAPP.bat على هذا الكمبيوتر ثم اضغط «ربط»','Run START-WHATSAPP.bat on this computer, then press “Link”','Lancez START-WHATSAPP.bat puis « Lier »'],
+ wa_adv:['إعدادات متقدمة','Advanced','Avancé'],
+ wa_url:['عنوان البرنامج','Connector address','Adresse'], wa_key:['مفتاح الربط','Link key','Clé'],
+ wa_sent:['أُرسلت الرسالة عبر واتساب','Sent on WhatsApp','Envoyé sur WhatsApp'], wa_failed:['فشل الإرسال','Send failed','Échec'],
+ wa_e_nowa:['هذا الرقم ليس عليه واتساب','This number is not on WhatsApp','Ce numéro n’a pas WhatsApp'],
+ wa_need_link:['اربط واتساب من الإعدادات أولاً','Link WhatsApp in settings first','Liez WhatsApp d’abord'],
+ wa_batch50:['إرسال دفعة (50)','Send a batch (50)','Envoyer un lot (50)'],
+ wa_batch_q:['إرسال {n} رسالة بالدور؟ بين كل رسالتين بضع ثوانٍ — خلّي الصفحة مفتوحة.','Send {n} messages one by one? A few seconds between each — keep this page open.','Envoyer {n} messages ? Gardez la page ouverte.'],
+ wa_batch_prog:['جارٍ الإرسال {i} من {n} — ✓ {ok} · ✗ {bad}','Sending {i} of {n} — ✓ {ok} · ✗ {bad}','Envoi {i}/{n} — ✓ {ok} · ✗ {bad}'],
+ wa_batch_done:['انتهت الدفعة — ✓ {ok} · ✗ {bad}','Batch done — ✓ {ok} · ✗ {bad}','Lot terminé — ✓ {ok} · ✗ {bad}'], wa_stop:['إيقاف','Stop','Arrêter'],
+ no_location:['لا يوجد موقع لهذا الزبون — عدّل الزبون واضغط «موقعي الحالي» عند البيت','No location for this customer — edit and use “my location” at the house','Pas de position — modifiez le client sur place'],
+ open_maps:['افتح في خرائط Google','Open in Google Maps','Ouvrir dans Google Maps'], map_fail:['تعذّر تحميل الخريطة','Map could not load','Carte indisponible'],
  old_prog:['البيانات من البرنامج السابق','Data from the previous program','Données de l’ancien logiciel'],
  old_prog_hint:['إدخال العداد السابق من ملف PDF، واستيراد كل الفواتير القديمة من ملف Excel.','Load previous readings from a PDF and import all old invoices from Excel.','Relevés précédents depuis un PDF et anciennes factures depuis Excel.'],
  mm:['ملم','mm','mm'],
@@ -2233,7 +2275,7 @@ Object.assign(D,{
  uploading:['جارٍ رفع البيانات إلى السحابة…','Uploading to the cloud…','Envoi vers le cloud…'], uploaded:['✓ كل البيانات محفوظة على السحابة','✓ Everything is saved in the cloud','✓ Tout est enregistré dans le cloud'],
  upload_wait:['هناك عمليات قيد الرفع — انتظر لحظة قبل الإغلاق','Some operations are still uploading — wait a moment before closing','Des opérations sont en cours d’envoi — patientez']
 });
-var WL='<img src="/assets/whish.png" alt="Whish" class="wl">';
+var WL='<img src="data:image/png;base64,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" alt="Whish" class="wl">';
 var SLUG='', TOKEN='', ME=null, SITE=null, PLANS=[], STAFF=[], CUST=[], LIC=null, TODAY='', TAB='dash';
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]}); }
 function n2(v){ var x=Number(v); return isFinite(x)?x:0; }
@@ -2489,6 +2531,7 @@ VIEWS.dash=async function(main){
   if(can('cut')) acts.push('<button class="btn lg acc" data-go="switch">🔌 '+esc(t('nav_switch'))+'</button>');
   main.innerHTML=licBanner()+
     (acts.length?'<div class="big-actions">'+acts.join('')+'</div>':'')+
+    (isAdmin()&&waHere()?'<div id="dwa">'+waCard(false)+'</div>':'')+
     '<div class="card"><div class="row"><b>💱 '+esc(t('rate_t'))+':</b>'+(isAdmin()?'<input id="drate" inputmode="decimal" value="'+esc(n2(d.lbp_rate))+'" style="max-width:160px"><span>'+esc(sym('LBP'))+'</span><button class="btn sm" id="drs">'+esc(t('save'))+'</button>':'<b class="num">1$ = '+esc(fmtN(d.lbp_rate,0))+' '+esc(sym('LBP'))+'</b>')+'</div></div>'+
     '<div class="stats">'+
       stat(t('st_active_c'), fmtN(d.customers_active,0)+' / '+fmtN(d.customers_total,0),'customers|on')+
@@ -2505,6 +2548,7 @@ VIEWS.dash=async function(main){
       stat(t('st_month'), money(d.collected_month),mine?'cstmt':'report')+
       (d.my_cash_in_hand!=null?stat(t('st_hand'), money(d.my_cash_in_hand)):'')+
     '</div>'+(ME.role==='collector'&&can('read')?windowNote():'');
+  if($('#dwa',main)){ waBind($('#dwa',main)); if(waKey()){ waRefresh(); waStartPoll(); } }
   $$('[data-go]',main).forEach(function(b){ b.addEventListener('click',function(){ var p=b.dataset.go.split('|'); if(p[0]==='customers'){ CF.st=p[1]||''; CF.q=''; CF.lim=200; } go(p[0]); }); });
   var rs=$('#drs',main); if(rs) rs.addEventListener('click',async function(){ var v=$('#drate',main).value.trim(); if(!(n2(v)>0)) return toast(t('e_bad_amount'),'e');
     busy(rs,true); try{ SITE=await call('motor_settings_save',{p_data:{lbp_rate:v}}); toast(t('rate_saved'),'s'); }catch(e){ toast(errText(e),'e'); } busy(rs,false); });
@@ -2518,10 +2562,11 @@ function setWaBadge(n,inv){ WA_PENDING=n||0; if(inv!=null) WA_INV=inv||0; var p=
   var b=$('#waBadge'); if(b){ b.textContent=p; b.style.display=p?'':'none'; }
   var c=$('#billBadge'); if(c){ c.textContent=WA_INV; c.style.display=WA_INV?'':'none'; } }
 VIEWS.wa=async function(main){
+  if(waKey()&&!WAC_T){ waRefresh(); waStartPoll(); }
   var all=await call('motor_wa_outbox',{p_days:60}), rows=all.filter(function(r){ return r.t==='pay'; });
   setWaBadge(all.length, all.length-rows.length);
   main.innerHTML='<div class="card"><p class="muted" style="margin:0">'+esc(t('wa_hint'))+'</p></div>'+
-    '<div class="toolbar"><span class="sp"></span><b id="wac"></b></div>'+
+    '<div class="toolbar"><span data-wachip>'+waChip()+'</span><button class="btn wa" id="wbatch" data-waon>📤 '+esc(t('wa_batch50'))+'</button><span class="sp"></span><b id="wac"></b></div>'+waBatchBar('wbar')+
     '<div class="tw"><table><thead><tr><th>'+esc(t('date'))+'</th><th>'+esc(t('type'))+'</th><th>'+esc(t('name'))+'</th><th>'+esc(t('mobile'))+'</th><th>'+esc(t('amount'))+'</th><th>'+esc(t('by'))+'</th><th></th></tr></thead><tbody id="watb"></tbody></table></div>';
   function paint(){
     var list=rows;
@@ -2537,10 +2582,13 @@ VIEWS.wa=async function(main){
   function drop(r){ rows.splice(rows.indexOf(r),1); setWaBadge(WA_PENDING-1); paint(); }
   $('#watb',main).addEventListener('click',async function(e){
     var s=e.target.closest('[data-ws]'), mk=e.target.closest('[data-wm]');
-    if(s&&!s.disabled){ var r=rows[+s.dataset.ws]; sendBillWa({inv:r.inv,pay:r.pay,c:r.customer}); drop(r); }
+    if(s&&!s.disabled){ var r=rows[+s.dataset.ws]; s.disabled=true; var okk=await sendBillWa({inv:r.inv,pay:r.pay,c:r.customer}); if(okk) drop(r); else s.disabled=false; }
     if(mk){ var r2=rows[+mk.dataset.wm]; try{ await call('motor_wa_mark',{p_kind:r2.t,p_id:r2.id}); drop(r2); }catch(err){ toast(errText(err),'e'); } }
   });
-  paint();
+  $('#wbatch',main).addEventListener('click',function(){
+    var list=rows.filter(function(r){ return r.customer.mobile; });
+    waBatch($('#wbar',main),list,async function(r){ var okk=await sendBillWa({inv:r.inv,pay:r.pay,c:r.customer},null,true); if(okk){ drop(r); return true; } return {name:r.customer.name,err:t('wa_failed')}; }); });
+  paint(); waPaint();
 };
 
 /* =========================================================
@@ -2552,15 +2600,17 @@ function dueText(r){
   var months=(d.periods||[]).map(function(p){ return monthName(p,true); });
   if(d.older) months.unshift(t('due_older'));
   if(!months.length) months=[monthName(r.inv.period,true)];
-  if(!(n2(d.balance)>0.005)) return t('due_msg_ok',{s:SITE.name||'',n:c.name,m:monthName(r.inv.period,true),i:fmtN(r.inv.amount,cur==='LBP'?0:2)+' '+cur,v:fmtN(-n2(d.balance),cur==='LBP'?0:2)+' '+cur});
+  if(!(n2(d.balance)>0.005)){ var okm=t('due_msg_ok',{s:SITE.name||'',n:c.name,m:monthName(r.inv.period,true),i:fmtN(r.inv.amount,cur==='LBP'?0:2)+' '+cur,v:fmtN(Math.abs(n2(d.balance)),cur==='LBP'?0:2)+' '+cur});
+    return Math.abs(n2(d.balance))<0.005?okm.split('\n').slice(0,-1).join('\n'):okm; }
   return t('due_msg',{s:SITE.name||'',n:c.name,k:fmtN((d.count||0)+(d.older?1:0),0),v:amt,m:months.join(t('due_and'))});
 }
 VIEWS.bills=async function(main){
+  if(waKey()&&!WAC_T){ waRefresh(); waStartPoll(); }
   var all=await call('motor_wa_outbox',{p_days:60}), rows=all.filter(function(r){ return r.t==='inv'; });
   setWaBadge(all.length, rows.length);
   var q='';
   main.innerHTML='<div class="card"><p class="muted" style="margin:0">'+esc(t('bills_hint'))+'</p></div>'+
-    '<div class="toolbar"><input type="search" id="bq" placeholder="'+esc(t('search_ph'))+'"><span class="sp"></span><b id="bc"></b></div>'+
+    '<div class="toolbar"><input type="search" id="bq" placeholder="'+esc(t('search_ph'))+'"><span data-wachip>'+waChip()+'</span><button class="btn wa" id="bbatch" data-waon>📤 '+esc(t('wa_batch50'))+'</button><span class="sp"></span><b id="bc"></b></div>'+waBatchBar('bbar')+
     '<div class="tw"><table><thead><tr><th>'+esc(t('date'))+'</th><th>'+esc(t('name'))+'</th><th>'+esc(t('mobile'))+'</th><th>'+esc(t('consumption'))+'</th><th>'+esc(t('inv_amount'))+'</th><th>'+esc(t('due_count'))+'</th><th>'+esc(t('balance'))+'</th><th>'+esc(t('by'))+'</th><th></th></tr></thead><tbody id="btb"></tbody></table></div>';
   function paint(){
     var k=normS(q), list=rows.filter(function(r){ return !k||normS(r.customer.name).indexOf(k)>=0||String(r.customer.code)===k||normS(r.customer.box)===k; });
@@ -2576,10 +2626,17 @@ VIEWS.bills=async function(main){
   }
   function drop(r){ rows.splice(rows.indexOf(r),1); setWaBadge(WA_PENDING-1, rows.length); paint(); }
   $('#bq',main).addEventListener('input',function(){ q=this.value; paint(); });
+  $('#bbatch',main).addEventListener('click',function(){
+    var list=rows.filter(function(r){ return r.customer.mobile; });
+    waBatch($('#bbar',main),list,async function(r){
+      try{ await waSendAuto(waNum(r.customer.mobile_cc,r.customer.mobile),waTag(dueText(r))); }catch(e){ return {name:r.customer.name,err:waErr(e)}; }
+      try{ await call('motor_wa_mark',{p_kind:'inv',p_id:r.id}); }catch(e){} drop(r); return true; }); });
+  waPaint();
   $('#btb',main).addEventListener('click',async function(e){
     var sb2=e.target.closest('[data-bs]'), mk=e.target.closest('[data-bm]'), vw=e.target.closest('[data-bv]');
     if(vw){ var rv=rows[+vw.dataset.bv]; modal(rv.customer.name,'<pre style="white-space:pre-wrap;font-family:inherit;margin:0">'+esc(dueText(rv))+'</pre>'); return; }
-    if(sb2&&!sb2.disabled){ var r=rows[+sb2.dataset.bs]; openWa(r.customer.mobile_cc,r.customer.mobile,dueText(r));
+    if(sb2&&!sb2.disabled){ var r=rows[+sb2.dataset.bs]; sb2.disabled=true; var okk=await openWa(r.customer.mobile_cc,r.customer.mobile,dueText(r));
+      if(!okk){ sb2.disabled=false; return; }
       try{ await call('motor_wa_mark',{p_kind:'inv',p_id:r.id}); }catch(err){} drop(r); return; }
     if(mk){ var r2=rows[+mk.dataset.bm]; try{ await call('motor_wa_mark',{p_kind:'inv',p_id:r2.id}); drop(r2); }catch(err){ toast(errText(err),'e'); } }
   });
@@ -2759,22 +2816,42 @@ async function openByCode(code,mode){
 
 /* ---------- صفحة الزبون ---------- */
 var CUR_MODAL=null;
+/* خريطة القمر الصناعي مع دبوس البيت بجانب الزبون */
+async function custMap(box,c){
+  if(!box) return;
+  var lat=n2(c.lat), lng=n2(c.lng);
+  if(c.lat==null||c.lng==null||c.lat===''||(!lat&&!lng)){ box.innerHTML='<div class="cm-nomap">🏠<div>'+esc(t('no_location'))+'</div></div>'; return; }
+  box.innerHTML='<div class="cm-mapin"></div><a class="cm-maplink" target="_blank" rel="noopener" href="https://www.google.com/maps?q='+lat+','+lng+'">'+esc(t('open_maps'))+' ↗</a>';
+  try{ var L=await loadLeaflet(); var el=$('.cm-mapin',box); if(!el||!el.isConnected) return;
+    var mp=L.map(el,{zoomControl:true,attributionControl:true}).setView([lat,lng],19);
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:20,maxNativeZoom:19,attribution:'Esri World Imagery'}).addTo(mp);
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',{maxZoom:20,maxNativeZoom:19,opacity:.85}).addTo(mp);
+    L.marker([lat,lng],{icon:L.divIcon({className:'cm-pin',html:'<div class="cm-pinb">🏠</div>',iconSize:[40,48],iconAnchor:[20,46]})}).addTo(mp).bindTooltip(c.name,{direction:'top',offset:[0,-44],permanent:false});
+    setTimeout(function(){ try{ mp.invalidateSize(); }catch(e){} },250);
+  }catch(e){ box.innerHTML='<div class="cm-nomap">🗺️<div>'+esc(t('map_fail'))+'</div></div>'; }
+}
 async function openCustomer(id,barcode,mode){
-  var m=modal(t('loading'),'<div class="muted">'+esc(t('loading'))+'</div>',false,false);
+  var m=modal(t('loading'),'<div class="muted">'+esc(t('loading'))+'</div>',false,true);
+  m.el.querySelector('.modal').classList.add('cm-modal');
   CUR_MODAL=m;
   var d;
   try{ d=await call('motor_customer_get',{p_id:id||null,p_barcode:barcode||null}); }
   catch(e){ m.body.innerHTML='<div class="err">'+esc(errText(e))+'</div>'; $('h3',m.el).textContent=barcode||''; return; }
   var c=d.customer;
   $('h3',m.el).textContent=c.name;
+  m.body.innerHTML='<div class="cm-grid"><div id="cmMain"></div><div class="cm-step"><div id="cstep"></div></div><div class="cm-side"><div id="cmMap" class="cm-map"></div><div id="cmSide"></div></div></div>';
+  custMap($('#cmMap',m.body),c);
+  (function(){ var g=$('.cm-grid',m.body), st=$('#cstep',m.body);
+    var upd=function(){ var on=st.innerHTML.trim()!==''; g.classList.toggle('has-step',on); };
+    new MutationObserver(upd).observe(st,{childList:true,subtree:true}); upd(); })();
   function paint(keepStep){
-    var adm=isAdmin(), stepHtml=keepStep&&$('#cstep',m.body)?$('#cstep',m.body).innerHTML:'';
+    var adm=isAdmin(); if(!keepStep&&$('#cstep',m.body)) $('#cstep',m.body).innerHTML='';
     var info=[
       [t('code'),'#'+c.code],[t('barcode'),c.barcode],[t('meter_no'),c.meter_no],[t('box'),c.box],
       [t('plan'),d.plan?(d.plan.name+(d.plan.kind==='fixed'?' · '+t('kind_fixed'):'')):'—'],[t('area'),[c.area,c.location_name].filter(Boolean).join(' · ')],
       [t('collector'),d.collector_name],[t('mobile'),c.mobile?('+'+c.mobile_cc+' '+c.mobile):''],[t('prev_reading'),fmtN(d.prev_value)]].concat(n2(d.insurance)?[[t('ins_bal'),money(d.insurance)]]:[]).filter(function(x){return x[1]!==''&&x[1]!=null});
     var notes=(d.notes||[]), sw=(d.switches||[]);
-    m.body.innerHTML=
+    $('#cmMain',m.body).innerHTML=
       '<div class="row"><span class="chip '+(c.is_active?'on':'off')+'">'+esc(c.is_active?t('active'):t('inactive'))+'</span>'+(c.archived?' <span class="chip gray">'+esc(t('archived'))+'</span>':'')+
       (d.read_now?' <span class="chip on">✓ '+esc(t('read_done'))+' '+esc(d.period)+': '+esc(fmtN(d.read_now.value))+'</span>':' <span class="chip gray">'+esc(t('not_read'))+' '+esc(d.period)+'</span>')+'</div>'+
       '<div class="bigbal"><span class="muted">'+esc(t('balance'))+'</span><b>'+balHtml(c.balance)+'</b>'+(second(c.balance)?'<span class="muted num">≈ '+esc(second(c.balance))+'</span>':'')+'</div>'+
@@ -2787,7 +2864,8 @@ async function openCustomer(id,barcode,mode){
         (c.mobile&&waHere()?'<button class="btn wa sm" data-a="wa">'+esc(t('whatsapp'))+'</button>':'')+
         (adm?'<button class="btn ghost sm" data-a="edit">✏️ '+esc(t('edit'))+'</button>'+(d.read_now?'<button class="btn ghost sm" data-a="redit">🔢 '+esc(t('edit_reading'))+'</button>':'')+
           '<button class="btn ghost sm" data-a="clogin">🔑 '+esc(t('cust_login'))+(d.has_login?' ✓':'')+'</button>'+(c.mobile&&waHere()?'<button class="btn wa sm" data-a="sendlogin">📲 '+esc(t('send_login'))+'</button>':'')+'<button class="btn ghost sm" data-a="adj">'+esc(t('adjust'))+'</button><button class="btn ghost sm" data-a="label">🏷️ '+esc(t('label_one'))+'</button>':'')+
-      '</div><div id="cstep">'+stepHtml+'</div>'+
+      '</div>';
+    $('#cmSide',m.body).innerHTML=
       '<div class="sec-t">📝 '+esc(t('notes_t'))+'</div><div class="row"><input id="nbody" placeholder="'+esc(t('add_note'))+'" style="flex:1"><button class="btn sm" data-a="note">'+esc(t('save'))+'</button></div>'+
       (notes.length?'<div class="list" style="margin-top:8px">'+notes.map(function(n){ return '<div class="litem" style="cursor:default"><div style="flex:1"><div>'+esc(n.body)+'</div><div class="sub">'+esc(n.by)+' · '+esc(dt(n.at))+'</div></div></div>'; }).join('')+'</div>':'')+
       (sw.length?'<div class="sec-t">🔌 '+esc(t('switches'))+'</div><div class="list">'+sw.map(function(x){ return '<div class="sub">'+'<span class="chip '+(x.action==='cut'?'off':'on')+'">'+esc(t('a_'+x.action))+'</span> '+esc(dt(x.at))+' · '+esc(x.by)+(x.note?' — '+esc(x.note):'')+'</div>'; }).join('')+'</div>':'');
@@ -3029,16 +3107,87 @@ function billText(o){
   if(SITE.invoice_note) s.push('', SITE.invoice_note);
   return s.join('\n');
 }
+/* =========================================================
+   واتساب ويب المربوط على كمبيوتر المكتب (LibanApps WhatsApp connector)
+   ========================================================= */
+var WAC={status:'off',me:null,qr:null,err:''}, WAC_T=null;
+function waUrl(){ return (lsGet('motor_wa_url','')||'http://127.0.0.1:3999').replace(/\/+$/,''); }
+function waKey(){ return lsGet('motor_wa_key',''); }
+function waAuto(){ return !!waKey()&&WAC.status==='connected'; }
+async function waApi(path,body){
+  var ctl=new AbortController(), tm=setTimeout(function(){ ctl.abort(); },body?60000:6000);
+  try{ var r=await fetch(waUrl()+path,{method:body?'POST':'GET',headers:Object.assign({'x-key':waKey()},body?{'content-type':'application/json'}:{}),body:body?JSON.stringify(body):undefined,signal:ctl.signal});
+    var j=await r.json().catch(function(){ return {}; }); if(!r.ok||j.ok===false){ var e=new Error(j.error||('HTTP '+r.status)); e.code=j.error; throw e; } return j; }
+  finally{ clearTimeout(tm); }
+}
+async function waRefresh(){
+  if(!waKey()){ WAC={status:'off',me:null,qr:null,err:''}; waPaint(); return WAC; }
+  try{ var j=await waApi('/status'); WAC={status:j.status,me:j.me,qr:j.qr,err:''}; }
+  catch(e){ WAC={status:e.code==='bad_key'?'badkey':'down',me:null,qr:null,err:e.message}; }
+  waPaint(); return WAC;
+}
+function waStartPoll(){ if(WAC_T) return; WAC_T=setInterval(function(){ if(!ME||!ME.is_admin||!waKey()) return; waRefresh(); },WAC.status==='connected'?30000:4000); }
+function waChip(){ var s=WAC.status;
+  return s==='connected'?'<span class="chip on">✅ '+esc(t('wa_linked'))+(WAC.me?' · +'+esc(WAC.me.id):'')+'</span>':
+    s==='qr'?'<span class="chip warn">📱 '+esc(t('wa_scan'))+'</span>':
+    s==='off'?'<span class="chip gray">'+esc(t('wa_off'))+'</span>':
+    s==='badkey'?'<span class="chip off">'+esc(t('wa_badkey'))+'</span>':
+    s==='down'?'<span class="chip off">'+esc(t('wa_down'))+'</span>':'<span class="chip gray">⏳ '+esc(t('wa_starting'))+'</span>'; }
+function waPaint(){
+  $$('[data-wachip]').forEach(function(el){ el.innerHTML=waChip(); });
+  $$('[data-waqr]').forEach(function(el){ if(WAC.status==='qr'&&WAC.qr){ if(el.dataset.q!==WAC.qr){ el.dataset.q=WAC.qr; el.innerHTML='<div style="background:#fff;padding:10px;border-radius:12px;display:inline-block">'+qrSvg(WAC.qr)+'</div><p class="muted">'+esc(t('wa_scan_hint'))+'</p>'; } } else { el.dataset.q=''; el.innerHTML=''; } });
+  $$('[data-waon]').forEach(function(el){ el.classList.toggle('hidden',WAC.status!=='connected'); });
+}
+function waPair(){
+  var w=window.open(waUrl()+'/pair','lawa','width=460,height=360');
+  if(!w){ toast(t('wa_down'),'e'); return; }
+  var done=false;
+  function onMsg(e){ if(e.source!==w||!e.data||!e.data.lawa_key) return; done=true; window.removeEventListener('message',onMsg);
+    lsSet('motor_wa_key',String(e.data.lawa_key)); toast(t('wa_paired'),'s'); clearInterval(WAC_T); WAC_T=null; waRefresh().then(waStartPoll); }
+  window.addEventListener('message',onMsg);
+  setTimeout(function(){ if(!done){ window.removeEventListener('message',onMsg); try{ if(w&&!w.closed){ /* still open */ } }catch(e){} if(!done&&WAC.status!=='connected') toast(t('wa_pair_fail'),'e'); } },15000);
+}
+function waCard(full){
+  return '<div class="card"><h3>💬 '+esc(t('wa_t'))+'</h3><div class="row"><span data-wachip>'+waChip()+'</span><span class="sp"></span>'+
+    (WAC.status==='connected'?'<button class="btn ghost sm" data-wa="logout">'+esc(t('wa_logout'))+'</button>':'<button class="btn wa sm" data-wa="pair">🔗 '+esc(t('wa_pair'))+'</button>')+'</div>'+
+    '<div data-waqr style="text-align:center;margin-top:8px"></div>'+
+    (!full&&(WAC.status==='off'||WAC.status==='down')?'<div class="row" style="margin-top:6px"><a class="btn alt sm" href="/downloads/libanapps-whatsapp.zip" download>⬇️ '+esc(t('wa_download'))+'</a><span class="muted" style="font-size:12px">'+esc(t('wa_dl_short'))+'</span></div>':'')+
+    (full?'<p class="muted" style="white-space:pre-line">'+esc(t('wac_hint'))+'</p><div class="row"><a class="btn alt sm" href="/downloads/libanapps-whatsapp.zip" download>⬇️ '+esc(t('wa_download'))+'</a>'+
+      '<button class="btn ghost sm" data-wa="adv">'+esc(t('wa_adv'))+'</button></div><div id="waadv" class="hidden g2" style="margin-top:8px"><div><label>'+esc(t('wa_url'))+'</label><input id="waurl" value="'+esc(waUrl())+'" dir="ltr"></div>'+
+      '<div><label>'+esc(t('wa_key'))+'</label><input id="wakey" value="'+esc(waKey())+'" dir="ltr"></div><div><button class="btn sm" data-wa="save">'+esc(t('save'))+'</button></div></div>':'')+'</div>';
+}
+function waBind(root){
+  root.addEventListener('click',async function(e){ var b=e.target.closest('[data-wa]'); if(!b) return; var a=b.dataset.wa;
+    if(a==='pair') return waPair();
+    if(a==='adv') return $('#waadv',root).classList.toggle('hidden');
+    if(a==='save'){ lsSet('motor_wa_url',$('#waurl',root).value.trim()); lsSet('motor_wa_key',$('#wakey',root).value.trim()); toast(t('saved'),'s'); await waRefresh(); go(TAB,true); return; }
+    if(a==='logout'){ if(!(await confirmBox(t('wa_logout_q')))) return; try{ await waApi('/logout',{}); }catch(err){} await waRefresh(); go(TAB,true); }
+  });
+  waPaint();
+}
+/* إرسال تلقائي عبر الواتساب المربوط */
+async function waSendAuto(num,text,doc){
+  var r=await waApi('/send',Object.assign({to:num,text:text},doc||{}));
+  return r;
+}
+function waErr(e){ var c=e&&e.code; return c==='not_on_whatsapp'?t('wa_e_nowa'):c==='not_connected'?t('wa_down'):c==='bad_number'?t('no_mobile'):(e&&e.message||''); }
+function waNum(cc,mobile){ var num=String(mobile||'').replace(/\D/g,''); if(!num) return ''; cc=String(cc||'961').replace(/\D/g,'');
+  if(num.indexOf('00')===0) num=num.slice(2); else if(!(num.indexOf(cc)===0&&num.length>9)) num=cc+num.replace(/^0+/,''); return num; }
+
 function randCode(n,abc){ abc=abc||'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; var a=crypto.getRandomValues(new Uint8Array(n||6)), s=''; for(var i=0;i<a.length;i++) s+=abc[a[i]%abc.length]; return s; }
 function waTag(text){ return String(text||'')+'\n\n🔖 '+randCode(6); }   // رمز عشوائي بكعب كل رسالة (يخفّف حظر واتساب)
 function openWa(cc,mobile,text,win){
-  var num=String(mobile||'').replace(/\D/g,''); if(!num){ if(win) win.close(); toast(t('no_mobile'),'e'); return; }
+  var num=String(mobile||'').replace(/\D/g,''); if(!num){ if(win) win.close(); toast(t('no_mobile'),'e'); return Promise.resolve(false); }
+  if(text&&waAuto()){ if(win) try{ win.close(); }catch(e){}
+    var n2x=waNum(cc,mobile);
+    return waSendAuto(n2x,waTag(text)).then(function(){ toast('✅ '+t('wa_sent'),'s'); return true; }).catch(function(e){ toast(waErr(e),'e'); return false; }); }
   text=waTag(text);
   cc=String(cc||'961').replace(/\D/g,'');
   if(num.indexOf('00')===0) num=num.slice(2); else if(!(num.indexOf(cc)===0&&num.length>9)) num=cc+num.replace(/^0+/,'');
   var u='https://wa.me/'+num+(text?'?text='+encodeURIComponent(text):'');
-  if(win){ win.location.href=u; return; }
+  if(win){ win.location.href=u; return Promise.resolve(true); }
   var w=window.open(u,'_blank'); if(!w) location.href=u;
+  return Promise.resolve(true);
 }
 
 /* =========================================================
@@ -4069,7 +4218,7 @@ VIEWS.settings=async function(main){
     '<div class="g2" style="margin-top:8px"><div><label>'+esc(t('ble_chunk'))+'</label><input id="blech" inputmode="numeric" value="'+esc(lsGet('motor_ble_chunk','100'))+'"></div><div><label>'+esc(t('ble_delay'))+'</label><input id="bledl" inputmode="numeric" value="'+esc(lsGet('motor_ble_delay','20'))+'"></div></div>'+
     '<p class="muted">'+esc(t('ble_hint'))+'</p></div>'+
     '<p class="muted" id="rawhint">'+esc(t('rawbt_hint'))+'</p><button class="btn alt" id="ptest">'+esc(t('test_print'))+'</button>'+
-    '</div>'+lblCard()+
+    '</div>'+(adm?'<div id="swa2">'+waCard(true)+'</div>':'')+lblCard()+
     (adm?'<div class="card"><h3>📥 '+esc(t('old_prog'))+'</h3><p class="muted" style="margin-top:0">'+esc(t('old_prog_hint'))+'</p><div class="row">'+
       '<button class="btn acc" id="cprevpdf">📄 '+esc(t('prev_pdf'))+'</button><button class="btn acc" id="cinvimp">🧾 '+esc(t('inv_imp'))+'</button></div></div>':'')+
     (adm?'<div class="card"><button class="btn" id="bkn">'+esc(t('backup_now'))+'</button></div>':'');
@@ -4098,6 +4247,7 @@ VIEWS.settings=async function(main){
   $('#ppw',main).addEventListener('change',function(){ lsSet('motor_paper',this.value); });
   $('#blech',main).addEventListener('change',function(){ lsSet('motor_ble_chunk',this.value); });
   lblBind(main);
+  if($('#swa2',main)){ waBind($('#swa2',main)); if(waKey()){ waRefresh(); waStartPoll(); } }
   if($('#cprevpdf',main)) $('#cprevpdf',main).addEventListener('click',prevPdfDialog);
   if($('#cinvimp',main)) $('#cinvimp',main).addEventListener('click',invImportDialog);
   if($('#bkn',main)) $('#bkn',main).addEventListener('click',async function(){ var b=this; busy(b,true,t('backup_making')); try{ await backupNow(); toast(t('backup_done'),'s'); }catch(e){ toast(errText(e),'e'); } busy(b,false); });
@@ -4184,8 +4334,17 @@ function makeXlsx(sheets){
 function downloadBlob(blob,name){ var a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(function(){ URL.revokeObjectURL(a.href); },4000); }
 
 /* واتساب مع PDF: منعمل PDF للإيصال، منرفعو، ومنبعت الرابط مع الرسالة */
-async function sendBillWa(o,after){
-  var num=String(o.c.mobile||'').replace(/\D/g,''); if(!num){ toast(t('no_mobile'),'e'); return; }
+async function sendBillWa(o,after,quiet){
+  var num=String(o.c.mobile||'').replace(/\D/g,''); if(!num){ if(!quiet) toast(t('no_mobile'),'e'); return false; }
+  var k0=o.pay?'pay':'inv', id0=o.pay?o.pay.id:(o.inv&&o.inv.id);
+  if(waAuto()){
+    var docUrl=null;
+    try{ var cv0=await renderTicket(billTicket(o)); var path0=await uploadPhoto(canvasToPdf(cv0),'pdf'); docUrl=location.origin+path0; }catch(e){}
+    try{ await waSendAuto(waNum(o.c.mobile_cc,o.c.mobile),waTag(billText(o)),docUrl?{doc_url:docUrl,doc_name:(o.pay?'receipt-'+o.pay.no:'invoice-'+(o.inv&&o.inv.no))+'.pdf'}:null);
+      if(id0) await call('motor_wa_mark',{p_kind:k0,p_id:id0}).catch(function(){});
+      if(!quiet) toast('✅ '+t('wa_sent'),'s'); after&&after(); return true; }
+    catch(e){ if(!quiet) toast(waErr(e),'e'); return false; }
+  }
   var w=window.open('about:blank','_blank');   // منفتح النافذة فوراً (المتصفح بيمنعها بعد الانتظار)
   var text=billText(o);
   try{ toast(t('pdf_making')); var cv=await renderTicket(billTicket(o)); var path=await uploadPhoto(canvasToPdf(cv),'pdf');
@@ -4196,6 +4355,26 @@ async function sendBillWa(o,after){
   var u='https://wa.me/'+num+'?text='+encodeURIComponent(waTag(text));
   if(w) w.location.href=u; else location.href=u;
   var k=o.pay?'pay':'inv', id=o.pay?o.pay.id:(o.inv&&o.inv.id); if(id) call('motor_wa_mark',{p_kind:k,p_id:id}).then(function(){ after&&after(); }).catch(function(){});
+  return true;
+}
+/* إرسال دفعة (50) بالدور — بس إذا الواتساب مربوط */
+function waBatchBar(id){ return '<div class="card hidden" id="'+id+'"><div class="row"><b data-bt></b><span class="sp"></span><button class="btn danger sm" data-bstop>'+esc(t('wa_stop'))+'</button></div><div class="pbar" style="margin-top:8px"><i data-bp></i></div><div class="muted" data-bl style="margin-top:6px;max-height:120px;overflow:auto;font-size:12px"></div></div>'; }
+async function waBatch(box,items,sendOne,onDone){
+  if(!waAuto()){ toast(t('wa_need_link'),'e'); return; }
+  var list=items.slice(0,50); if(!list.length) return;
+  if(!(await confirmBox(t('wa_batch_q',{n:list.length})))) return;
+  var stop=false, ok=0, bad=0; box.classList.remove('hidden');
+  var sb=$('[data-bstop]',box); sb.onclick=function(){ stop=true; sb.disabled=true; };
+  sb.disabled=false;
+  for(var i=0;i<list.length&&!stop;i++){
+    $('[data-bt]',box).textContent=t('wa_batch_prog',{i:i+1,n:list.length,ok:ok,bad:bad});
+    $('[data-bp]',box).style.width=Math.round(i/list.length*100)+'%';
+    var r=false; try{ r=await sendOne(list[i]); }catch(e){ r=false; }
+    if(r===true) ok++; else { bad++; $('[data-bl]',box).insertAdjacentHTML('beforeend','<div>✗ '+esc(r&&r.name||(list[i].customer&&list[i].customer.name)||'')+(r&&r.err?' — '+esc(r.err):'')+'</div>'); }
+  }
+  $('[data-bp]',box).style.width='100%';
+  $('[data-bt]',box).textContent=t('wa_batch_done',{ok:ok,bad:bad}); sb.disabled=true;
+  onDone&&onDone();
 }
 async function downloadBillPdf(o){ try{ var cv=await renderTicket(billTicket(o)); downloadBlob(canvasToPdf(cv),(o.pay?'receipt-'+o.pay.no:'invoice-'+(o.inv&&o.inv.no))+'.pdf'); }catch(e){ toast(errText(e),'e'); } }
 

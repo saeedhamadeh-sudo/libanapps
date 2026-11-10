@@ -1,0 +1,107 @@
+/* LibanApps — WhatsApp connector (واتساب ويب على كمبيوتر المكتب)
+   بيشتغل على http://127.0.0.1:3999 بس (ما بينفتح من برا الكمبيوتر).
+   البرنامج على libanapps.com بيحكي معو بمفتاح سري (config.json). */
+'use strict';
+const http = require('http'), fs = require('fs'), path = require('path'), crypto = require('crypto');
+const B = require('@whiskeysockets/baileys');
+const makeWASocket = B.default || B.makeWASocket;
+const { useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, Browsers } = B;
+const pino = require('pino');
+
+const DIR = __dirname, CFG = path.join(DIR, 'config.json'), AUTH = path.join(DIR, 'auth');
+let cfg = {}; try { cfg = JSON.parse(fs.readFileSync(CFG, 'utf8')); } catch (e) {}
+if (!cfg.key) cfg.key = crypto.randomBytes(12).toString('hex');
+cfg.port = cfg.port || 3999;
+cfg.origins = cfg.origins || ['https://libanapps.com', 'https://www.libanapps.com'];
+cfg.minGapMs = cfg.minGapMs || 3500;          // أقل وقت بين رسالتين (يخفف الحظر)
+cfg.maxGapMs = cfg.maxGapMs || 7000;
+fs.writeFileSync(CFG, JSON.stringify(cfg, null, 2));
+
+let sock = null, starting = false;
+const S = { status: 'starting', qr: null, me: null, sent: 0, lastError: null };
+
+async function start() {
+  if (starting) return; starting = true;
+  try {
+    const { state, saveCreds } = await useMultiFileAuthState(AUTH);
+    let version; try { ({ version } = await fetchLatestBaileysVersion()); } catch (e) {}
+    sock = makeWASocket({ auth: state, version, logger: pino({ level: 'silent' }), browser: Browsers.windows('LibanApps'),
+      printQRInTerminal: false, markOnlineOnConnect: false, syncFullHistory: false });
+    sock.ev.on('creds.update', saveCreds);
+    sock.ev.on('connection.update', (u) => {
+      if (u.qr) { S.qr = u.qr; S.status = 'qr'; console.log('📱 امسح رمز QR من إعدادات البرنامج (واتساب ← الأجهزة المرتبطة)'); }
+      if (u.connection === 'open') { S.status = 'connected'; S.qr = null; S.me = sock.user ? { id: sock.user.id.split(':')[0].split('@')[0], name: sock.user.name || '' } : null;
+        console.log('✅ واتساب مربوط:', S.me && S.me.id); }
+      if (u.connection === 'close') {
+        const code = u.lastDisconnect && u.lastDisconnect.error && u.lastDisconnect.error.output && u.lastDisconnect.error.output.statusCode;
+        if (code === DisconnectReason.loggedOut) { try { fs.rmSync(AUTH, { recursive: true, force: true }); } catch (e) {} S.me = null; S.status = 'starting'; console.log('🔌 تم فك الربط'); }
+        else S.status = 'reconnecting';
+        starting = false; setTimeout(start, 2500);
+      }
+    });
+  } catch (e) { S.lastError = String(e && e.message || e); starting = false; setTimeout(start, 5000); return; }
+  starting = false;
+}
+
+// إرسال بالدور مع فاصل عشوائي بين الرسائل
+let chain = Promise.resolve(), lastAt = 0;
+function queue(fn) { const p = chain.then(async () => {
+    const gap = cfg.minGapMs + Math.random() * (cfg.maxGapMs - cfg.minGapMs), wait = lastAt + gap - Date.now();
+    if (wait > 0) await new Promise(r => setTimeout(r, wait));
+    try { return await fn(); } finally { lastAt = Date.now(); } });
+  chain = p.catch(() => {}); return p; }
+
+function err(code, msg) { const e = new Error(msg || code); e.code = code; return e; }
+async function send(b) {
+  if (S.status !== 'connected' || !sock) throw err('not_connected');
+  const num = String(b.to || '').replace(/\D/g, '');
+  if (num.length < 8) throw err('bad_number');
+  const text = String(b.text || '').slice(0, 6000);
+  return queue(async () => {
+    const r = (await sock.onWhatsApp(num))[0];
+    if (!r || !r.exists) throw err('not_on_whatsapp');
+    let m;
+    if (b.doc_url && /^https:\/\//.test(b.doc_url)) {
+      const res = await fetch(b.doc_url); if (!res.ok) throw err('doc_fetch');
+      const buf = Buffer.from(await res.arrayBuffer());
+      m = await sock.sendMessage(r.jid, { document: buf, mimetype: 'application/pdf', fileName: String(b.doc_name || 'invoice.pdf').slice(0, 80), caption: text });
+    } else {
+      if (!text) throw err('empty');
+      m = await sock.sendMessage(r.jid, { text });
+    }
+    S.sent++; return { ok: true, id: m && m.key && m.key.id, to: num };
+  });
+}
+
+function allowOrigin(o) { return !!o && (cfg.origins.indexOf(o) >= 0 || /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(o)); }
+function reply(req, res, code, obj, type) {
+  const o = req.headers.origin, h = { 'Content-Type': type || 'application/json; charset=utf-8', 'Cache-Control': 'no-store' };
+  if (allowOrigin(o)) Object.assign(h, { 'Access-Control-Allow-Origin': o, 'Vary': 'Origin', 'Access-Control-Allow-Headers': 'content-type,x-key',
+    'Access-Control-Allow-Methods': 'GET,POST,OPTIONS', 'Access-Control-Allow-Private-Network': 'true', 'Access-Control-Max-Age': '600' });
+  res.writeHead(code, h); res.end(type ? obj : JSON.stringify(obj));
+}
+function body(req) { return new Promise((ok) => { let d = ''; req.on('data', c => { d += c; if (d.length > 1e6) req.destroy(); }); req.on('end', () => { try { ok(JSON.parse(d || '{}')); } catch (e) { ok({}); } }); }); }
+
+http.createServer(async (req, res) => {
+  const u = new URL(req.url, 'http://x'), p = u.pathname;
+  if (req.method === 'OPTIONS') return reply(req, res, 204, '', 'text/plain');
+  // صفحة الربط: بتبعت المفتاح للبرنامج يلّي فتحها (من المواقع المسموحة بس)
+  if (p === '/pair') {
+    const html = '<!doctype html><meta charset="utf-8"><title>LibanApps WhatsApp</title><body style="font-family:Tahoma;text-align:center;padding:40px">' +
+      '<h2>✅ تم ربط البرنامج بواتساب المكتب</h2><p>تقدر تسكّر هالنافذة.</p><script>var K=' + JSON.stringify(cfg.key) + ',O=' + JSON.stringify(cfg.origins.concat(['http://localhost:8787', 'http://127.0.0.1:8787'])) + ';' +
+      'if(window.opener){O.forEach(function(o){try{window.opener.postMessage({lawa_key:K},o)}catch(e){}});setTimeout(function(){window.close()},1200)}else{document.body.insertAdjacentHTML("beforeend","<p>افتحها من إعدادات البرنامج</p>")}</script>';
+    return reply(req, res, 200, html, 'text/html; charset=utf-8');
+  }
+  if (p === '/') return reply(req, res, 200, '<!doctype html><meta charset="utf-8"><body style="font-family:Tahoma;padding:30px"><h2>LibanApps — WhatsApp</h2><p>الحالة: <b>' + S.status + '</b>' + (S.me ? ' — ' + S.me.id : '') + '</p><p>شغّال. اربط من إعدادات البرنامج.</p>', 'text/html; charset=utf-8');
+  if (req.headers['x-key'] !== cfg.key) return reply(req, res, 401, { ok: false, error: 'bad_key' });
+  try {
+    if (p === '/status') return reply(req, res, 200, { ok: true, status: S.status, qr: S.qr, me: S.me, sent: S.sent, version: 1 });
+    if (p === '/logout' && req.method === 'POST') { try { await sock.logout(); } catch (e) {} try { fs.rmSync(AUTH, { recursive: true, force: true }); } catch (e) {} S.status = 'starting'; S.me = null; setTimeout(start, 1000); return reply(req, res, 200, { ok: true }); }
+    if (p === '/send' && req.method === 'POST') { const r = await send(await body(req)); return reply(req, res, 200, r); }
+    return reply(req, res, 404, { ok: false, error: 'not_found' });
+  } catch (e) { S.lastError = e.code || String(e.message || e); return reply(req, res, e.code === 'not_connected' ? 409 : 400, { ok: false, error: e.code || String(e.message || e) }); }
+}).listen(cfg.port, '127.0.0.1', () => {
+  console.log('LibanApps WhatsApp connector — http://127.0.0.1:' + cfg.port);
+  console.log('خلّي هالشباك مفتوح. افتح البرنامج ← الإعدادات ← ربط واتساب.');
+  start();
+});
