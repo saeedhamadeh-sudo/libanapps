@@ -2372,15 +2372,22 @@ begin
       'prev_value', r.prev_value, 'cur_value', r.value, 'kwh', case when r.id is null then null else r.value - r.prev_value end,
       'invoiced', coalesce((select sum(i.amount) from public.motor_invoices i where i.customer_id = c.id and not i.voided
                              and i.kind in ('meter','fixed') and i.period = per), 0),
+      -- المقبوض بالشهر: إيصالات هالبرنامج + إيصالات البرنامج السابق (مستوردة من كشف الحساب) بتاريخها
       'paid', coalesce((select sum(p.amount) from public.motor_payments p where p.customer_id = c.id and not p.voided
-                         and p.created_at >= f and p.created_at < t), 0),
+                         and p.created_at >= f and p.created_at < t), 0)
+            - coalesce((select sum(i.amount) from public.motor_invoices i where i.customer_id = c.id and not i.voided
+                         and i.imported and i.kind = 'adjust' and i.amount < 0 and i.note like 'ايصال%' and i.period = per), 0),
       'paid_whish', coalesce((select sum(p.amount) from public.motor_payments p where p.customer_id = c.id and not p.voided
-                         and p.method = 'whish' and p.created_at >= f and p.created_at < t), 0),
+                         and p.method = 'whish' and p.created_at >= f and p.created_at < t), 0)
+            - coalesce((select sum(i.amount) from public.motor_invoices i where i.customer_id = c.id and not i.voided
+                         and i.imported and i.kind = 'adjust' and i.amount < 0 and i.note like 'ايصال%' and i.period = per
+                         and (i.note ilike '%whish%' or i.note like '%ويش%')), 0),
       -- الرصيد آخر الشهر: الفاتورة بتنحسب بشهرها (period) مش بتاريخ إدخالها — مهم للفواتير المستوردة
       'balance_end', coalesce((select sum(i.amount) from public.motor_invoices i where i.customer_id = c.id and not i.voided
                      and (case when i.period <> '' then i.period else to_char(i.created_at at time zone 'Asia/Beirut','YYYY-MM') end) <= per), 0)
           - coalesce((select sum(p.amount) from public.motor_payments p where p.customer_id = c.id and not p.voided and p.created_at < t), 0),
       'other', coalesce((select sum(i.amount) from public.motor_invoices i where i.customer_id = c.id and not i.voided and i.kind not in ('meter','fixed')
+                     and not (i.imported and i.kind = 'adjust' and i.amount < 0 and i.note like 'ايصال%')
                      and (case when i.period <> '' then i.period else to_char(i.created_at at time zone 'Asia/Beirut','YYYY-MM') end) = per), 0),
       'balance_start', coalesce((select sum(i.amount) from public.motor_invoices i where i.customer_id = c.id and not i.voided
                      and (case when i.period <> '' then i.period else to_char(i.created_at at time zone 'Asia/Beirut','YYYY-MM') end) < per), 0)
@@ -3179,13 +3186,13 @@ begin
     if op <> 0 then
       update public.motor_sites set invoice_seq = invoice_seq + 1 where id = sid returning invoice_seq into seq;
       insert into public.motor_invoices (site_id, no, customer_id, period, kind, amount, note, staff_name, imported, wa_sent_at, created_at)
-      values (sid, seq, c.id, '', 'opening', op, 'رصيد ما قبل ' || to_char(f, 'YYYY/MM/DD') || ' (حسب كشف البرنامج السابق)',
+      values (sid, seq, c.id, to_char(f - interval '1 month', 'YYYY-MM'), 'opening', op, 'رصيد ما قبل ' || to_char(f, 'YYYY/MM/DD') || ' (حسب كشف البرنامج السابق)',
               'استيراد', true, now(), ((f - 1)::timestamp + interval '11 hours') at time zone 'Asia/Beirut');
     end if;
     if pre_cr <> 0 then
       update public.motor_sites set invoice_seq = invoice_seq + 1 where id = sid returning invoice_seq into seq;
       insert into public.motor_invoices (site_id, no, customer_id, period, kind, amount, note, staff_name, imported, wa_sent_at, created_at)
-      values (sid, seq, c.id, to_char(f - 1, 'YYYY-MM'), 'adjust', -pre_cr, 'دفعات قبل ' || to_char(f, 'YYYY/MM/DD') || ' (حسب كشف البرنامج السابق)',
+      values (sid, seq, c.id, to_char(f - interval '1 month', 'YYYY-MM'), 'adjust', -pre_cr, 'دفعات قبل ' || to_char(f, 'YYYY/MM/DD') || ' (حسب كشف البرنامج السابق)',
               'استيراد', true, now(), ((f - 1)::timestamp + interval '12 hours') at time zone 'Asia/Beirut');
     end if;
     truncate _used_pay;
