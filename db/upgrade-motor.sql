@@ -3139,6 +3139,110 @@ begin
 end $$;
 
 -- ============================================================
+--  20j2) تصحيح الحسابات من «كشف حساب» البرنامج السابق (Excel)
+--  لكل زبون: بيمسح يلّي انستورد من بعد تاريخ بداية الكشف ودفعات «البرنامج السابق» والرصيد السابق،
+--  وبيرجع يبني الحركات متل الكشف بالظبط: فاتورة كل شهر بشهرها وتاريخها، الدفعات بتاريخها ورقم الإيصال،
+--  الرسوم الإضافية (كونتكتير، تركيب...)، وكل شي قبل بداية الكشف بسطر «رصيد سابق».
+--  الرصيد النهائي = رصيد الكشف − الدفعات يلّي انقبضت بهالبرنامج وما مسجّلة بالكشف.
+-- ============================================================
+create or replace function public.motor_import_statement(p_slug text, p_token text, p_data jsonb)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w jsonb; sid uuid; cu jsonb; x jsonb; c public.motor_customers%rowtype;
+        f date; seq int; kept numeric; op numeric; pre_cr numeric; sdr numeric; scr numeric; run numeric; old numeric;
+        amt numeric; per text; ts timestamptz; rid uuid; pid uuid; r record; v_kind text; skip_bill boolean;
+        n_cust int := 0; n_rows int := 0; n_dup int := 0; n_app int := 0; changed jsonb := '[]'::jsonb;
+begin
+  w := public._motor_admin(p_slug, p_token);
+  sid := (w->>'site_id')::uuid;
+  if jsonb_typeof(p_data) <> 'array' then perform public._motor_err('bad_data'); end if;
+  perform 1 from public.motor_sites where id = sid for update;
+  create temp table if not exists _used_pay (id uuid primary key) on commit drop;
+  for cu in select * from jsonb_array_elements(p_data) loop
+    select * into c from public.motor_customers where id = (cu->>'customer_id')::uuid and site_id = sid and deleted_at is null for update;
+    if not found then continue; end if;
+    n_cust := n_cust + 1; old := c.balance;
+    f := coalesce(nullif(cu->>'from','')::date, date '2026-05-11');
+    -- امسح: المستورد من بعد بداية الكشف + كل تسويات الاستيراد + الرصيد السابق
+    delete from public.motor_invoices
+     where customer_id = c.id and (kind = 'opening'
+        or (imported and kind = 'adjust')
+        or (imported and (created_at at time zone 'Asia/Beirut')::date >= f));
+    -- الفواتير المستوردة قبل بداية الكشف بتضل (فيها العدادات) والفرق بيصير «رصيد سابق»
+    select coalesce(sum(amount), 0) into kept from public.motor_invoices
+     where customer_id = c.id and imported and not voided and kind in ('meter','fixed');
+    select coalesce(sum((v->>'dr')::numeric), 0), coalesce(sum((v->>'cr')::numeric), 0) into sdr, scr
+      from jsonb_array_elements(cu->'rows') v;
+    -- قبل بداية الكشف: فواتير (ناقص يلّي باقي مستورد) + دفعات. رصيد الكشف النهائي هو المرجع (فروقات التقريب).
+    op := round(((cu->>'tdr')::numeric - sdr) - kept
+                + (coalesce(nullif(cu->>'tb','')::numeric, (cu->>'tdr')::numeric - (cu->>'tcr')::numeric) - ((cu->>'tdr')::numeric - (cu->>'tcr')::numeric)), 2);
+    pre_cr := round((cu->>'tcr')::numeric - scr, 2);
+    if op <> 0 then
+      update public.motor_sites set invoice_seq = invoice_seq + 1 where id = sid returning invoice_seq into seq;
+      insert into public.motor_invoices (site_id, no, customer_id, period, kind, amount, note, staff_name, imported, wa_sent_at, created_at)
+      values (sid, seq, c.id, '', 'opening', op, 'رصيد ما قبل ' || to_char(f, 'YYYY/MM/DD') || ' (حسب كشف البرنامج السابق)',
+              'استيراد', true, now(), ((f - 1)::timestamp + interval '11 hours') at time zone 'Asia/Beirut');
+    end if;
+    if pre_cr <> 0 then
+      update public.motor_sites set invoice_seq = invoice_seq + 1 where id = sid returning invoice_seq into seq;
+      insert into public.motor_invoices (site_id, no, customer_id, period, kind, amount, note, staff_name, imported, wa_sent_at, created_at)
+      values (sid, seq, c.id, to_char(f - 1, 'YYYY-MM'), 'adjust', -pre_cr, 'دفعات قبل ' || to_char(f, 'YYYY/MM/DD') || ' (حسب كشف البرنامج السابق)',
+              'استيراد', true, now(), ((f - 1)::timestamp + interval '12 hours') at time zone 'Asia/Beirut');
+    end if;
+    truncate _used_pay;
+    for x in select * from jsonb_array_elements(cu->'rows') loop
+      amt := round(coalesce((x->>'dr')::numeric, 0) - coalesce((x->>'cr')::numeric, 0), 2);
+      if amt = 0 then continue; end if;
+      ts := (x->>'d')::timestamp;
+      if ts::time = time '00:00' then ts := ts + interval '12 hours'; end if;
+      ts := ts at time zone 'Asia/Beirut';
+      per := coalesce(nullif(x->>'per',''), to_char((x->>'d')::timestamp, 'YYYY-MM'));
+      if x->>'k' = 'pay' then
+        -- دفعة انسجلت بالكشف وكمان انقبضت بهالبرنامج (نفس المبلغ، خلال 4 أيام): منكتفي بإيصال البرنامج
+        select p.id into pid from public.motor_payments p
+         where p.customer_id = c.id and not p.voided and p.amount = -amt
+           and p.created_at >= ts - interval '1 hour' and p.created_at < ts + interval '4 days'
+           and not exists (select 1 from _used_pay u where u.id = p.id)
+         order by p.created_at limit 1;
+        if pid is not null then insert into _used_pay values (pid); n_dup := n_dup + 1; continue; end if;
+      end if;
+      v_kind := 'adjust'; rid := null; skip_bill := false;
+      if x->>'k' = 'bill' and amt > 0 then
+        -- شهر انقرا بهالبرنامج: فاتورتو موجودة، ما منكررها
+        if exists (select 1 from public.motor_invoices i where i.customer_id = c.id and not i.voided and not i.imported
+                    and i.kind in ('meter','fixed') and i.period = per) then
+          n_app := n_app + 1; continue;
+        end if;
+        select rr.id into rid from public.motor_readings rr where rr.customer_id = c.id and rr.period = per and rr.imported
+           and not exists (select 1 from public.motor_invoices i where i.reading_id = rr.id) limit 1;
+        v_kind := case when rid is null then 'fixed' else 'meter' end;
+      end if;
+      update public.motor_sites set invoice_seq = invoice_seq + 1 where id = sid returning invoice_seq into seq;
+      insert into public.motor_invoices (site_id, no, customer_id, period, kind, reading_id, plan_name, prev_value, cur_value, kwh,
+             amount, note, staff_name, imported, wa_sent_at, created_at)
+      select sid, seq, c.id, per, v_kind, rid, coalesce(x->>'svc',''), rr.prev_value, rr.value,
+             coalesce(rr.value - rr.prev_value, 0), amt, left(coalesce(x->>'desc',''), 300), 'استيراد', true, now(), ts
+        from (select 1) one left join public.motor_readings rr on rr.id = rid;
+      n_rows := n_rows + 1;
+    end loop;
+    -- الرصيد الجاري لكل حركة (للطباعة) + رصيد الزبون
+    run := 0;
+    for r in select 'i' t, i.id, i.amount, i.created_at from public.motor_invoices i where i.customer_id = c.id and not i.voided
+             union all select 'p', p.id, -p.amount, p.created_at from public.motor_payments p where p.customer_id = c.id and not p.voided
+             order by 4, 1 loop
+      if r.t = 'i' then
+        update public.motor_invoices set balance_before = run, balance_after = run + r.amount where id = r.id and (imported or kind = 'opening');
+      end if;
+      run := run + r.amount;
+    end loop;
+    update public.motor_customers set balance = run, updated_at = now() where id = c.id;
+    if run <> old then
+      changed := changed || jsonb_build_array(jsonb_build_object('code', c.code, 'name', c.name, 'old', old, 'new', run));
+    end if;
+  end loop;
+  return jsonb_build_object('ok', true, 'customers', n_cust, 'rows', n_rows, 'dup_pays', n_dup, 'app_bills', n_app, 'changed', changed);
+end $$;
+
+-- ============================================================
 --  20k) إقفال صندوق الموظف: يسلّم كل النقد للمكتب ويطلع تقرير
 -- ============================================================
 create or replace function public.motor_staff_close(p_slug text, p_token text, p_staff uuid default null)
@@ -3439,7 +3543,7 @@ begin
     'motor_purchase_add(text,text,jsonb)', 'motor_purchase_void(text,text,uuid)', 'motor_supplier_pay(text,text,uuid,numeric,text,text)',
     'motor_supplier_statement(text,text,uuid)', 'motor_staff_salary_set(text,text,uuid,numeric)', 'motor_salary_due_add(text,text,uuid,text,numeric,text)',
     'motor_salary_due_all(text,text,text)', 'motor_salary_due_delete(text,text,uuid)', 'motor_staff_statement(text,text,uuid)',
-    'motor_import_invoices(text,text,jsonb)', 'motor_impersonate(text,text,uuid)', 'motor_staff_close(text,text,uuid)', 'motor_staff_closes(text,text,uuid)',
+    'motor_import_invoices(text,text,jsonb)', 'motor_import_statement(text,text,jsonb)', 'motor_impersonate(text,text,uuid)', 'motor_staff_close(text,text,uuid)', 'motor_staff_closes(text,text,uuid)',
     'motor_ins_list(text,text)', 'motor_ins_add(text,text,uuid,text,numeric,text,text)', 'motor_ins_delete(text,text,uuid)',
     'motor_ins_import(text,text,jsonb,boolean)', 'motor_ins_link(text,text,text,uuid)']
   loop
