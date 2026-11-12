@@ -3810,8 +3810,12 @@ function stmtTicket(d){
   return T;
 }
 /* كشف الحساب على ورقة A4: كل الأعمدة وكل الأسطر */
-function printStatementA4(d){
-  var c=d.customer, run=0, lastM='';
+// اللوغو مقصوص الهوامش البيضاء (للطباعة A4)
+var LOGO_TRIM={};
+async function logoTrimmed(){ var u=SITE.logo_url; if(!u) return ''; if(LOGO_TRIM[u]) return LOGO_TRIM[u];
+  var im=await loadImg(u); if(!im) return u; var c=trimImg(im); try{ LOGO_TRIM[u]=c.toDataURL?c.toDataURL('image/png'):u; }catch(e){ LOGO_TRIM[u]=u; } return LOGO_TRIM[u]; }
+async function printStatementA4(d){
+  var c=d.customer, run=0, lastM='', logo=await logoTrimmed();
   var trs=d.rows.filter(function(r){ return !r.voided; }).map(function(r){ run+=n2(r.debit)-n2(r.credit);
     var mk=(r.t==='inv'&&r.period)?r.period:String(dt(r.at)).slice(0,7), sep='';
     if(mk&&mk!==lastM){ lastM=mk; sep='<tr class="m"><td colspan="11">'+esc(monthName(mk,true))+'</td></tr>'; }
@@ -3822,7 +3826,7 @@ function printStatementA4(d){
       '<td>'+(n2(r.debit)?esc(money(r.debit)):'')+'</td><td>'+(n2(r.credit)?esc(money(r.credit)):'')+'</td><td><b>'+esc(money(run))+'</b></td><td class="w">'+esc(r.note||'')+(r.staff?' — '+esc(r.staff):'')+'</td></tr>'; });
   var dir=LANG==='ar'?'rtl':'ltr';
   printA4('<style>#printArea .hd{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:6px;font-size:12px}#printArea h2{margin:0 0 2px;font-size:18px}#printArea td.w{text-align:start;min-width:120px}#printArea tr.m td{background:#f3f3f3;font-weight:700;text-align:start}#printArea td{white-space:nowrap}#printArea td.w{white-space:normal}</style>'+
-    '<div class="hd"><div><h2>'+esc(SITE.name||'')+'</h2><div>'+esc(t('statement'))+' — <b>'+esc(c.name)+'</b> #'+esc(c.code)+(c.box?' · '+esc(t('box'))+' '+esc(c.box):'')+(c.meter_no?' · '+esc(t('meter_no'))+' '+esc(c.meter_no):'')+'</div></div>'+
+    '<div class="hd"><div style="display:flex;align-items:center;gap:12px">'+(logo?'<img src="'+esc(logo)+'" alt="" style="height:80px;max-width:200px;object-fit:contain">':'')+'<div><h2>'+esc(SITE.name||'')+'</h2><div>'+esc(t('statement'))+' — <b>'+esc(c.name)+'</b> #'+esc(c.code)+(c.box?' · '+esc(t('box'))+' '+esc(c.box):'')+(c.meter_no?' · '+esc(t('meter_no'))+' '+esc(c.meter_no):'')+'</div></div></div>'+
     '<div>'+esc(t('date'))+': '+esc(TODAY)+'<br><b>'+esc(t('balance'))+': '+esc(money(c.balance))+'</b></div></div>'+
     '<table><thead><tr><th>'+esc(t('date'))+'</th><th>'+esc(t('type'))+'</th><th>#</th><th>'+esc(t('month'))+'</th><th>'+esc(t('b_prev'))+'</th><th>'+esc(t('b_cur'))+'</th><th>'+esc(t('b_cons'))+'</th>'+
     '<th>'+esc(t('debit'))+'</th><th>'+esc(t('creditc'))+'</th><th>'+esc(t('running'))+'</th><th>'+esc(t('note'))+'</th></tr></thead><tbody>'+trs.join('')+'</tbody></table>');
@@ -4669,6 +4673,7 @@ async function frCanvas(doc){
   var W=1240, P=90, cw=W-2*P, fam=getComputedStyle(document.body).fontFamily||'sans-serif', cur=SITE.cur_label||sym(mainCur());
   var logo=null; if(SITE.logo_url){ logo=await new Promise(function(res){ var im=new Image(); im.crossOrigin='anonymous'; var done=false;
     im.onload=function(){ if(!done){ done=true; res(im); } }; im.onerror=function(){ if(!done){ done=true; res(null); } }; setTimeout(function(){ if(!done){ done=true; res(null); } },5000); im.src=SITE.logo_url; }); }
+  if(logo) logo=trimImg(logo);
   var T=frTotals(doc), rowH=44, secs=[];
   secs.push({h:t('fr_income'),rows:doc.income.map(function(x){ return [x.l,fmtN(x.a,2),cur]; }),tot:[t('fr_total'),fmtN(T.inc,2),cur]});
   secs.push({h:t('fr_exp'),rows:doc.expenses.map(function(x){ return [x.l,fmtN(x.a,2),cur]; }),tot:[t('fr_total'),fmtN(T.exp,2),cur]});
