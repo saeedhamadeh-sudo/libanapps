@@ -1736,6 +1736,47 @@ async function motorPhoto(request, env) {
   return json(200, { ok: true, path: '/img/motor/' + name });
 }
 
+
+// ---------- motorapp: واتساب الرسمي عبر WhatChimp ----------
+//  المتصفح ما بيشوف مفتاح WhatChimp أبداً: منتحقق إنو المرسل مدير بالمولّد (motor_wc_check)،
+//  منجيب المفتاح بمفتاح الخدمة، ومنبعت الـtemplate من هون.
+async function motorWa(request, env) {
+  let body;
+  try { body = await request.json(); } catch { return json(400, { ok: false, error: 'bad_json' }); }
+  const slug = String(body.slug || '').trim().toLowerCase();
+  const token = String(body.token || '');
+  if (!/^[a-z0-9][a-z0-9-]{1,30}$/.test(slug)) return json(400, { ok: false, error: 'missing_fields' });
+  const anon = env.SUPABASE_ANON_KEY || 'sb_publishable_ypfm_aulpcqBpeFpyD_7iw_mA4DNlR5';
+  const hdr = { apikey: anon, 'Content-Type': 'application/json' };
+  const auth = request.headers.get('Authorization') || '';
+  if (!token && /^Bearer\s+\S+/.test(auth)) hdr.Authorization = auth;
+  const chk = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/motor_wc_check`, { method: 'POST', headers: hdr, body: JSON.stringify({ p_slug: slug, p_token: token || null }) });
+  const chkText = await chk.text();
+  if (!chk.ok) { const m = chkText.match(/MOTOR:[a-z_]+/); return json(403, { ok: false, error: m ? m[0] : 'forbidden' }); }
+  let sid = ''; try { sid = JSON.parse(chkText); } catch {}
+  if (!/^[0-9a-f-]{36}$/.test(String(sid))) return json(403, { ok: false, error: 'forbidden' });
+  const sr = await fetch(`${env.SUPABASE_URL}/rest/v1/motor_sites?id=eq.${sid}&select=wc_api_key,wc_on`, {
+    headers: { apikey: env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}` } });
+  const site = ((await sr.json().catch(() => [])) || [])[0] || {};
+  const key = String(site.wc_api_key || '');
+  if (!key) return json(409, { ok: false, error: 'wc_no_key' });
+  const H = { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' };
+  const out = async (r) => { const t = await r.text(); let j = {}; try { j = JSON.parse(t); } catch {}
+    if (r.ok) return json(200, Object.assign({ ok: true }, j));
+    const code = typeof j.error === 'string' ? j.error : (j.error && (j.error.code || j.error.type));
+    return json(r.status, { ok: false, error: code || ('http_' + r.status), message: j.message || (j.error && j.error.message) || t.slice(0, 200), fix: j.fix || '' }); };
+  if (body.op === 'templates') return out(await fetch('https://api.whatchimp.com/v1/templates?limit=100', { headers: H }));
+  if (body.op !== 'send') return json(400, { ok: false, error: 'bad_op' });
+  if (!site.wc_on && !body.test) return json(409, { ok: false, error: 'wc_off' });
+  const to = String(body.to || '').replace(/\D/g, '');
+  const name = String(body.template || '');
+  if (to.length < 8 || !/^[a-z0-9_]{1,512}$/.test(name)) return json(400, { ok: false, error: 'bad_fields' });
+  const values = {}; for (const [k, v] of Object.entries(body.values || {})) values[String(k).slice(0, 60)] = String(v == null ? '' : v).slice(0, 1000);
+  return out(await fetch('https://api.whatchimp.com/v1/messages', { method: 'POST',
+    headers: Object.assign({ 'Idempotency-Key': crypto.randomUUID() }, H),
+    body: JSON.stringify({ to: '+' + to, template: { name, language: 'ar', values } }) }));
+}
+
 async function createOwner(request, env) {
   const auth = request.headers.get('Authorization') || '';
   const token = auth.replace(/^Bearer\s+/i, '');
@@ -3560,6 +3601,10 @@ export default {
         if (url.pathname === '/api/portal-token') {
           if (request.method !== 'GET') return json(405, { error: 'method not allowed' });
           return await portalToken(request, env);
+        }
+        if (url.pathname === '/api/motor-wa') {
+          if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
+          return await motorWa(request, env);
         }
         if (url.pathname === '/api/motor-photo') {
           if (request.method !== 'POST') return json(405, { error: 'method not allowed' });

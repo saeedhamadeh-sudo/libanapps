@@ -2224,6 +2224,20 @@ Object.assign(D,{
  wa_e_463:['واتساب رفض الرسالة: رقم المولد مقيّد مؤقتاً عن مراسلة أشخاص لم يراسلوه من قبل','WhatsApp refused: this customer has never chatted with the generator number (anti-spam)','WhatsApp refuse : ce client n’a jamais écrit à ce numéro (anti-spam)'],
  wa_e_463_stop:['أُوقف الإرسال: واتساب قيّد رقم المولد مؤقتاً عن مراسلة أشخاص لم يراسلوه من قبل. متابعة الإرسال تزيد خطر حظر الرقم.','Sending stopped: WhatsApp has temporarily restricted the generator number from messaging people who never chatted with it. Continuing risks a ban.','Envoi arrêté : WhatsApp a restreint temporairement ce numéro. Continuer risque un blocage.'],
  wa_e_rej:['واتساب رفض الرسالة','WhatsApp rejected the message','WhatsApp a refusé le message'],
+ wc_title:['واتساب الرسمي (WhatChimp)','Official WhatsApp (WhatChimp)','WhatsApp officiel (WhatChimp)'],
+ wc_hint:['الإرسال عبر WhatsApp Business API الرسمي من خلال WhatChimp: لا حظر، ولا يحتاج كمبيوتر المكتب. الفواتير والإيصالات والتذكيرات وأوامر العمل تُرسل عبر templates موافق عليها من Meta.\nأنشئ مفتاح API من WhatChimp: Settings ← Integrations ← API keys ← Create API key (صلاحيات: Send messages + Templates Read، القناة: مولد عين وزين)، ثم الصقه هنا. المفتاح يُحفظ على السيرفر ولا يظهر بعد الحفظ.','Sending through the official WhatsApp Business API via WhatChimp: no bans, no office computer needed. Bills, receipts, reminders and work orders go out as Meta-approved templates.\nCreate an API key in WhatChimp (Settings › Integrations › API keys › Create API key, access: Send messages + Templates Read) and paste it here. It is kept on the server and never shown again.','Envoi via l’API officielle WhatsApp Business (WhatChimp). Créez une clé API dans WhatChimp et collez-la ici ; elle reste sur le serveur.'],
+ wc_key:['مفتاح API','API key','Clé API'], wc_key_set:['محفوظ (ينتهي بـ {k})','Saved (ends with {k})','Enregistrée (…{k})'], wc_key_none:['غير محفوظ','Not saved','Aucune'],
+ wc_enable:['تفعيل الإرسال عبر واتساب الرسمي','Send through official WhatsApp','Envoyer via WhatsApp officiel'],
+ wc_tpls:['حالة الـ templates','Templates status','État des modèles'], wc_check:['فحص الـ templates','Check templates','Vérifier'],
+ wc_test:['إرسال تجربة إلى رقم','Send a test to a number','Envoyer un test'], wc_test_btn:['📤 إرسال تجربة','📤 Send test','📤 Tester'],
+ wc_st_APPROVED:['✅ موافق عليه','✅ Approved','✅ Approuvé'], wc_st_PENDING:['⏳ قيد المراجعة','⏳ In review','⏳ En revue'], wc_st_REJECTED:['❌ مرفوض','❌ Rejected','❌ Refusé'],
+ wc_missing:['غير موجود','Missing','Absent'], wc_need:['مطلوب للبرنامج','Needed by the app','Requis'],
+ wc_e_pending:['الـ template بعده غير موافق عليه من Meta','The template is not approved by Meta yet','Modèle pas encore approuvé'],
+ wc_e_off:['واتساب الرسمي غير مفعّل أو لا يوجد مفتاح API','Official WhatsApp is off or has no API key','WhatsApp officiel désactivé ou sans clé'],
+ wc_e_plan:['انتهت رسائل الشهر في باقة WhatChimp','The WhatChimp plan’s monthly messages are used up','Quota mensuel WhatChimp épuisé'], wc_e:['خطأ من WhatChimp','WhatChimp error','Erreur WhatChimp'],
+ wc_act_on:['وصل','Connect','Rebrancher'], wc_act_cut:['قطع','Cut','Couper'],
+ wc_batch_q:['إرسال {n} رسالة عبر واتساب الرسمي؟','Send {n} messages through official WhatsApp?','Envoyer {n} messages via WhatsApp officiel ?'],
+ wc_chip:['✅ واتساب الرسمي','✅ Official WhatsApp','✅ WhatsApp officiel'],
  wa_upd:['تحديث برنامج واتساب للمكتب متوفر','Office WhatsApp connector update available','Mise à jour du connecteur disponible'],
  wa_upd_hint:['نزّل الملف، وانسخ server.cjs الجديد فوق القديم في مجلد wa-connector، ثم سكّر نافذة واتساب السوداء وشغّل START-WHATSAPP.bat من جديد. الربط يبقى كما هو.','Download, copy the new server.cjs over the old one in wa-connector, close the black WhatsApp window and run START-WHATSAPP.bat again. The link stays.','Téléchargez, remplacez server.cjs, fermez la fenêtre noire et relancez START-WHATSAPP.bat.'],
  wa_download:['تنزيل برنامج واتساب للمكتب','Download office connector','Télécharger le connecteur'], wa_dl_short:['شغّل START-WHATSAPP.bat على هذا الكمبيوتر ثم اضغط «ربط»','Run START-WHATSAPP.bat on this computer, then press “Link”','Lancez START-WHATSAPP.bat puis « Lier »'],
@@ -2743,6 +2757,7 @@ VIEWS.unpaid=async function(main){
   function msg(r){ var cur=mainCur(), f=function(v){ return fmtN(v,cur==='LBP'?0:2)+' '+cur; }, b=r.bills||{}, ps=Object.keys(b).sort(), lines=[], names=[];
     if(n2(r.older_amt)>0.005){ lines.push(t('up_msg_older',{v:f(r.older_amt)})); names.push(t('due_older')); }
     ps.forEach(function(p){ lines.push(t('up_msg_bill',{m:monthName(p,true),v:f(b[p])})); names.push(monthName(p,true)); });
+    r._wc={name:r.name,count:fmtN(names.length,0),months:names.join(t('due_and')),total:f(r.balance),generator:SITE.name||''};
     var vars={'{المولد}':SITE.name||'','{الاسم}':r.name,'{العدد}':fmtN(names.length,0),'{الأشهر}':names.join(t('due_and')),'{الفواتير}':lines.join('\n'),'{المجموع}':f(r.balance)};
     return String(tpl||t('up_tpl_def')).replace(/\{(المولد|الاسم|العدد|الأشهر|الفواتير|المجموع)\}/g,function(k){ return vars[k]; }).replace(/\n{3,}/g,'\n\n').trim(); }
   function list(){ var k=normS(q); return rows.filter(function(r){ return !k||normS(r.name).indexOf(k)>=0||String(r.code)===k||normS(r.box)===k||normS(r.area).indexOf(k)>=0||normS(r.collector).indexOf(k)>=0; }); }
@@ -2768,7 +2783,7 @@ VIEWS.unpaid=async function(main){
       '<p style="font-size:11px"><b>'+esc(t('up_count'))+': '+esc(R.length-1)+' · '+esc(t('up_total'))+': '+esc(money(R.slice(1).reduce(function(a,r){ return a+n2(r[8]); },0)))+'</b></p>'); });
   if(isAdmin()){
     $('#upwa',main).addEventListener('click',function(){ waBatch($('#upbar',main),list().filter(function(r){ return r.mobile; }),async function(r){
-      try{ await waSendAuto(waNum(r.mobile_cc,r.mobile),waTag(msg(r))); return true; }catch(e){ return {name:r.name,err:waErr(e)}; } }); });
+      try{ if(wcOn()){ msg(r); await wcSend(r.mobile_cc,r.mobile,'payment_reminder',r._wc); } else await waSendAuto(waNum(r.mobile_cc,r.mobile),waTag(msg(r))); return true; }catch(e){ return {name:r.name,err:waErr(e)}; } }); });
     waPaint();
     var tx=$('#uptx',main); tx.value=tpl||t('up_tpl_def');
     function prev(){ var L=list(); $('#uptp',main).textContent=L.length?msg(L[0]):''; }
@@ -2780,7 +2795,7 @@ VIEWS.unpaid=async function(main){
       try{ var v=tx.value.trim()===t('up_tpl_def').trim()?'':tx.value; await call('motor_unpaid_msg_save',{p_msg:v}); tpl=v; toast(t('saved')); }catch(err){ toast(errText(err),'e'); } busy(b,false); });
     prev();
     $('#uptw',main).addEventListener('click',async function(e){ var b=e.target.closest('[data-uw]'); if(!b||b.disabled) return; var r=rows[+b.dataset.uw];
-      b.disabled=true; await openWa(r.mobile_cc,r.mobile,msg(r)); b.disabled=false; });
+      b.disabled=true; if(wcOn()){ msg(r); try{ await wcSend(r.mobile_cc,r.mobile,'payment_reminder',r._wc); toast('✅ '+t('wa_sent'),'s'); }catch(e){ toast(waErr(e),'e'); } } else await openWa(r.mobile_cc,r.mobile,msg(r)); b.disabled=false; });
   }
   paint();
 };
@@ -2809,13 +2824,16 @@ VIEWS.bills=async function(main){
   $('#bbatch',main).addEventListener('click',function(){
     var list=rows.filter(function(r){ return r.customer.mobile; });
     waBatch($('#bbar',main),list,async function(r){
-      try{ await waSendAuto(waNum(r.customer.mobile_cc,r.customer.mobile),waTag(dueText(r))); }catch(e){ return {name:r.customer.name,err:waErr(e)}; }
+      try{ if(wcOn()){ var a2=wcBillArgs({c:r.customer,inv:r.inv}); a2[1].balance=wcMoney(r.due&&r.due.balance!=null?r.due.balance:r.customer.balance); await wcSend(r.customer.mobile_cc,r.customer.mobile,a2[0],a2[1]); } else await waSendAuto(waNum(r.customer.mobile_cc,r.customer.mobile),waTag(dueText(r))); }catch(e){ return {name:r.customer.name,err:waErr(e)}; }
       try{ await call('motor_wa_mark',{p_kind:'inv',p_id:r.id}); }catch(e){} drop(r); return true; }); });
   waPaint();
   $('#btb',main).addEventListener('click',async function(e){
     var sb2=e.target.closest('[data-bs]'), mk=e.target.closest('[data-bm]'), vw=e.target.closest('[data-bv]');
     if(vw){ var rv=rows[+vw.dataset.bv]; modal(rv.customer.name,'<pre style="white-space:pre-wrap;font-family:inherit;margin:0">'+esc(dueText(rv))+'</pre>'); return; }
-    if(sb2&&!sb2.disabled){ var r=rows[+sb2.dataset.bs]; sb2.disabled=true; var okk=await openWa(r.customer.mobile_cc,r.customer.mobile,dueText(r));
+    if(sb2&&!sb2.disabled){ var r=rows[+sb2.dataset.bs]; sb2.disabled=true; var okk;
+      if(wcOn()){ var a3=wcBillArgs({c:r.customer,inv:r.inv}); a3[1].balance=wcMoney(r.due&&r.due.balance!=null?r.due.balance:r.customer.balance);
+        try{ await wcSend(r.customer.mobile_cc,r.customer.mobile,a3[0],a3[1]); toast('✅ '+t('wa_sent'),'s'); okk=true; }catch(e){ toast(waErr(e),'e'); okk=false; } }
+      else okk=await openWa(r.customer.mobile_cc,r.customer.mobile,dueText(r));
       if(!okk){ sb2.disabled=false; return; }
       try{ await call('motor_wa_mark',{p_kind:'inv',p_id:r.id}); }catch(err){} drop(r); return; }
     if(mk){ var r2=rows[+mk.dataset.bm]; try{ await call('motor_wa_mark',{p_kind:'inv',p_id:r2.id}); drop(r2); }catch(err){ toast(errText(err),'e'); } }
@@ -3107,13 +3125,15 @@ async function openCustomer(id,barcode,mode){
     $('#swgo',box).addEventListener('click',async function(){
       if(!(await confirmBox(t(on?'confirm_connect':'confirm_cut',{n:c.name})))) return;
       var sel=$('#sws',box), sf=sel&&sel.value?team.filter(function(s){return s.id===sel.value})[0]:null;
-      var win=sf?window.open('about:blank','_blank'):null;
+      var win=sf&&!wcOn()?window.open('about:blank','_blank'):null;
       if(sel) lsSet('motor_sw_staff',sel.value);
       var note=$('#swn',box).value;
       var btn=this; busy(btn,true); var g=await quickGeo();
       try{ await call('motor_set_active',{p_customer:c.id,p_active:on,p_note:note+(sf?(note?' — ':'')+'📲 '+sf.name:''),p_lat:g?g.lat:null,p_lng:g?g.lng:null});
         toast(t(on?'connect_done':'cut_done'),'s');
-        if(sf){ var loc=(c.lat!=null&&c.lng!=null)?'\n📍 https://maps.google.com/?q='+c.lat+','+c.lng:'';
+        if(sf&&wcOn()){ wcSend('961',sf.phone,'work_order',{action:t(on?'wc_act_on':'wc_act_cut'),name:c.name,customer_no:String(c.code),box:c.box||'—',area:c.area||'—',note:note||'—'})
+            .then(function(){ toast('✅ '+t('wa_sent'),'s'); }).catch(function(e){ toast(waErr(e),'e'); }); }
+        else if(sf){ var loc=(c.lat!=null&&c.lng!=null)?'\n📍 https://maps.google.com/?q='+c.lat+','+c.lng:'';
           openWa('961',sf.phone,t(on?'sw_msg_on':'sw_msg_cut',{s:SITE.name||'',w:sf.name,n:c.name,k:c.code,b:c.box||'—',a:c.area||'—',m:c.meter_no||'—',r:note||'—'})+loc+'\n'+t('by')+': '+(ME.name||''),win); }
         await reload(); paint(); }
       catch(e){ if(win) win.close(); $('#swmsg',box).textContent=errText(e); busy(btn,false); }
@@ -3322,7 +3342,7 @@ async function waRefresh(){
   waPaint(); return WAC;
 }
 function waStartPoll(){ if(WAC_T) return; WAC_T=setInterval(function(){ if(!ME||!ME.is_admin||!waKey()) return; waRefresh(); },WAC.status==='connected'?30000:4000); }
-function waChip(){ var s=WAC.status;
+function waChip(){ if(wcOn()) return '<span class="chip on">'+esc(t('wc_chip'))+'</span>'; var s=WAC.status;
   return s==='connected'?'<span class="chip on">✅ '+esc(t('wa_linked'))+(WAC.me?' · +'+esc(WAC.me.id):'')+'</span>'+
       (WAC.ver<4?' <a class="chip warn" href="/downloads/libanapps-whatsapp.zip" download title="'+esc(t('wa_upd_hint'))+'">⬆️ '+esc(t('wa_upd'))+'</a>':''):
     s==='qr'?'<span class="chip warn">📱 '+esc(t('wa_scan'))+'</span>':
@@ -3332,7 +3352,7 @@ function waChip(){ var s=WAC.status;
 function waPaint(){
   $$('[data-wachip]').forEach(function(el){ el.innerHTML=waChip(); });
   $$('[data-waqr]').forEach(function(el){ if(WAC.status==='qr'&&WAC.qr){ if(el.dataset.q!==WAC.qr){ el.dataset.q=WAC.qr; el.innerHTML='<div style="background:#fff;padding:10px;border-radius:12px;display:inline-block">'+qrSvg(WAC.qr)+'</div><p class="muted">'+esc(t('wa_scan_hint'))+'</p>'; } } else { el.dataset.q=''; el.innerHTML=''; } });
-  $$('[data-waon]').forEach(function(el){ el.classList.toggle('hidden',WAC.status!=='connected'); });
+  $$('[data-waon]').forEach(function(el){ el.classList.toggle('hidden',WAC.status!=='connected'&&!wcOn()); });
 }
 function waPair(){
   var w=window.open(waUrl()+'/pair','lawa','width=460,height=360');
@@ -3367,7 +3387,10 @@ async function waSendAuto(num,text,doc){
   return r;
 }
 var WA_LOCK=false;
-function waErr(e){ var c=e&&e.code; if(c==='wa_463') WA_LOCK=true; return c==='wa_463'?t('wa_e_463'):c==='rejected'?t('wa_e_rej'):c==='not_on_whatsapp'?t('wa_e_nowa'):c==='not_connected'?t('wa_down'):c==='bad_number'?t('no_mobile'):(e&&e.message||''); }
+function wcErr(e){ var c=String(e.code||'').slice(3);
+  return c==='template_not_approved'?t('wc_e_pending'):c==='wc_no_key'||c==='wc_off'?t('wc_e_off'):c==='plan_limit'?t('wc_e_plan'):c==='contact_has_no_number'||c==='bad_fields'?t('no_mobile'):
+    (t('wc_e')+': '+(e.message||c)); }
+function waErr(e){ var c=e&&e.code; if(c&&String(c).indexOf('wc:')===0) return wcErr(e); if(c==='wa_463') WA_LOCK=true; return c==='wa_463'?t('wa_e_463'):c==='rejected'?t('wa_e_rej'):c==='not_on_whatsapp'?t('wa_e_nowa'):c==='not_connected'?t('wa_down'):c==='bad_number'?t('no_mobile'):(e&&e.message||''); }
 function waNum(cc,mobile){ var num=String(mobile||'').replace(/\D/g,''); if(!num) return ''; cc=String(cc||'961').replace(/\D/g,'');
   if(num.indexOf('00')===0) num=num.slice(2); else if(!(num.indexOf(cc)===0&&num.length>9)) num=cc+num.replace(/^0+/,''); return num; }
 
@@ -3726,6 +3749,52 @@ function shrink(file,max){ return new Promise(function(res,rej){
     var cx=cv.getContext('2d'); cx.fillStyle='#fff'; cx.fillRect(0,0,cv.width,cv.height); cx.drawImage(img,0,0,cv.width,cv.height); URL.revokeObjectURL(u); cv.toBlob(function(b){ b?res(b):rej(new Error('image')); },'image/jpeg',0.72); };
   img.onerror=function(){ rej(new Error('image')); }; img.src=u; }); }
 function blobToB64(b){ return new Promise(function(res,rej){ var r=new FileReader(); r.onload=function(){ res(String(r.result).split(',')[1]); }; r.onerror=rej; r.readAsDataURL(b); }); }
+/* ---------- واتساب الرسمي (WhatChimp) — الإرسال عبر templates موافق عليها من Meta ---------- */
+function wcOn(){ return !!(SITE&&SITE.wc_on)&&isAdmin(); }
+async function wcApi(body){
+  var h={'Content-Type':'application/json'};
+  if(!TOKEN){ try{ var s=await sb.auth.getSession(); if(s.data.session) h.Authorization='Bearer '+s.data.session.access_token; }catch(e){} }
+  var r; try{ r=await fetch('/api/motor-wa',{method:'POST',headers:h,body:JSON.stringify(Object.assign({slug:SLUG,token:TOKEN||''},body))}); }
+  catch(e){ var ne=new Error(t('e_network')); ne.code='network'; throw ne; }
+  var j={}; try{ j=await r.json(); }catch(e){}
+  if(!r.ok||!j.ok){ var er=new Error(j.message||j.error||('HTTP '+r.status)); er.code='wc:'+(j.error||r.status); throw er; }
+  return j;
+}
+function wcSend(cc,mobile,template,values,test){ var n=waNum(cc,mobile); if(!n){ var e=new Error(t('no_mobile')); e.code='bad_number'; return Promise.reject(e); }
+  return wcApi({op:'send',to:n,template:template,values:values,test:!!test}); }
+function wcMoney(v){ var c=mainCur(); return fmtN(v,c==='LBP'?0:2)+' '+c; }
+// قيم template الفاتورة/الإيصال من نفس بيانات الطباعة
+function wcBillArgs(o){
+  if(o.pay) return ['payment_receipt',{name:o.c.name,amount:wcMoney(o.pay.amount),date:ymd(o.pay.created_at),receipt:String(o.pay.no),balance:wcMoney(o.pay.balance_after),generator:SITE.name||''}];
+  var i=o.inv||{}, m=i.kind==='meter';
+  return ['bill_notice',{generator:SITE.name||'',name:o.c.name,month:i.period?monthName(i.period,true):'—',prev:m?fmtN(i.prev_value):'—',cur:m?fmtN(i.cur_value):'—',
+    amount:wcMoney(i.amount),balance:wcMoney(o.c.balance!=null?o.c.balance:i.balance_after)}];
+}
+var WC_TPLS=['bill_notice','payment_receipt','payment_reminder','work_order','service_status'];
+async function wcCard(box){
+  var st={on:false,has_key:false,key4:''}; try{ st=await call('motor_wc_status'); }catch(e){}
+  box.innerHTML='<h3>🟢 '+esc(t('wc_title'))+'</h3><p class="muted" style="white-space:pre-line;margin-top:0">'+esc(t('wc_hint'))+'</p>'+
+    '<div class="g2"><div><label>'+esc(t('wc_key'))+' — <span class="muted">'+esc(st.has_key?t('wc_key_set',{k:st.key4}):t('wc_key_none'))+'</span></label>'+
+    '<input id="wck" type="password" autocomplete="off" placeholder="wc_live_…"></div>'+
+    '<div style="display:flex;align-items:flex-end"><label class="chk"><input type="checkbox" id="wco"'+(st.on?' checked':'')+'> '+esc(t('wc_enable'))+'</label></div></div>'+
+    '<div class="row" style="margin-top:8px;gap:8px;flex-wrap:wrap"><button class="btn" id="wcs">💾 '+esc(t('save'))+'</button><button class="btn ghost" id="wcc">'+esc(t('wc_check'))+'</button></div>'+
+    '<div id="wct" style="margin-top:10px"></div>'+
+    '<div class="g2" style="margin-top:10px"><div><label>'+esc(t('wc_test'))+'</label><input id="wcn" inputmode="tel" placeholder="03xxxxxx"></div>'+
+    '<div style="display:flex;align-items:flex-end"><button class="btn alt" id="wcx">'+esc(t('wc_test_btn'))+'</button></div></div><div id="wcm" class="msg" style="margin-top:6px"></div>';
+  $('#wcs',box).addEventListener('click',async function(){ var b=this; busy(b,true,t('saving'));
+    try{ var r=await call('motor_wc_save',{p_key:$('#wck',box).value.trim()||null,p_on:$('#wco',box).checked}); SITE.wc_on=!!r.on; $('#wck',box).value=''; toast(t('saved'),'s'); wcCard(box); waPaint(); }
+    catch(e){ toast(errText(e),'e'); busy(b,false); } });
+  $('#wcc',box).addEventListener('click',async function(){ var b=this, out=$('#wct',box); busy(b,true);
+    try{ var j=await wcApi({op:'templates'}), L=j.data||j.templates||j.items||[], by={};
+      L.forEach(function(x){ var n=x.name, s=String(x.status||'').toUpperCase(); if(!by[n]||s==='APPROVED') by[n]=s; });
+      out.innerHTML='<b>'+esc(t('wc_tpls'))+'</b><div class="tw"><table><tbody>'+WC_TPLS.map(function(n){ var s=by[n];
+        return '<tr><td><code>'+esc(n)+'</code></td><td>'+(s?esc(t('wc_st_'+s)||s):'<span class="chip off">'+esc(t('wc_missing'))+'</span>')+'</td></tr>'; }).join('')+'</tbody></table></div>'; }
+    catch(e){ out.innerHTML='<div class="err">'+esc(waErr(e))+'</div>'; } busy(b,false); });
+  $('#wcx',box).addEventListener('click',async function(){ var b=this, m=$('#wcm',box); m.className='msg'; m.textContent=''; busy(b,true);
+    try{ await wcSend('961',$('#wcn',box).value,'payment_receipt',{name:ME.name||'Test',amount:wcMoney(1),date:TODAY,receipt:'0',balance:wcMoney(0),generator:SITE.name||''},true);
+      m.className='okmsg'; m.textContent='✅ '+t('wa_sent'); }
+    catch(e){ m.className='err msg'; m.textContent=waErr(e); } busy(b,false); });
+}
 async function uploadPhoto(blob,kind){
   var b64=await blobToB64(blob), h={'Content-Type':'application/json'};
   if(!TOKEN){ try{ var s=await sb.auth.getSession(); if(s.data.session) h.Authorization='Bearer '+s.data.session.access_token; }catch(e){} }
@@ -4471,7 +4540,7 @@ VIEWS.settings=async function(main){
     '<div class="g2" style="margin-top:8px"><div><label>'+esc(t('ble_chunk'))+'</label><input id="blech" inputmode="numeric" value="'+esc(lsGet('motor_ble_chunk','100'))+'"></div><div><label>'+esc(t('ble_delay'))+'</label><input id="bledl" inputmode="numeric" value="'+esc(lsGet('motor_ble_delay','20'))+'"></div></div>'+
     '<p class="muted">'+esc(t('ble_hint'))+'</p></div>'+
     '<p class="muted" id="rawhint">'+esc(t('rawbt_hint'))+'</p><button class="btn alt" id="ptest">'+esc(t('test_print'))+'</button>'+
-    '</div>'+(adm?'<div id="swa2">'+waCard(true)+'</div>':'')+lblCard()+
+    '</div>'+(adm&&ME.is_main?'<div class="card" id="swc"></div>':'')+(adm?'<div id="swa2">'+waCard(true)+'</div>':'')+lblCard()+
     (adm?'<div class="card"><h3>📥 '+esc(t('old_prog'))+'</h3><p class="muted" style="margin-top:0">'+esc(t('old_prog_hint'))+'</p><div class="row">'+
       '<button class="btn acc" id="cprevpdf">📄 '+esc(t('prev_pdf'))+'</button><button class="btn acc" id="cinvimp">🧾 '+esc(t('inv_imp'))+'</button><button class="btn acc" id="cstimp">📑 '+esc(t('st_imp'))+'</button></div></div>':'')+
     (adm?'<div class="card"><button class="btn" id="bkn">'+esc(t('backup_now'))+'</button></div>':'');
@@ -4501,6 +4570,7 @@ VIEWS.settings=async function(main){
   $('#blech',main).addEventListener('change',function(){ lsSet('motor_ble_chunk',this.value); });
   lblBind(main);
   if($('#swa2',main)){ waBind($('#swa2',main)); if(waKey()){ waRefresh(); waStartPoll(); } }
+  if($('#swc',main)) wcCard($('#swc',main));
   if($('#cprevpdf',main)) $('#cprevpdf',main).addEventListener('click',prevPdfDialog);
   if($('#cinvimp',main)) $('#cinvimp',main).addEventListener('click',invImportDialog);
   if($('#cstimp',main)) $('#cstimp',main).addEventListener('click',stmtImportDialog);
@@ -4591,6 +4661,10 @@ function downloadBlob(blob,name){ var a=document.createElement('a'); a.href=URL.
 async function sendBillWa(o,after,quiet){
   var num=String(o.c.mobile||'').replace(/\D/g,''); if(!num){ if(!quiet) toast(t('no_mobile'),'e'); return false; }
   var k0=o.pay?'pay':'inv', id0=o.pay?o.pay.id:(o.inv&&o.inv.id);
+  if(wcOn()){ var a=wcBillArgs(o);
+    try{ await wcSend(o.c.mobile_cc,o.c.mobile,a[0],a[1]); if(id0) await call('motor_wa_mark',{p_kind:k0,p_id:id0}).catch(function(){});
+      if(!quiet) toast('✅ '+t('wa_sent'),'s'); after&&after(); return true; }
+    catch(e){ if(!quiet) toast(waErr(e),'e'); return false; } }
   if(waAuto()){
     var docUrl=null;
     try{ var cv0=await renderTicket(billTicket(o)); var path0=await uploadPhoto(canvasToPdf(cv0),'pdf'); docUrl=location.origin+path0; }catch(e){}
@@ -4615,10 +4689,10 @@ async function sendBillWa(o,after,quiet){
 function waBatchBar(id){ return '<div class="card hidden" id="'+id+'"><div class="row"><b data-bt></b><span class="sp"></span><button class="btn danger sm" data-bstop>'+esc(t('wa_stop'))+'</button></div><div class="pbar" style="margin-top:8px"><i data-bp></i></div><div class="hidden wa-wait" data-bw style="margin-top:6px;font-size:13px;color:var(--mut,#667)"></div><div class="muted" data-bl style="margin-top:6px;max-height:120px;overflow:auto;font-size:12px"></div></div>'; }
 var WA_BATCH_ON=false;
 async function waBatch(box,items,sendOne,onDone){
-  if(!waAuto()){ toast(t('wa_need_link'),'e'); return; }
-  var list=items.slice(0,50); if(!list.length) return;
+  if(!waAuto()&&!wcOn()){ toast(t('wa_need_link'),'e'); return; }
+  var list=items.slice(0,wcOn()?500:50); if(!list.length) return;
   if(WA_BATCH_ON){ toast(t('wa_batch_busy'),'e'); return; }
-  if(!(await confirmBox(t('wa_batch_q',{n:list.length,m:Math.ceil(list.length*3)})))) return;
+  if(!(await confirmBox(wcOn()?t('wc_batch_q',{n:list.length}):t('wa_batch_q',{n:list.length,m:Math.ceil(list.length*3)})))) return;
   var stop=false, ok=0, bad=0; box.classList.remove('hidden'); WA_BATCH_ON=true;
   var sb=$('[data-bstop]',box); sb.onclick=function(){ stop=true; sb.disabled=true; };
   sb.disabled=false;
@@ -4628,7 +4702,7 @@ async function waBatch(box,items,sendOne,onDone){
   try{
     for(var i=0;i<list.length&&!stop;i++){
       if(i>0){ // فترة عشوائية بين كل رسالتين (45 ثانية إلى 3 دقائق) ضد الحظر — بلا عدّاد ظاهر
-        var wait=45000+Math.floor(Math.random()*135001), until=Date.now()+wait;
+        var wait=wcOn()?1500:45000+Math.floor(Math.random()*135001), until=Date.now()+wait;
         $('[data-bw]',box).textContent=t('wa_batch_wait'); $('[data-bw]',box).classList.remove('hidden');
         while(!stop&&Date.now()<until) await new Promise(function(r){ setTimeout(r,1000); });
         $('[data-bw]',box).classList.add('hidden');
