@@ -96,13 +96,10 @@ async function send(b) {
     }
     let a = await trySend(r.jid);
     if (a.st === 0) {
-      // 463 = واتساب بدو «tctoken» للأرقام يلّي ما في محادثة معها — منجرّب على عنوان LID تبع الزبون
-      logLine('X ' + num + ' - rejected by WhatsApp' + (a.code ? ' (code ' + a.code + ')' : '') + ' - retrying via LID');
-      let lid = r.lid || null;
-      try { if (!lid && sock.signalRepository && sock.signalRepository.lidMapping && sock.signalRepository.lidMapping.getLIDForPN) lid = await sock.signalRepository.lidMapping.getLIDForPN(r.jid); } catch (e) {}
-      if (lid) { if (!/@/.test(lid)) lid = lid + '@lid'; a = await trySend(lid); }
-      if (a.st === 0 || !lid) { logLine('X ' + num + ' - FAILED' + (a.code ? ' (code ' + a.code + ')' : '') + (a.code === '463' ? ' - WhatsApp blocks first messages to numbers that never chatted with you' : ''));
-        throw err(a.code === '463' ? 'wa_463' : 'rejected'); }
+      // 463 = واتساب قافل الرقم مؤقتاً عن مراسلة ناس ما راسلوه قبل. إعادة المحاولة بتزيد الحظر — ما منعيد.
+      logLine('X ' + num + ' - REJECTED by WhatsApp' + (a.code ? ' (code ' + a.code + ')' : '') +
+        (a.code === '463' ? ' - this number is temporarily locked from messaging people who never chatted with it' : ''));
+      throw err(a.code === '463' ? 'wa_463' : 'rejected');
     }
     S.sent++; logLine((a.st >= 2 ? 'OK ' : '.. ') + num + (a.st >= 3 ? ' - delivered' : a.st === 2 ? ' - sent' : ' - sent (no confirmation yet)'));
     return { ok: true, id: a.id, to: num, status: a.st };
@@ -131,7 +128,7 @@ http.createServer(async (req, res) => {
   if (p === '/') return reply(req, res, 200, '<!doctype html><meta charset="utf-8"><body style="font-family:Tahoma;padding:30px"><h2>LibanApps — WhatsApp</h2><p>الحالة: <b>' + S.status + '</b>' + (S.me ? ' — ' + S.me.id : '') + '</p><p>شغّال. اربط من إعدادات البرنامج.</p>', 'text/html; charset=utf-8');
   if (req.headers['x-key'] !== cfg.key) return reply(req, res, 401, { ok: false, error: 'bad_key' });
   try {
-    if (p === '/status') return reply(req, res, 200, { ok: true, status: S.status, qr: S.qr, me: S.me, sent: S.sent, version: 3 });
+    if (p === '/status') return reply(req, res, 200, { ok: true, status: S.status, qr: S.qr, me: S.me, sent: S.sent, version: 4 });
     if (p === '/logout' && req.method === 'POST') { try { await sock.logout(); } catch (e) {} try { fs.rmSync(AUTH, { recursive: true, force: true }); } catch (e) {} S.status = 'starting'; S.me = null; setTimeout(start, 1000); return reply(req, res, 200, { ok: true }); }
     if (p === '/send' && req.method === 'POST') { const r = await send(await body(req)); return reply(req, res, 200, r); }
     return reply(req, res, 404, { ok: false, error: 'not_found' });
