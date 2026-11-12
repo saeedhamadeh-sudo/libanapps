@@ -29,6 +29,8 @@ cfg.maxGapMs = cfg.maxGapMs || 7000;
 fs.writeFileSync(CFG, JSON.stringify(cfg, null, 2));
 
 let sock = null, starting = false;
+const ACKS = new Map(), LOG = path.join(__dirname, 'sent.log');
+function logLine(s) { const l = new Date().toLocaleString('en-GB') + '  ' + s; console.log(l); try { fs.appendFileSync(LOG, l + '\n'); } catch (e) {} }
 const S = { status: 'starting', qr: null, me: null, sent: 0, lastError: null };
 
 async function start() {
@@ -42,6 +44,9 @@ async function start() {
     sock = makeWASocket({ auth, version, logger, browser: Browsers ? Browsers.windows('LibanApps') : ['LibanApps', 'Chrome', '1.0'],
       printQRInTerminal: false, markOnlineOnConnect: false, syncFullHistory: false, getMessage: async () => undefined });
     sock.ev.on('creds.update', saveCreds);
+    // تأكيد وصول الرسالة لسيرفر واتساب (status 2) أو للزبون (3) أو قراءتها (4)
+    sock.ev.on('messages.update', (ups) => { for (const u of ups || []) { const id = u.key && u.key.id, st = u.update && u.update.status;
+      if (id && st != null && ACKS.has(id)) ACKS.get(id)(st); } });
     sock.ev.on('connection.update', (u) => {
       if (u.qr) { S.qr = u.qr; S.status = 'qr'; console.log('📱 امسح رمز QR من إعدادات البرنامج (واتساب ← الأجهزة المرتبطة)'); }
       if (u.connection === 'open') { S.status = 'connected'; S.qr = null; S.me = sock.user ? { id: sock.user.id.split(':')[0].split('@')[0], name: sock.user.name || '' } : null;
@@ -73,7 +78,7 @@ async function send(b) {
   const text = String(b.text || '').slice(0, 6000);
   return queue(async () => {
     const r = (await sock.onWhatsApp(num))[0];
-    if (!r || !r.exists) throw err('not_on_whatsapp');
+    if (!r || !r.exists) { logLine('✗ ' + num + ' — الرقم مش على واتساب'); throw err('not_on_whatsapp'); }
     let m;
     if (b.doc_url && /^https:\/\//.test(b.doc_url)) {
       const res = await fetch(b.doc_url); if (!res.ok) throw err('doc_fetch');
@@ -83,7 +88,13 @@ async function send(b) {
       if (!text) throw err('empty');
       m = await sock.sendMessage(r.jid, { text });
     }
-    S.sent++; return { ok: true, id: m && m.key && m.key.id, to: num };
+    const id = m && m.key && m.key.id;
+    // منستنّى تأكيد سيرفر واتساب (لحد 20 ثانية) حتى ما نقول «انبعتت» وهي ما طلعت
+    const st = id ? await new Promise((ok) => { const tm = setTimeout(() => { ACKS.delete(id); ok(null); }, 20000);
+      ACKS.set(id, (v) => { if (v >= 2 || v === 0) { clearTimeout(tm); ACKS.delete(id); ok(v); } }); }) : null;
+    if (st === 0) { logLine('✗ ' + num + ' — واتساب رفض الرسالة'); throw err('rejected'); }
+    S.sent++; logLine((st >= 2 ? '✓ ' : '… ') + num + (st >= 3 ? ' — وصلت' : st === 2 ? ' — انبعتت' : ' — انبعتت (بلا تأكيد بعد)'));
+    return { ok: true, id, to: num, status: st };
   });
 }
 
@@ -109,11 +120,12 @@ http.createServer(async (req, res) => {
   if (p === '/') return reply(req, res, 200, '<!doctype html><meta charset="utf-8"><body style="font-family:Tahoma;padding:30px"><h2>LibanApps — WhatsApp</h2><p>الحالة: <b>' + S.status + '</b>' + (S.me ? ' — ' + S.me.id : '') + '</p><p>شغّال. اربط من إعدادات البرنامج.</p>', 'text/html; charset=utf-8');
   if (req.headers['x-key'] !== cfg.key) return reply(req, res, 401, { ok: false, error: 'bad_key' });
   try {
-    if (p === '/status') return reply(req, res, 200, { ok: true, status: S.status, qr: S.qr, me: S.me, sent: S.sent, version: 1 });
+    if (p === '/status') return reply(req, res, 200, { ok: true, status: S.status, qr: S.qr, me: S.me, sent: S.sent, version: 2 });
     if (p === '/logout' && req.method === 'POST') { try { await sock.logout(); } catch (e) {} try { fs.rmSync(AUTH, { recursive: true, force: true }); } catch (e) {} S.status = 'starting'; S.me = null; setTimeout(start, 1000); return reply(req, res, 200, { ok: true }); }
     if (p === '/send' && req.method === 'POST') { const r = await send(await body(req)); return reply(req, res, 200, r); }
     return reply(req, res, 404, { ok: false, error: 'not_found' });
-  } catch (e) { S.lastError = e.code || String(e.message || e); return reply(req, res, e.code === 'not_connected' ? 409 : 400, { ok: false, error: e.code || String(e.message || e) }); }
+  } catch (e) { S.lastError = e.code || String(e.message || e); if (p === '/send') logLine('✗ خطأ إرسال: ' + S.lastError);
+    return reply(req, res, e.code === 'not_connected' ? 409 : 400, { ok: false, error: e.code || String(e.message || e) }); }
 }).listen(cfg.port, '127.0.0.1', () => {
   console.log('LibanApps WhatsApp connector — http://127.0.0.1:' + cfg.port);
   console.log('خلّي هالشباك مفتوح. افتح البرنامج ← الإعدادات ← ربط واتساب.');

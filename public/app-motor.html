@@ -2210,6 +2210,8 @@ Object.assign(D,{
  wa_pair_fail:['ما وصل رد من برنامج واتساب — تأكد إنو START-WHATSAPP شغّال على هذا الكمبيوتر واسمح للمتصفح بالوصول للشبكة المحلية','No reply from the connector — make sure START-WHATSAPP is running on this computer and allow local network access','Pas de réponse du connecteur'],
  wa_scan_hint:['واتساب على التلفون ← الإعدادات ← الأجهزة المرتبطة ← ربط جهاز','Phone WhatsApp → Settings → Linked devices → Link a device','WhatsApp → Appareils connectés → Connecter'],
  wac_hint:['حتى يبعت البرنامج رسائل واتساب لحالو (بلا ما يفتح صفحة واتساب):\n1) نزّل «برنامج واتساب للمكتب» وشغّل START-WHATSAPP.bat على كمبيوتر المكتب (يلزمه Node.js).\n2) اضغط «ربط مع برنامج واتساب» وامسح رمز QR من تلفونك.\nبعدها أي كبسة واتساب بالبرنامج بتبعت مباشرة، والإرسال الجماعي بيصير 50 رسالة بالدفعة.','To let the program send WhatsApp messages by itself:\n1) Download the office WhatsApp connector and run START-WHATSAPP.bat on the office computer (needs Node.js).\n2) Press “Link” and scan the QR with your phone.\nThen every WhatsApp button sends directly, and bulk sending goes 50 at a time.','Pour envoyer automatiquement : lancez le connecteur au bureau puis liez et scannez le QR.'],
+ wa_upd:['تحديث برنامج واتساب للمكتب متوفر','Office WhatsApp connector update available','Mise à jour du connecteur disponible'],
+ wa_upd_hint:['نزّل الملف، وانسخ server.cjs الجديد فوق القديم في مجلد wa-connector، ثم سكّر نافذة واتساب السوداء وشغّل START-WHATSAPP.bat من جديد. الربط يبقى كما هو.','Download, copy the new server.cjs over the old one in wa-connector, close the black WhatsApp window and run START-WHATSAPP.bat again. The link stays.','Téléchargez, remplacez server.cjs, fermez la fenêtre noire et relancez START-WHATSAPP.bat.'],
  wa_download:['تنزيل برنامج واتساب للمكتب','Download office connector','Télécharger le connecteur'], wa_dl_short:['شغّل START-WHATSAPP.bat على هذا الكمبيوتر ثم اضغط «ربط»','Run START-WHATSAPP.bat on this computer, then press “Link”','Lancez START-WHATSAPP.bat puis « Lier »'],
  wa_adv:['إعدادات متقدمة','Advanced','Avancé'],
  wa_url:['عنوان البرنامج','Connector address','Adresse'], wa_key:['مفتاح الربط','Link key','Clé'],
@@ -3299,13 +3301,14 @@ async function waApi(path,body){
 }
 async function waRefresh(){
   if(!waKey()){ WAC={status:'off',me:null,qr:null,err:''}; waPaint(); return WAC; }
-  try{ var j=await waApi('/status'); WAC={status:j.status,me:j.me,qr:j.qr,err:''}; }
+  try{ var j=await waApi('/status'); WAC={status:j.status,me:j.me,qr:j.qr,err:'',ver:j.version||1}; }
   catch(e){ WAC={status:e.code==='bad_key'?'badkey':'down',me:null,qr:null,err:e.message}; }
   waPaint(); return WAC;
 }
 function waStartPoll(){ if(WAC_T) return; WAC_T=setInterval(function(){ if(!ME||!ME.is_admin||!waKey()) return; waRefresh(); },WAC.status==='connected'?30000:4000); }
 function waChip(){ var s=WAC.status;
-  return s==='connected'?'<span class="chip on">✅ '+esc(t('wa_linked'))+(WAC.me?' · +'+esc(WAC.me.id):'')+'</span>':
+  return s==='connected'?'<span class="chip on">✅ '+esc(t('wa_linked'))+(WAC.me?' · +'+esc(WAC.me.id):'')+'</span>'+
+      (WAC.ver<2?' <a class="chip warn" href="/downloads/libanapps-whatsapp.zip" download title="'+esc(t('wa_upd_hint'))+'">⬆️ '+esc(t('wa_upd'))+'</a>':''):
     s==='qr'?'<span class="chip warn">📱 '+esc(t('wa_scan'))+'</span>':
     s==='off'?'<span class="chip gray">'+esc(t('wa_off'))+'</span>':
     s==='badkey'?'<span class="chip off">'+esc(t('wa_badkey'))+'</span>':
