@@ -676,10 +676,15 @@ begin
     using errcode = 'P0001';
 end $$;
 
--- دورة الفوترة تلقائية: من 26 الشهر لآخره = هالشهر، ومن 1 لـ 25 = الشهر الماضي (قراءات متأخرة)
+-- يوم بداية أخذ العداد: 26، وبشهر شباط 23 (3 أيام زيادة لأنو الشهر قصير)
+create or replace function public._motor_read_start(d date)
+returns integer language sql immutable as $$
+  select case when extract(month from d) = 2 then 23 else 26 end;
+$$;
+-- دورة الفوترة تلقائية: من يوم البداية لآخر الشهر = هالشهر، وقبلها = الشهر الماضي (قراءات متأخرة)
 create or replace function public._motor_period(d date)
 returns text language sql immutable as $$
-  select to_char(case when extract(day from d) >= 26 then d else (d - interval '1 month')::date end, 'YYYY-MM');
+  select to_char(case when extract(day from d) >= public._motor_read_start(d) then d else (d - interval '1 month')::date end, 'YYYY-MM');
 $$;
 
 create or replace function public._motor_who(p_slug text, p_token text)

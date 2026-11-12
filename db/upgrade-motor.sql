@@ -675,10 +675,15 @@ begin
     using errcode = 'P0001';
 end $$;
 
--- دورة الفوترة تلقائية: من 26 الشهر لآخره = هالشهر، ومن 1 لـ 25 = الشهر الماضي (قراءات متأخرة)
+-- يوم بداية أخذ العداد: 26، وبشهر شباط 23 (3 أيام زيادة لأنو الشهر قصير)
+create or replace function public._motor_read_start(d date)
+returns integer language sql immutable as $$
+  select case when extract(month from d) = 2 then 23 else 26 end;
+$$;
+-- دورة الفوترة تلقائية: من يوم البداية لآخر الشهر = هالشهر، وقبلها = الشهر الماضي (قراءات متأخرة)
 create or replace function public._motor_period(d date)
 returns text language sql immutable as $$
-  select to_char(case when extract(day from d) >= 26 then d else (d - interval '1 month')::date end, 'YYYY-MM');
+  select to_char(case when extract(day from d) >= public._motor_read_start(d) then d else (d - interval '1 month')::date end, 'YYYY-MM');
 $$;
 
 create or replace function public._motor_who(p_slug text, p_token text)
@@ -1332,9 +1337,9 @@ begin
     if not st.collector_sees_all and c.collector_id is distinct from (w->>'staff_id')::uuid then
       perform public._motor_err('forbidden');
     end if;
-    -- فترة أخذ العداد ثابتة: من 26 لآخر يوم بالشهر (شباط 28 أو 29)
-    if extract(day from today) < 26 then
-      perform public._motor_err('out_of_window', to_char(today, 'YYYY-MM') || '-26');
+    -- فترة أخذ العداد ثابتة: من 26 لآخر يوم بالشهر، وبشباط من 23
+    if extract(day from today) < public._motor_read_start(today) then
+      perform public._motor_err('out_of_window', to_char(today, 'YYYY-MM') || '-' || public._motor_read_start(today));
     end if;
   end if;
   if not c.is_active then perform public._motor_err('customer_inactive'); end if;

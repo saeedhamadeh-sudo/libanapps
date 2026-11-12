@@ -515,9 +515,9 @@ begin
     if not st.collector_sees_all and c.collector_id is distinct from (w->>'staff_id')::uuid then
       perform public._motor_err('forbidden');
     end if;
-    -- فترة أخذ العداد ثابتة: من 26 لآخر يوم بالشهر (شباط 28 أو 29)
-    if extract(day from today) < 26 then
-      perform public._motor_err('out_of_window', to_char(today, 'YYYY-MM') || '-26');
+    -- فترة أخذ العداد ثابتة: من 26 لآخر يوم بالشهر، وبشباط من 23
+    if extract(day from today) < public._motor_read_start(today) then
+      perform public._motor_err('out_of_window', to_char(today, 'YYYY-MM') || '-' || public._motor_read_start(today));
     end if;
   end if;
   if not c.is_active then perform public._motor_err('customer_inactive'); end if;
