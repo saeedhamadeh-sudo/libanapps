@@ -2210,6 +2210,8 @@ Object.assign(D,{
  wa_pair_fail:['ما وصل رد من برنامج واتساب — تأكد إنو START-WHATSAPP شغّال على هذا الكمبيوتر واسمح للمتصفح بالوصول للشبكة المحلية','No reply from the connector — make sure START-WHATSAPP is running on this computer and allow local network access','Pas de réponse du connecteur'],
  wa_scan_hint:['واتساب على التلفون ← الإعدادات ← الأجهزة المرتبطة ← ربط جهاز','Phone WhatsApp → Settings → Linked devices → Link a device','WhatsApp → Appareils connectés → Connecter'],
  wac_hint:['حتى يبعت البرنامج رسائل واتساب لحالو (بلا ما يفتح صفحة واتساب):\n1) نزّل «برنامج واتساب للمكتب» وشغّل START-WHATSAPP.bat على كمبيوتر المكتب (يلزمه Node.js).\n2) اضغط «ربط مع برنامج واتساب» وامسح رمز QR من تلفونك.\nبعدها أي كبسة واتساب بالبرنامج بتبعت مباشرة، والإرسال الجماعي بيصير 50 رسالة بالدفعة.','To let the program send WhatsApp messages by itself:\n1) Download the office WhatsApp connector and run START-WHATSAPP.bat on the office computer (needs Node.js).\n2) Press “Link” and scan the QR with your phone.\nThen every WhatsApp button sends directly, and bulk sending goes 50 at a time.','Pour envoyer automatiquement : lancez le connecteur au bureau puis liez et scannez le QR.'],
+ wa_e_463:['واتساب رفض الرسالة لأن الزبون لم يراسل رقم المولد من قبل (حماية من الرسائل المزعجة)','WhatsApp refused: this customer has never chatted with the generator number (anti-spam)','WhatsApp refuse : ce client n’a jamais écrit à ce numéro (anti-spam)'],
+ wa_e_rej:['واتساب رفض الرسالة','WhatsApp rejected the message','WhatsApp a refusé le message'],
  wa_upd:['تحديث برنامج واتساب للمكتب متوفر','Office WhatsApp connector update available','Mise à jour du connecteur disponible'],
  wa_upd_hint:['نزّل الملف، وانسخ server.cjs الجديد فوق القديم في مجلد wa-connector، ثم سكّر نافذة واتساب السوداء وشغّل START-WHATSAPP.bat من جديد. الربط يبقى كما هو.','Download, copy the new server.cjs over the old one in wa-connector, close the black WhatsApp window and run START-WHATSAPP.bat again. The link stays.','Téléchargez, remplacez server.cjs, fermez la fenêtre noire et relancez START-WHATSAPP.bat.'],
  wa_download:['تنزيل برنامج واتساب للمكتب','Download office connector','Télécharger le connecteur'], wa_dl_short:['شغّل START-WHATSAPP.bat على هذا الكمبيوتر ثم اضغط «ربط»','Run START-WHATSAPP.bat on this computer, then press “Link”','Lancez START-WHATSAPP.bat puis « Lier »'],
@@ -3308,7 +3310,7 @@ async function waRefresh(){
 function waStartPoll(){ if(WAC_T) return; WAC_T=setInterval(function(){ if(!ME||!ME.is_admin||!waKey()) return; waRefresh(); },WAC.status==='connected'?30000:4000); }
 function waChip(){ var s=WAC.status;
   return s==='connected'?'<span class="chip on">✅ '+esc(t('wa_linked'))+(WAC.me?' · +'+esc(WAC.me.id):'')+'</span>'+
-      (WAC.ver<2?' <a class="chip warn" href="/downloads/libanapps-whatsapp.zip" download title="'+esc(t('wa_upd_hint'))+'">⬆️ '+esc(t('wa_upd'))+'</a>':''):
+      (WAC.ver<3?' <a class="chip warn" href="/downloads/libanapps-whatsapp.zip" download title="'+esc(t('wa_upd_hint'))+'">⬆️ '+esc(t('wa_upd'))+'</a>':''):
     s==='qr'?'<span class="chip warn">📱 '+esc(t('wa_scan'))+'</span>':
     s==='off'?'<span class="chip gray">'+esc(t('wa_off'))+'</span>':
     s==='badkey'?'<span class="chip off">'+esc(t('wa_badkey'))+'</span>':
@@ -3350,7 +3352,7 @@ async function waSendAuto(num,text,doc){
   var r=await waApi('/send',Object.assign({to:num,text:text},doc||{}));
   return r;
 }
-function waErr(e){ var c=e&&e.code; return c==='not_on_whatsapp'?t('wa_e_nowa'):c==='not_connected'?t('wa_down'):c==='bad_number'?t('no_mobile'):(e&&e.message||''); }
+function waErr(e){ var c=e&&e.code; return c==='wa_463'?t('wa_e_463'):c==='rejected'?t('wa_e_rej'):c==='not_on_whatsapp'?t('wa_e_nowa'):c==='not_connected'?t('wa_down'):c==='bad_number'?t('no_mobile'):(e&&e.message||''); }
 function waNum(cc,mobile){ var num=String(mobile||'').replace(/\D/g,''); if(!num) return ''; cc=String(cc||'961').replace(/\D/g,'');
   if(num.indexOf('00')===0) num=num.slice(2); else if(!(num.indexOf(cc)===0&&num.length>9)) num=cc+num.replace(/^0+/,''); return num; }
 
