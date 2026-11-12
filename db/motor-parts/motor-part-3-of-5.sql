@@ -461,6 +461,7 @@ returns jsonb language plpgsql security definer set search_path = public as $$
 declare w jsonb; sid uuid;
 begin
   w := public._motor_admin(p_slug, p_token);
+  if not coalesce((w->>'is_main')::boolean, false) then perform public._motor_err('forbidden'); end if;
   sid := (w->>'site_id')::uuid;
   return jsonb_build_object('staff', coalesce((select jsonb_agg(jsonb_build_object('id', s.id, 'name', s.name, 'role', s.role,
            'lat', s.last_lat, 'lng', s.last_lng, 'acc', s.last_acc, 'seen', s.last_seen, 'is_active', s.is_active,

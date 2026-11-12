@@ -1568,6 +1568,11 @@ var D={
  nav_read:['أخذ العداد','Read meter','Relevé'],
  nav_pay:['القبض','Collect','Encaisser'],
  nav_customers:['الزبائن','Customers','Clients'],
+ nav_unpaid:['الزبائن الذين لم يدفعوا بعد','Customers who have not paid yet','Clients n’ayant pas encore payé'],
+ up_cycle:['دورة الشهر','Billing cycle','Cycle de facturation'], up_min:['أشهر غير مدفوعة','Unpaid months','Mois impayés'], up_min_opt:['{n} أو أكثر','{n} or more','{n} ou plus'],
+ up_hint:['الزبائن ذوو الخط المفعّل الذين لم يدفعوا فاتورة الدورة المختارة أو فواتير قبلها. الدفعات تُحسب على الفواتير الأقدم أولاً.','Customers with an active line who have not paid the selected cycle’s bill or earlier bills. Payments settle the oldest bills first.','Clients à ligne active n’ayant pas payé la facture du cycle choisi ou des précédentes. Les paiements soldent d’abord les plus anciennes.'],
+ up_count:['عدد الزبائن','Customers','Clients'], up_total:['مجموع المستحق','Total due','Total dû'], up_months:['الأشهر غير المدفوعة','Unpaid months','Mois impayés'], up_due:['المستحق حتى الدورة','Due up to cycle','Dû jusqu’au cycle'], up_last_pay:['آخر دفعة','Last payment','Dernier paiement'], up_none:['لا يوجد زبائن متأخرون عن الدفع لهذه الدورة.','No customers behind on payments for this cycle.','Aucun client en retard pour ce cycle.'], up_no_pay:['لا يوجد','None','Aucun'],
+ k_oldpay:['قبض (البرنامج السابق)','Payment (previous program)','Paiement (ancien programme)'], k_charge:['رسوم إضافية','Extra charge','Frais supplémentaires'], k_credit:['حسم / إشعار دائن','Discount / credit note','Remise / avoir'],
  nav_month:['جدول عدادات الشهر','Monthly readings','Relevés du mois'],
  nav_cstmt:['كشف حساب الجابي','Collector statement','Relevé releveur'],
  nav_whish:['كشف حساب Whish','Whish statement','Relevé Whish'],
@@ -2129,7 +2134,7 @@ async function enterCustomer(){
     (SITE.whish_phone?'<div class="card" style="text-align:center"><h3>🟣 '+esc(t('pay_whish_t'))+'</h3><div style="font-weight:800;font-size:18px" class="num">📞 '+esc(SITE.whish_phone)+'</div></div>':'')+
     '<div class="card"><h3>🧾 '+esc(t('my_invoices'))+'</h3><div class="tw"><table><thead><tr><th>'+esc(t('date'))+'</th><th>'+esc(t('type'))+'</th><th></th><th>'+esc(t('debit'))+'</th><th>'+esc(t('creditc'))+'</th><th>'+esc(t('running'))+'</th><th></th></tr></thead><tbody>'+
     rows.map(function(r,i){ run+=n2(r.debit)-n2(r.credit);
-      var kind=r.t==='pay'?t('k_pay')+' ('+(r.method==='whish'?t('whish'):t('cash'))+')':t('k_'+r.kind);
+      var kind=r.t==='pay'?t('k_pay')+' ('+(r.method==='whish'?t('whish'):t('cash'))+')':kindLbl(r);
       var det=r.t==='inv'&&r.kind==='meter'?esc(fmtN(r.prev_value))+' → '+esc(fmtN(r.cur_value))+' = '+esc(fmtN(r.kwh))+' '+esc(t('kwh')):'';
       return '<tr><td class="num">'+esc(dt(r.at).slice(0,10))+'</td><td>'+esc(kind)+(r.period?' · '+esc(monthName(r.period,true)):'')+'</td><td class="num">'+det+'</td><td class="num">'+(n2(r.debit)?esc(money(r.debit)):'')+'</td><td class="num">'+(n2(r.credit)?esc(money(r.credit)):'')+'</td><td>'+balHtml(run)+'</td>'+
         '<td><button class="btn ghost sm" data-ci="'+i+'">'+esc(t('view'))+'</button></td></tr>'; }).reverse().join('')+'</tbody></table></div></div></div>';
@@ -2483,6 +2488,7 @@ var TABS=[
   {id:'pay',k:'nav_pay',i:'💵',p:'collect'},
   {id:'switch',k:'nav_switch',i:'🔌',p:'cut'},
   {id:'customers',k:'nav_customers',i:'👥'},
+  {id:'unpaid',k:'nav_unpaid',i:'⏳',p:'collect'},
   {id:'month',k:'nav_month',i:'🗓️'},
   {id:'bills',k:'nav_bills',i:'📨',admin:true},
   {id:'wa',k:'nav_wa',i:'📲',admin:true},
@@ -2496,14 +2502,18 @@ var TABS=[
   {id:'insurance',k:'nav_insurance',i:'🛡️',admin:true},
   {id:'cstmt',k:'nav_cstmt',i:'🧾'},
   {id:'report',k:'nav_report',i:'📊',admin:true},
-  {id:'map',k:'nav_map',i:'🗺️',admin:true},
+  {id:'map',k:'nav_map',i:'🗺️',admin:true,main:true},
   {id:'staff',k:'nav_staff',i:'🧑‍🔧',admin:true},
   {id:'trash',k:'nav_trash',i:'🗑️',admin:true},
   {id:'plans',k:'nav_plans',i:'⚡',admin:true},
   {id:'settings',k:'nav_settings',i:'⚙️'}
 ];
 var WA_PENDING=0, WA_INV=0;
-function visibleTabs(){ return TABS.filter(function(x){ return (!x.admin||isAdmin())&&(!x.p||can(x.p)); }); }
+function visibleTabs(){ return TABS.filter(function(x){ return (!x.admin||isAdmin())&&(!x.main||(ME&&ME.is_main))&&(!x.p||can(x.p)); }); }
+/* اسم نوع الحركة بكشف الحساب — الحركات المستوردة بتنعرض بوصفها الحقيقي، مش «تسوية» */
+function kindLbl(r){ if(r.t==='pay') return t('k_pay'); var n=String(r.note||'').trim();
+  if(r.kind==='adjust'||r.kind==='opening'){ if(/^(ايصال|إيصال|دفعات قبل)/.test(n)) return t('k_oldpay'); if(r.kind==='opening'||/^رصيد ما قبل/.test(n)) return t('k_opening'); return n2(r.debit)>0||n2(r.amount)>0?t('k_charge'):t('k_credit'); }
+  return t('k_'+r.kind); }
 function paintShell(){
   $('#tName').textContent=SITE.name||SLUG;
   var asb=$('#asBar'); if(asb) asb.remove();
@@ -2659,6 +2669,49 @@ function dueText(r){
     return Math.abs(n2(d.balance))<0.005?okm.split('\n').slice(0,-1).join('\n'):okm; }
   return t('due_msg',{s:SITE.name||'',n:c.name,k:fmtN((d.count||0)+(d.older?1:0),0),v:amt,m:months.join(t('due_and'))});
 }
+VIEWS.unpaid=async function(main){
+  if(!RF.upPer) RF.upPer=SITE.bill_period; if(!RF.upMin) RF.upMin=1;
+  var d=await call('motor_unpaid',{p_period:RF.upPer,p_min:RF.upMin}), rows=d.rows, q='';
+  var tot=0; rows.forEach(function(r){ tot+=n2(r.due); });
+  main.innerHTML='<div class="card"><p class="muted" style="margin:0">'+esc(t('up_hint'))+'</p></div>'+
+    '<div class="toolbar"><label>'+esc(t('up_cycle'))+'</label><input type="month" id="upp" value="'+esc(d.period)+'" style="flex:0 1 170px">'+
+    '<label>'+esc(t('up_min'))+'</label><select id="upm" style="flex:0 1 130px">'+[1,2,3,4,6].map(function(n){ return '<option value="'+n+'"'+(RF.upMin==n?' selected':'')+'>'+esc(t('up_min_opt',{n:n}))+'</option>'; }).join('')+'</select>'+
+    '<input type="search" id="upq" placeholder="'+esc(t('search_ph'))+'"><span class="sp"></span>'+
+    (isAdmin()?'<span data-wachip>'+waChip()+'</span><button class="btn wa" id="upwa" data-waon>📤 '+esc(t('wa_batch50'))+'</button>':'')+
+    '<button class="btn ok" id="upx">📊 '+esc(t('export_xlsx'))+'</button><button class="btn alt" id="uppdf">📄 PDF</button></div>'+(isAdmin()?waBatchBar('upbar'):'')+
+    '<div class="stats">'+stat(t('up_count'),fmtN(rows.length,0))+stat(t('up_total'),money(tot))+'</div><div class="tw" id="uptw"></div>';
+  function months(r){ var m=(r.months||[]).map(function(p){ return monthName(p,false); }); if(r.older) m.unshift(t('due_older')); return m.join('، '); }
+  function msg(r){ return dueText({due:{balance:r.balance,count:r.n,periods:r.months,older:r.older},customer:r,inv:{period:d.period,amount:r.due}}); }
+  function list(){ var k=normS(q); return rows.filter(function(r){ return !k||normS(r.name).indexOf(k)>=0||String(r.code)===k||normS(r.box)===k||normS(r.area).indexOf(k)>=0||normS(r.collector).indexOf(k)>=0; }); }
+  function H(){ return [t('code'),t('name'),t('mobile'),t('area'),t('box'),t('collector'),t('up_months'),t('up_min'),t('up_due'),t('balance'),t('up_last_pay')]; }
+  function paint(){ var L=list();
+    $('#uptw',main).innerHTML='<table><thead><tr>'+H().map(function(h){ return '<th>'+esc(h)+'</th>'; }).join('')+(isAdmin()?'<th></th>':'')+'</tr></thead><tbody>'+
+      (L.map(function(r){ var i=rows.indexOf(r);
+        return '<tr><td class="num">'+esc(r.code)+'</td><td><a href="#" data-cust="'+esc(r.id)+'"><b>'+esc(r.name)+'</b></a></td>'+
+          '<td class="num">'+(r.mobile?esc('+'+r.mobile_cc+' '+r.mobile):'<span class="chip off">'+esc(t('no_mobile_short'))+'</span>')+'</td><td>'+esc(r.area||'')+'</td><td>'+esc(r.box||'')+'</td><td>'+esc(r.collector||'')+'</td>'+
+          '<td>'+esc(months(r))+'</td><td class="num"><b>'+esc(r.n+(r.older?1:0))+'</b></td><td class="num"><b>'+esc(money(r.due))+'</b></td><td>'+balHtml(r.balance)+'</td>'+
+          '<td class="num">'+(r.last_pay?esc(dt(r.last_pay).slice(0,10)):'<span class="muted">'+esc(t('up_no_pay'))+'</span>')+'</td>'+
+          (isAdmin()?'<td><button class="btn wa sm" data-uw="'+i+'" '+(r.mobile?'':'disabled')+'>'+esc(t('wa_send'))+'</button></td>':'')+'</tr>'; }).join(''))||
+      '<tr><td colspan="12"><div class="okmsg">'+esc(t('up_none'))+'</div></td></tr>'+'</tbody></table>'; }
+  function data(){ return [H()].concat(list().map(function(r){ return [r.code,r.name,r.mobile?'+'+r.mobile_cc+' '+r.mobile:'',r.area||'',r.box||'',r.collector||'',months(r),r.n+(r.older?1:0),n2(r.due),n2(r.balance),r.last_pay?dt(r.last_pay).slice(0,10):'']; })); }
+  $('#upp',main).addEventListener('change',function(){ if(/^\d{4}-\d{2}$/.test(this.value)){ RF.upPer=this.value; go('unpaid'); } });
+  $('#upm',main).addEventListener('change',function(){ RF.upMin=+this.value; go('unpaid'); });
+  $('#upq',main).addEventListener('input',function(){ q=this.value; paint(); });
+  $('#upx',main).addEventListener('click',function(){ downloadBlob(makeXlsx([{name:monthName(d.period,true),rows:data()}]),'unpaid-'+SLUG+'-'+d.period+'.xlsx'); });
+  $('#uppdf',main).addEventListener('click',function(){ var R=data();
+    printA4('<style>#printArea table{border-collapse:collapse;width:100%;font-size:10px}#printArea th,#printArea td{border:1px solid #999;padding:2px 4px}#printArea th{background:#eee}</style>'+
+      '<h3 style="margin:0 0 6px">'+esc(SITE.name||'')+' — '+esc(t('nav_unpaid'))+' — '+esc(monthName(d.period,true))+' ('+esc(t('up_min_opt',{n:RF.upMin}))+')</h3>'+
+      '<table><thead><tr>'+R[0].map(function(h){ return '<th>'+esc(h)+'</th>'; }).join('')+'</tr></thead><tbody>'+R.slice(1).map(function(r){ return '<tr>'+r.map(function(v,i){ return '<td'+(i>=7&&i<=9?' class="num"':'')+'>'+esc(typeof v==='number'&&i>=8?money(v):v)+'</td>'; }).join('')+'</tr>'; }).join('')+'</tbody></table>'+
+      '<p style="font-size:11px"><b>'+esc(t('up_count'))+': '+esc(R.length-1)+' · '+esc(t('up_total'))+': '+esc(money(R.slice(1).reduce(function(a,r){ return a+n2(r[8]); },0)))+'</b></p>'); });
+  if(isAdmin()){
+    $('#upwa',main).addEventListener('click',function(){ waBatch($('#upbar',main),list().filter(function(r){ return r.mobile; }),async function(r){
+      try{ await waSendAuto(waNum(r.mobile_cc,r.mobile),waTag(msg(r))); return true; }catch(e){ return {name:r.name,err:waErr(e)}; } }); });
+    waPaint();
+    $('#uptw',main).addEventListener('click',async function(e){ var b=e.target.closest('[data-uw]'); if(!b||b.disabled) return; var r=rows[+b.dataset.uw];
+      b.disabled=true; await openWa(r.mobile_cc,r.mobile,msg(r)); b.disabled=false; });
+  }
+  paint();
+};
 VIEWS.bills=async function(main){
   if(waKey()&&!WAC_T){ waRefresh(); waStartPoll(); }
   var all=await call('motor_wa_outbox',{p_days:60}), rows=all.filter(function(r){ return r.t==='inv'; });
@@ -3608,7 +3661,7 @@ async function openStatement(cid){
       d.rows.forEach(function(r){ if(!r.voided) run2+=n2(r.debit)-n2(r.credit);
         var mk=(r.t==='inv'&&r.period)?r.period:String(dt(r.at)).slice(0,7);
         if(mk&&mk!==lastC){ lastC=mk; cards.push('<div class="sc-m">📅 '+esc(monthName(mk,true))+'</div>'); }
-        var isPay=r.t==='pay', kind=isPay?t('k_pay'):t('k_'+r.kind), mtr=r.t==='inv'&&r.kind==='meter';
+        var isPay=r.t==='pay', kind=isPay?t('k_pay'):kindLbl(r), mtr=r.t==='inv'&&r.kind==='meter';
         cards.push('<div class="sc-c'+(r.voided?' void':'')+(isPay?' pay':'')+'"><div class="sc-h"><b>'+esc(kind)+(isPay?' '+(r.method==='whish'?WL:'💵'):'')+'</b><span class="muted num">#'+esc(r.no)+' · '+esc(dt(r.at).slice(0,10))+'</span></div>'+
           (mtr?'<div class="sc-r"><span>'+esc(t('b_prev'))+' <b class="num">'+esc(fmtN(r.prev_value))+'</b></span><span>'+esc(t('b_cur'))+' <b class="num">'+esc(fmtN(r.cur_value))+'</b></span><span><b class="num">'+esc(fmtN(r.kwh))+'</b> '+esc(t('kwh'))+'</span></div>':'')+
           (r.note?'<div class="muted" style="font-size:12px">'+esc(r.note)+'</div>':'')+
@@ -3626,7 +3679,7 @@ async function openStatement(cid){
       if(!r.voided) run+=n2(r.debit)-n2(r.credit);
       var mk=(r.t==='inv'&&r.period)?r.period:String(dt(r.at)).slice(0,7), sep='';
       if(mk&&mk!==lastM){ lastM=mk; sep='<tr><td colspan="11" style="background:var(--soft);font-weight:800;color:var(--p)">📅 '+esc(monthName(mk,true))+'</td></tr>'; }
-      var kind=r.t==='pay'?t('k_pay')+' ('+(r.method==='whish'?t('whish'):t('cash'))+')':t('k_'+r.kind);
+      var kind=r.t==='pay'?t('k_pay')+' ('+(r.method==='whish'?t('whish'):t('cash'))+')':kindLbl(r);
       var det=r.t==='inv'&&r.kind==='meter'? t('prev_reading')+' <b class="num">'+esc(fmtN(r.prev_value))+'</b> → <b class="num">'+esc(fmtN(r.cur_value))+'</b> = '+esc(fmtN(r.kwh))+' '+esc(t('kwh'))
         : (r.t==='pay'&&r.paid_currency!==mainCur()? esc(money(r.paid_amount,r.paid_currency)) : '');
       return sep+'<tr class="'+(r.voided?'void':'')+'"><td class="num">'+esc(dt(r.at))+'</td><td>'+esc(kind)+(r.period?' · '+esc(monthName(r.period,true)):'')+' <span class="muted">#'+esc(r.no)+'</span></td>'+
@@ -3649,7 +3702,7 @@ async function openStatement(cid){
     if($('#spa4',m.body)) $('#spa4',m.body).addEventListener('click',function(){ printStatementA4(d); });
     if($('#swa',m.body)) $('#swa',m.body).addEventListener('click',function(){
       var s=['*'+(SITE.name||'')+'*',t('statement')+' — '+c.name+' (#'+c.code+')'], rb=0;
-      d.rows.filter(function(r){return !r.voided}).slice(-12).forEach(function(r){ s.push(dt(r.at).slice(0,10)+' · '+(r.t==='pay'?t('k_pay'):t('k_'+r.kind)+(r.period?' '+r.period:''))+(r.kind==='meter'?' ('+fmtN(r.prev_value)+'→'+fmtN(r.cur_value)+')':'')+': '+(n2(r.debit)?'+'+money(r.debit):'−'+money(r.credit))); });
+      d.rows.filter(function(r){return !r.voided}).slice(-12).forEach(function(r){ s.push(dt(r.at).slice(0,10)+' · '+(r.t==='pay'?t('k_pay'):kindLbl(r)+(r.period?' '+r.period:''))+(r.kind==='meter'?' ('+fmtN(r.prev_value)+'→'+fmtN(r.cur_value)+')':'')+': '+(n2(r.debit)?'+'+money(r.debit):'−'+money(r.credit))); });
       s.push('*'+t('balance')+': '+money(c.balance)+'*'); openWa(c.mobile_cc,c.mobile,s.join('\n')); });
     $$('[data-spw]',m.body).forEach(function(b){ b.addEventListener('click',function(){ printDoc(stmtTicket(d),b.dataset.spw); }); });
     $$('[data-edamt]',m.body).forEach(function(b){ b.addEventListener('click',function(){ var p=b.dataset.edamt.split('|');
@@ -3684,7 +3737,7 @@ function stmtTicket(d){
   d.rows.filter(function(r){return !r.voided}).forEach(function(r){ run+=n2(r.debit)-n2(r.credit);
     var mk=(r.t==='inv'&&r.period)?r.period:String(dt(r.at)).slice(0,7);
     if(mk&&mk!==lastM){ lastM=mk; T.push({t:'— '+monthName(mk,true)+' —',b:1,c:1,s:20}); }
-    T.push({kv:[dt(r.at).slice(5,10).replace('-','/')+' '+(r.t==='pay'?t('k_pay')+(r.method==='whish'?' Whish':''):t('k_'+r.kind)),(n2(r.debit)?'+'+money(r.debit):'−'+money(r.credit))],s:19});
+    T.push({kv:[dt(r.at).slice(5,10).replace('-','/')+' '+(r.t==='pay'?t('k_pay')+(r.method==='whish'?' Whish':''):kindLbl(r)),(n2(r.debit)?'+'+money(r.debit):'−'+money(r.credit))],s:19});
     if(r.kind==='meter') T.push({kv:[fmtN(r.prev_value)+' → '+fmtN(r.cur_value),fmtN(r.kwh)+' '+t('b_kwh_unit')],s:17});
     T.push({kv:[t('running'),money(run)],s:17});
   });
@@ -3697,7 +3750,7 @@ function printStatementA4(d){
   var trs=d.rows.filter(function(r){ return !r.voided; }).map(function(r){ run+=n2(r.debit)-n2(r.credit);
     var mk=(r.t==='inv'&&r.period)?r.period:String(dt(r.at)).slice(0,7), sep='';
     if(mk&&mk!==lastM){ lastM=mk; sep='<tr class="m"><td colspan="11">'+esc(monthName(mk,true))+'</td></tr>'; }
-    var kind=r.t==='pay'?t('k_pay')+' ('+(r.method==='whish'?'Whish':t('cash'))+')':t('k_'+r.kind);
+    var kind=r.t==='pay'?t('k_pay')+' ('+(r.method==='whish'?'Whish':t('cash'))+')':kindLbl(r);
     var mtr=r.t==='inv'&&r.kind==='meter';
     return sep+'<tr><td>'+esc(dt(r.at))+'</td><td>'+esc(kind)+'</td><td>'+esc(r.no)+'</td><td>'+esc(r.period?monthName(r.period,true):'')+'</td>'+
       '<td>'+(mtr?esc(fmtN(r.prev_value)):'')+'</td><td>'+(mtr?esc(fmtN(r.cur_value)):'')+'</td><td>'+(mtr?esc(fmtN(r.kwh)):'')+'</td>'+

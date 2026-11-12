@@ -320,6 +320,52 @@ begin
 end $$;
 
 -- ============================================================
+--  20j3) الزبائن الذين لم يدفعوا بعد — الخط مفعّل وعليه فاتورة شهر (الدورة المختارة) أو أقدم غير مدفوعة
+--  الفواتير المدفوعة تُحسب من الأقدم (الرصيد الحالي بيغطي آخر الفواتير)
+-- ============================================================
+create or replace function public.motor_unpaid(p_slug text, p_token text, p_period text, p_min integer default 1)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w jsonb; sid uuid; per text; st public.motor_sites%rowtype; mine uuid; out jsonb := '[]'::jsonb;
+        c record; r record; acc numeric; pers text[]; amt numeric; n int; older boolean;
+begin
+  w := public._motor_who(p_slug, p_token);
+  sid := (w->>'site_id')::uuid;
+  select * into st from public.motor_sites where id = sid;
+  if not ((w->>'is_admin')::boolean or (w->>'can_collect')::boolean) then perform public._motor_err('forbidden'); end if;
+  if not (w->>'is_admin')::boolean and not st.collector_sees_all then mine := (w->>'staff_id')::uuid; end if;
+  per := coalesce(nullif(p_period,''), st.bill_period);
+  if per !~ '^\d{4}-\d{2}$' then perform public._motor_err('bad_period'); end if;
+  for c in select cu.*, coalesce(sf.name, cu.collector_name) coll
+             from public.motor_customers cu left join public.motor_staff sf on sf.id = cu.collector_id
+            where cu.site_id = sid and cu.is_active and not cu.archived and cu.deleted_at is null and cu.balance > 0.005
+              and (mine is null or cu.collector_id = mine) loop
+    -- الرصيد بيتوزّع على الفواتير من الأحدث للأقدم: يلّي بيغطيهن الرصيد هني غير المدفوعين
+    acc := 0; pers := '{}'; amt := 0; n := 0; older := false;
+    for r in select i.period, i.amount from public.motor_invoices i
+              where i.customer_id = c.id and not i.voided and i.amount > 0 and i.kind in ('meter','fixed') and i.period <> ''
+              order by i.period desc, i.created_at desc loop
+      exit when acc >= c.balance - 0.005;
+      if r.period <= per then
+        n := n + 1; amt := amt + least(r.amount, c.balance - acc);
+        if not (r.period = any(pers)) then pers := r.period || pers; end if;
+      end if;
+      acc := acc + r.amount;
+    end loop;
+    if c.balance - acc > 0.005 then older := true; amt := amt + (c.balance - acc); end if;
+    if n + (case when older then 1 else 0 end) >= greatest(coalesce(p_min, 1), 1) and amt > 0.005 then
+      out := out || jsonb_build_array(jsonb_build_object(
+        'id', c.id, 'code', c.code, 'name', c.name, 'mobile', c.mobile, 'mobile_cc', c.mobile_cc, 'box', c.box, 'area', c.area,
+        'collector', c.coll, 'balance', c.balance, 'due', round(amt, 2), 'months', to_jsonb(pers), 'n', n, 'older', older,
+        'last_pay', greatest(
+            (select max(p.created_at) from public.motor_payments p where p.customer_id = c.id and not p.voided),
+            (select max(i.created_at) from public.motor_invoices i where i.customer_id = c.id and not i.voided and i.imported
+                and i.kind = 'adjust' and i.amount < 0 and i.note like 'ايصال%'))));
+    end if;
+  end loop;
+  return jsonb_build_object('period', per, 'rows', out);
+end $$;
+
+-- ============================================================
 --  20k) إقفال صندوق الموظف: يسلّم كل النقد للمكتب ويطلع تقرير
 -- ============================================================
 create or replace function public.motor_staff_close(p_slug text, p_token text, p_staff uuid default null)
@@ -603,7 +649,7 @@ begin
     'motor_cash_statement(text,text,date,date)', 'motor_cash_close(text,text,numeric,numeric,text)',
     'motor_set_active(text,text,uuid,boolean,text,double precision,double precision)',
     'motor_note_add(text,text,uuid,text)', 'motor_ping(text,text,double precision,double precision,double precision)',
-    'motor_staff_map(text,text)', 'motor_2fa_setup(text,text)', 'motor_2fa_enable(text,text,text)',
+    'motor_staff_map(text,text)', 'motor_unpaid(text,text,text,integer)', 'motor_2fa_setup(text,text)', 'motor_2fa_enable(text,text,text)',
     'motor_2fa_disable(text,text,text,uuid)', 'motor_wa_outbox(text,text,integer)', 'motor_wa_mark(text,text,text,uuid)',
     'motor_reading_edit(text,text,uuid,numeric,text)', 'motor_customer_set_login(text,text,uuid,text,text)', 'motor_cust_me(text,text)',
     'motor_invoice_edit(text,text,uuid,numeric,text)', 'motor_payment_edit(text,text,uuid,numeric,text)',

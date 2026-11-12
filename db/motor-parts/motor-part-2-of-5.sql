@@ -142,8 +142,8 @@ begin
                          'salary', case when adm then s.salary end,
                          'device_set', s.device_id is not null, 'device_label', case when adm then s.device_label end,
                          'device_at', case when adm then s.device_at end,
-                         'last_lat', case when adm then s.last_lat end, 'last_lng', case when adm then s.last_lng end,
-                         'last_acc', case when adm then s.last_acc end, 'last_seen', case when adm then s.last_seen end)
+                         'last_lat', case when coalesce((w->>'is_main')::boolean,false) then s.last_lat end, 'last_lng', case when coalesce((w->>'is_main')::boolean,false) then s.last_lng end,
+                         'last_acc', case when coalesce((w->>'is_main')::boolean,false) then s.last_acc end, 'last_seen', case when coalesce((w->>'is_main')::boolean,false) then s.last_seen end)
                          order by s.role, s.name)
                          from public.motor_staff s where s.site_id = sid
                           and (adm or s.id = (w->>'staff_id')::uuid)), '[]'::jsonb));
