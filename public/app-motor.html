@@ -1809,7 +1809,9 @@ var D={
  lbp_rate:['سعر صرف الدولار بالليرة','USD rate in LBP','Taux USD en LBP'],
  show_second:['إظهار المعادل بالعملة الثانية','Show the second currency equivalent','Afficher l’équivalent'],
  round_step:['تقريب الفاتورة لأقرب (0 = بدون)','Round invoices to nearest (0 = none)','Arrondir à (0 = non)'],
- invoice_note:['ملاحظة أسفل الفاتورة','Invoice footer note','Note en bas de facture'],
+ invoice_note:['📝 ملاحظة على كعب الفاتورة','📝 Note at the bottom of the bill','📝 Note en bas de facture'],
+ invoice_note_hint:['ما تكتبه هنا يظهر أسفل كل فاتورة وإيصال قبض: المطبوع، وPDF، ورسائل واتساب. يمكن كتابة أكثر من سطر.','What you write here appears at the bottom of every bill and receipt: printed, PDF and WhatsApp. Several lines are allowed.','Ce texte apparaît en bas de chaque facture et reçu : impression, PDF et WhatsApp. Plusieurs lignes possibles.'],
+ b_whish_paid:['✔ تم الدفع عبر Whish','✔ Paid via Whish','✔ Payé via Whish'],
  s_read:['ضوابط أخذ العداد','Reading rules','Règles de relevé'],
  require_photo:['الصورة إلزامية','Photo required','Photo obligatoire'],
  require_gps:['الموقع الجغرافي إلزامي','GPS required','GPS obligatoire'],
@@ -3245,11 +3247,14 @@ function billHtml(o){
       if(l.hr) return '<div style="border-top:1px dashed #c9b37a;margin:6px 0"></div>';
       if(l.t) return '<div class="'+(l.s?'muted':'')+'" style="'+(l.s?'':'font-weight:700')+'">'+esc(l.t)+'</div>';
       return '<div class="ln'+(l.b?' tot':'')+'" style="'+(l.b?'border:0;margin:0;padding-top:3px':'')+'"><span>'+esc(l.k)+'</span><span dir="auto">'+esc(l.v)+'</span></div>';
-    }).join('')+(o.pay?'<div class="muted" style="margin-top:6px">'+esc(t('b_rcpt',{n:o.pay.no,s:o.pay.staff_name||''}))+'</div>':'')+'</div>';
+    }).join('')+(o.pay&&o.pay.method==='whish'?'<div style="text-align:center;font-weight:800;margin-top:6px">'+esc(t('b_whish_paid'))+'</div>':'')+
+    (o.pay?'<div class="muted" style="margin-top:6px">'+esc(t('b_rcpt',{n:o.pay.no,s:o.pay.staff_name||''}))+'</div>':'')+
+    (SITE.invoice_note?'<div style="text-align:center;white-space:pre-line;margin-top:6px;border-top:1px dashed #c9b37a;padding-top:6px">'+esc(SITE.invoice_note)+'</div>':'')+'</div>';
 }
 function billText(o){
   var s=['*'+(SITE.name||'')+'*']; if(SITE.tagline) s.push(SITE.tagline); s.push(billHead(o)); s.push('');
   billLines(o).forEach(function(l){ if(l.hr) s.push('—————'); else if(l.t) s.push(l.t); else s.push((l.b?'*':'')+l.k+': '+l.v+(l.b?'*':'')); });
+  if(o.pay&&o.pay.method==='whish') s.push('', '*'+t('b_whish_paid')+'*');
   if(o.pay) s.push('', t('b_rcpt',{n:o.pay.no,s:o.pay.staff_name||''}));
   if(SITE.invoice_note) s.push('', SITE.invoice_note);
   return s.join('\n');
@@ -3350,8 +3355,9 @@ function billTicket(o){
   billLines(o).forEach(function(l){
     if(l.hr) T.push({hr:1}); else if(l.t) T.push({t:l.t,s:l.s?19:22,b:!l.s}); else T.push({t:l.k+': '+l.v,b:l.b,s:l.b?24:22});
   });
+  if(o.pay&&o.pay.method==='whish') T.push({hr:1},{t:t('b_whish_paid'),b:1,c:1,s:26});
   if(o.pay) T.push({hr:1},{t:t('b_rcpt',{n:o.pay.no,s:o.pay.staff_name||''}),s:18});
-  if(SITE.invoice_note) T.push({t:SITE.invoice_note,c:1,s:19});
+  if(SITE.invoice_note){ T.push({hr:1}); String(SITE.invoice_note).split(/\r?\n/).forEach(function(x){ if(x.trim()) T.push({t:x.trim(),c:1,s:20}); }); }
   T.push({t:t('thanks'),c:1,s:20});
   return T;
 }
@@ -4394,8 +4400,8 @@ VIEWS.settings=async function(main){
       '<div class="card"><h3>'+esc(t('s_money'))+'</h3><div class="g2">'+
       '<div><label>'+esc(t('main_cur'))+'</label><select data-s="currency"><option value="USD">USD $</option><option value="LBP">LBP ل.ل</option></select></div>'+
       fld('lbp_rate','lbp_rate',S.lbp_rate)+fld('cur_label','cur_label',S.cur_label)+fld('round_step','round_step',S.round_step)+fld('barcode_prefix','barcode_prefix',S.barcode_prefix)+
-      '<div style="grid-column:1/-1">'+chk('show_second','show_second',S.show_second)+chk('wa_from_office','wa_from_office',S.wa_from_office)+'</div>'+
-      '<div style="grid-column:1/-1"><label>'+esc(t('invoice_note'))+'</label><textarea data-s="invoice_note">'+esc(S.invoice_note)+'</textarea></div></div></div>'+
+      '<div style="grid-column:1/-1">'+chk('show_second','show_second',S.show_second)+chk('wa_from_office','wa_from_office',S.wa_from_office)+'</div></div></div>'+
+      '<div class="card"><h3>'+esc(t('invoice_note'))+'</h3><p class="muted" style="margin-top:0">'+esc(t('invoice_note_hint'))+'</p><textarea data-s="invoice_note" rows="3">'+esc(S.invoice_note)+'</textarea></div>'+
       '<div class="card"><h3>'+esc(t('s_read'))+'</h3>'+chk('require_photo','require_photo',S.require_photo)+chk('first_baseline','first_read_baseline',S.first_read_baseline)+chk('require_gps','require_gps',S.require_gps)+chk('sees_all','collector_sees_all',S.collector_sees_all)+
       '<div class="g2" style="margin-top:8px">'+fld('max_dist','max_distance_m',S.max_distance_m)+'</div>'+
       '<div id="smsg" class="msg" style="margin-top:10px"></div><button class="btn" id="ssave" style="margin-top:10px">'+esc(t('save'))+'</button></div>';
