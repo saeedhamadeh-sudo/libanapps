@@ -3390,20 +3390,29 @@ function loadImg(src){ if(IMG_CACHE[src]) return Promise.resolve(IMG_CACHE[src])
   return new Promise(function(res){ var done=false, im=new Image(); var fin=function(v){ if(done) return; done=true; if(v) IMG_CACHE[src]=v; res(v); };
     im.onload=function(){ fin(im); }; im.onerror=function(){ fin(null); }; setTimeout(function(){ fin(null); },4000); im.src=src; }); }
 function withTimeout(p,ms,code){ return new Promise(function(res,rej){ var tm=setTimeout(function(){ rej(new Error(code||'timeout')); },ms); p.then(function(v){ clearTimeout(tm); res(v); },function(e){ clearTimeout(tm); rej(e); }); }); }
+// قصّ الهوامش البيضاء/الشفافة حول اللوغو حتى يطلع أكبر بالطباعة
+function trimImg(im){
+  try{ var c=document.createElement('canvas'); c.width=im.naturalWidth||im.width; c.height=im.naturalHeight||im.height;
+    var x=c.getContext('2d'); x.drawImage(im,0,0); var d=x.getImageData(0,0,c.width,c.height).data, W=c.width, H=c.height, x0=W, y0=H, x1=-1, y1=-1;
+    for(var yy=0;yy<H;yy++) for(var xx=0;xx<W;xx++){ var i=(yy*W+xx)*4; if(d[i+3]>40&&(d[i]+d[i+1]+d[i+2])<720){ if(xx<x0)x0=xx; if(xx>x1)x1=xx; if(yy<y0)y0=yy; if(yy>y1)y1=yy; } }
+    if(x1<0) return im; var o=document.createElement('canvas'); o.width=x1-x0+1; o.height=y1-y0+1;
+    var ox=o.getContext('2d'); ox.fillStyle='#fff'; ox.fillRect(0,0,o.width,o.height); ox.drawImage(c,x0,y0,o.width,o.height,0,0,o.width,o.height); return o;
+  }catch(e){ return im; }
+}
 async function renderTicket(T){
   var W=paperW(), pad=10, rtl=LANG==='ar';
   var cv=document.createElement('canvas'), ctx=cv.getContext('2d');
   var font=function(s,b){ return (b?'bold ':'')+(s||22)+'px Cairo, Tahoma, Arial, sans-serif'; };
   function wrap(text,maxW,s,b){ ctx.font=font(s,b); var words=String(text).split(' '), lines=[], cur='';
     words.forEach(function(w){ var tst=cur?cur+' '+w:w; if(ctx.measureText(tst).width>maxW&&cur){ lines.push(cur); cur=w; } else cur=tst; }); if(cur) lines.push(cur); return lines.length?lines:['']; }
-  var ops=[], y=pad;
+  var ops=[], y=2;
   for(var i=0;i<T.length;i++){ var l=T[i], s=l.s||22, lh=Math.round(s*1.5);
-    if(l.img){ var im=await loadImg(l.img); if(im&&im.width){ var h=Math.min(110,im.height), w=im.width*h/im.height; if(w>W-pad*2){ w=W-pad*2; h=im.height*w/im.width; } ops.push({img:im,x:(W-w)/2,y:y,w:w,h:h}); y+=h+6; } continue; }
+    if(l.img){ var im=await loadImg(l.img); if(im&&im.width){ im=trimImg(im); var mh=Math.round(W*0.5), h=Math.min(mh,im.height*3), w=im.width*h/im.height; if(w>W-pad*2){ w=W-pad*2; h=im.height*w/im.width; } ops.push({img:im,x:(W-w)/2,y:y,w:w,h:h}); y+=h+8; } continue; }
     if(l.hr){ ops.push({hr:1,y:y+6}); y+=16; continue; }
     if(l.kv){ var vl=wrap(l.kv[1],W*0.6,s,l.b); ops.push({kv:1,k:l.kv[0],v:vl,y:y,s:s,b:l.b,lh:lh}); y+=lh*vl.length; continue; }
     wrap(l.t,W-pad*2,s,l.b).forEach(function(x){ ops.push({t:x,y:y,s:s,b:l.b,c:l.c}); y+=lh; });
   }
-  y+=pad+36; cv.width=W; cv.height=Math.ceil(y);
+  y+=8; cv.width=W; cv.height=Math.ceil(y);
   ctx.fillStyle='#fff'; ctx.fillRect(0,0,W,cv.height); ctx.fillStyle='#000'; ctx.textBaseline='top'; ctx.direction=rtl?'rtl':'ltr';
   ops.forEach(function(o){
     if(o.img){ ctx.drawImage(o.img,o.x,o.y,o.w,o.h); return; }
@@ -3422,7 +3431,7 @@ function canvasToEscPos(cv){
     r.set([0x1D,0x76,0x30,0x00,bpr&255,(bpr>>8)&255,bh&255,(bh>>8)&255],0);
     for(var yy=0;yy<bh;yy++) for(var xx=0;xx<w;xx++){ var i=((y0+yy)*w+xx)*4; if((img[i]+img[i+1]+img[i+2])/3<160) r[8+yy*bpr+(xx>>3)]|=(0x80>>(xx%8)); }
     parts.push(r); }
-  parts.push(new Uint8Array([0x0A,0x0A,0x0A,0x1D,0x56,0x42,0x00]));
+  parts.push(new Uint8Array([0x0A,0x0A,0x1D,0x56,0x42,0x00]));
   var len=parts.reduce(function(a,p){return a+p.length},0), out=new Uint8Array(len), o=0; parts.forEach(function(p){ out.set(p,o); o+=p.length; }); return out;
 }
 /* ---------- طابعة بلوتوث مباشرة (Web Bluetooth) — تُختار على كل هاتف من الإعدادات ---------- */
