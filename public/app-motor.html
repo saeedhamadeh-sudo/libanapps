@@ -245,6 +245,7 @@ body.compact table{font-size:12px} body.compact th,body.compact td{padding:4px 6
 .frdoc input.frti{font-size:22px;font-weight:800;text-align:center}
 .frdoc input.frti2{font-weight:800}
 .frsign{max-width:360px;margin-top:22px;font-weight:700}
+.wa-wait{animation:wapulse 1.6s ease-in-out infinite}@keyframes wapulse{0%,100%{opacity:1}50%{opacity:.45}}
 </style>
 <script>
 window.LIBANAPPS = {
@@ -2218,6 +2219,8 @@ Object.assign(D,{
  wa_batch50:['إرسال دفعة (50)','Send a batch (50)','Envoyer un lot (50)'],
  wa_batch_q:['إرسال {n} رسالة بالتدريج؟\nلحماية الرقم من الحظر تُرسل الرسائل على فترات عشوائية (رسالة كل دقيقة إلى 3 دقائق تقريباً)، وقد يستغرق الإرسال حتى {m} دقيقة.\nيمكنك متابعة العمل في البرنامج، لكن لا تغلقه ولا تُعد تحميل الصفحة.','Send {n} messages gradually?\nTo protect the number from being banned, messages go out at random intervals (about one every 1–3 minutes); this may take up to {m} minutes.\nYou can keep working in the app, but do not close or reload it.','Envoyer {n} messages progressivement ?\nPour éviter le blocage du numéro, les messages partent à intervalles aléatoires (environ 1 à 3 min) ; jusqu’à {m} min.\nVous pouvez continuer à travailler, sans fermer ni recharger.'],
  wa_batch_prog:['تم إرسال {i} من {n} — ✓ {ok} · ✗ {bad} — الإرسال مستمر بالتدريج','Sent {i} of {n} — ✓ {ok} · ✗ {bad} — sending gradually','Envoyé {i}/{n} — ✓ {ok} · ✗ {bad} — envoi progressif'],
+ wa_batch_wait:['⏳ بانتظار الرسالة التالية — تُرسل تلقائياً بعد فاصل عشوائي (دقيقة إلى 3 دقائق) لحماية الرقم من الحظر','⏳ Waiting for the next message — sent automatically after a random 1–3 minute gap to protect the number','⏳ Message suivant envoyé automatiquement après 1 à 3 min (protection anti-blocage)'],
+ wa_batch_sending:['📤 جارٍ إرسال الرسالة {i} من {n}…','📤 Sending message {i} of {n}…','📤 Envoi du message {i}/{n}…'],
  wa_batch_busy:['يوجد إرسال دفعة جارٍ حالياً. انتظر انتهاءه أو أوقفه أولاً.','A batch is already being sent. Wait for it to finish or stop it first.','Un envoi groupé est en cours. Attendez sa fin ou arrêtez-le.'],
  wa_batch_leave:['إرسال رسائل واتساب ما زال جارياً. إغلاق الصفحة يوقفه.','WhatsApp messages are still being sent. Closing the page stops it.','Des messages WhatsApp sont en cours d’envoi. Fermer la page l’arrête.'],
  wa_batch_done:['انتهت الدفعة — ✓ {ok} · ✗ {bad}','Batch done — ✓ {ok} · ✗ {bad}','Lot terminé — ✓ {ok} · ✗ {bad}'], wa_stop:['إيقاف','Stop','Arrêter'],
@@ -4589,7 +4592,7 @@ async function sendBillWa(o,after,quiet){
   return true;
 }
 /* إرسال دفعة (50) بالدور — بس إذا الواتساب مربوط */
-function waBatchBar(id){ return '<div class="card hidden" id="'+id+'"><div class="row"><b data-bt></b><span class="sp"></span><button class="btn danger sm" data-bstop>'+esc(t('wa_stop'))+'</button></div><div class="pbar" style="margin-top:8px"><i data-bp></i></div><div class="muted" data-bl style="margin-top:6px;max-height:120px;overflow:auto;font-size:12px"></div></div>'; }
+function waBatchBar(id){ return '<div class="card hidden" id="'+id+'"><div class="row"><b data-bt></b><span class="sp"></span><button class="btn danger sm" data-bstop>'+esc(t('wa_stop'))+'</button></div><div class="pbar" style="margin-top:8px"><i data-bp></i></div><div class="hidden wa-wait" data-bw style="margin-top:6px;font-size:13px;color:var(--mut,#667)"></div><div class="muted" data-bl style="margin-top:6px;max-height:120px;overflow:auto;font-size:12px"></div></div>'; }
 var WA_BATCH_ON=false;
 async function waBatch(box,items,sendOne,onDone){
   if(!waAuto()){ toast(t('wa_need_link'),'e'); return; }
@@ -4606,10 +4609,14 @@ async function waBatch(box,items,sendOne,onDone){
     for(var i=0;i<list.length&&!stop;i++){
       if(i>0){ // فترة عشوائية بين كل رسالتين (45 ثانية إلى 3 دقائق) ضد الحظر — بلا عدّاد ظاهر
         var wait=45000+Math.floor(Math.random()*135001), until=Date.now()+wait;
+        $('[data-bw]',box).textContent=t('wa_batch_wait'); $('[data-bw]',box).classList.remove('hidden');
         while(!stop&&Date.now()<until) await new Promise(function(r){ setTimeout(r,1000); });
+        $('[data-bw]',box).classList.add('hidden');
         if(stop) break;
       }
+      $('[data-bw]',box).textContent=t('wa_batch_sending',{i:i+1,n:list.length}); $('[data-bw]',box).classList.remove('hidden');
       var r=false; try{ r=await sendOne(list[i]); }catch(e){ r=false; }
+      $('[data-bw]',box).classList.add('hidden');
       if(r===true) ok++; else { bad++; $('[data-bl]',box).insertAdjacentHTML('beforeend','<div>✗ '+esc(r&&r.name||(list[i].customer&&list[i].customer.name)||'')+(r&&r.err?' — '+esc(r.err):'')+'</div>'); }
       $('[data-bt]',box).textContent=t('wa_batch_prog',{i:i+1,n:list.length,ok:ok,bad:bad});
       $('[data-bp]',box).style.width=Math.round((i+1)/list.length*100)+'%';
