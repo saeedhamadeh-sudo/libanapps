@@ -229,11 +229,35 @@ begin
     'staff', coalesce((select jsonb_agg(jsonb_build_object('name', x.name, 'username', x.username, 'role', x.role, 'phone', x.phone,
                'can_read', x.can_read, 'can_collect', x.can_collect, 'can_cut', x.can_cut, 'is_active', x.is_active))
                from public.motor_staff x where x.site_id = sid), '[]'),
-    'customers', coalesce((select jsonb_agg(to_jsonb(x) - 'site_id' order by x.code) from public.motor_customers x where x.site_id = sid), '[]'),
-    'readings', coalesce((select jsonb_agg(to_jsonb(x) - 'site_id' order by x.created_at) from public.motor_readings x where x.site_id = sid), '[]'),
-    'invoices', coalesce((select jsonb_agg(to_jsonb(x) - 'site_id' order by x.created_at) from public.motor_invoices x where x.site_id = sid), '[]'),
-    'payments', coalesce((select jsonb_agg(to_jsonb(x) - 'site_id' order by x.created_at) from public.motor_payments x where x.site_id = sid), '[]'),
-    'moves', coalesce((select jsonb_agg(to_jsonb(x) - 'site_id' order by x.created_at) from public.motor_moves x where x.site_id = sid), '[]'));
+    'paged', true);   -- الجداول الكبيرة بتنسحب على دفعات (motor_backup_page) حتى ما يصير timeout
+end $$;
+
+create or replace function public.motor_backup_page(p_slug text, p_token text, p_table text, p_offset integer default 0, p_limit integer default 2000)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w jsonb; sid uuid; lim int := least(greatest(coalesce(p_limit, 2000), 1), 5000); off int := greatest(coalesce(p_offset, 0), 0);
+begin
+  w := public._motor_admin(p_slug, p_token);
+  sid := (w->>'site_id')::uuid;
+  if p_table = 'customers' then
+    return coalesce((select jsonb_agg(to_jsonb(x) - 'site_id' order by x.code, x.id) from
+      (select * from public.motor_customers where site_id = sid order by code, id offset off limit lim) x), '[]');
+  elsif p_table = 'readings' then
+    return coalesce((select jsonb_agg(to_jsonb(x) - 'site_id' order by x.created_at, x.id) from
+      (select * from public.motor_readings where site_id = sid order by created_at, id offset off limit lim) x), '[]');
+  elsif p_table = 'invoices' then
+    return coalesce((select jsonb_agg(to_jsonb(x) - 'site_id' order by x.created_at, x.id) from
+      (select * from public.motor_invoices where site_id = sid order by created_at, id offset off limit lim) x), '[]');
+  elsif p_table = 'payments' then
+    return coalesce((select jsonb_agg(to_jsonb(x) - 'site_id' order by x.created_at, x.id) from
+      (select * from public.motor_payments where site_id = sid order by created_at, id offset off limit lim) x), '[]');
+  elsif p_table = 'moves' then
+    return coalesce((select jsonb_agg(to_jsonb(x) - 'site_id' order by x.created_at, x.id) from
+      (select * from public.motor_moves where site_id = sid order by created_at, id offset off limit lim) x), '[]');
+  elsif p_table = 'insurance' then
+    return coalesce((select jsonb_agg(to_jsonb(x) - 'site_id' order by x.created_at, x.id) from
+      (select * from public.motor_insurance where site_id = sid order by created_at, id offset off limit lim) x), '[]');
+  end if;
+  perform public._motor_err('bad_data');
 end $$;
 
 -- ============================================================

@@ -4712,6 +4712,9 @@ VIEWS.finrep=async function(main){
 /* ---------- نسخة احتياطية إجبارية قبل خروج المدير ---------- */
 async function backupNow(){
   var b=await call('motor_backup');
+  // الجداول الكبيرة على دفعات من 2000 سطر
+  async function pages(tb){ var all=[], off=0; for(;;){ var r=await call('motor_backup_page',{p_table:tb,p_offset:off,p_limit:2000}); all=all.concat(r||[]); if(!r||r.length<2000) return all; off+=2000; } }
+  if(b.paged){ for(var tb of ['customers','readings','invoices','payments','moves','insurance']) b[tb]=await pages(tb); }
   var S=[];
   function sheet(name,list,cols){ var rows=[cols]; (list||[]).forEach(function(x){ rows.push(cols.map(function(c){ var v=x[c]; return v==null?'':(typeof v==='object'?JSON.stringify(v):v); })); }); S.push({name:name,rows:rows}); }
   sheet('customers',b.customers,['code','name','alt_name','barcode','meter_no','box','generator','breaker_no','building','floor','side','location_name','location_code','lat','lng','area','area_code','zone','category','category2','collector_name','sub_date','is_active','stopped_at','stopped_by','credit_limit','charge_discount','discount_desc','charge_addition','addition_desc','initial_reading','balance','mobile','mobile_cc','mobile2','phone','address','email','nationality','archived','collect_day','notes','username','id','plan_id','collector_id']);
@@ -4721,6 +4724,7 @@ async function backupNow(){
   sheet('invoices',b.invoices,['created_at','no','period','kind','customer_id','plan_name','prev_value','cur_value','kwh','kwh_price','fee','energy','discount','addition','amount','balance_before','balance_after','note','staff_name','voided','id']);
   sheet('payments',b.payments,['created_at','no','customer_id','amount','paid_currency','paid_amount','rate','method','balance_before','balance_after','note','staff_name','voided','id']);
   sheet('moves',b.moves,['created_at','account','kind','amount','note','by_name','staff_id','extra','id']);
+  if(b.insurance) sheet('insurance',b.insurance,['created_at','name','kind','amount','account','ref_no','service','note','by_name','customer_id','imported','id']);
   var d=new Date(), p=function(x){return String(x).padStart(2,'0')};
   downloadBlob(makeXlsx(S),'backup-'+SLUG+'-'+d.getFullYear()+p(d.getMonth()+1)+p(d.getDate())+'-'+p(d.getHours())+p(d.getMinutes())+'.xlsx');
 }
