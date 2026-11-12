@@ -467,6 +467,9 @@ create index if not exists motor_salary_dues_idx on public.motor_salary_dues (st
 
 -- ---------- v7: استيراد فواتير البرنامج السابق ----------
 alter table public.motor_invoices add column if not exists imported boolean not null default false;
+alter table public.motor_invoices add column if not exists items jsonb not null default '[]'::jsonb;   -- بنود فاتورة المشتريات
+alter table public.motor_invoices drop constraint if exists motor_invoices_kind_check;
+alter table public.motor_invoices add constraint motor_invoices_kind_check check (kind in ('meter','fixed','opening','adjust','sale'));
 alter table public.motor_readings add column if not exists imported boolean not null default false;
 alter table public.motor_readings add column if not exists remote boolean not null default false;   -- قراءة عن بعد (صورة من الزبون)
 

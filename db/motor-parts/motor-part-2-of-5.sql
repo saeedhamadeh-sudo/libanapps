@@ -480,7 +480,7 @@ begin
                'prev_value',i.prev_value,'cur_value',i.cur_value,'kwh',i.kwh,'kwh_price',i.kwh_price,'fee',i.fee,
                'energy',i.energy,'discount',i.discount,'addition',i.addition,
                'debit',greatest(i.amount,0),'credit',greatest(-i.amount,0),'balance_before',i.balance_before,'balance_after',i.balance_after,
-               'note',i.note,'staff',i.staff_name,'voided',i.voided,
+               'note',i.note,'staff',i.staff_name,'voided',i.voided,'items',i.items,
                'photo', (select r.photo_url from public.motor_readings r where r.id = i.reading_id)) as x
           from public.motor_invoices i where i.customer_id = c.id
         union all
@@ -622,6 +622,14 @@ begin
   update public.motor_invoices set voided = true, voided_at = now(), voided_by = w->>'name', reading_id = null,
          voided_reading = (select to_jsonb(r) from public.motor_readings r where r.id = i.reading_id) where id = i.id;
   if i.reading_id is not null then delete from public.motor_readings where id = i.reading_id; end if;
+  -- فاتورة مشتريات: البنود من المخزون بترجع عليه
+  if i.kind = 'sale' then
+    update public.motor_stock st set qty = st.qty + (it->>'qty')::numeric, updated_by = w->>'name', updated_at = now()
+      from jsonb_array_elements(i.items) it where it->>'stock_id' is not null and st.id = (it->>'stock_id')::uuid and st.site_id = sid;
+    insert into public.motor_stock_moves (site_id, item_id, item_name, kind, qty, unit_price, taker, note, by_name)
+    select sid, (it->>'stock_id')::uuid, it->>'name', 'void', (it->>'qty')::numeric, (it->>'price')::numeric, '', 'إلغاء فاتورة مشتريات #' || i.no, w->>'name'
+      from jsonb_array_elements(i.items) it where it->>'stock_id' is not null;
+  end if;
   update public.motor_customers set balance = balance - i.amount, updated_at = now() where id = i.customer_id;
   insert into public.motor_trash (site_id, kind, ref_id, label, data, deleted_by)
   values (sid, 'invoice', i.id, 'فاتورة #' || i.no || coalesce(' ' || nullif(i.period,''), '') || ' — ' ||

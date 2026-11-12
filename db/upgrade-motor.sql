@@ -466,6 +466,9 @@ create index if not exists motor_salary_dues_idx on public.motor_salary_dues (st
 
 -- ---------- v7: استيراد فواتير البرنامج السابق ----------
 alter table public.motor_invoices add column if not exists imported boolean not null default false;
+alter table public.motor_invoices add column if not exists items jsonb not null default '[]'::jsonb;   -- بنود فاتورة المشتريات
+alter table public.motor_invoices drop constraint if exists motor_invoices_kind_check;
+alter table public.motor_invoices add constraint motor_invoices_kind_check check (kind in ('meter','fixed','opening','adjust','sale'));
 alter table public.motor_readings add column if not exists imported boolean not null default false;
 alter table public.motor_readings add column if not exists remote boolean not null default false;   -- قراءة عن بعد (صورة من الزبون)
 
@@ -1303,7 +1306,7 @@ begin
                'prev_value',i.prev_value,'cur_value',i.cur_value,'kwh',i.kwh,'kwh_price',i.kwh_price,'fee',i.fee,
                'energy',i.energy,'discount',i.discount,'addition',i.addition,
                'debit',greatest(i.amount,0),'credit',greatest(-i.amount,0),'balance_before',i.balance_before,'balance_after',i.balance_after,
-               'note',i.note,'staff',i.staff_name,'voided',i.voided,
+               'note',i.note,'staff',i.staff_name,'voided',i.voided,'items',i.items,
                'photo', (select r.photo_url from public.motor_readings r where r.id = i.reading_id)) as x
           from public.motor_invoices i where i.customer_id = c.id
         union all
@@ -1445,6 +1448,14 @@ begin
   update public.motor_invoices set voided = true, voided_at = now(), voided_by = w->>'name', reading_id = null,
          voided_reading = (select to_jsonb(r) from public.motor_readings r where r.id = i.reading_id) where id = i.id;
   if i.reading_id is not null then delete from public.motor_readings where id = i.reading_id; end if;
+  -- فاتورة مشتريات: البنود من المخزون بترجع عليه
+  if i.kind = 'sale' then
+    update public.motor_stock st set qty = st.qty + (it->>'qty')::numeric, updated_by = w->>'name', updated_at = now()
+      from jsonb_array_elements(i.items) it where it->>'stock_id' is not null and st.id = (it->>'stock_id')::uuid and st.site_id = sid;
+    insert into public.motor_stock_moves (site_id, item_id, item_name, kind, qty, unit_price, taker, note, by_name)
+    select sid, (it->>'stock_id')::uuid, it->>'name', 'void', (it->>'qty')::numeric, (it->>'price')::numeric, '', 'إلغاء فاتورة مشتريات #' || i.no, w->>'name'
+      from jsonb_array_elements(i.items) it where it->>'stock_id' is not null;
+  end if;
   update public.motor_customers set balance = balance - i.amount, updated_at = now() where id = i.customer_id;
   insert into public.motor_trash (site_id, kind, ref_id, label, data, deleted_by)
   values (sid, 'invoice', i.id, 'فاتورة #' || i.no || coalesce(' ' || nullif(i.period,''), '') || ' — ' ||
@@ -3424,6 +3435,62 @@ begin
 end $$;
 
 -- ============================================================
+--  20j5) فاتورة مشتريات للزبون (بنود حرّة أو من المخزون) — بتنزل على كشف حسابو
+-- ============================================================
+create or replace function public.motor_sale_add(p_slug text, p_token text, p_customer uuid, p_items jsonb, p_note text default '')
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w jsonb; sid uuid; c public.motor_customers%rowtype; seq integer; x jsonb; s public.motor_stock%rowtype;
+        q numeric; pr numeric; ln numeric; tot numeric := 0; items jsonb := '[]'::jsonb; summ text[] := '{}'; nm text; inv public.motor_invoices%rowtype;
+begin
+  w := public._motor_admin(p_slug, p_token);
+  sid := (w->>'site_id')::uuid;
+  select * into c from public.motor_customers where id = p_customer and site_id = sid and deleted_at is null for update;
+  if not found then perform public._motor_err('customer_not_found'); end if;
+  if jsonb_typeof(p_items) <> 'array' or jsonb_array_length(p_items) = 0 then perform public._motor_err('bad_data'); end if;
+  update public.motor_sites set invoice_seq = invoice_seq + 1 where id = sid returning invoice_seq into seq;
+  for x in select * from jsonb_array_elements(p_items) loop
+    q := coalesce(nullif(x->>'qty','')::numeric, 0); pr := coalesce(nullif(x->>'price','')::numeric, 0); nm := trim(coalesce(x->>'name',''));
+    if q <= 0 or pr < 0 then perform public._motor_err('bad_amount'); end if;
+    if nullif(x->>'stock_id','') is not null then
+      select * into s from public.motor_stock where id = (x->>'stock_id')::uuid and site_id = sid for update;
+      if not found then perform public._motor_err('not_found'); end if;
+      if s.qty < q then perform public._motor_err('stock_low', s.name || ': ' || s.qty::text); end if;
+      update public.motor_stock set qty = qty - q, updated_by = w->>'name', updated_at = now() where id = s.id;
+      insert into public.motor_stock_moves (site_id, item_id, item_name, kind, qty, unit_price, taker, note, by_name)
+      values (sid, s.id, s.name, 'out', -q, pr, c.name, 'فاتورة مشتريات #' || seq, w->>'name');
+      if nm = '' then nm := s.name; end if;
+    end if;
+    if nm = '' then perform public._motor_err('bad_data'); end if;
+    ln := round(q * pr, 2); tot := tot + ln;
+    items := items || jsonb_build_array(jsonb_build_object('name', nm, 'qty', q, 'price', pr, 'total', ln, 'stock_id', nullif(x->>'stock_id','')));
+    summ := summ || (case when q = 1 then nm else trim(to_char(q, 'FM999999990.##')) || '× ' || nm end);
+  end loop;
+  if tot <= 0 then perform public._motor_err('bad_amount'); end if;
+  insert into public.motor_invoices (site_id, no, customer_id, period, kind, amount, items, balance_before, balance_after, note, staff_id, staff_name, wa_sent_at)
+  values (sid, seq, c.id, to_char(public._motor_today(), 'YYYY-MM'), 'sale', tot, items, c.balance, c.balance + tot,
+          left(array_to_string(summ, '، ') || coalesce(' — ' || nullif(trim(p_note),''), ''), 500), (w->>'staff_id')::uuid, w->>'name', now())
+  returning * into inv;
+  update public.motor_customers set balance = balance + tot, updated_at = now() where id = c.id;
+  return jsonb_build_object('ok', true, 'invoice', to_jsonb(inv) - 'site_id',
+    'customer', jsonb_build_object('id', c.id, 'code', c.code, 'name', c.name, 'mobile', c.mobile, 'mobile_cc', c.mobile_cc, 'balance', c.balance + tot));
+end $$;
+
+create or replace function public.motor_sales_list(p_slug text, p_token text, p_from date default null, p_to date default null)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w jsonb; sid uuid;
+begin
+  w := public._motor_admin(p_slug, p_token);
+  sid := (w->>'site_id')::uuid;
+  return coalesce((select jsonb_agg(jsonb_build_object('id', i.id, 'no', i.no, 'at', i.created_at, 'amount', i.amount, 'items', i.items, 'note', i.note,
+           'voided', i.voided, 'staff', i.staff_name, 'balance_before', i.balance_before, 'balance_after', i.balance_after, 'period', i.period,
+           'customer', jsonb_build_object('id', c.id, 'code', c.code, 'name', c.name, 'mobile', c.mobile, 'mobile_cc', c.mobile_cc, 'balance', c.balance))
+           order by i.created_at desc)
+         from public.motor_invoices i join public.motor_customers c on c.id = i.customer_id
+        where i.site_id = sid and i.kind = 'sale'
+          and (i.created_at at time zone 'Asia/Beirut')::date between coalesce(p_from, date '2000-01-01') and coalesce(p_to, date '2999-12-31')), '[]'::jsonb);
+end $$;
+
+-- ============================================================
 --  20k) إقفال صندوق الموظف: يسلّم كل النقد للمكتب ويطلع تقرير
 -- ============================================================
 create or replace function public.motor_staff_close(p_slug text, p_token text, p_staff uuid default null)
@@ -3707,7 +3774,7 @@ begin
     'motor_cash_statement(text,text,date,date)', 'motor_cash_close(text,text,numeric,numeric,text)',
     'motor_set_active(text,text,uuid,boolean,text,double precision,double precision)',
     'motor_note_add(text,text,uuid,text)', 'motor_ping(text,text,double precision,double precision,double precision)',
-    'motor_staff_map(text,text)', 'motor_unpaid(text,text,text,integer)', 'motor_unpaid_msg_save(text,text,text)', 'motor_backup_page(text,text,text,integer,integer)', 'motor_fin_get(text,text,text)', 'motor_fin_save(text,text,text,jsonb)', 'motor_fin_delete(text,text,text)', 'motor_2fa_setup(text,text)', 'motor_2fa_enable(text,text,text)',
+    'motor_staff_map(text,text)', 'motor_unpaid(text,text,text,integer)', 'motor_sale_add(text,text,uuid,jsonb,text)', 'motor_sales_list(text,text,date,date)', 'motor_unpaid_msg_save(text,text,text)', 'motor_backup_page(text,text,text,integer,integer)', 'motor_fin_get(text,text,text)', 'motor_fin_save(text,text,text,jsonb)', 'motor_fin_delete(text,text,text)', 'motor_2fa_setup(text,text)', 'motor_2fa_enable(text,text,text)',
     'motor_2fa_disable(text,text,text,uuid)', 'motor_wa_outbox(text,text,integer)', 'motor_wa_mark(text,text,text,uuid)',
     'motor_reading_edit(text,text,uuid,numeric,text)', 'motor_customer_set_login(text,text,uuid,text,text)', 'motor_cust_me(text,text)',
     'motor_invoice_edit(text,text,uuid,numeric,text)', 'motor_payment_edit(text,text,uuid,numeric,text)',

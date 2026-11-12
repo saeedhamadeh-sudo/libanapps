@@ -1753,6 +1753,17 @@ var D={
  k_meter:['فاتورة عداد','Meter invoice','Facture compteur'],
  k_fixed:['فاتورة مقطوع','Flat invoice','Facture forfait'],
  k_opening:['رصيد سابق','Opening balance','Solde initial'],
+ k_sale:['فاتورة مشتريات','Purchase invoice','Facture d’achat'],
+ nav_sales:['فاتورة مشتريات وإيصال قبض','Purchase invoice & receipt','Facture d’achat et reçu'],
+ sl_new:['+ فاتورة مشتريات جديدة','+ New purchase invoice','+ Nouvelle facture'], sl_cust:['الزبون','Customer','Client'], sl_items:['البنود','Items','Articles'],
+ sl_src:['المصدر','Source','Source'], sl_free:['بند حر','Free item','Article libre'], sl_item:['البند','Item','Article'], sl_qty:['الكمية','Qty','Qté'], sl_price:['السعر','Price','Prix'],
+ sl_line:['المجموع','Total','Total'], sl_add:['+ إضافة بند','+ Add item','+ Ajouter'], sl_total:['مجموع الفاتورة','Invoice total','Total facture'],
+ sl_pay_now:['إيصال قبض الآن','Take payment now','Encaisser maintenant'], sl_paid:['المبلغ المقبوض','Amount received','Montant reçu'],
+ sl_saved:['تم حفظ الفاتورة وإضافتها إلى كشف حساب الزبون','Invoice saved and added to the customer’s statement','Facture enregistrée sur le relevé du client'],
+ sl_saved_pay:['تم حفظ الفاتورة وإيصال القبض','Invoice and receipt saved','Facture et reçu enregistrés'],
+ sl_pick_cust:['اختر الزبون من القائمة','Choose the customer from the list','Choisissez le client'], sl_in_stock:['في المخزون: {n}','In stock: {n}','En stock : {n}'],
+ sl_void_q:['إلغاء فاتورة المشتريات #{n}؟ يُخصم مبلغها من حساب الزبون وتعود بنود المخزون إليه.','Void purchase invoice #{n}? Its amount is removed from the customer and stock items return.','Annuler la facture #{n} ?'],
+ sl_none:['لا توجد فواتير مشتريات في هذه الفترة.','No purchase invoices in this period.','Aucune facture sur la période.'], sl_count:['عدد الفواتير','Invoices','Factures'], sl_sum:['مجموع الفواتير','Invoices total','Total'],
  k_adjust:['قيد يدوي','Manual entry','Écriture manuelle'],
  k_pay:['قبض','Payment','Paiement'],
  void:['إلغاء','Void','Annuler'],
@@ -2535,6 +2546,7 @@ var TABS=[
   {id:'journal',k:'nav_journal',i:'📒',admin:true},
   {id:'expenses',k:'nav_expenses',i:'🧾',admin:true},
   {id:'salaries',k:'nav_salaries',i:'👷',admin:true},
+  {id:'sales',k:'nav_sales',i:'🧾',admin:true},
   {id:'stock',k:'nav_stock',i:'📦',admin:true},
   {id:'suppliers',k:'nav_suppliers',i:'🚚',admin:true},
   {id:'insurance',k:'nav_insurance',i:'🛡️',admin:true},
@@ -3242,8 +3254,8 @@ function billLines(o){
     L.push({k:t('b_inv_date'),v:ymd(inv.created_at)});
     if(p) L.push({k:t('b_pay_date'),v:ymd(p.created_at)});
     L.push({k:t('b_name'),v:o.c.name});
-    if(inv.period) L.push({k:t('b_desc'),v:t('b_inv_of',{m:monthName(inv.period)})+' - '+o.c.name});
-    if(inv.period) L.push({t:t('b_month',{m:monthName(inv.period,true)})});
+    if(inv.period&&inv.kind!=='sale') L.push({k:t('b_desc'),v:t('b_inv_of',{m:monthName(inv.period)})+' - '+o.c.name});
+    if(inv.period&&inv.kind!=='sale') L.push({t:t('b_month',{m:monthName(inv.period,true)})});
     L.push({hr:1},{t:t('b_details')},{hr:1});
     if(n2(inv.fee)) L.push({k:t('b_fee'),v:money(inv.fee)});
     if(inv.kind==='meter'){
@@ -3252,6 +3264,7 @@ function billLines(o){
     }
     if(n2(inv.discount)) L.push({k:t('discount'),v:'−'+money(inv.discount)});
     if(n2(inv.addition)) L.push({k:t('addition'),v:money(inv.addition)});
+    if(inv.kind==='sale'){ (inv.items||[]).forEach(function(x){ L.push({k:'\u2067'+x.name+'\u2069',v:money(x.total)}); if(n2(x.qty)!==1) L.push({t:'\u2066'+fmtN(x.qty)+' × '+money(x.price)+'\u2069',s:1}); }); }
     if(/^قراءة أولى/.test(inv.note||'')) L.push({t:t('first_read'),s:1});
     L.push({hr:1},{k:t('b_amount'),v:money(inv.amount),b:1},{hr:1},{k:t('b_prev_bal'),v:money(inv.balance_before)},{hr:1});
   } else if(p){
@@ -3268,7 +3281,7 @@ function billLines(o){
   }
   return L;
 }
-function billHead(o){ return o.inv?t('b_inv_no',{n:o.inv.no}):t('receipt'); }
+function billHead(o){ return o.inv?(o.inv.kind==='sale'?t('k_sale')+' — ':'')+t('b_inv_no',{n:o.inv.no}):t('receipt'); }
 function billHtml(o){
   return '<div class="inv-box">'+(SITE.logo_url?'<div style="text-align:center"><img src="'+esc(SITE.logo_url)+'" alt="" style="max-height:56px"></div>':'')+
     '<div style="text-align:center;font-weight:800;font-size:17px">'+esc(SITE.name||'')+'</div>'+(SITE.tagline?'<div style="text-align:center" class="muted">'+esc(SITE.tagline)+'</div>':'')+
@@ -3744,7 +3757,7 @@ async function openStatement(cid){
           '<span class="muted">'+esc(t('running'))+': '+balHtml(run2)+'</span></div>'+
           '<div class="sc-r">'+(r.staff?'<span class="muted" style="font-size:12px">'+esc(r.staff)+'</span>':'<span></span>')+'<span style="white-space:nowrap">'+
             (r.photo?'<img class="thumb" src="'+esc(r.photo)+'?w=160" data-big="'+esc(r.photo)+'" loading="lazy" alt="" style="height:30px"> ':'')+
-            (!r.voided&&(isPay||r.kind==='meter'||r.kind==='fixed')?'<button class="btn ghost sm" data-prow="'+esc(r.id)+'">🖨️</button> ':'')+
+            (!r.voided&&(isPay||r.kind==='meter'||r.kind==='fixed'||r.kind==='sale')?'<button class="btn ghost sm" data-prow="'+esc(r.id)+'">🖨️</button> ':'')+
             (!adm&&isPay&&!r.voided&&r.staff===ME.name&&can('collect')?'<button class="btn ghost sm" data-void="pay|'+esc(r.id)+'">🗑️ '+esc(t('pay_void'))+'</button> ':'')+
             (adm&&!r.voided?'<button class="btn ghost sm" data-edamt="'+esc(r.t)+'|'+esc(r.id)+'|'+esc(isPay?r.paid_amount:r.debit)+'">✏️</button> '+(r.kind!=='opening'?'<button class="btn ghost sm" data-void="'+esc(r.t)+'|'+esc(r.id)+'">'+esc(t('void'))+'</button>':''):'')+
             (r.voided?'<span class="chip off">'+esc(t('voided'))+'</span>':'')+'</span></div></div>');
@@ -3761,7 +3774,7 @@ async function openStatement(cid){
         '<td>'+det+(r.note?' <span class="muted">'+esc(r.note)+'</span>':'')+'</td>'+
         '<td class="num">'+(n2(r.debit)?esc(money(r.debit)):'')+'</td><td class="num">'+(n2(r.credit)?esc(money(r.credit)):'')+'</td><td>'+balHtml(run)+'</td>'+
         '<td>'+(r.photo?'<img class="thumb" src="'+esc(r.photo)+'?w=160" data-big="'+esc(r.photo)+'" loading="lazy" alt="">':'')+'</td><td>'+esc(r.staff||'')+'</td>'+
-        '<td>'+(!r.voided&&(r.t==='pay'||r.kind==='meter'||r.kind==='fixed')?'<button class="btn ghost sm" data-prow="'+esc(r.id)+'" title="'+esc(t('print'))+'">🖨️</button>':'')+'</td>'+
+        '<td>'+(!r.voided&&(r.t==='pay'||r.kind==='meter'||r.kind==='fixed'||r.kind==='sale')?'<button class="btn ghost sm" data-prow="'+esc(r.id)+'" title="'+esc(t('print'))+'">🖨️</button>':'')+'</td>'+
         (!adm&&r.t==='pay'&&!r.voided&&r.staff===ME.name&&can('collect')?'<td><button class="btn ghost sm" data-void="pay|'+esc(r.id)+'">🗑️</button></td>':'')+
         (adm?'<td>'+(!r.voided?'<button class="btn ghost sm" data-edamt="'+esc(r.t)+'|'+esc(r.id)+'|'+esc(r.t==='pay'?r.paid_amount:r.debit)+'">✏️</button> ':'')+(!r.voided&&r.kind!=='opening'?'<button class="btn ghost sm" data-void="'+esc(r.t)+'|'+esc(r.id)+'">'+esc(t('void'))+'</button>':(r.voided?'<span class="chip off">'+esc(t('voided'))+'</span>':''))+'</td>':'')+'</tr>';
     });
@@ -3796,7 +3809,7 @@ async function openStatement(cid){
 }
 /* طباعة أي فاتورة أو إيصال قديم من كشف الحساب */
 function stmtInv(r){ return {no:r.no,created_at:r.at,period:r.period,kind:r.kind,fee:r.fee,prev_value:r.prev_value,cur_value:r.cur_value,kwh:r.kwh,kwh_price:r.kwh_price,
-  energy:r.energy,discount:r.discount,addition:r.addition,amount:r.debit,balance_before:r.balance_before,balance_after:r.balance_after,note:r.note}; }
+  energy:r.energy,discount:r.discount,addition:r.addition,amount:r.debit,balance_before:r.balance_before,balance_after:r.balance_after,note:r.note,items:r.items||[]}; }
 async function printStmtRow(d,id){
   var i=-1; d.rows.forEach(function(r,k){ if(r.id===id) i=k; }); if(i<0) return; var r=d.rows[i];
   if(r.t==='inv') return await printDoc(billTicket({c:d.customer,inv:stmtInv(r)}));
@@ -4662,6 +4675,94 @@ VIEWS.report=async function(main){
       '<h3 style="margin:0 0 6px">'+esc(SITE.name||'')+' — '+esc(t('nav_report'))+' '+esc(monthName(d.period,true))+'</h3>'+$('#rtw',main).innerHTML+
       '<p style="font-size:10px">'+esc(t('inv_amount'))+': '+esc(money(tot.inv))+' · '+esc(t('paid'))+': '+esc(money(tot.paid))+' · '+esc(t('rep_bal_end'))+': '+esc(money(tot.bal))+'</p>'); });
 };
+
+/* ---------- فاتورة مشتريات للزبون + إيصال قبض ---------- */
+var SL={from:'',to:''};
+VIEWS.sales=async function(main){
+  if(!SL.from){ SL.from=String(TODAY).slice(0,8)+'01'; SL.to=TODAY; }
+  var L=await call('motor_sales_list',{p_from:SL.from,p_to:SL.to}), q='';
+  main.innerHTML='<div class="toolbar"><button class="btn" id="slnew">'+esc(t('sl_new'))+'</button><span class="sp"></span>'+
+    '<label>'+esc(t('from'))+'</label><input type="date" id="slf" value="'+esc(SL.from)+'" style="flex:0 1 160px"><label>'+esc(t('to'))+'</label><input type="date" id="slt" value="'+esc(SL.to)+'" style="flex:0 1 160px">'+
+    '<input type="search" id="slq" placeholder="'+esc(t('search_ph'))+'"></div><div class="stats" id="slst"></div><div class="tw" id="sltw"></div>';
+  function paint(){ var k=normS(q), R=L.filter(function(r){ return !k||normS(r.customer.name).indexOf(k)>=0||String(r.customer.code)===k||String(r.no)===k||normS(r.note).indexOf(k)>=0; }), sum=0;
+    R.forEach(function(r){ if(!r.voided) sum+=n2(r.amount); });
+    $('#slst',main).innerHTML=stat(t('sl_count'),fmtN(R.filter(function(r){return !r.voided}).length,0))+stat(t('sl_sum'),money(sum));
+    $('#sltw',main).innerHTML='<table><thead><tr><th>'+esc(t('date'))+'</th><th>#</th><th>'+esc(t('sl_cust'))+'</th><th>'+esc(t('sl_items'))+'</th><th>'+esc(t('amount'))+'</th><th>'+esc(t('by'))+'</th><th></th></tr></thead><tbody>'+
+      (R.map(function(r){ return '<tr'+(r.voided?' style="opacity:.5;text-decoration:line-through"':'')+'><td class="num">'+esc(dt(r.at))+'</td><td class="num">'+esc(r.no)+'</td>'+
+        '<td><a href="#" data-cust="'+esc(r.customer.id)+'"><b>'+esc(r.customer.name)+'</b></a> <span class="muted">#'+esc(r.customer.code)+'</span></td>'+
+        '<td>'+(r.items||[]).map(function(x){ return esc(fmtN(x.qty)+' × '+x.name)+' <span class="muted">('+esc(money(x.total))+')</span>'; }).join('<br>')+'</td>'+
+        '<td class="num"><b>'+esc(money(r.amount))+'</b></td><td>'+esc(r.staff||'')+'</td>'+
+        '<td style="white-space:nowrap">'+(r.voided?'':'<button class="btn ghost sm" data-slp="'+esc(r.id)+'">🖨️</button> <button class="btn danger sm" data-slv="'+esc(r.id)+'">🗑️</button>')+'</td></tr>'; }).join(''))||
+      '<tr><td colspan="7" class="muted">'+esc(t('sl_none'))+'</td></tr>'+'</tbody></table>'; }
+  function inv(r){ return {no:r.no,created_at:r.at,kind:'sale',items:r.items,amount:r.amount,balance_before:r.balance_before,balance_after:r.balance_after,note:r.note,period:''}; }
+  $('#slq',main).addEventListener('input',function(){ q=this.value; paint(); });
+  $('#slf',main).addEventListener('change',function(){ SL.from=this.value; go('sales',true); });
+  $('#slt',main).addEventListener('change',function(){ SL.to=this.value; go('sales',true); });
+  $('#slnew',main).addEventListener('click',function(){ saleForm(); });
+  $('#sltw',main).addEventListener('click',async function(e){
+    var p=e.target.closest('[data-slp]'), v=e.target.closest('[data-slv]'); var r;
+    if(p){ r=L.filter(function(x){ return x.id===p.dataset.slp; })[0]; if(r) await printDoc(billTicket({c:r.customer,inv:inv(r)})); }
+    if(v){ r=L.filter(function(x){ return x.id===v.dataset.slv; })[0]; if(!r||!(await confirmBox(t('sl_void_q',{n:r.no})))) return;
+      try{ await call('motor_invoice_void',{p_id:r.id}); toast(t('saved'),'s'); await loadCustomers(); go('sales',true); }catch(err){ toast(errText(err),'e'); } }
+  });
+  paint();
+};
+async function saleForm(preCust){
+  var stock=[]; try{ stock=await call('motor_stock_list'); }catch(e){}
+  var rows=[{src:'',name:'',qty:1,price:0}], cust=preCust||null;
+  var m=modal(t('sl_new').replace(/^\+\s*/,''),
+    '<label>'+esc(t('sl_cust'))+'</label><input id="sfc" list="sfcl" autocomplete="off" placeholder="'+esc(t('search_ph'))+'" value="'+(cust?esc('#'+cust.code+' '+cust.name):'')+'">'+
+    '<datalist id="sfcl">'+CUST.map(function(c){ return '<option value="#'+c.code+' '+esc(c.name)+'">'; }).join('')+'</datalist><div id="sfcb" class="muted" style="margin:4px 0 10px"></div>'+
+    '<div class="tw"><table class="sfi"><thead><tr><th>'+esc(t('sl_src'))+'</th><th>'+esc(t('sl_item'))+'</th><th>'+esc(t('sl_qty'))+'</th><th>'+esc(t('sl_price'))+'</th><th>'+esc(t('sl_line'))+'</th><th></th></tr></thead><tbody id="sfr"></tbody></table></div>'+
+    '<button class="btn ghost sm" id="sfadd" style="margin-top:6px">'+esc(t('sl_add'))+'</button>'+
+    '<div style="margin-top:10px"><label>'+esc(t('note'))+'</label><input id="sfn"></div>'+
+    '<div style="margin-top:12px;font-size:19px;font-weight:800">'+esc(t('sl_total'))+': <span id="sft" class="num">0</span></div>'+
+    '<div class="card" style="margin-top:8px"><label class="chk"><input type="checkbox" id="sfp"> '+esc(t('sl_pay_now'))+'</label>'+
+    '<div id="sfpb" class="hidden g2" style="margin-top:8px"><div><label>'+esc(t('sl_paid'))+'</label><input id="sfpa" type="number" step="0.01" inputmode="decimal"></div>'+
+    '<div><label>'+esc(t('method'))+'</label><select id="sfpm"><option value="cash">'+esc(t('cash'))+'</option><option value="whish">Whish</option></select></div></div></div>'+
+    '<div id="sfm" class="err msg"></div>',
+    '<button class="btn ghost" data-x>'+esc(t('cancel'))+'</button><button class="btn" data-ok>💾 '+esc(t('save'))+'</button>',true);
+  var tb=$('#sfr',m.body);
+  function total(){ var s=0; rows.forEach(function(r){ s+=Math.round(n2(r.qty)*n2(r.price)*100)/100; }); return Math.round(s*100)/100; }
+  function paint(){
+    tb.innerHTML=rows.map(function(r,i){ var st=r.src?stock.filter(function(x){ return x.id===r.src; })[0]:null;
+      return '<tr><td><select data-f="src" data-i="'+i+'"><option value="">'+esc(t('sl_free'))+'</option>'+stock.map(function(x){ return '<option value="'+esc(x.id)+'"'+(x.id===r.src?' selected':'')+'>'+esc(x.name)+' ('+esc(fmtN(x.qty))+')</option>'; }).join('')+'</select>'+(st?'<div class="muted" style="font-size:11px">'+esc(t('sl_in_stock',{n:fmtN(st.qty)}))+'</div>':'')+'</td>'+
+        '<td><input data-f="name" data-i="'+i+'" value="'+esc(r.name)+'"></td><td><input data-f="qty" data-i="'+i+'" type="number" step="0.01" min="0" value="'+esc(r.qty)+'" style="max-width:90px"></td>'+
+        '<td><input data-f="price" data-i="'+i+'" type="number" step="0.01" min="0" value="'+esc(r.price)+'" style="max-width:110px"></td><td class="num" data-lt="'+i+'">'+esc(money(n2(r.qty)*n2(r.price)))+'</td>'+
+        '<td><button class="btn ghost sm" data-del="'+i+'"'+(rows.length<2?' disabled':'')+'>✕</button></td></tr>'; }).join('');
+    $('#sft',m.body).textContent=money(total()); if(!$('#sfp',m.body).checked||!$('#sfpa',m.body).dataset.touched) $('#sfpa',m.body).value=total(); }
+  function pickCust(){ var v=$('#sfc',m.body).value.trim(), mm=v.match(/^#(\d+)/); cust=null;
+    if(mm) cust=CUST.filter(function(c){ return String(c.code)===mm[1]; })[0]||null;
+    $('#sfcb',m.body).innerHTML=cust?esc(t('balance'))+': '+balHtml(cust.balance):''; }
+  $('#sfc',m.body).addEventListener('change',pickCust); $('#sfc',m.body).addEventListener('input',pickCust); pickCust();
+  tb.addEventListener('input',function(e){ var el=e.target, i=+el.dataset.i, f=el.dataset.f; if(isNaN(i)||!f||f==='src') return;
+    rows[i][f]=f==='name'?el.value:el.value; $('[data-lt="'+i+'"]',tb).textContent=money(n2(rows[i].qty)*n2(rows[i].price)); $('#sft',m.body).textContent=money(total());
+    if(!$('#sfpa',m.body).dataset.touched) $('#sfpa',m.body).value=total(); });
+  tb.addEventListener('change',function(e){ var el=e.target; if(el.dataset.f!=='src') return; var i=+el.dataset.i, st=stock.filter(function(x){ return x.id===el.value; })[0];
+    rows[i].src=el.value; if(st){ rows[i].name=st.name; if(!n2(rows[i].price)) rows[i].price=n2(st.unit_price); } paint(); });
+  tb.addEventListener('click',function(e){ var d=e.target.closest('[data-del]'); if(!d||d.disabled) return; rows.splice(+d.dataset.del,1); paint(); });
+  $('#sfadd',m.body).addEventListener('click',function(){ rows.push({src:'',name:'',qty:1,price:0}); paint(); var ins=$$('[data-f=name]',tb); ins[ins.length-1].focus(); });
+  $('#sfp',m.body).addEventListener('change',function(){ $('#sfpb',m.body).classList.toggle('hidden',!this.checked); });
+  $('#sfpa',m.body).addEventListener('input',function(){ this.dataset.touched='1'; });
+  m.foot.addEventListener('click',async function(e){
+    if(e.target.closest('[data-x]')) return m.close();
+    var b=e.target.closest('[data-ok]'); if(!b) return; var msg=$('#sfm',m.body); msg.textContent='';
+    if(!cust){ msg.textContent=t('sl_pick_cust'); return; }
+    var items=rows.filter(function(r){ return (r.name||'').trim()||r.src; }).map(function(r){ return {stock_id:r.src||null,name:(r.name||'').trim(),qty:n2(r.qty),price:n2(r.price)}; });
+    if(!items.length||!(total()>0)){ msg.textContent=t('e_bad_amount'); return; }
+    busy(b,true,t('saving'));
+    try{
+      var r=await call('motor_sale_add',{p_customer:cust.id,p_items:items,p_note:$('#sfn',m.body).value});
+      var o={c:r.customer,inv:r.invoice}, pay=$('#sfp',m.body).checked?n2($('#sfpa',m.body).value):0;
+      if(pay>0){ var pr=await call('motor_pay',{p_customer:cust.id,p_paid:pay,p_currency:mainCur(),p_method:$('#sfpm',m.body).value,p_note:t('k_sale')+' #'+r.invoice.no}); o.pay=pr.payment; }
+      m.close(); await loadCustomers(); if(TAB==='sales') go('sales',true);
+      var d=modal(t(o.pay?'sl_saved_pay':'sl_saved'),'<div class="okmsg">'+esc(t(o.pay?'sl_saved_pay':'sl_saved'))+'</div><div style="margin-top:10px">'+billHtml(o)+'</div>',
+        '<button class="btn ghost" data-x>'+esc(t('close'))+'</button><button class="btn" data-pr>🖨️ '+esc(t('print'))+'</button>');
+      d.foot.addEventListener('click',async function(ev){ if(ev.target.closest('[data-x]')) d.close(); if(ev.target.closest('[data-pr]')) await printDoc(billTicket(o)); });
+    }catch(err){ msg.textContent=errText(err); busy(b,false); }
+  });
+  paint();
+}
 
 /* ---------- التقرير المالي الشهري (المدير الأساسي) ---------- */
 var FR={period:''};
