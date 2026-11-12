@@ -410,6 +410,7 @@ create table if not exists public.motor_stock (
 create index if not exists motor_stock_site_idx on public.motor_stock (site_id, name);
 -- ---------- v6: حركات المخزون، الموردون والمشتريات، استحقاقات المعاشات ----------
 alter table public.motor_sites add column if not exists purchase_seq integer not null default 0;
+alter table public.motor_sites add column if not exists unpaid_msg text not null default '';   -- نص رسالة تذكير المتأخرين (فاضي = النص الافتراضي)
 alter table public.motor_moves add column if not exists supplier_id uuid;
 create table if not exists public.motor_stock_moves (
   id          uuid primary key default gen_random_uuid(),

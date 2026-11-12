@@ -409,6 +409,7 @@ create table if not exists public.motor_stock (
 create index if not exists motor_stock_site_idx on public.motor_stock (site_id, name);
 -- ---------- v6: حركات المخزون، الموردون والمشتريات، استحقاقات المعاشات ----------
 alter table public.motor_sites add column if not exists purchase_seq integer not null default 0;
+alter table public.motor_sites add column if not exists unpaid_msg text not null default '';   -- نص رسالة تذكير المتأخرين (فاضي = النص الافتراضي)
 alter table public.motor_moves add column if not exists supplier_id uuid;
 create table if not exists public.motor_stock_moves (
   id          uuid primary key default gen_random_uuid(),
@@ -3325,7 +3326,16 @@ begin
                 and i.kind = 'adjust' and i.amount < 0 and i.note like 'ايصال%'))));
     end if;
   end loop;
-  return jsonb_build_object('period', per, 'rows', out);
+  return jsonb_build_object('period', per, 'rows', out, 'msg', st.unpaid_msg);
+end $$;
+
+create or replace function public.motor_unpaid_msg_save(p_slug text, p_token text, p_msg text)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w jsonb;
+begin
+  w := public._motor_admin(p_slug, p_token);
+  update public.motor_sites set unpaid_msg = left(coalesce(p_msg, ''), 2000) where id = (w->>'site_id')::uuid;
+  return jsonb_build_object('ok', true);
 end $$;
 
 -- ============================================================
@@ -3697,7 +3707,7 @@ begin
     'motor_cash_statement(text,text,date,date)', 'motor_cash_close(text,text,numeric,numeric,text)',
     'motor_set_active(text,text,uuid,boolean,text,double precision,double precision)',
     'motor_note_add(text,text,uuid,text)', 'motor_ping(text,text,double precision,double precision,double precision)',
-    'motor_staff_map(text,text)', 'motor_unpaid(text,text,text,integer)', 'motor_backup_page(text,text,text,integer,integer)', 'motor_fin_get(text,text,text)', 'motor_fin_save(text,text,text,jsonb)', 'motor_fin_delete(text,text,text)', 'motor_2fa_setup(text,text)', 'motor_2fa_enable(text,text,text)',
+    'motor_staff_map(text,text)', 'motor_unpaid(text,text,text,integer)', 'motor_unpaid_msg_save(text,text,text)', 'motor_backup_page(text,text,text,integer,integer)', 'motor_fin_get(text,text,text)', 'motor_fin_save(text,text,text,jsonb)', 'motor_fin_delete(text,text,text)', 'motor_2fa_setup(text,text)', 'motor_2fa_enable(text,text,text)',
     'motor_2fa_disable(text,text,text,uuid)', 'motor_wa_outbox(text,text,integer)', 'motor_wa_mark(text,text,text,uuid)',
     'motor_reading_edit(text,text,uuid,numeric,text)', 'motor_customer_set_login(text,text,uuid,text,text)', 'motor_cust_me(text,text)',
     'motor_invoice_edit(text,text,uuid,numeric,text)', 'motor_payment_edit(text,text,uuid,numeric,text)',

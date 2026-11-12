@@ -1584,6 +1584,10 @@ var D={
  up_hint:['الزبائن ذوو الخط المفعّل الذين لم يدفعوا فاتورة الدورة المختارة أو فواتير قبلها. الدفعات تُحسب على الفواتير الأقدم أولاً.','Customers with an active line who have not paid the selected cycle’s bill or earlier bills. Payments settle the oldest bills first.','Clients à ligne active n’ayant pas payé la facture du cycle choisi ou des précédentes. Les paiements soldent d’abord les plus anciennes.'],
  up_count:['عدد الزبائن','Customers','Clients'], up_total:['مجموع المستحق','Total due','Total dû'], up_months:['الأشهر غير المدفوعة','Unpaid months','Mois impayés'], up_due:['المستحق حتى الدورة','Due up to cycle','Dû jusqu’au cycle'], up_last_pay:['آخر دفعة','Last payment','Dernier paiement'], up_none:['لا يوجد زبائن متأخرون عن الدفع لهذه الدورة.','No customers behind on payments for this cycle.','Aucun client en retard pour ce cycle.'], up_no_pay:['لا يوجد','None','Aucun'],
  up_msg:['💡 {s} 💡\nعزيزي المشترك: {n}\nالرجاء تسديد الفواتير المتراكمة ({k})\nعن: {m}\n\nقيمة كل فاتورة:\n{l}\n\nالمجموع: {v} ✔️','💡 {s} 💡\nDear subscriber: {n}\nPlease settle your accumulated bills ({k})\nFor: {m}\n\nEach bill:\n{l}\n\nTotal: {v} ✔️','💡 {s} 💡\nCher abonné : {n}\nMerci de régler vos factures cumulées ({k})\nPour : {m}\n\nDétail :\n{l}\n\nTotal : {v} ✔️'],
+ up_tpl_def:['💡 {المولد} 💡\nحضرة المشترك {الاسم}\nنود تذكيركم بتسديد الفواتير المتوجبة عليكم ({العدد}):\n{الفواتير}\nالمجموع: {المجموع}\n\nنتمنى تسديدها قبل 15 من الشهر الحالي، وإلا سنضطر آسفين لقطع الاشتراك.\nقيمة إعادة الوصل 10$','💡 {المولد} 💡\nDear subscriber {الاسم}\nThis is a reminder to settle your outstanding bills ({العدد}):\n{الفواتير}\nTotal: {المجموع}\n\nPlease pay before the 15th of this month, otherwise we will regretfully have to cut the subscription.\nReconnection fee: $10','💡 {المولد} 💡\nCher abonné {الاسم}\nNous vous rappelons de régler vos factures dues ({العدد}) :\n{الفواتير}\nTotal : {المجموع}\n\nMerci de payer avant le 15 du mois, faute de quoi nous devrons couper l’abonnement.\nFrais de reconnexion : 10 $'],
+ up_tpl:['✏️ نص رسالة التذكير','✏️ Reminder message text','✏️ Texte du rappel'],
+ up_tpl_hint:['اكتب الرسالة كما تريد. هذه الكلمات تُستبدل تلقائياً لكل زبون — اضغط عليها لإضافتها:','Write the message as you like. These words are replaced for each customer — click to insert:','Rédigez le message. Ces mots sont remplacés pour chaque client — cliquez pour insérer :'],
+ up_tpl_reset:['استعادة النص الافتراضي','Restore default text','Texte par défaut'], up_tpl_prev:['معاينة لأول زبون في القائمة','Preview for the first customer in the list','Aperçu pour le premier client'],
  up_msg_bill:['▪️ فاتورة {m}: {v}','▪️ {m} bill: {v}','▪️ Facture {m} : {v}'], up_msg_older:['▪️ رصيد سابق: {v}','▪️ Previous balance: {v}','▪️ Solde antérieur : {v}'],
  nav_finrep:['التقرير الشهري','Monthly report','Rapport mensuel'],
  fr_title:['التقرير المالي لشهر {m}','Financial report — {m}','Rapport financier — {m}'], fr_income:['الواردات','Income','Recettes'], fr_exp:['النفقات','Expenses','Dépenses'], fr_bal:['الرصيد','Balance','Solde'], fr_total:['المجموع','Total','Total'],
@@ -2698,7 +2702,7 @@ function dueText(r){
 }
 VIEWS.unpaid=async function(main){
   if(!RF.upPer) RF.upPer=SITE.bill_period; if(!RF.upMin) RF.upMin=1;
-  var d=await call('motor_unpaid',{p_period:RF.upPer,p_min:RF.upMin}), rows=d.rows, q='';
+  var d=await call('motor_unpaid',{p_period:RF.upPer,p_min:RF.upMin}), rows=d.rows, q='', tpl=d.msg||'';
   var tot=0; rows.forEach(function(r){ tot+=n2(r.due); });
   main.innerHTML='<div class="card"><p class="muted" style="margin:0">'+esc(t('up_hint'))+'</p></div>'+
     '<div class="toolbar"><label>'+esc(t('up_cycle'))+'</label><input type="month" id="upp" value="'+esc(d.period)+'" style="flex:0 1 170px">'+
@@ -2706,12 +2710,19 @@ VIEWS.unpaid=async function(main){
     '<input type="search" id="upq" placeholder="'+esc(t('search_ph'))+'"><span class="sp"></span>'+
     (isAdmin()?'<span data-wachip>'+waChip()+'</span><button class="btn wa" id="upwa" data-waon>📤 '+esc(t('wa_batch50'))+'</button>':'')+
     '<button class="btn ok" id="upx">📊 '+esc(t('export_xlsx'))+'</button><button class="btn alt" id="uppdf">📄 PDF</button></div>'+(isAdmin()?waBatchBar('upbar'):'')+
+    (isAdmin()?'<details class="card" id="uptpl"><summary style="cursor:pointer;font-weight:800">'+esc(t('up_tpl'))+'</summary>'+
+      '<p class="muted" style="margin:8px 0 6px">'+esc(t('up_tpl_hint'))+'</p><div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">'+
+      ['{الاسم}','{المولد}','{العدد}','{الأشهر}','{الفواتير}','{المجموع}'].map(function(k){ return '<button class="btn ghost sm" data-ins="'+esc(k)+'">'+esc(k)+'</button>'; }).join('')+'</div>'+
+      '<textarea id="uptx" rows="9" style="width:100%"></textarea>'+
+      '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap"><button class="btn" id="upts">💾 '+esc(t('save'))+'</button><button class="btn ghost" id="uptr">'+esc(t('up_tpl_reset'))+'</button></div>'+
+      '<div class="muted" style="margin-top:10px">'+esc(t('up_tpl_prev'))+'</div><pre id="uptp" style="white-space:pre-wrap;font-family:inherit;background:var(--bg2,#f6f6f6);padding:10px;border-radius:10px;margin:4px 0 0"></pre></details>':'')+
     '<div class="stats">'+stat(t('up_count'),fmtN(rows.length,0))+stat(t('up_total'),money(tot))+'</div><div class="tw" id="uptw"></div>';
   function months(r){ var m=(r.months||[]).map(function(p){ return monthName(p,false); }); if(r.older) m.unshift(t('due_older')); return m.join('، '); }
   function msg(r){ var cur=mainCur(), f=function(v){ return fmtN(v,cur==='LBP'?0:2)+' '+cur; }, b=r.bills||{}, ps=Object.keys(b).sort(), lines=[], names=[];
     if(n2(r.older_amt)>0.005){ lines.push(t('up_msg_older',{v:f(r.older_amt)})); names.push(t('due_older')); }
     ps.forEach(function(p){ lines.push(t('up_msg_bill',{m:monthName(p,true),v:f(b[p])})); names.push(monthName(p,true)); });
-    return t('up_msg',{s:SITE.name||'',n:r.name,k:fmtN(names.length,0),m:names.join(t('due_and')),l:lines.join('\n'),v:f(r.balance)}); }
+    var vars={'{المولد}':SITE.name||'','{الاسم}':r.name,'{العدد}':fmtN(names.length,0),'{الأشهر}':names.join(t('due_and')),'{الفواتير}':lines.join('\n'),'{المجموع}':f(r.balance)};
+    return String(tpl||t('up_tpl_def')).replace(/\{(المولد|الاسم|العدد|الأشهر|الفواتير|المجموع)\}/g,function(k){ return vars[k]; }).replace(/\n{3,}/g,'\n\n').trim(); }
   function list(){ var k=normS(q); return rows.filter(function(r){ return !k||normS(r.name).indexOf(k)>=0||String(r.code)===k||normS(r.box)===k||normS(r.area).indexOf(k)>=0||normS(r.collector).indexOf(k)>=0; }); }
   function H(){ return [t('code'),t('name'),t('mobile'),t('area'),t('box'),t('collector'),t('up_months'),t('up_min'),t('up_due'),t('balance'),t('up_last_pay')]; }
   function paint(){ var L=list();
@@ -2737,6 +2748,15 @@ VIEWS.unpaid=async function(main){
     $('#upwa',main).addEventListener('click',function(){ waBatch($('#upbar',main),list().filter(function(r){ return r.mobile; }),async function(r){
       try{ await waSendAuto(waNum(r.mobile_cc,r.mobile),waTag(msg(r))); return true; }catch(e){ return {name:r.name,err:waErr(e)}; } }); });
     waPaint();
+    var tx=$('#uptx',main); tx.value=tpl||t('up_tpl_def');
+    function prev(){ var L=list(); $('#uptp',main).textContent=L.length?msg(L[0]):''; }
+    tx.addEventListener('input',function(){ tpl=tx.value; prev(); });
+    $('#uptpl',main).addEventListener('click',function(e){ var b=e.target.closest('[data-ins]'); if(!b) return;
+      var a=tx.selectionStart||tx.value.length; tx.value=tx.value.slice(0,a)+b.dataset.ins+tx.value.slice(tx.selectionEnd||a); tx.focus(); tpl=tx.value; prev(); });
+    $('#uptr',main).addEventListener('click',function(){ tx.value=t('up_tpl_def'); tpl=tx.value; prev(); });
+    $('#upts',main).addEventListener('click',async function(){ var b=this; busy(b,true,t('saving'));
+      try{ var v=tx.value.trim()===t('up_tpl_def').trim()?'':tx.value; await call('motor_unpaid_msg_save',{p_msg:v}); tpl=v; toast(t('saved')); }catch(err){ toast(errText(err),'e'); } busy(b,false); });
+    prev();
     $('#uptw',main).addEventListener('click',async function(e){ var b=e.target.closest('[data-uw]'); if(!b||b.disabled) return; var r=rows[+b.dataset.uw];
       b.disabled=true; await openWa(r.mobile_cc,r.mobile,msg(r)); b.disabled=false; });
   }
