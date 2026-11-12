@@ -326,7 +326,7 @@ end $$;
 create or replace function public.motor_unpaid(p_slug text, p_token text, p_period text, p_min integer default 1)
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare w jsonb; sid uuid; per text; st public.motor_sites%rowtype; mine uuid; out jsonb := '[]'::jsonb;
-        c record; r record; acc numeric; pers text[]; amt numeric; n int; older boolean;
+        c record; r record; acc numeric; pers text[]; amt numeric; n int; older boolean; part numeric; bills jsonb;
 begin
   w := public._motor_who(p_slug, p_token);
   sid := (w->>'site_id')::uuid;
@@ -340,13 +340,15 @@ begin
             where cu.site_id = sid and cu.is_active and not cu.archived and cu.deleted_at is null and cu.balance > 0.005
               and (mine is null or cu.collector_id = mine) loop
     -- الرصيد بيتوزّع على الفواتير من الأحدث للأقدم: يلّي بيغطيهن الرصيد هني غير المدفوعين
-    acc := 0; pers := '{}'; amt := 0; n := 0; older := false;
+    acc := 0; pers := '{}'; amt := 0; n := 0; older := false; bills := '{}'::jsonb;
     for r in select i.period, i.amount from public.motor_invoices i
               where i.customer_id = c.id and not i.voided and i.amount > 0 and i.kind in ('meter','fixed') and i.period <> ''
               order by i.period desc, i.created_at desc loop
       exit when acc >= c.balance - 0.005;
+      part := least(r.amount, c.balance - acc);   -- الباقي غير المدفوع من هالفاتورة
+      bills := jsonb_set(bills, array[r.period], to_jsonb(round(coalesce((bills->>r.period)::numeric, 0) + part, 2)));
       if r.period <= per then
-        n := n + 1; amt := amt + least(r.amount, c.balance - acc);
+        n := n + 1; amt := amt + part;
         if not (r.period = any(pers)) then pers := r.period || pers; end if;
       end if;
       acc := acc + r.amount;
@@ -356,6 +358,7 @@ begin
       out := out || jsonb_build_array(jsonb_build_object(
         'id', c.id, 'code', c.code, 'name', c.name, 'mobile', c.mobile, 'mobile_cc', c.mobile_cc, 'box', c.box, 'area', c.area,
         'collector', c.coll, 'balance', c.balance, 'due', round(amt, 2), 'months', to_jsonb(pers), 'n', n, 'older', older,
+        'bills', bills, 'older_amt', round(greatest(c.balance - acc, 0), 2),
         'last_pay', greatest(
             (select max(p.created_at) from public.motor_payments p where p.customer_id = c.id and not p.voided),
             (select max(i.created_at) from public.motor_invoices i where i.customer_id = c.id and not i.voided and i.imported
@@ -363,6 +366,91 @@ begin
     end if;
   end loop;
   return jsonb_build_object('period', per, 'rows', out);
+end $$;
+
+-- ============================================================
+--  20j4) التقرير المالي الشهري (المدير الأساسي): واردات، نفقات، رصيد، أرصدة افتتاحية — قابل للتعديل والحفظ
+-- ============================================================
+create table if not exists public.motor_fin_reports (
+  site_id    uuid not null references public.motor_sites(id) on delete cascade,
+  period     text not null,
+  data       jsonb not null default '{}'::jsonb,
+  by_name    text not null default '',
+  updated_at timestamptz not null default now(),
+  primary key (site_id, period)
+);
+alter table public.motor_fin_reports enable row level security;
+
+create or replace function public._motor_main(p_slug text, p_token text)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w jsonb;
+begin
+  w := public._motor_admin(p_slug, p_token);
+  if not coalesce((w->>'is_main')::boolean, false) then perform public._motor_err('forbidden'); end if;
+  return w;
+end $$;
+revoke all on function public._motor_main(text, text) from public, anon, authenticated;
+
+create or replace function public.motor_fin_get(p_slug text, p_token text, p_period text)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w jsonb; sid uuid; per text; prev text; f timestamptz; t timestamptz;
+        c_app numeric; c_old numeric; c_wh numeric; c_old_wh numeric;
+begin
+  w := public._motor_main(p_slug, p_token);
+  sid := (w->>'site_id')::uuid;
+  per := coalesce(nullif(p_period,''), to_char(public._motor_today(), 'YYYY-MM'));
+  if per !~ '^\d{4}-\d{2}$' then perform public._motor_err('bad_period'); end if;
+  prev := to_char((per || '-01')::date - interval '1 month', 'YYYY-MM');
+  f := (per || '-01')::timestamp at time zone 'Asia/Beirut';
+  t := ((per || '-01')::date + interval '1 month')::timestamp at time zone 'Asia/Beirut';
+  select coalesce(sum(amount),0), coalesce(sum(amount) filter (where method = 'whish'),0) into c_app, c_wh
+    from public.motor_payments where site_id = sid and not voided and created_at >= f and created_at < t;
+  select coalesce(-sum(amount),0), coalesce(-sum(amount) filter (where note ilike '%whish%' or note like '%ويش%'),0) into c_old, c_old_wh
+    from public.motor_invoices where site_id = sid and not voided and imported and kind = 'adjust' and amount < 0
+     and note like 'ايصال%' and period = per;
+  return jsonb_build_object('period', per, 'prev_period', prev,
+    'saved', (select jsonb_build_object('data', r.data, 'by', r.by_name, 'at', r.updated_at) from public.motor_fin_reports r where r.site_id = sid and r.period = per),
+    'prev_balance', (select (r.data->>'cur_balance')::numeric from public.motor_fin_reports r where r.site_id = sid and r.period = prev),
+    'collections', c_app + c_old, 'collections_whish', c_wh + c_old_wh,
+    'expenses', coalesce((select jsonb_agg(jsonb_build_object('label', x.label, 'amount', x.amount) order by x.ord, x.amount desc) from (
+        select case when m.extra->>'type' = 'supplier' then 'مشتريات — ' || regexp_replace(m.category, '^دفعة للمورد\s*', '')
+                    else coalesce(nullif(m.category,''), 'مصاريف أخرى') end label,
+               sum(m.amount) amount, min(case when m.extra->>'type' = 'supplier' then 1 else 2 end) ord
+          from public.motor_moves m
+         where m.site_id = sid and m.created_at >= f and m.created_at < t and m.extra->>'type' in ('expense','supplier')
+         group by 1
+        union all
+        select 'أتعاب جباة وموظفين (' || string_agg(distinct coalesce(s.name, ''), '، ') || ')', sum(m.amount), 3
+          from public.motor_moves m left join public.motor_staff s on s.id = m.pay_staff
+         where m.site_id = sid and m.created_at >= f and m.created_at < t and m.extra->>'type' = 'salary'
+        having count(*) > 0) x), '[]'::jsonb),
+    'stock', coalesce((select jsonb_agg(jsonb_build_object('name', s.name, 'qty', s.qty) order by s.category, s.name)
+        from public.motor_stock s where s.site_id = sid and s.qty <> 0), '[]'::jsonb),
+    'insurance', coalesce((select sum(case when kind = 'in' then amount else -amount end) from public.motor_insurance
+        where site_id = sid and created_at < t), 0));
+end $$;
+
+create or replace function public.motor_fin_save(p_slug text, p_token text, p_period text, p_data jsonb)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w jsonb; sid uuid;
+begin
+  w := public._motor_main(p_slug, p_token);
+  sid := (w->>'site_id')::uuid;
+  if coalesce(p_period,'') !~ '^\d{4}-\d{2}$' then perform public._motor_err('bad_period'); end if;
+  if jsonb_typeof(p_data) <> 'object' then perform public._motor_err('bad_data'); end if;
+  insert into public.motor_fin_reports (site_id, period, data, by_name, updated_at)
+  values (sid, p_period, p_data, w->>'name', now())
+  on conflict (site_id, period) do update set data = excluded.data, by_name = excluded.by_name, updated_at = now();
+  return jsonb_build_object('ok', true);
+end $$;
+
+create or replace function public.motor_fin_delete(p_slug text, p_token text, p_period text)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w jsonb;
+begin
+  w := public._motor_main(p_slug, p_token);
+  delete from public.motor_fin_reports where site_id = (w->>'site_id')::uuid and period = p_period;
+  return jsonb_build_object('ok', true);
 end $$;
 
 -- ============================================================
@@ -649,7 +737,7 @@ begin
     'motor_cash_statement(text,text,date,date)', 'motor_cash_close(text,text,numeric,numeric,text)',
     'motor_set_active(text,text,uuid,boolean,text,double precision,double precision)',
     'motor_note_add(text,text,uuid,text)', 'motor_ping(text,text,double precision,double precision,double precision)',
-    'motor_staff_map(text,text)', 'motor_unpaid(text,text,text,integer)', 'motor_2fa_setup(text,text)', 'motor_2fa_enable(text,text,text)',
+    'motor_staff_map(text,text)', 'motor_unpaid(text,text,text,integer)', 'motor_fin_get(text,text,text)', 'motor_fin_save(text,text,text,jsonb)', 'motor_fin_delete(text,text,text)', 'motor_2fa_setup(text,text)', 'motor_2fa_enable(text,text,text)',
     'motor_2fa_disable(text,text,text,uuid)', 'motor_wa_outbox(text,text,integer)', 'motor_wa_mark(text,text,text,uuid)',
     'motor_reading_edit(text,text,uuid,numeric,text)', 'motor_customer_set_login(text,text,uuid,text,text)', 'motor_cust_me(text,text)',
     'motor_invoice_edit(text,text,uuid,numeric,text)', 'motor_payment_edit(text,text,uuid,numeric,text)',
