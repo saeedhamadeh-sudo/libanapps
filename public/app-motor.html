@@ -164,6 +164,27 @@ body.compact table{font-size:12px} body.compact th,body.compact td{padding:4px 6
 .stat b{display:block;font-size:20px;margin-top:2px}
 .stat span{font-size:12.5px;color:var(--ink2);font-weight:700}
 .big-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
+/* الصفحة الرئيسية: مربعات التبويبات */
+.hm-sec{margin:4px 0 16px}
+.hm-h{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:800;color:var(--ink2);margin:0 2px 8px;letter-spacing:.2px}
+.hm-h::after{content:"";flex:1;height:1px;background:var(--line)}
+.hm-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
+.hm-t{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;min-height:150px;padding:18px 10px 14px;
+  background:var(--card);border:1px solid var(--line);border-radius:18px;box-shadow:var(--sh);cursor:pointer;font:inherit;color:var(--ink);text-align:center;
+  transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease;-webkit-tap-highlight-color:transparent}
+.hm-t:hover{transform:translateY(-3px);box-shadow:0 10px 28px rgba(15,28,43,.13);border-color:transparent}
+.hm-t:active{transform:translateY(0) scale(.98)}
+.hm-t:focus-visible{outline:3px solid var(--a);outline-offset:2px}
+.hm-ic{width:76px;height:76px;border-radius:22px;display:grid;place-items:center;color:#fff;background:linear-gradient(140deg,var(--c1),var(--c2));
+  box-shadow:0 8px 18px -6px var(--c2),inset 0 1px 0 rgba(255,255,255,.35);position:relative;overflow:hidden}
+.hm-ic::before{content:"";position:absolute;inset:0;background:radial-gradient(circle at 25% 15%,rgba(255,255,255,.45),transparent 55%)}
+.hm-ic svg{width:40px;height:40px;position:relative;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;filter:drop-shadow(0 1px 1px rgba(0,0,0,.18))}
+.hm-l{font-weight:800;font-size:14.5px;line-height:1.35}
+.hm-b{position:absolute;top:10px;inset-inline-start:10px;min-width:24px;height:24px;padding:0 7px;border-radius:12px;background:var(--bad);color:#fff;font-size:12.5px;font-weight:800;display:grid;place-items:center;box-shadow:0 2px 6px rgba(220,38,38,.35)}
+@media (min-width:900px){ .hm-grid{grid-template-columns:repeat(5,1fr);gap:14px} .hm-t{min-height:160px} .hm-h{font-size:14px} }
+@media (max-width:640px){ .hm-grid{grid-template-columns:repeat(3,1fr);gap:9px} .hm-t{min-height:122px;padding:14px 6px 10px;border-radius:16px;gap:8px}
+  .hm-ic{width:58px;height:58px;border-radius:17px} .hm-ic svg{width:31px;height:31px} .hm-l{font-size:12.5px} }
+@media (max-width:360px){ .hm-grid{grid-template-columns:repeat(2,1fr)} }
 .list{display:flex;flex-direction:column;gap:8px}
 .litem{display:flex;align-items:center;gap:10px;background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 12px;cursor:pointer}
 .litem:active{background:var(--soft)}
@@ -1755,6 +1776,9 @@ var D={
  k_opening:['رصيد سابق','Opening balance','Solde initial'],
  k_sale:['فاتورة مبيعات','Sales invoice','Facture de vente'],
  nav_sales:['فاتورة مبيعات وإيصال قبض','Sales invoice & receipt','Facture de vente et reçu'],
+ hm_g_daily:['العمل اليومي','Daily work','Travail quotidien'], hm_g_cust:['الزبائن والفواتير','Customers & bills','Clients et factures'],
+ hm_g_money:['الصندوق والمالية','Cash & finance','Caisse et finances'], hm_g_stock:['المخزون والموردون','Stock & suppliers','Stock et fournisseurs'],
+ hm_g_reports:['التقارير','Reports','Rapports'], hm_g_admin:['الإدارة','Administration','Administration'],
  sl_new:['+ فاتورة مبيعات جديدة','+ New sales invoice','+ Nouvelle facture de vente'], sl_cust:['الزبون','Customer','Client'], sl_items:['البنود','Items','Articles'],
  sl_src:['المصدر','Source','Source'], sl_free:['بند حر','Free item','Article libre'], sl_item:['البند','Item','Article'], sl_qty:['الكمية','Qty','Qté'], sl_price:['السعر','Price','Prix'],
  sl_line:['المجموع','Total','Total'], sl_add:['+ إضافة بند','+ Add item','+ Ajouter'], sl_total:['مجموع الفاتورة','Invoice total','Total facture'],
@@ -2681,15 +2705,54 @@ var VIEWS={};
 VIEWS.trash=function(m){ return TRASH_VIEW(m); };
 
 /* ---------- الرئيسية ---------- */
+
+/* ---------- الصفحة الرئيسية: مربعات بصور معبّرة لكل تبويب ---------- */
+var HM_IC={
+ read:'<path d="M4 16a8 8 0 1 1 16 0"/><path d="M12 16l4.2-5"/><circle cx="12" cy="16" r="1.6"/><path d="M6.5 11.5l1 .8M12 8v1.3M17.5 11.5l-1 .8"/><path d="M3.5 20h17"/>',
+ pay:'<rect x="2" y="6" width="20" height="12" rx="2.5"/><circle cx="12" cy="12" r="2.8"/><path d="M6 9.5v.01M18 14.5v.01"/>',
+ sales:'<path d="M5 3h14v18l-2.5-1.8L14 21l-2-1.8L10 21l-2.5-1.8L5 21z"/><path d="M8.5 8h7M8.5 12h7M8.5 16h4"/>',
+ switch:'<path d="M12 2.5v8"/><path d="M6.3 6.3a8 8 0 1 0 11.4 0"/>',
+ customers:'<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.6a3.5 3.5 0 0 1 0 6.8M18 14.2a6.5 6.5 0 0 1 3.5 5.8"/>',
+ unpaid:'<circle cx="12" cy="13" r="8"/><path d="M12 8.5V13l3 2"/><path d="M9.5 2.5h5"/><path d="M19 5l1.5-1.5"/>',
+ month:'<rect x="3" y="5" width="18" height="16" rx="2.5"/><path d="M3 10h18M8 3v4M16 3v4"/><path d="M7 14h2M11 14h2M15 14h2M7 17.5h2M11 17.5h2"/>',
+ bills:'<path d="M21.5 2.5L10.5 13.5"/><path d="M21.5 2.5l-7 19-4-8-8-4z"/>',
+ wa:'<path d="M20.5 11.5a8.5 8.5 0 0 1-12.4 7.6L3.5 20.5l1.4-4.4A8.5 8.5 0 1 1 20.5 11.5z"/><path d="M8.6 11.6l2.3 2.3 4.6-4.6"/>',
+ cash:'<rect x="3" y="4" width="18" height="15" rx="2.5"/><circle cx="12" cy="11.5" r="3.6"/><path d="M12 7.9v1.2M12 13.9v1.2M15.6 11.5h-1.2M9.6 11.5H8.4"/><path d="M6.5 19v2M17.5 19v2"/>',
+ whish:'<path d="M17 7V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v2"/><rect x="3" y="7" width="18" height="13" rx="2.5"/><path d="M21 11h-4a2 2 0 0 0 0 4h4"/><path d="M17 13h.01"/>',
+ journal:'<path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v17H6.5A2.5 2.5 0 0 0 4 21.5z"/><path d="M4 19.5v-15"/><path d="M8.5 7h7M8.5 11h5"/>',
+ expenses:'<rect x="3" y="7" width="18" height="13" rx="2.5"/><path d="M7 7V5h10v2"/><path d="M12 10.5v6M9.3 13.8L12 16.5l2.7-2.7"/>',
+ salaries:'<circle cx="9" cy="7.5" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 10-5.5"/><circle cx="17.5" cy="16.5" r="4"/><path d="M18.6 14.9h-1.5a.8.8 0 0 0 0 1.6h.9a.8.8 0 0 1 0 1.6h-1.6M17.6 14.2v.7M17.6 18.1v.7"/>',
+ stock:'<path d="M21 8l-9-5-9 5 9 5z"/><path d="M3 8v8.5l9 5 9-5V8"/><path d="M12 13v8.5"/><path d="M7.5 5.5l9 5"/>',
+ suppliers:'<path d="M1.5 5.5h12.5v11H1.5z"/><path d="M14 9h4l3.5 3.5v4H14"/><circle cx="5.5" cy="18" r="2"/><circle cx="17.5" cy="18" r="2"/>',
+ insurance:'<path d="M12 2.5l8 3v6c0 5-3.4 8.8-8 10.5-4.6-1.7-8-5.5-8-10.5v-6z"/><path d="M8.6 12l2.4 2.4 4.4-4.6"/>',
+ cstmt:'<rect x="5" y="3" width="14" height="18" rx="2.5"/><path d="M9 3v2.5h6V3"/><path d="M8.5 10h7M8.5 13.5h7M8.5 17h4"/>',
+ report:'<path d="M3 3v18h18"/><rect x="6.5" y="12" width="3" height="6" rx=".6"/><rect x="11.5" y="7" width="3" height="11" rx=".6"/><rect x="16.5" y="10" width="3" height="8" rx=".6"/>',
+ finrep:'<path d="M3 3v18h18"/><path d="M6.5 15l4-4.5 3 3L20 6.5"/><path d="M15.5 6.5H20V11"/>',
+ map:'<path d="M12 22s7-6.2 7-12a7 7 0 0 0-14 0c0 5.8 7 12 7 12z"/><circle cx="12" cy="10" r="2.6"/>',
+ staff:'<rect x="4" y="3" width="16" height="18" rx="2.5"/><circle cx="12" cy="10" r="3"/><path d="M7.5 18a4.5 4.5 0 0 1 9 0"/><path d="M10 3v2h4V3"/>',
+ trash:'<path d="M3.5 6h17M8.5 6V4h7v2M6 6l1 15h10l1-15"/><path d="M10 10.5v6.5M14 10.5v6.5"/>',
+ plans:'<path d="M13 2L4.5 13.5H11L10 22l8.5-11.5H12z"/>',
+ settings:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>'
+};
+var HM_COL={read:['#38bdf8','#0369a1'],pay:['#4ade80','#15803d'],sales:['#fbbf24','#d97706'],switch:['#fb7185','#be123c'],unpaid:['#fb923c','#c2410c'],
+ customers:['#60a5fa','#1d4ed8'],month:['#818cf8','#4338ca'],cstmt:['#a78bfa','#6d28d9'],bills:['#2dd4bf','#0f766e'],wa:['#34d399','#047857'],
+ cash:['#facc15','#a16207'],whish:['#c084fc','#7e22ce'],journal:['#94a3b8','#334155'],expenses:['#f87171','#b91c1c'],salaries:['#22d3ee','#0e7490'],
+ stock:['#d6a46b','#8a5a2b'],suppliers:['#a3e635','#4d7c0f'],insurance:['#5eead4','#0d9488'],report:['#7dd3fc','#0c4a6e'],finrep:['#f0abfc','#a21caf'],map:['#f472b6','#be185d'],
+ staff:['#93c5fd','#1e3a8a'],plans:['#fde047','#ca8a04'],trash:['#cbd5e1','#475569'],settings:['#9ca3af','#374151']};
+var HM_GROUPS=[['hm_g_daily',['read','pay','sales','switch','unpaid']],['hm_g_cust',['customers','month','cstmt','bills','wa']],
+ ['hm_g_money',['cash','whish','journal','expenses','salaries']],['hm_g_stock',['stock','suppliers','insurance']],
+ ['hm_g_reports',['report','finrep','map']],['hm_g_admin',['staff','plans','trash','settings']]];
+function homeTiles(badges){ var vis={}; visibleTabs().forEach(function(x){ vis[x.id]=x; });
+  return HM_GROUPS.map(function(g){ var ids=g[1].filter(function(id){ return vis[id]; }); if(!ids.length) return '';
+    return '<section class="hm-sec"><div class="hm-h">'+esc(t(g[0]))+'</div><div class="hm-grid">'+ids.map(function(id){ var c=HM_COL[id]||['#64748b','#334155'], b=badges&&badges[id];
+      return '<button class="hm-t" data-go="'+id+'" style="--c1:'+c[0]+';--c2:'+c[1]+'">'+(b?'<span class="hm-b">'+esc(b)+'</span>':'')+
+        '<span class="hm-ic"><svg viewBox="0 0 24 24" aria-hidden="true">'+(HM_IC[id]||'')+'</svg></span><span class="hm-l">'+esc(t(vis[id].k))+'</span></button>'; }).join('')+'</div></section>'; }).join(''); }
 VIEWS.dash=async function(main){
   var d=await call('motor_dashboard');
   var mine=!isAdmin();
   if(d.wa_pending!=null) setWaBadge(d.wa_pending,d.wa_inv);
-  var acts=[]; if(can('read')) acts.push('<button class="btn lg" data-go="read">📷 '+esc(t('nav_read'))+'</button>');
-  if(can('collect')) acts.push('<button class="btn lg ok" data-go="pay">💵 '+esc(t('nav_pay'))+'</button>');
-  if(can('cut')) acts.push('<button class="btn lg acc" data-go="switch">🔌 '+esc(t('nav_switch'))+'</button>');
-  main.innerHTML=licBanner()+
-    (acts.length?'<div class="big-actions">'+acts.join('')+'</div>':'')+
+  var bd={}; if(!mine){ var wp=Math.max(0,n2(d.wa_pending)-n2(d.wa_inv)); if(wp>0) bd.wa=fmtN(wp,0); if(n2(d.wa_inv)>0) bd.bills=fmtN(d.wa_inv,0); if(n2(d.trash_count)>0) bd.trash=fmtN(d.trash_count,0); }
+  main.innerHTML=licBanner()+homeTiles(bd)+
     
     '<div class="card"><div class="row"><b>💱 '+esc(t('rate_t'))+':</b>'+(isAdmin()?'<input id="drate" inputmode="decimal" value="'+esc(n2(d.lbp_rate))+'" style="max-width:160px"><span>'+esc(sym('LBP'))+'</span><button class="btn sm" id="drs">'+esc(t('save'))+'</button>':'<b class="num">1$ = '+esc(fmtN(d.lbp_rate,0))+' '+esc(sym('LBP'))+'</b>')+'</div></div>'+
     '<div class="stats">'+
