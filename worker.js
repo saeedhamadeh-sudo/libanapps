@@ -1774,7 +1774,7 @@ async function motorWa(request, env) {
   const name = String(body.template || '');
   if (to.length < 8 || !/^[a-z0-9_]{1,512}$/.test(name)) return json(400, { ok: false, error: 'bad_fields' });
   const values = {}; for (const [k, v] of Object.entries(body.values || {})) values[String(k).slice(0, 60)] = String(v == null ? '' : v).slice(0, 1000);
-  // حد Meta: 250 رقم مختلف كل 24 ساعة — منوقف على 240
+  // حد Meta: 250 رقم مختلف كل 24 ساعة
   const q = await motorWaQuota(env, SH, sid, to);
   if (q && q.ok === false) return json(429, { ok: false, error: 'daily_limit', used: q.used, limit: q.limit, left: 0 });
   const r = await fetch('https://api.whatchimp.com/v1/messages', { method: 'POST',
@@ -1787,7 +1787,7 @@ async function motorWa(request, env) {
 }
 async function motorWaQuota(env, SH, sid, to) {
   try { const r = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/motor_wa_quota`, { method: 'POST', headers: SH,
-      body: JSON.stringify({ p_site: sid, p_to: to, p_limit: 240 }) });
+      body: JSON.stringify({ p_site: sid, p_to: to, p_limit: 250 }) });
     return r.ok ? await r.json() : null; } catch { return null; }
 }
 async function motorWaQuotaUndo(env, SH, id) {

@@ -727,7 +727,7 @@ grant execute on function public.motor_bot_lookup(uuid,text,text,text) to servic
 
 
 -- ============================================================
---  20j8) حد الإرسال اليومي عبر واتساب الرسمي: 240 رقم مختلف كل 24 ساعة (حد Meta 250)
+--  20j8) حد الإرسال اليومي عبر واتساب الرسمي: 250 رقم مختلف كل 24 ساعة (حد Meta)
 -- ============================================================
 create table if not exists public.motor_wa_sends (
   id      bigserial primary key,
@@ -739,7 +739,7 @@ create index if not exists motor_wa_sends_site_at on public.motor_wa_sends (site
 alter table public.motor_wa_sends enable row level security;
 
 -- بيستدعيها الـWorker قبل كل إرسال (مفتاح الخدمة فقط). p_to فاضي = استعلام بلا حجز
-create or replace function public.motor_wa_quota(p_site uuid, p_to text default '', p_limit integer default 240)
+create or replace function public.motor_wa_quota(p_site uuid, p_to text default '', p_limit integer default 250)
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare used integer; known boolean := false; nid bigint;
 begin
