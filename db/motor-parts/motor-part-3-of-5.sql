@@ -63,7 +63,7 @@ begin
     wa_from_office = coalesce((d->>'wa_from_office')::boolean, wa_from_office),
     default_lang   = case when d->>'default_lang' in ('ar','en','fr') then d->>'default_lang' else default_lang end
   where id = sid returning * into st;
-  return to_jsonb(st) - 'client_id' - 'cust_seq' - 'invoice_seq' - 'receipt_seq' - 'wc_api_key' - 'wc_hook_secret';
+  return to_jsonb(st) - 'client_id' - 'cust_seq' - 'invoice_seq' - 'receipt_seq' - 'wc_api_key' - 'wc_hook_secret' - 'gd_refresh';
 end $$;
 
 create or replace function public.motor_plan_save(p_slug text, p_token text, p_data jsonb)

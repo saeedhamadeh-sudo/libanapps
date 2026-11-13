@@ -961,7 +961,7 @@ begin
     'me', w,
     'today', public._motor_today(),
     'license', public.motor_license(sid),
-    'site', to_jsonb(st) - 'client_id' - 'cust_seq' - 'invoice_seq' - 'receipt_seq' - 'wc_api_key' - 'wc_hook_secret',
+    'site', to_jsonb(st) - 'client_id' - 'cust_seq' - 'invoice_seq' - 'receipt_seq' - 'wc_api_key' - 'wc_hook_secret' - 'gd_refresh',
     'plans', coalesce((select jsonb_agg(to_jsonb(p) - 'site_id' order by p.sort, p.name)
                          from public.motor_plans p where p.site_id = sid), '[]'::jsonb),
     'staff', coalesce((select jsonb_agg(jsonb_build_object('id', s.id, 'name', s.name, 'role', s.role,
@@ -1622,7 +1622,7 @@ begin
     wa_from_office = coalesce((d->>'wa_from_office')::boolean, wa_from_office),
     default_lang   = case when d->>'default_lang' in ('ar','en','fr') then d->>'default_lang' else default_lang end
   where id = sid returning * into st;
-  return to_jsonb(st) - 'client_id' - 'cust_seq' - 'invoice_seq' - 'receipt_seq' - 'wc_api_key' - 'wc_hook_secret';
+  return to_jsonb(st) - 'client_id' - 'cust_seq' - 'invoice_seq' - 'receipt_seq' - 'wc_api_key' - 'wc_hook_secret' - 'gd_refresh';
 end $$;
 
 create or replace function public.motor_plan_save(p_slug text, p_token text, p_data jsonb)
@@ -2446,7 +2446,7 @@ begin
   sid := (w->>'site_id')::uuid;
   return jsonb_build_object(
     'at', now(),
-    'site', (select to_jsonb(s) - 'client_id' - 'wc_api_key' - 'wc_hook_secret' from public.motor_sites s where s.id = sid),
+    'site', (select to_jsonb(s) - 'client_id' - 'wc_api_key' - 'wc_hook_secret' - 'gd_refresh' from public.motor_sites s where s.id = sid),
     'plans', coalesce((select jsonb_agg(to_jsonb(x) - 'site_id') from public.motor_plans x where x.site_id = sid), '[]'),
     'staff', coalesce((select jsonb_agg(jsonb_build_object('name', x.name, 'username', x.username, 'role', x.role, 'phone', x.phone,
                'can_read', x.can_read, 'can_collect', x.can_collect, 'can_cut', x.can_cut, 'is_active', x.is_active))
@@ -3765,6 +3765,181 @@ revoke all on function public.motor_wa_quota(uuid,text,integer) from public, ano
 revoke all on function public.motor_wa_quota_undo(bigint) from public, anon, authenticated;
 grant execute on function public.motor_wa_quota(uuid,text,integer) to service_role;
 grant execute on function public.motor_wa_quota_undo(bigint) to service_role;
+
+-- ============================================================
+--  20j9) نسخة احتياطية كاملة (JSON) + استرجاع + Google Drive
+-- ============================================================
+alter table public.motor_sites add column if not exists gd_refresh text not null default '';   -- سرّي: ما بيطلع للمتصفح
+alter table public.motor_sites add column if not exists gd_email text not null default '';
+alter table public.motor_sites add column if not exists gd_folder text not null default '';
+alter table public.motor_sites add column if not exists gd_last_at timestamptz;
+alter table public.motor_sites add column if not exists gd_last_err text not null default '';
+
+-- الجداول بترتيب الإدخال (الأهل قبل الأولاد)
+create or replace function public._motor_bk_tables()
+returns text[] language sql immutable as $$
+  select array['plans','staff','staff_secrets','suppliers','stock','customers','customer_secrets','readings','invoices','payments',
+               'moves','notes','switch_log','insurance','trash','stock_moves','purchases','salary_dues','day_closes','fin_reports','maint_requests'];
+$$;
+
+create or replace function public._motor_bk_rows(sid uuid, p_table text, p_offset integer, p_limit integer)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare lim int := least(greatest(coalesce(p_limit, 2000), 1), 5000); off int := greatest(coalesce(p_offset, 0), 0); r jsonb;
+begin
+  if not (p_table = any(public._motor_bk_tables())) then perform public._motor_err('bad_table'); end if;
+  if p_table = 'staff_secrets' then
+    select coalesce(jsonb_agg(to_jsonb(x)), '[]') into r from (select s.* from public.motor_staff_secrets s join public.motor_staff t on t.id = s.staff_id
+      where t.site_id = sid order by s.staff_id offset off limit lim) x;
+  elsif p_table = 'customer_secrets' then
+    select coalesce(jsonb_agg(to_jsonb(x)), '[]') into r from (select s.* from public.motor_customer_secrets s join public.motor_customers c on c.id = s.customer_id
+      where c.site_id = sid order by s.customer_id offset off limit lim) x;
+  elsif p_table = 'fin_reports' then
+    select coalesce(jsonb_agg(to_jsonb(x) - 'site_id'), '[]') into r from (select * from public.motor_fin_reports where site_id = sid order by period offset off limit lim) x;
+  else
+    execute format('select coalesce(jsonb_agg(to_jsonb(x) - ''site_id''), ''[]'') from (select * from public.%I where site_id = $1 order by id offset $2 limit $3) x', 'motor_' || p_table)
+      into r using sid, off, lim;
+  end if;
+  return r;
+end $$;
+
+create or replace function public._motor_bk_site(sid uuid)
+returns jsonb language sql security definer set search_path = public as $$
+  select to_jsonb(s) - 'client_id' - 'wc_api_key' - 'wc_hook_secret' - 'gd_refresh' - 'gd_folder' - 'gd_last_at' - 'gd_last_err' - 'gd_email'
+    from public.motor_sites s where s.id = sid;
+$$;
+
+-- للمتصفح (المدير الأساسي)
+create or replace function public.motor_bk_info(p_slug text, p_token text)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w jsonb; sid uuid; st public.motor_sites%rowtype;
+begin
+  w := public._motor_admin(p_slug, p_token);
+  sid := (w->>'site_id')::uuid;
+  select * into st from public.motor_sites where id = sid;
+  return jsonb_build_object('site', public._motor_bk_site(sid), 'tables', to_jsonb(public._motor_bk_tables()), 'at', now(),
+    'gd', jsonb_build_object('on', st.gd_refresh <> '', 'email', st.gd_email, 'last_at', st.gd_last_at, 'err', st.gd_last_err));
+end $$;
+create or replace function public.motor_bk_rows(p_slug text, p_token text, p_table text, p_offset integer default 0, p_limit integer default 2000)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w jsonb;
+begin
+  w := public._motor_admin(p_slug, p_token);
+  if p_table in ('staff_secrets','customer_secrets') and not coalesce((w->>'is_main')::boolean, false) then return '[]'::jsonb; end if;
+  return public._motor_bk_rows((w->>'site_id')::uuid, p_table, p_offset, p_limit);
+end $$;
+-- للـWorker (Google Drive) — مفتاح الخدمة فقط
+create or replace function public.motor_bk_rows_svc(p_site uuid, p_table text, p_offset integer default 0, p_limit integer default 5000)
+returns jsonb language sql security definer set search_path = public as $$ select public._motor_bk_rows(p_site, p_table, p_offset, p_limit); $$;
+create or replace function public.motor_bk_site_svc(p_site uuid)
+returns jsonb language sql security definer set search_path = public as $$ select jsonb_build_object('site', public._motor_bk_site(p_site), 'tables', to_jsonb(public._motor_bk_tables())); $$;
+
+-- ---------- الاسترجاع (المدير الأساسي فقط): مسح ثم إدخال على دفعات ----------
+create or replace function public.motor_restore_wipe(p_slug text, p_token text, p_step integer)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w jsonb; sid uuid; me uuid;
+  steps text[] := array['maint_requests','fin_reports','day_closes','salary_dues','purchases','stock_moves','trash','insurance','switch_log','notes',
+                        'moves','payments','invoices','readings','customers','stock','suppliers','plans'];
+begin
+  w := public._motor_main(p_slug, p_token);
+  sid := (w->>'site_id')::uuid; me := (w->>'staff_id')::uuid;
+  if p_step < 1 or p_step > array_length(steps, 1) then return jsonb_build_object('done', true, 'steps', array_length(steps, 1)); end if;
+  execute format('delete from public.%I where site_id = $1', 'motor_' || steps[p_step]) using sid;
+  return jsonb_build_object('done', false, 'table', steps[p_step], 'steps', array_length(steps, 1));
+end $$;
+
+create or replace function public.motor_restore_rows(p_slug text, p_token text, p_table text, p_rows jsonb)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w jsonb; sid uuid; n int := 0; cols text;
+begin
+  w := public._motor_main(p_slug, p_token);
+  sid := (w->>'site_id')::uuid;
+  if not (p_table = any(public._motor_bk_tables())) then perform public._motor_err('bad_table'); end if;
+  if jsonb_typeof(p_rows) <> 'array' then perform public._motor_err('bad_file'); end if;
+  if p_table = 'staff' then
+    -- الموظفين: تحديث/إضافة (ما منمسحهن حتى ما تنقطع الجلسات)
+    select string_agg(format('%I = excluded.%I', column_name, column_name), ', ') into cols from information_schema.columns
+     where table_schema = 'public' and table_name = 'motor_staff' and column_name not in ('id','site_id');
+    execute format('insert into public.motor_staff select (r).* from (select jsonb_populate_record(null::public.motor_staff, x || jsonb_build_object(''site_id'', $1)) r
+                    from jsonb_array_elements($2) x) s on conflict (id) do update set %s where public.motor_staff.site_id = $1', cols) using sid, p_rows;
+  elsif p_table = 'staff_secrets' then
+    insert into public.motor_staff_secrets select (r).* from (select jsonb_populate_record(null::public.motor_staff_secrets, x) r from jsonb_array_elements(p_rows) x) s
+      where exists (select 1 from public.motor_staff t where t.id = (s.r).staff_id and t.site_id = sid)
+      on conflict (staff_id) do update set password_hash = excluded.password_hash, totp_secret = excluded.totp_secret, totp_pending = excluded.totp_pending, updated_at = excluded.updated_at;
+  elsif p_table = 'customer_secrets' then
+    insert into public.motor_customer_secrets select (r).* from (select jsonb_populate_record(null::public.motor_customer_secrets, x) r from jsonb_array_elements(p_rows) x) s
+      where exists (select 1 from public.motor_customers c where c.id = (s.r).customer_id and c.site_id = sid)
+      on conflict (customer_id) do update set password_hash = excluded.password_hash, updated_at = excluded.updated_at;
+  else
+    execute format('insert into public.%I select (r).* from (select jsonb_populate_record(null::public.%I, x || jsonb_build_object(''site_id'', $1)) r
+                    from jsonb_array_elements($2) x) s on conflict do nothing', 'motor_' || p_table, 'motor_' || p_table) using sid, p_rows;
+  end if;
+  get diagnostics n = row_count;
+  return jsonb_build_object('ok', true, 'n', n);
+end $$;
+
+create or replace function public.motor_restore_site(p_slug text, p_token text, p_site jsonb)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w jsonb; sid uuid; st public.motor_sites%rowtype; nw public.motor_sites%rowtype;
+begin
+  w := public._motor_main(p_slug, p_token);
+  sid := (w->>'site_id')::uuid;
+  select * into st from public.motor_sites where id = sid;
+  -- منحافظ على الهوية والمفاتيح والاشتراك؛ الباقي من الملف
+  nw := jsonb_populate_record(st, coalesce(p_site, '{}'::jsonb) - 'id' - 'client_id' - 'slug' - 'is_active' - 'created_at'
+          - 'wc_api_key' - 'wc_hook_secret' - 'gd_refresh' - 'gd_email' - 'gd_folder' - 'gd_last_at' - 'gd_last_err');
+  update public.motor_sites set name = nw.name, logo_url = nw.logo_url, phone = nw.phone, whatsapp = nw.whatsapp, address = nw.address,
+    currency = nw.currency, lbp_rate = nw.lbp_rate, show_second = nw.show_second, kwh_price = nw.kwh_price, round_step = nw.round_step,
+    bill_period = nw.bill_period, max_distance_m = nw.max_distance_m, require_photo = nw.require_photo, require_gps = nw.require_gps,
+    collector_sees_all = nw.collector_sees_all, barcode_prefix = nw.barcode_prefix, invoice_note = nw.invoice_note, default_lang = nw.default_lang,
+    cust_seq = greatest(nw.cust_seq, st.cust_seq), invoice_seq = greatest(nw.invoice_seq, st.invoice_seq), receipt_seq = greatest(nw.receipt_seq, st.receipt_seq),
+    voucher_seq = greatest(nw.voucher_seq, st.voucher_seq), purchase_seq = greatest(nw.purchase_seq, st.purchase_seq),
+    first_read_baseline = nw.first_read_baseline, tagline = nw.tagline, cur_label = nw.cur_label, wa_from_office = nw.wa_from_office,
+    whish_qr_url = nw.whish_qr_url, whish_phone = nw.whish_phone, unpaid_msg = nw.unpaid_msg, wc_on = nw.wc_on, wc_bot_on = nw.wc_bot_on,
+    wc_maint_staff = nw.wc_maint_staff
+   where id = sid;
+  return jsonb_build_object('ok', true);
+end $$;
+
+-- Google Drive: فصل الحساب
+create or replace function public.motor_gd_disconnect(p_slug text, p_token text)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w jsonb;
+begin
+  w := public._motor_main(p_slug, p_token);
+  update public.motor_sites set gd_refresh = '', gd_email = '', gd_folder = '', gd_last_err = '' where id = (w->>'site_id')::uuid;
+  return jsonb_build_object('ok', true);
+end $$;
+-- الـWorker بيتأكد إنو المدير الأساسي (بيرجّع site_id)
+create or replace function public.motor_gd_check(p_slug text, p_token text)
+returns uuid language plpgsql security definer set search_path = public as $$
+declare w jsonb;
+begin
+  w := public._motor_main(p_slug, p_token);
+  return (w->>'site_id')::uuid;
+end $$;
+-- قبل خروج أي مدير: Drive أو تنزيل
+create or replace function public.motor_gd_check_admin(p_slug text, p_token text)
+returns uuid language plpgsql security definer set search_path = public as $$
+declare w jsonb;
+begin
+  w := public._motor_admin(p_slug, p_token);
+  return (w->>'site_id')::uuid;
+end $$;
+
+revoke all on function public._motor_bk_rows(uuid,text,integer,integer) from public, anon, authenticated;
+revoke all on function public._motor_bk_site(uuid) from public, anon, authenticated;
+revoke all on function public.motor_bk_rows_svc(uuid,text,integer,integer) from public, anon, authenticated;
+revoke all on function public.motor_bk_site_svc(uuid) from public, anon, authenticated;
+grant execute on function public.motor_bk_rows_svc(uuid,text,integer,integer) to service_role;
+grant execute on function public.motor_bk_site_svc(uuid) to service_role;
+grant execute on function public.motor_bk_info(text,text) to anon, authenticated;
+grant execute on function public.motor_bk_rows(text,text,text,integer,integer) to anon, authenticated;
+grant execute on function public.motor_restore_wipe(text,text,integer) to anon, authenticated;
+grant execute on function public.motor_restore_rows(text,text,text,jsonb) to anon, authenticated;
+grant execute on function public.motor_restore_site(text,text,jsonb) to anon, authenticated;
+grant execute on function public.motor_gd_disconnect(text,text) to anon, authenticated;
+grant execute on function public.motor_gd_check(text,text) to anon, authenticated;
+grant execute on function public.motor_gd_check_admin(text,text) to anon, authenticated;
 
 -- ============================================================
 --  20k) إقفال صندوق الموظف: يسلّم كل النقد للمكتب ويطلع تقرير

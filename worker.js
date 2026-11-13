@@ -1912,6 +1912,144 @@ async function motorWaHook(request, env, ctx, slugRaw) {
   return json(200, { ok: true });
 }
 
+// ---------- motorapp: نسخ احتياطي على Google Drive ----------
+//  OAuth (drive.file) → refresh token محفوظ بالسيرفر بس. النسخة JSON بتنبنى نصّياً (بلا parse) لتوفير الـCPU.
+const GD_SCOPE = 'https://www.googleapis.com/auth/drive.file openid email';
+function gdRedirect(env) { return (env.WEBSITE_URL || 'https://libanapps.com') + '/api/motor-gdrive/callback'; }
+function svcH(env) { return { apikey: env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`, 'Content-Type': 'application/json' }; }
+async function gdSign(env, data) {
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(env.SUPABASE_SERVICE_KEY || 'x'), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const sig = new Uint8Array(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(data)));
+  return btoa(String.fromCharCode(...sig)).replace(/[+/=]/g, (c) => ({ '+': '-', '/': '_', '=': '' }[c]));
+}
+async function motorRpcAnon(env, request, fn, args) {
+  const anon = env.SUPABASE_ANON_KEY || 'sb_publishable_ypfm_aulpcqBpeFpyD_7iw_mA4DNlR5';
+  const h = { apikey: anon, 'Content-Type': 'application/json' };
+  const auth = request.headers.get('Authorization') || '';
+  if (!args.p_token && /^Bearer\s+\S+/.test(auth)) h.Authorization = auth;
+  const r = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/${fn}`, { method: 'POST', headers: h, body: JSON.stringify(args) });
+  const t = await r.text();
+  if (!r.ok) { const m = t.match(/MOTOR:[a-z_]+/); const e = new Error(m ? m[0] : 'forbidden'); e.status = 403; throw e; }
+  return JSON.parse(t);
+}
+async function motorGd(request, env) {
+  let body; try { body = await request.json(); } catch { return json(400, { ok: false, error: 'bad_json' }); }
+  const slug = String(body.slug || '').trim().toLowerCase(), token = String(body.token || '');
+  if (!/^[a-z0-9][a-z0-9-]{1,30}$/.test(slug)) return json(400, { ok: false, error: 'missing_fields' });
+  try {
+    if (body.op === 'auth_url') {
+      if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET) return json(409, { ok: false, error: 'gd_not_configured' });
+      const sid = await motorRpcAnon(env, request, 'motor_gd_check', { p_slug: slug, p_token: token || null });
+      const st = btoa(JSON.stringify({ s: sid, g: slug, e: Date.now() + 15 * 60000 })).replace(/=+$/, '');
+      const state = st + '.' + await gdSign(env, st);
+      const u = 'https://accounts.google.com/o/oauth2/v2/auth?' + new URLSearchParams({ client_id: env.GOOGLE_CLIENT_ID, redirect_uri: gdRedirect(env),
+        response_type: 'code', scope: GD_SCOPE, access_type: 'offline', prompt: 'consent', include_granted_scopes: 'true', state });
+      return json(200, { ok: true, url: u });
+    }
+    if (body.op === 'backup') {
+      const sid = await motorRpcAnon(env, request, 'motor_gd_check_admin', { p_slug: slug, p_token: token || null });
+      const r = await gdBackup(env, sid);
+      return json(r.ok ? 200 : 502, r);
+    }
+    return json(400, { ok: false, error: 'bad_op' });
+  } catch (e) { return json(e.status || 500, { ok: false, error: e.message || 'error' }); }
+}
+async function motorGdCallback(url, env) {
+  const back = (slug, q) => Response.redirect((env.WEBSITE_URL || 'https://libanapps.com') + '/portal-motor/' + encodeURIComponent(slug || '') + '?gd=' + q, 302);
+  const state = url.searchParams.get('state') || '', code = url.searchParams.get('code') || '';
+  const [st, sig] = state.split('.');
+  let d = {}; try { d = JSON.parse(atob(st || '')); } catch {}
+  if (!st || !sig || sig !== await gdSign(env, st) || !(d.e > Date.now()) || !/^[0-9a-f-]{36}$/.test(String(d.s))) return back(d.g, 'bad_state');
+  if (!code) return back(d.g, 'denied');
+  const tr = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ code, client_id: env.GOOGLE_CLIENT_ID, client_secret: env.GOOGLE_CLIENT_SECRET, redirect_uri: gdRedirect(env), grant_type: 'authorization_code' }) });
+  const tj = await tr.json().catch(() => ({}));
+  if (!tj.refresh_token) return back(d.g, 'no_refresh');
+  let email = ''; try { email = JSON.parse(atob(String(tj.id_token || '').split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))).email || ''; } catch {}
+  await fetch(`${env.SUPABASE_URL}/rest/v1/motor_sites?id=eq.${d.s}`, { method: 'PATCH', headers: svcH(env),
+    body: JSON.stringify({ gd_refresh: tj.refresh_token, gd_email: email, gd_folder: '', gd_last_err: '' }) });
+  return back(d.g, 'ok');
+}
+async function gdAccess(env, refresh) {
+  const r = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ client_id: env.GOOGLE_CLIENT_ID, client_secret: env.GOOGLE_CLIENT_SECRET, refresh_token: refresh, grant_type: 'refresh_token' }) });
+  const j = await r.json().catch(() => ({}));
+  if (!j.access_token) throw new Error('gd_token:' + (j.error || r.status));
+  return j.access_token;
+}
+async function gdBackup(env, sid) {
+  const SH = svcH(env);
+  const setSite = (o) => fetch(`${env.SUPABASE_URL}/rest/v1/motor_sites?id=eq.${sid}`, { method: 'PATCH', headers: SH, body: JSON.stringify(o) });
+  try {
+    if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET) throw new Error('gd_not_configured');
+    const sr = await fetch(`${env.SUPABASE_URL}/rest/v1/motor_sites?id=eq.${sid}&select=slug,name,gd_refresh,gd_folder`, { headers: SH });
+    const site = ((await sr.json().catch(() => [])) || [])[0];
+    if (!site || !site.gd_refresh) throw new Error('gd_off');
+    const at = await gdAccess(env, site.gd_refresh);
+    const GH = { Authorization: `Bearer ${at}` };
+    // 1) بناء الملف نصّياً
+    const rpc = (fn, a) => fetch(`${env.SUPABASE_URL}/rest/v1/rpc/${fn}`, { method: 'POST', headers: SH, body: JSON.stringify(a) }).then(async (r) => { const t = await r.text(); if (!r.ok) throw new Error('db:' + t.slice(0, 120)); return t; });
+    const info = JSON.parse(await rpc('motor_bk_site_svc', { p_site: sid }));
+    const parts = [];
+    for (const tb of info.tables) {
+      const chunks = []; let off = 0;
+      for (;;) {
+        const t = (await rpc('motor_bk_rows_svc', { p_site: sid, p_table: tb, p_offset: off, p_limit: 5000 })).trim();
+        const inner = t.length > 2 ? t.slice(1, -1) : '';
+        if (inner) chunks.push(inner);
+        // عدد الأسطر: منعدّ بداية الكائنات بالمستوى الأول بشكل تقريبي عبر الطول — منوقف لما الصفحة أصغر من 5000 سطر
+        const cnt = inner ? (inner.match(/\},\{/g) || []).length + 1 : 0;
+        if (cnt < 5000) break; off += 5000;
+      }
+      parts.push(JSON.stringify(tb) + ':[' + chunks.join(',') + ']');
+    }
+    const now = new Date();
+    const fileBody = '{"app":"motorapp","v":1,"slug":' + JSON.stringify(site.slug) + ',"created_at":' + JSON.stringify(now.toISOString()) +
+      ',"site":' + JSON.stringify(info.site) + ',"tables":{' + parts.join(',') + '}}';
+    // 2) المجلد
+    let folder = site.gd_folder;
+    if (folder) { const fr = await fetch(`https://www.googleapis.com/drive/v3/files/${folder}?fields=id,trashed`, { headers: GH }); const fj = await fr.json().catch(() => ({}));
+      if (!fr.ok || fj.trashed) folder = ''; }
+    if (!folder) {
+      const cr = await fetch('https://www.googleapis.com/drive/v3/files?fields=id', { method: 'POST', headers: Object.assign({ 'Content-Type': 'application/json' }, GH),
+        body: JSON.stringify({ name: 'LibanApps - ' + (site.name || site.slug) + ' (نسخ احتياطي)', mimeType: 'application/vnd.google-apps.folder' }) });
+      const cj = await cr.json(); if (!cj.id) throw new Error('gd_folder'); folder = cj.id; await setSite({ gd_folder: folder });
+    }
+    // 3) الرفع
+    const p2 = (x) => String(x).padStart(2, '0');
+    const bz = new Date(now.getTime() + 2 * 3600000);   // توقيت بيروت تقريباً لاسم الملف
+    const name = `backup-${site.slug}-${bz.getUTCFullYear()}${p2(bz.getUTCMonth() + 1)}${p2(bz.getUTCDate())}-${p2(bz.getUTCHours())}${p2(bz.getUTCMinutes())}.json`;
+    const bnd = 'lbk' + crypto.randomUUID().replace(/-/g, '');
+    const mp = `--${bnd}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n` + JSON.stringify({ name, parents: [folder], mimeType: 'application/json' }) +
+      `\r\n--${bnd}\r\nContent-Type: application/json\r\n\r\n` + fileBody + `\r\n--${bnd}--`;
+    const ur = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,size', { method: 'POST',
+      headers: Object.assign({ 'Content-Type': `multipart/related; boundary=${bnd}` }, GH), body: mp });
+    const uj = await ur.json().catch(() => ({}));
+    if (!uj.id) throw new Error('gd_upload:' + ur.status);
+    // 4) حذف النسخ الأقدم من 30 يوم
+    const cutoff = new Date(Date.now() - 30 * 86400000).toISOString();
+    const q = `'${folder}' in parents and trashed=false and createdTime < '${cutoff}'`;
+    const lr = await fetch('https://www.googleapis.com/drive/v3/files?' + new URLSearchParams({ q, fields: 'files(id)', pageSize: '20' }), { headers: GH });
+    const lj = await lr.json().catch(() => ({ files: [] }));
+    let removed = 0;
+    for (const f of (lj.files || []).slice(0, 10)) { const dr = await fetch(`https://www.googleapis.com/drive/v3/files/${f.id}`, { method: 'DELETE', headers: GH }); if (dr.ok) removed++; }
+    await setSite({ gd_last_at: new Date().toISOString(), gd_last_err: '' });
+    return { ok: true, name, size: Number(uj.size || fileBody.length), removed };
+  } catch (e) {
+    const msg = String(e && e.message || e).slice(0, 200);
+    try { await setSite({ gd_last_err: msg }); } catch {}
+    return { ok: false, error: msg };
+  }
+}
+// كل ساعة: موقع واحد بيحتاج نسخة (آخر نسخة أقدم من 20 ساعة)
+async function motorGdCron(env) {
+  if (!env.GOOGLE_CLIENT_ID || !env.SUPABASE_SERVICE_KEY) return;
+  const since = new Date(Date.now() - 20 * 3600000).toISOString();
+  const r = await fetch(`${env.SUPABASE_URL}/rest/v1/motor_sites?gd_refresh=neq.&or=(gd_last_at.is.null,gd_last_at.lt.${since})&select=id&order=gd_last_at.asc.nullsfirst&limit=1`, { headers: svcH(env) });
+  const rows = await r.json().catch(() => []);
+  if (rows && rows[0]) await gdBackup(env, rows[0].id);
+}
+
 async function createOwner(request, env) {
   const auth = request.headers.get('Authorization') || '';
   const token = auth.replace(/^Bearer\s+/i, '');
@@ -3562,6 +3700,9 @@ function pageFor(pathname) {
 }
 
 export default {
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(motorGdCron(env).catch(() => {}));
+  },
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
@@ -3736,6 +3877,11 @@ export default {
         if (url.pathname === '/api/portal-token') {
           if (request.method !== 'GET') return json(405, { error: 'method not allowed' });
           return await portalToken(request, env);
+        }
+        if (url.pathname === '/api/motor-gdrive/callback') return await motorGdCallback(url, env);
+        if (url.pathname === '/api/motor-gdrive') {
+          if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
+          return await motorGd(request, env);
         }
         if (url.pathname.startsWith('/api/motor-wa-hook/')) {
           if (request.method !== 'POST') return json(405, { error: 'method not allowed' });

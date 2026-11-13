@@ -224,7 +224,7 @@ begin
   sid := (w->>'site_id')::uuid;
   return jsonb_build_object(
     'at', now(),
-    'site', (select to_jsonb(s) - 'client_id' - 'wc_api_key' - 'wc_hook_secret' from public.motor_sites s where s.id = sid),
+    'site', (select to_jsonb(s) - 'client_id' - 'wc_api_key' - 'wc_hook_secret' - 'gd_refresh' from public.motor_sites s where s.id = sid),
     'plans', coalesce((select jsonb_agg(to_jsonb(x) - 'site_id') from public.motor_plans x where x.site_id = sid), '[]'),
     'staff', coalesce((select jsonb_agg(jsonb_build_object('name', x.name, 'username', x.username, 'role', x.role, 'phone', x.phone,
                'can_read', x.can_read, 'can_collect', x.can_collect, 'can_cut', x.can_cut, 'is_active', x.is_active))
