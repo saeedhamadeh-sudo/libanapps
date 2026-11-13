@@ -131,7 +131,7 @@ begin
     'me', w,
     'today', public._motor_today(),
     'license', public.motor_license(sid),
-    'site', to_jsonb(st) - 'client_id' - 'cust_seq' - 'invoice_seq' - 'receipt_seq' - 'wc_api_key',
+    'site', to_jsonb(st) - 'client_id' - 'cust_seq' - 'invoice_seq' - 'receipt_seq' - 'wc_api_key' - 'wc_hook_secret',
     'plans', coalesce((select jsonb_agg(to_jsonb(p) - 'site_id' order by p.sort, p.name)
                          from public.motor_plans p where p.site_id = sid), '[]'::jsonb),
     'staff', coalesce((select jsonb_agg(jsonb_build_object('id', s.id, 'name', s.name, 'role', s.role,

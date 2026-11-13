@@ -1889,6 +1889,7 @@ var D={
  e_inactive:['البرنامج موقوف','App disabled','Application désactivée'],
  e_not_found:['غير موجود','Not found','Introuvable'],
  e_forbidden:['ليست لديك صلاحية لهذا الإجراء','You are not allowed to do this','Action non autorisée'],
+ e_bad_key:['المفتاح أو السرّ غير صالح، تأكد من نسخه كاملاً','The key or secret is invalid — copy it in full','Clé ou secret invalide — copiez-le en entier'],
  e_customer_not_found:['لم يُعثر على زبون بهذا الرمز: {x}','No customer with this code: {x}','Aucun client avec ce code : {x}'],
  e_customer_inactive:['هذا الزبون مقطوع','This customer is cut off','Client coupé'],
  e_no_window:['لم يحدّد المدير فترة أخذ العدادات لك','No reading period has been set for you','Aucune période de relevé définie'],
@@ -2230,6 +2231,12 @@ Object.assign(D,{
  wc_enable:['تفعيل الإرسال عبر واتساب الرسمي','Send through official WhatsApp','Envoyer via WhatsApp officiel'],
  wc_tpls:['حالة الـ templates','Templates status','État des modèles'], wc_check:['فحص الـ templates','Check templates','Vérifier'],
  wc_test:['إرسال تجربة إلى رقم','Send a test to a number','Envoyer un test'], wc_test_btn:['📤 إرسال تجربة','📤 Send test','📤 Tester'],
+ bot_title:['بوت كشف الحساب على واتساب','WhatsApp account bot','Bot de compte WhatsApp'],
+ bot_hint:['يرسل المشترك الباركود المكتوب على العدّاد أو الفاتورة إلى رقم واتساب المولّد، وإذا كان رقم هاتفه مطابقاً لرقم المشترك يصله الرصيد والفواتير غير المدفوعة وآخر فاتورة وآخر دفعة تلقائياً.\nطريقة الربط في WhatChimp: Settings ← Webhooks ← Add endpoint، الصق الرابط أدناه، واختر الحدث message.incoming، ثم انسخ الـSigning secret (يبدأ بـwhsec_) والصقه هنا.','The customer sends the barcode from the meter or bill to the generator\'s WhatsApp number. If their phone matches the subscriber\'s number, they automatically receive the balance, unpaid bills, last bill and last payment.\nSetup in WhatChimp: Settings → Webhooks → Add endpoint, paste the URL below, pick the message.incoming event, then copy the Signing secret (starts with whsec_) and paste it here.','L\'abonné envoie le code-barres du compteur ou de la facture au numéro WhatsApp du générateur. Si son numéro correspond à celui de l\'abonné, il reçoit automatiquement le solde, les factures impayées, la dernière facture et le dernier paiement.\nDans WhatChimp : Settings → Webhooks → Add endpoint, collez l\'URL ci-dessous, choisissez l\'événement message.incoming, puis copiez le Signing secret (commence par whsec_) et collez-le ici.'],
+ bot_url:['رابط الـWebhook','Webhook URL','URL du webhook'], bot_secret:['سرّ التوقيع (Signing secret)','Signing secret','Secret de signature'],
+ bot_secret_set:['محفوظ ✅','Saved ✅','Enregistré ✅'], bot_secret_none:['غير محفوظ','Not saved','Non enregistré'],
+ bot_enable:['تشغيل البوت','Enable the bot','Activer le bot'], bot_need_secret:['احفظ سرّ التوقيع أولاً','Save the signing secret first','Enregistrez d\'abord le secret'],
+ bot_copy:['نسخ','Copy','Copier'], bot_copied:['تم النسخ','Copied','Copié'],
  wc_st_APPROVED:['✅ موافق عليه','✅ Approved','✅ Approuvé'], wc_st_PENDING:['⏳ قيد المراجعة','⏳ In review','⏳ En revue'], wc_st_REJECTED:['❌ مرفوض','❌ Rejected','❌ Refusé'],
  wc_missing:['غير موجود','Missing','Absent'], wc_need:['مطلوب للبرنامج','Needed by the app','Requis'],
  wc_e_pending:['الـ template بعده غير موافق عليه من Meta','The template is not approved by Meta yet','Modèle pas encore approuvé'],
@@ -3794,6 +3801,23 @@ async function wcCard(box){
     try{ await wcSend('961',$('#wcn',box).value,'payment_receipt',{name:ME.name||'Test',amount:wcMoney(1),date:TODAY,receipt:'0',balance:wcMoney(0),generator:SITE.name||''},true);
       m.className='okmsg'; m.textContent='✅ '+t('wa_sent'); }
     catch(e){ m.className='err msg'; m.textContent=waErr(e); } busy(b,false); });
+  if(ME.is_main && st.slug){
+    var hook=location.origin+'/api/motor-wa-hook/'+st.slug, bx=document.createElement('div');
+    bx.style.cssText='margin-top:16px;padding-top:12px;border-top:1px solid var(--line,#ddd)';
+    bx.innerHTML='<h3>🤖 '+esc(t('bot_title'))+'</h3><p class="muted" style="white-space:pre-line;margin-top:0">'+esc(t('bot_hint'))+'</p>'+
+      '<label>'+esc(t('bot_url'))+'</label><div class="row" style="gap:6px"><input id="bhu" readonly dir="ltr" value="'+esc(hook)+'" style="flex:1"><button class="btn ghost" id="bhc">'+esc(t('bot_copy'))+'</button></div>'+
+      '<div class="g2" style="margin-top:8px"><div><label>'+esc(t('bot_secret'))+' — <span class="muted">'+esc(st.has_secret?t('bot_secret_set'):t('bot_secret_none'))+'</span></label>'+
+      '<input id="bhs" type="password" autocomplete="off" dir="ltr" placeholder="whsec_…"></div>'+
+      '<div style="display:flex;align-items:flex-end"><label class="chk"><input type="checkbox" id="bho"'+(st.bot_on?' checked':'')+'> '+esc(t('bot_enable'))+'</label></div></div>'+
+      '<div class="row" style="margin-top:8px"><button class="btn" id="bhv">💾 '+esc(t('save'))+'</button></div>';
+    box.appendChild(bx);
+    $('#bhc',bx).addEventListener('click',function(){ var i=$('#bhu',bx); i.select(); try{ navigator.clipboard.writeText(i.value); }catch(e){ document.execCommand('copy'); } toast(t('bot_copied'),'s'); });
+    $('#bhv',bx).addEventListener('click',async function(){ var b=this, sec=$('#bhs',bx).value.trim(), on=$('#bho',bx).checked;
+      if(on && !sec && !st.has_secret){ toast(t('bot_need_secret'),'e'); return; }
+      busy(b,true,t('saving'));
+      try{ await call('motor_wc_bot_save',{p_secret:sec||null,p_on:on}); $('#bhs',bx).value=''; toast(t('saved'),'s'); wcCard(box); }
+      catch(e){ toast(errText(e),'e'); busy(b,false); } });
+  }
 }
 async function uploadPhoto(blob,kind){
   var b64=await blobToB64(blob), h={'Content-Type':'application/json'};

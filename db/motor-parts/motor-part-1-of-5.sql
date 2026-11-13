@@ -412,7 +412,9 @@ create index if not exists motor_stock_site_idx on public.motor_stock (site_id, 
 alter table public.motor_sites add column if not exists purchase_seq integer not null default 0;
 alter table public.motor_sites add column if not exists unpaid_msg text not null default '';
 alter table public.motor_sites add column if not exists wc_api_key text not null default '';     -- مفتاح WhatChimp (سرّي)
-alter table public.motor_sites add column if not exists wc_on boolean not null default false;     -- الإرسال عبر واتساب الرسمي   -- نص رسالة تذكير المتأخرين (فاضي = النص الافتراضي)
+alter table public.motor_sites add column if not exists wc_on boolean not null default false;     -- الإرسال عبر واتساب الرسمي
+alter table public.motor_sites add column if not exists wc_hook_secret text not null default '';  -- سر الـwebhook (سرّي)
+alter table public.motor_sites add column if not exists wc_bot_on boolean not null default false; -- بوت كشف الحساب   -- نص رسالة تذكير المتأخرين (فاضي = النص الافتراضي)
 alter table public.motor_moves add column if not exists supplier_id uuid;
 create table if not exists public.motor_stock_moves (
   id          uuid primary key default gen_random_uuid(),

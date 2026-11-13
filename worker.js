@@ -1777,6 +1777,92 @@ async function motorWa(request, env) {
     body: JSON.stringify({ to: '+' + to, template: { name, language: 'ar', values } }) }));
 }
 
+// ---------- motorapp: بوت واتساب (WhatChimp webhook) ----------
+//  الزبون بيبعت الباركود → إذا رقم تلفونو هو رقم المشترك منردّ بكشف حسابو.
+//  التوقيع حسب Standard Webhooks: HMAC-SHA256(base64(secret), id.timestamp.body)
+const B64 = { dec: (b) => Uint8Array.from(atob(b), (c) => c.charCodeAt(0)),
+              enc: (u) => btoa(String.fromCharCode(...new Uint8Array(u))) };
+async function wcVerify(secret, id, ts, body, sigHeader) {
+  if (!secret || !id || !ts || !sigHeader) return false;
+  const t = Number(ts);
+  if (!Number.isFinite(t) || Math.abs(Date.now() / 1000 - t) > 300) return false;
+  let raw; try { raw = B64.dec(String(secret).replace(/^whsec_/, '')); } catch { return false; }
+  const key = await crypto.subtle.importKey('raw', raw, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const mac = B64.enc(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(`${id}.${ts}.${body}`)));
+  return sigHeader.split(' ').some((p) => { const [v, sg] = p.split(','); if (v !== 'v1' || !sg || sg.length !== mac.length) return false;
+    let d = 0; for (let i = 0; i < sg.length; i++) d |= sg.charCodeAt(i) ^ mac.charCodeAt(i); return d === 0; });
+}
+function motorBotText(r) {
+  const n = (x) => { const v = Number(x || 0); return (Math.round(v * 100) / 100).toLocaleString('en-US', { maximumFractionDigits: 2 }); };
+  const cur = r.cur_label || r.currency || '';
+  const ym = (p) => { const m = String(p || '').match(/^(\d{4})-(\d{2})$/); if (!m) return p || '';
+    const names = ['كانون الثاني','شباط','آذار','نيسان','أيار','حزيران','تموز','آب','أيلول','تشرين الأول','تشرين الثاني','كانون الأول'];
+    return names[Number(m[2]) - 1] + ' ' + m[1]; };
+  const site = r.site || '';
+  if (r.status === 'help') return `أهلاً بكم في ${site}.\nلمعرفة تفاصيل حسابكم، أرسلوا رقم الباركود المكتوب على العدّاد أو على الفاتورة (مثال: AWZ-00005).`;
+  if (r.status === 'not_found') return `لم نجد اشتراكاً بالرقم ${r.barcode || ''}.\nيرجى التأكد من الباركود المكتوب على العدّاد أو على الفاتورة وإرساله مجدداً.`;
+  if (r.status === 'phone_mismatch') return `عذراً، رقم هاتفكم غير مسجّل لهذا الاشتراك، لذلك لا يمكننا عرض تفاصيل الحساب.\nيرجى مراجعة إدارة ${site} لتحديث رقم الهاتف.`;
+  if (r.status !== 'ok') return '';
+  const c = r.customer || {}; const L = [];
+  L.push(`*${site}*`, `حضرة المشترك ${c.name || ''}`, '');
+  L.push(`رقم الاشتراك: ${c.code ?? ''}`);
+  if (c.box) L.push(`العلبة: ${c.box}`);
+  if (c.area) L.push(`المنطقة: ${c.area}`);
+  L.push(`حالة الخط: ${c.is_active ? 'مفعّل' : 'مقطوع'}`, '');
+  const bal = Number(c.balance || 0);
+  if (bal > 0.005) {
+    L.push(`*الرصيد المتوجّب: ${n(bal)} ${cur}*`);
+    const bills = r.bills || [];
+    if (bills.length) { L.push(`الفواتير غير المدفوعة (${bills.length}):`); bills.forEach((b) => L.push(`• ${ym(b.period)}: ${n(b.amount)} ${cur}`)); }
+    if (Number(r.older || 0) > 0.005) L.push(`• رصيد سابق: ${n(r.older)} ${cur}`);
+  } else if (bal < -0.005) L.push(`*لديكم رصيد دائن: ${n(-bal)} ${cur}*`);
+  else L.push('*لا يوجد رصيد متوجّب. شكراً لكم.*');
+  const li = r.last_invoice;
+  if (li) { L.push('', `آخر فاتورة (${ym(li.period)}): ${n(li.amount)} ${cur}`);
+    if (li.kind === 'meter' && li.cur != null) L.push(`العدّاد: ${n(li.prev)} ← ${n(li.cur)} (${n(li.kwh)} ك.و.س)`); }
+  const lp = r.last_pay;
+  if (lp) L.push(`آخر دفعة: ${n(lp.amount)} ${cur} بتاريخ ${String(lp.at || '').slice(0, 10)}`);
+  L.push('', 'شكراً لكم.');
+  return L.join('\n');
+}
+async function motorWaHook(request, env, ctx, slugRaw) {
+  const slug = String(slugRaw || '').trim().toLowerCase();
+  if (!/^[a-z0-9][a-z0-9-]{1,30}$/.test(slug)) return json(404, { ok: false });
+  const body = await request.text();
+  if (body.length > 200000) return json(413, { ok: false });
+  const SH = { apikey: env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`, 'Content-Type': 'application/json' };
+  const sr = await fetch(`${env.SUPABASE_URL}/rest/v1/motor_sites?slug=eq.${slug}&select=id,wc_api_key,wc_hook_secret,wc_bot_on`, { headers: SH });
+  const site = ((await sr.json().catch(() => [])) || [])[0];
+  if (!site) return json(404, { ok: false });
+  const id = request.headers.get('webhook-id'), ts = request.headers.get('webhook-timestamp');
+  if (!(await wcVerify(site.wc_hook_secret, id, ts, body, request.headers.get('webhook-signature') || '')))
+    return json(401, { ok: false, error: 'bad_signature' });
+  let ev; try { ev = JSON.parse(body); } catch { return json(200, { ok: true }); }
+  // نقرأ الحقول من أكثر من مكان احتياطاً لشكل الـpayload
+  const d = (ev && ev.data) || {};
+  const msg = d.message || ev.message || null;
+  const contact = ev.contact || d.contact || {};
+  const actor = ev.actor || d.actor || {};
+  const phone = contact.phone || contact.wa_id || (msg && msg.from) || '';
+  const etype = ev.type || ev.event || '';
+  const mtext = msg ? (typeof msg.text === 'string' ? msg.text : (msg.text && msg.text.body) || msg.body || '') : '';
+  if (!site.wc_bot_on || ev.test || d.test || etype !== 'message.incoming' || !msg || (msg.type && msg.type !== 'text') || !mtext || !phone
+      || (actor.type && actor.type !== 'customer') || !site.wc_api_key) return json(200, { ok: true, skipped: true });
+  const work = (async () => {
+    const lr = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/motor_bot_lookup`, { method: 'POST', headers: SH,
+      body: JSON.stringify({ p_site: site.id, p_event: String(id).slice(0, 200), p_phone: String(phone), p_text: String(mtext).slice(0, 500) }) });
+    if (!lr.ok) return;
+    const r = await lr.json().catch(() => null);
+    const text = r && motorBotText(r);
+    if (!text) return;
+    await fetch('https://api.whatchimp.com/v1/messages', { method: 'POST',
+      headers: { Authorization: `Bearer ${site.wc_api_key}`, 'Content-Type': 'application/json', 'Idempotency-Key': 'bot-' + String(id).slice(0, 100) },
+      body: JSON.stringify({ to: '+' + String(phone).replace(/\D/g, ''), text }) });
+  })().catch(() => {});
+  if (ctx && ctx.waitUntil) ctx.waitUntil(work); else await work;
+  return json(200, { ok: true });
+}
+
 async function createOwner(request, env) {
   const auth = request.headers.get('Authorization') || '';
   const token = auth.replace(/^Bearer\s+/i, '');
@@ -3601,6 +3687,10 @@ export default {
         if (url.pathname === '/api/portal-token') {
           if (request.method !== 'GET') return json(405, { error: 'method not allowed' });
           return await portalToken(request, env);
+        }
+        if (url.pathname.startsWith('/api/motor-wa-hook/')) {
+          if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
+          return await motorWaHook(request, env, ctx, url.pathname.slice('/api/motor-wa-hook/'.length));
         }
         if (url.pathname === '/api/motor-wa') {
           if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
