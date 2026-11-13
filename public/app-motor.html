@@ -2264,6 +2264,11 @@ Object.assign(D,{
  wa_e_nowa:['هذا الرقم ليس عليه واتساب','This number is not on WhatsApp','Ce numéro n’a pas WhatsApp'],
  wa_need_link:['فعّل واتساب الرسمي (WhatChimp) من الإعدادات أولاً','Enable official WhatsApp (WhatChimp) in settings first','Activez WhatsApp officiel (WhatChimp) dans les paramètres'],
  wa_batch50:['إرسال للجميع','Send to all','Envoyer à tous'],
+ rm_col:['التذكير','Reminder','Rappel'], rm_sent:['✅ تم إرسال التذكير','✅ Reminder sent','✅ Rappel envoyé'],
+ rm_again:['يمكن الإرسال مجدداً بعد {d}','Can resend after {d}','Renvoi possible après le {d}'],
+ rm_none_left:['تم إرسال التذكير لكل الزبائن خلال آخر 3 أيام','All customers were reminded in the last 3 days','Tous les clients ont reçu un rappel ces 3 derniers jours'],
+ rm_stat:['تم تذكيرهم (آخر 3 أيام)','Reminded (last 3 days)','Rappelés (3 derniers jours)'],
+ rm_wait:['تم إرسال تذكير لهذا الزبون بتاريخ {a}. يمكن الإرسال مجدداً بعد {d}.','This customer was reminded on {a}. You can resend after {d}.','Rappel envoyé le {a}. Renvoi possible après le {d}.'],
  wa_batch_q:['إرسال {n} رسالة بالتدريج؟\nلحماية الرقم من الحظر تُرسل الرسائل على فترات عشوائية (رسالة كل دقيقة إلى 3 دقائق تقريباً)، وقد يستغرق الإرسال حتى {m} دقيقة.\nيمكنك متابعة العمل في البرنامج، لكن لا تغلقه ولا تُعد تحميل الصفحة.','Send {n} messages gradually?\nTo protect the number from being banned, messages go out at random intervals (about one every 1–3 minutes); this may take up to {m} minutes.\nYou can keep working in the app, but do not close or reload it.','Envoyer {n} messages progressivement ?\nPour éviter le blocage du numéro, les messages partent à intervalles aléatoires (environ 1 à 3 min) ; jusqu’à {m} min.\nVous pouvez continuer à travailler, sans fermer ni recharger.'],
  wa_batch_prog:['تم إرسال {i} من {n} — ✓ {ok} · ✗ {bad} — الإرسال مستمر بالتدريج','Sent {i} of {n} — ✓ {ok} · ✗ {bad} — sending gradually','Envoyé {i}/{n} — ✓ {ok} · ✗ {bad} — envoi progressif'],
  wa_batch_wait:['⏳ بانتظار الرسالة التالية — تُرسل تلقائياً بعد فاصل عشوائي (دقيقة إلى 3 دقائق) لحماية الرقم من الحظر','⏳ Waiting for the next message — sent automatically after a random 1–3 minute gap to protect the number','⏳ Message suivant envoyé automatiquement après 1 à 3 min (protection anti-blocage)'],
@@ -2769,8 +2774,12 @@ VIEWS.unpaid=async function(main){
       '<textarea id="uptx" rows="9" style="width:100%"></textarea>'+
       '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap"><button class="btn" id="upts">💾 '+esc(t('save'))+'</button><button class="btn ghost" id="uptr">'+esc(t('up_tpl_reset'))+'</button></div>'+
       '<div class="muted" style="margin-top:10px">'+esc(t('up_tpl_prev'))+'</div><pre id="uptp" style="white-space:pre-wrap;font-family:inherit;background:var(--bg2,#f6f6f6);padding:10px;border-radius:10px;margin:4px 0 0"></pre></details>':'')+
-    '<div class="stats">'+stat(t('up_count'),fmtN(rows.length,0))+stat(t('up_total'),money(tot))+'</div><div class="tw" id="uptw"></div>';
+    '<div class="stats">'+stat(t('up_count'),fmtN(rows.length,0))+stat(t('up_total'),money(tot))+'<span id="uprm"></span></div><div class="tw" id="uptw"></div>';
   function months(r){ var m=(r.months||[]).map(function(p){ return monthName(p,false); }); if(r.older) m.unshift(t('due_older')); return m.join('، '); }
+  var RM_MS=3*24*3600*1000;   // التذكير مرة كل 3 أيام
+  function recent(r){ return r.reminded_at&&(Date.now()-new Date(r.reminded_at).getTime())<RM_MS; }
+  function again(r){ return dt(new Date(new Date(r.reminded_at).getTime()+RM_MS).toISOString()); }
+  function marked(r){ return call('motor_remind_mark',{p_customer:r.id}).then(function(x){ r.reminded_at=(x&&x.reminded_at)||new Date().toISOString(); }).catch(function(){ r.reminded_at=new Date().toISOString(); }); }
   function msg(r){ var cur=mainCur(), f=function(v){ return fmtN(v,cur==='LBP'?0:2)+' '+cur; }, b=r.bills||{}, ps=Object.keys(b).sort(), lines=[], names=[];
     if(n2(r.older_amt)>0.005){ lines.push(t('up_msg_older',{v:f(r.older_amt)})); names.push(t('due_older')); }
     ps.forEach(function(p){ lines.push(t('up_msg_bill',{m:monthName(p,true),v:f(b[p])})); names.push(monthName(p,true)); });
@@ -2780,13 +2789,16 @@ VIEWS.unpaid=async function(main){
   function list(){ var k=normS(q); return rows.filter(function(r){ return !k||normS(r.name).indexOf(k)>=0||String(r.code)===k||normS(r.box)===k||normS(r.area).indexOf(k)>=0||normS(r.collector).indexOf(k)>=0; }); }
   function H(){ return [t('code'),t('name'),t('mobile'),t('area'),t('box'),t('collector'),t('up_months'),t('up_min'),t('up_due'),t('balance'),t('up_last_pay')]; }
   function paint(){ var L=list();
-    $('#uptw',main).innerHTML='<table><thead><tr>'+H().map(function(h){ return '<th>'+esc(h)+'</th>'; }).join('')+(isAdmin()?'<th></th>':'')+'</tr></thead><tbody>'+
+    $('#uprm',main).innerHTML=isAdmin()?stat(t('rm_stat'),fmtN(rows.filter(recent).length,0)):'';
+    $('#uptw',main).innerHTML='<table><thead><tr>'+H().map(function(h){ return '<th>'+esc(h)+'</th>'; }).join('')+(isAdmin()?'<th>'+esc(t('rm_col'))+'</th>':'')+'</tr></thead><tbody>'+
       (L.map(function(r){ var i=rows.indexOf(r);
         return '<tr><td class="num">'+esc(r.code)+'</td><td><a href="#" data-cust="'+esc(r.id)+'"><b>'+esc(r.name)+'</b></a></td>'+
           '<td class="num">'+(r.mobile?esc('+'+r.mobile_cc+' '+r.mobile):'<span class="chip off">'+esc(t('no_mobile_short'))+'</span>')+'</td><td>'+esc(r.area||'')+'</td><td>'+esc(r.box||'')+'</td><td>'+esc(r.collector||'')+'</td>'+
           '<td>'+esc(months(r))+'</td><td class="num"><b>'+esc(r.n+(r.older?1:0))+'</b></td><td class="num"><b>'+esc(money(r.due))+'</b></td><td>'+balHtml(r.balance)+'</td>'+
           '<td class="num">'+(r.last_pay?esc(dt(r.last_pay).slice(0,10)):'<span class="muted">'+esc(t('up_no_pay'))+'</span>')+'</td>'+
-          (isAdmin()?'<td><button class="btn wa sm" data-uw="'+i+'" '+(r.mobile?'':'disabled')+'>'+esc(t('wa_send'))+'</button></td>':'')+'</tr>'; }).join(''))||
+          (isAdmin()?'<td style="white-space:nowrap">'+(recent(r)?'<div class="chip on">'+esc(t('rm_sent'))+'</div><div class="muted" style="font-size:11px">'+esc(dt(r.reminded_at))+'</div>'+
+             '<button class="btn ghost sm" data-uw="'+i+'" title="'+esc(t('rm_again',{d:again(r)}))+'">🔒 '+esc(t('wa_send'))+'</button>':
+             '<button class="btn wa sm" data-uw="'+i+'" '+(r.mobile?'':'disabled')+'>'+esc(t('wa_send'))+'</button>')+'</td>':'')+'</tr>'; }).join(''))||
       '<tr><td colspan="12"><div class="okmsg">'+esc(t('up_none'))+'</div></td></tr>'+'</tbody></table>'; }
   function data(){ return [H()].concat(list().map(function(r){ return [r.code,r.name,r.mobile?'+'+r.mobile_cc+' '+r.mobile:'',r.area||'',r.box||'',r.collector||'',months(r),r.n+(r.older?1:0),n2(r.due),n2(r.balance),r.last_pay?dt(r.last_pay).slice(0,10):'']; })); }
   $('#upp',main).addEventListener('change',function(){ if(/^\d{4}-\d{2}$/.test(this.value)){ RF.upPer=this.value; go('unpaid'); } });
@@ -2799,8 +2811,10 @@ VIEWS.unpaid=async function(main){
       '<table><thead><tr>'+R[0].map(function(h){ return '<th>'+esc(h)+'</th>'; }).join('')+'</tr></thead><tbody>'+R.slice(1).map(function(r){ return '<tr>'+r.map(function(v,i){ return '<td'+(i>=7&&i<=9?' class="num"':'')+'>'+esc(typeof v==='number'&&i>=8?money(v):v)+'</td>'; }).join('')+'</tr>'; }).join('')+'</tbody></table>'+
       '<p style="font-size:11px"><b>'+esc(t('up_count'))+': '+esc(R.length-1)+' · '+esc(t('up_total'))+': '+esc(money(R.slice(1).reduce(function(a,r){ return a+n2(r[8]); },0)))+'</b></p>'); });
   if(isAdmin()){
-    $('#upwa',main).addEventListener('click',function(){ waBatch($('#upbar',main),list().filter(function(r){ return r.mobile; }),async function(r){
-      try{ if(wcOn()){ msg(r); await wcSend(r.mobile_cc,r.mobile,'payment_reminder',r._wc); } else await waSendAuto(waNum(r.mobile_cc,r.mobile),waTag(msg(r))); return true; }catch(e){ return {name:r.name,err:waErr(e)}; } }); });
+    $('#upwa',main).addEventListener('click',function(){ var todo=list().filter(function(r){ return r.mobile&&!recent(r); });
+      if(!todo.length){ toast(t('rm_none_left'),'e'); return; }
+      waBatch($('#upbar',main),todo,async function(r){
+      try{ msg(r); await wcSend(r.mobile_cc,r.mobile,'payment_reminder',r._wc); await marked(r); return true; }catch(e){ return {name:r.name,err:waErr(e)}; } },function(){ paint(); }); });
     waPaint();
     var tx=$('#uptx',main); tx.value=tpl||t('up_tpl_def');
     function prev(){ var L=list(); $('#uptp',main).textContent=L.length?msg(L[0]):''; }
@@ -2812,7 +2826,9 @@ VIEWS.unpaid=async function(main){
       try{ var v=tx.value.trim()===t('up_tpl_def').trim()?'':tx.value; await call('motor_unpaid_msg_save',{p_msg:v}); tpl=v; toast(t('saved')); }catch(err){ toast(errText(err),'e'); } busy(b,false); });
     prev();
     $('#uptw',main).addEventListener('click',async function(e){ var b=e.target.closest('[data-uw]'); if(!b||b.disabled) return; var r=rows[+b.dataset.uw];
-      b.disabled=true; if(wcOn()){ msg(r); try{ await wcSend(r.mobile_cc,r.mobile,'payment_reminder',r._wc); toast('✅ '+t('wa_sent'),'s'); }catch(e){ toast(waErr(e),'e'); } } else await openWa(r.mobile_cc,r.mobile,msg(r)); b.disabled=false; });
+      if(recent(r)){ toast(t('rm_wait',{a:dt(r.reminded_at),d:again(r)}),'e'); return; }
+      if(!wcOn()){ toast(t('wa_need_link'),'e'); return; }
+      b.disabled=true; msg(r); try{ await wcSend(r.mobile_cc,r.mobile,'payment_reminder',r._wc); await marked(r); toast('✅ '+t('wa_sent'),'s'); paint(); }catch(e){ toast(waErr(e),'e'); b.disabled=false; } });
   }
   paint();
 };

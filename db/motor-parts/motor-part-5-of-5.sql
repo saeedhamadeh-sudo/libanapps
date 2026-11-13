@@ -323,6 +323,7 @@ end $$;
 --  20j3) الزبائن الذين لم يدفعوا بعد — الخط مفعّل وعليه فاتورة شهر (الدورة المختارة) أو أقدم غير مدفوعة
 --  الفواتير المدفوعة تُحسب من الأقدم (الرصيد الحالي بيغطي آخر الفواتير)
 -- ============================================================
+alter table public.motor_customers add column if not exists reminded_at timestamptz;   -- آخر تذكير بالدفع
 create or replace function public.motor_unpaid(p_slug text, p_token text, p_period text, p_min integer default 1)
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare w jsonb; sid uuid; per text; st public.motor_sites%rowtype; mine uuid; out jsonb := '[]'::jsonb;
@@ -358,7 +359,7 @@ begin
       out := out || jsonb_build_array(jsonb_build_object(
         'id', c.id, 'code', c.code, 'name', c.name, 'mobile', c.mobile, 'mobile_cc', c.mobile_cc, 'box', c.box, 'area', c.area,
         'collector', c.coll, 'balance', c.balance, 'due', round(amt, 2), 'months', to_jsonb(pers), 'n', n, 'older', older,
-        'bills', bills, 'older_amt', round(greatest(c.balance - acc, 0), 2),
+        'bills', bills, 'older_amt', round(greatest(c.balance - acc, 0), 2), 'reminded_at', c.reminded_at,
         'last_pay', greatest(
             (select max(p.created_at) from public.motor_payments p where p.customer_id = c.id and not p.voided),
             (select max(i.created_at) from public.motor_invoices i where i.customer_id = c.id and not i.voided and i.imported
@@ -366,6 +367,16 @@ begin
     end if;
   end loop;
   return jsonb_build_object('period', per, 'rows', out, 'msg', st.unpaid_msg);
+end $$;
+
+-- آخر تذكير بالدفع انبعت للزبون (منمنع تكرارو قبل 3 أيام)
+create or replace function public.motor_remind_mark(p_slug text, p_token text, p_customer uuid)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w jsonb; t timestamptz;
+begin
+  w := public._motor_admin(p_slug, p_token);
+  update public.motor_customers set reminded_at = now() where id = p_customer and site_id = (w->>'site_id')::uuid returning reminded_at into t;
+  return jsonb_build_object('ok', true, 'reminded_at', t);
 end $$;
 
 create or replace function public.motor_unpaid_msg_save(p_slug text, p_token text, p_msg text)
@@ -1048,7 +1059,7 @@ begin
     'motor_cash_statement(text,text,date,date)', 'motor_cash_close(text,text,numeric,numeric,text)',
     'motor_set_active(text,text,uuid,boolean,text,double precision,double precision)',
     'motor_note_add(text,text,uuid,text)', 'motor_ping(text,text,double precision,double precision,double precision)',
-    'motor_staff_map(text,text)', 'motor_unpaid(text,text,text,integer)', 'motor_wc_check(text,text)', 'motor_wc_save(text,text,text,boolean)', 'motor_wc_status(text,text)', 'motor_wc_bot_save(text,text,text,boolean,uuid,boolean)', 'motor_maint_list(text,text)', 'motor_maint_done(text,text,uuid,boolean)', 'motor_sale_add(text,text,uuid,jsonb,text)', 'motor_sales_list(text,text,date,date)', 'motor_unpaid_msg_save(text,text,text)', 'motor_backup_page(text,text,text,integer,integer)', 'motor_fin_get(text,text,text)', 'motor_fin_save(text,text,text,jsonb)', 'motor_fin_delete(text,text,text)', 'motor_2fa_setup(text,text)', 'motor_2fa_enable(text,text,text)',
+    'motor_staff_map(text,text)', 'motor_unpaid(text,text,text,integer)', 'motor_wc_check(text,text)', 'motor_wc_save(text,text,text,boolean)', 'motor_wc_status(text,text)', 'motor_remind_mark(text,text,uuid)', 'motor_wc_bot_save(text,text,text,boolean,uuid,boolean)', 'motor_maint_list(text,text)', 'motor_maint_done(text,text,uuid,boolean)', 'motor_sale_add(text,text,uuid,jsonb,text)', 'motor_sales_list(text,text,date,date)', 'motor_unpaid_msg_save(text,text,text)', 'motor_backup_page(text,text,text,integer,integer)', 'motor_fin_get(text,text,text)', 'motor_fin_save(text,text,text,jsonb)', 'motor_fin_delete(text,text,text)', 'motor_2fa_setup(text,text)', 'motor_2fa_enable(text,text,text)',
     'motor_2fa_disable(text,text,text,uuid)', 'motor_wa_outbox(text,text,integer)', 'motor_wa_mark(text,text,text,uuid)',
     'motor_reading_edit(text,text,uuid,numeric,text)', 'motor_customer_set_login(text,text,uuid,text,text)', 'motor_cust_me(text,text)',
     'motor_invoice_edit(text,text,uuid,numeric,text)', 'motor_payment_edit(text,text,uuid,numeric,text)',
