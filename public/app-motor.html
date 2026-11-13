@@ -2236,7 +2236,7 @@ Object.assign(D,{
  wc_e_off:['واتساب الرسمي غير مفعّل أو لا يوجد مفتاح API','Official WhatsApp is off or has no API key','WhatsApp officiel désactivé ou sans clé'],
  wc_e_plan:['انتهت رسائل الشهر في باقة WhatChimp','The WhatChimp plan’s monthly messages are used up','Quota mensuel WhatChimp épuisé'], wc_e:['خطأ من WhatChimp','WhatChimp error','Erreur WhatChimp'],
  wc_act_on:['وصل','Connect','Rebrancher'], wc_act_cut:['قطع','Cut','Couper'],
- wc_batch_q:['إرسال {n} رسالة عبر واتساب الرسمي؟','Send {n} messages through official WhatsApp?','Envoyer {n} messages via WhatsApp officiel ?'],
+ wc_batch_q:['إرسال {n} رسالة عبر واتساب الرسمي؟ (الحد 240 رقماً كل 24 ساعة حتى يتم توثيق الحساب — أكمل الباقي غداً)','Send {n} messages through official WhatsApp?','Envoyer {n} messages via WhatsApp officiel ?'],
  wc_chip:['✅ واتساب الرسمي','✅ Official WhatsApp','✅ WhatsApp officiel'],
  wa_upd:['تحديث برنامج واتساب للمكتب متوفر','Office WhatsApp connector update available','Mise à jour du connecteur disponible'],
  wa_upd_hint:['نزّل الملف، وانسخ server.cjs الجديد فوق القديم في مجلد wa-connector، ثم سكّر نافذة واتساب السوداء وشغّل START-WHATSAPP.bat من جديد. الربط يبقى كما هو.','Download, copy the new server.cjs over the old one in wa-connector, close the black WhatsApp window and run START-WHATSAPP.bat again. The link stays.','Téléchargez, remplacez server.cjs, fermez la fenêtre noire et relancez START-WHATSAPP.bat.'],
@@ -4690,7 +4690,7 @@ function waBatchBar(id){ return '<div class="card hidden" id="'+id+'"><div class
 var WA_BATCH_ON=false;
 async function waBatch(box,items,sendOne,onDone){
   if(!waAuto()&&!wcOn()){ toast(t('wa_need_link'),'e'); return; }
-  var list=items.slice(0,wcOn()?500:50); if(!list.length) return;
+  var list=items.slice(0,wcOn()?240:50);   // واتساب الرسمي: حد Meta للحسابات غير الموثّقة 250 رقم مختلف كل 24 ساعة if(!list.length) return;
   if(WA_BATCH_ON){ toast(t('wa_batch_busy'),'e'); return; }
   if(!(await confirmBox(wcOn()?t('wc_batch_q',{n:list.length}):t('wa_batch_q',{n:list.length,m:Math.ceil(list.length*3)})))) return;
   var stop=false, ok=0, bad=0; box.classList.remove('hidden'); WA_BATCH_ON=true;
