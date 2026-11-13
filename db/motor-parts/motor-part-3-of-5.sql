@@ -572,31 +572,45 @@ begin
       select jsonb_build_object('t','inv','id',i.id,'at',i.created_at,'inv',to_jsonb(i) - 'site_id',
              'due', public._motor_due_info(c.id),
              'customer', jsonb_build_object('id',c.id,'code',c.code,'name',c.name,'mobile',c.mobile,'mobile_cc',c.mobile_cc,'box',c.box)) as x
-        from public.motor_invoices i join public.motor_customers c on c.id = i.customer_id
-       where i.site_id = sid and not i.voided and i.kind in ('meter','fixed') and i.wa_sent_at is null
-         and i.created_at > now() - make_interval(days => greatest(1, coalesce(p_days,60)))
+        from (select distinct on (i0.customer_id) i0.* from public.motor_invoices i0
+               where i0.site_id = sid and not i0.voided and i0.kind in ('meter','fixed') and i0.wa_sent_at is null
+                 and i0.created_at > now() - make_interval(days => greatest(1, coalesce(p_days,60)))
+               order by i0.customer_id, i0.created_at desc) i
+        join public.motor_customers c on c.id = i.customer_id
       union all
       select jsonb_build_object('t','pay','id',p.id,'at',p.created_at,'pay',to_jsonb(p) - 'site_id',
              'inv', (select to_jsonb(i) - 'site_id' from public.motor_invoices i where i.customer_id = p.customer_id
                       and not i.voided and i.kind in ('meter','fixed') and i.created_at <= p.created_at
                       order by i.created_at desc limit 1),
              'customer', jsonb_build_object('id',c.id,'code',c.code,'name',c.name,'mobile',c.mobile,'mobile_cc',c.mobile_cc,'box',c.box))
-        from public.motor_payments p join public.motor_customers c on c.id = p.customer_id
-       where p.site_id = sid and not p.voided and p.wa_sent_at is null
-         and p.created_at > now() - make_interval(days => greatest(1, coalesce(p_days,60)))
+        from (select distinct on (p0.customer_id) p0.* from public.motor_payments p0
+               where p0.site_id = sid and not p0.voided and p0.wa_sent_at is null
+                 and p0.created_at > now() - make_interval(days => greatest(1, coalesce(p_days,60)))
+               order by p0.customer_id, p0.created_at desc) p
+        join public.motor_customers c on c.id = p.customer_id
+       where not exists (   -- انبعتلو إشعار دفع بهالدورة (بعد آخر فاتورة)
+               select 1 from public.motor_payments px
+                where px.customer_id = p.customer_id and not px.voided and px.wa_sent_at is not null
+                  and px.created_at >= coalesce((select max(ix.created_at) from public.motor_invoices ix
+                                                  where ix.customer_id = p.customer_id and not ix.voided and ix.kind in ('meter','fixed')), '-infinity'::timestamptz))
     ) q), '[]'::jsonb);
 end $$;
 
 create or replace function public.motor_wa_mark(p_slug text, p_token text, p_kind text, p_id uuid)
 returns jsonb language plpgsql security definer set search_path = public as $$
-declare w jsonb; sid uuid;
+declare w jsonb; sid uuid; cid uuid; at0 timestamptz;
 begin
   w := public._motor_who(p_slug, p_token);
   sid := (w->>'site_id')::uuid;
   if p_kind = 'inv' then
-    update public.motor_invoices set wa_sent_at = now(), wa_sent_by = w->>'name' where id = p_id and site_id = sid;
+    select customer_id, created_at into cid, at0 from public.motor_invoices where id = p_id and site_id = sid;
+    -- الفاتورة وكل الفواتير الأقدم يلّي ما انبعتت لنفس الزبون
+    update public.motor_invoices set wa_sent_at = now(), wa_sent_by = w->>'name'
+     where site_id = sid and customer_id = cid and wa_sent_at is null and kind in ('meter','fixed') and created_at <= at0;
   elsif p_kind = 'pay' then
-    update public.motor_payments set wa_sent_at = now(), wa_sent_by = w->>'name' where id = p_id and site_id = sid;
+    select customer_id into cid from public.motor_payments where id = p_id and site_id = sid;
+    update public.motor_payments set wa_sent_at = now(), wa_sent_by = w->>'name'
+     where site_id = sid and customer_id = cid and wa_sent_at is null;
   else perform public._motor_err('bad_kind'); end if;
   return jsonb_build_object('ok', true);
 end $$;

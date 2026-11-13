@@ -752,19 +752,20 @@ alter table public.motor_wa_sends enable row level security;
 -- بيستدعيها الـWorker قبل كل إرسال (مفتاح الخدمة فقط). p_to فاضي = استعلام بلا حجز
 create or replace function public.motor_wa_quota(p_site uuid, p_to text default '', p_limit integer default 250)
 returns jsonb language plpgsql security definer set search_path = public as $$
-declare used integer; known boolean := false; nid bigint;
+declare used integer; known boolean := false; nid bigint; rst timestamptz;
 begin
   perform pg_advisory_xact_lock(hashtext('motor_wa_' || p_site::text));
   delete from public.motor_wa_sends where at < now() - interval '2 days';
-  select count(distinct to_num) into used from public.motor_wa_sends where site_id = p_site and at > now() - interval '24 hours';
-  if coalesce(p_to, '') = '' then return jsonb_build_object('ok', true, 'used', used, 'limit', p_limit, 'left', greatest(p_limit - used, 0)); end if;
+  select count(distinct to_num), min(at) + interval '24 hours' into used, rst
+    from public.motor_wa_sends where site_id = p_site and at > now() - interval '24 hours';
+  if coalesce(p_to, '') = '' then return jsonb_build_object('ok', true, 'used', used, 'limit', p_limit, 'left', greatest(p_limit - used, 0), 'reset_at', rst); end if;
   known := exists (select 1 from public.motor_wa_sends where site_id = p_site and to_num = p_to and at > now() - interval '24 hours');
   if not known and used >= p_limit then
-    return jsonb_build_object('ok', false, 'used', used, 'limit', p_limit, 'left', 0);
+    return jsonb_build_object('ok', false, 'used', used, 'limit', p_limit, 'left', 0, 'reset_at', rst);
   end if;
   insert into public.motor_wa_sends (site_id, to_num) values (p_site, p_to) returning id into nid;
   if not known then used := used + 1; end if;
-  return jsonb_build_object('ok', true, 'id', nid, 'used', used, 'limit', p_limit, 'left', greatest(p_limit - used, 0));
+  return jsonb_build_object('ok', true, 'id', nid, 'used', used, 'limit', p_limit, 'left', greatest(p_limit - used, 0), 'reset_at', coalesce(rst, now() + interval '24 hours'));
 end $$;
 create or replace function public.motor_wa_quota_undo(p_id bigint)
 returns void language sql security definer set search_path = public as $$
