@@ -2237,6 +2237,13 @@ Object.assign(D,{
  bot_secret_set:['محفوظ ✅','Saved ✅','Enregistré ✅'], bot_secret_none:['غير محفوظ','Not saved','Non enregistré'],
  bot_enable:['تشغيل البوت','Enable the bot','Activer le bot'], bot_need_secret:['احفظ سرّ التوقيع أولاً','Save the signing secret first','Enregistrez d\'abord le secret'],
  bot_copy:['نسخ','Copy','Copier'], bot_copied:['تم النسخ','Copied','Copié'],
+ bot_maint:['موظف الصيانة (يصله إشعار بكل طلب صيانة)','Maintenance staff (notified of every request)','Technicien (notifié à chaque demande)'],
+ bot_maint_none:['— بدون إشعار —','— No notification —','— Sans notification —'],
+ bot_menu_hint:['قائمة البوت: يرسل المشترك أي رسالة فتصله القائمة (1 كشف الحساب، 2 طلب صيانة). عند اختيار طلب صيانة يُطلب منه الباركود ووصف المشكلة، فيُسجَّل الطلب ويصل إشعار لموظف الصيانة.','Bot menu: any message gets the menu (1 account statement, 2 maintenance request). For maintenance, the customer sends the barcode and a description; the request is logged and the maintenance staff is notified.','Menu du bot : tout message reçoit le menu (1 relevé, 2 demande de maintenance). Pour la maintenance, l\'abonné envoie le code-barres et une description ; la demande est enregistrée et le technicien est notifié.'],
+ mt_title:['طلبات الصيانة من واتساب','WhatsApp maintenance requests','Demandes de maintenance WhatsApp'],
+ mt_none:['لا توجد طلبات','No requests','Aucune demande'], mt_done:['تمّ','Done','Fait'], mt_new:['جديد','New','Nouveau'],
+ mt_mark:['تمّ التنفيذ','Mark done','Marquer fait'], mt_reopen:['إعادة فتح','Reopen','Rouvrir'],
+ mt_phone_bad:['رقم غير مسجّل للمشترك','Number not registered for subscriber','Numéro non enregistré'],
  wc_st_APPROVED:['✅ موافق عليه','✅ Approved','✅ Approuvé'], wc_st_PENDING:['⏳ قيد المراجعة','⏳ In review','⏳ En revue'], wc_st_REJECTED:['❌ مرفوض','❌ Rejected','❌ Refusé'],
  wc_missing:['غير موجود','Missing','Absent'], wc_need:['مطلوب للبرنامج','Needed by the app','Requis'],
  wc_e_pending:['الـ template بعده غير موافق عليه من Meta','The template is not approved by Meta yet','Modèle pas encore approuvé'],
@@ -3809,14 +3816,30 @@ async function wcCard(box){
       '<div class="g2" style="margin-top:8px"><div><label>'+esc(t('bot_secret'))+' — <span class="muted">'+esc(st.has_secret?t('bot_secret_set'):t('bot_secret_none'))+'</span></label>'+
       '<input id="bhs" type="password" autocomplete="off" dir="ltr" placeholder="whsec_…"></div>'+
       '<div style="display:flex;align-items:flex-end"><label class="chk"><input type="checkbox" id="bho"'+(st.bot_on?' checked':'')+'> '+esc(t('bot_enable'))+'</label></div></div>'+
-      '<div class="row" style="margin-top:8px"><button class="btn" id="bhv">💾 '+esc(t('save'))+'</button></div>';
+      '<label style="margin-top:8px">'+esc(t('bot_maint'))+'</label><select id="bhm"><option value="">'+esc(t('bot_maint_none'))+'</option>'+
+        STAFF.filter(function(x){ return x.is_active&&x.phone; }).map(function(x){ return '<option value="'+esc(x.id)+'"'+(st.maint_staff===x.id?' selected':'')+'>'+esc(x.name)+' — '+esc(x.phone)+'</option>'; }).join('')+'</select>'+
+      '<p class="muted" style="margin:6px 0 0">'+esc(t('bot_menu_hint'))+'</p>'+
+      '<div class="row" style="margin-top:8px"><button class="btn" id="bhv">💾 '+esc(t('save'))+'</button></div>'+
+      '<h3 style="margin-top:16px">🔧 '+esc(t('mt_title'))+'</h3><div id="bml" class="muted">'+esc(t('loading'))+'</div>';
     box.appendChild(bx);
     $('#bhc',bx).addEventListener('click',function(){ var i=$('#bhu',bx); i.select(); try{ navigator.clipboard.writeText(i.value); }catch(e){ document.execCommand('copy'); } toast(t('bot_copied'),'s'); });
     $('#bhv',bx).addEventListener('click',async function(){ var b=this, sec=$('#bhs',bx).value.trim(), on=$('#bho',bx).checked;
       if(on && !sec && !st.has_secret){ toast(t('bot_need_secret'),'e'); return; }
       busy(b,true,t('saving'));
-      try{ await call('motor_wc_bot_save',{p_secret:sec||null,p_on:on}); $('#bhs',bx).value=''; toast(t('saved'),'s'); wcCard(box); }
+      var ms=$('#bhm',bx).value;
+      try{ await call('motor_wc_bot_save',{p_secret:sec||null,p_on:on,p_maint_staff:ms||null,p_clear_maint:!ms}); $('#bhs',bx).value=''; toast(t('saved'),'s'); wcCard(box); }
       catch(e){ toast(errText(e),'e'); busy(b,false); } });
+    var mlist=async function(){ var el=$('#bml',bx), L=[]; try{ L=await call('motor_maint_list'); }catch(e){ el.textContent=errText(e); return; }
+      if(!L.length){ el.textContent=t('mt_none'); return; }
+      el.className=''; el.innerHTML='<div class="tw"><table><thead><tr><th>'+esc(t('date'))+'</th><th>'+esc(t('customer'))+'</th><th>'+esc(t('box'))+'</th><th>'+esc(t('note'))+'</th><th>📱</th><th></th></tr></thead><tbody>'+
+        L.map(function(m){ var done=m.status==='done';
+          return '<tr'+(done?' style="opacity:.55"':'')+'><td style="white-space:nowrap">'+esc(String(dt(m.at)).replace('T',' ').slice(0,16))+'</td><td>'+esc(m.name||'—')+' <span class="muted">#'+esc(m.code==null?'':m.code)+'</span></td>'+
+            '<td>'+esc(m.box||'—')+'<div class="muted">'+esc(m.area||'')+'</div></td><td>'+esc(m.note||'—')+'</td>'+
+            '<td style="white-space:nowrap" dir="ltr"><a href="https://wa.me/'+esc(String(m.phone).replace(/\D/g,''))+'" target="_blank" rel="noopener">'+esc(m.phone)+'</a>'+(m.phone_ok?'':'<div class="chip off" dir="rtl">'+esc(t('mt_phone_bad'))+'</div>')+'</td>'+
+            '<td><button class="btn sm '+(done?'ghost':'acc')+'" data-md="'+esc(m.id)+'" data-dn="'+(done?0:1)+'">'+esc(t(done?'mt_reopen':'mt_mark'))+'</button></td></tr>'; }).join('')+'</tbody></table></div>';
+      $$('[data-md]',el).forEach(function(bn){ bn.addEventListener('click',async function(){ busy(bn,true);
+        try{ await call('motor_maint_done',{p_id:bn.dataset.md,p_done:bn.dataset.dn==='1'}); mlist(); }catch(e){ toast(errText(e),'e'); busy(bn,false); } }); }); };
+    mlist();
   }
 }
 async function uploadPhoto(blob,kind){

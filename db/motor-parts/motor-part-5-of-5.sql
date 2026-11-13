@@ -551,7 +551,8 @@ begin
   w := public._motor_admin(p_slug, p_token);
   select * into st from public.motor_sites where id = (w->>'site_id')::uuid;
   return jsonb_build_object('on', st.wc_on, 'has_key', st.wc_api_key <> '', 'key4', right(st.wc_api_key, 4),
-                            'bot_on', st.wc_bot_on, 'has_secret', st.wc_hook_secret <> '', 'slug', st.slug);
+                            'bot_on', st.wc_bot_on, 'has_secret', st.wc_hook_secret <> '', 'slug', st.slug,
+                            'maint_staff', st.wc_maint_staff);
 end $$;
 
 -- ============================================================
@@ -564,7 +565,32 @@ create table if not exists public.motor_bot_events (
 );
 alter table public.motor_bot_events enable row level security;
 
-create or replace function public.motor_wc_bot_save(p_slug text, p_token text, p_secret text default null, p_on boolean default null)
+alter table public.motor_sites add column if not exists wc_maint_staff uuid;   -- الموظف الذي يستلم طلبات الصيانة
+create table if not exists public.motor_bot_state (
+  site_id uuid not null,
+  phone   text not null,
+  state   text not null default '',
+  at      timestamptz not null default now(),
+  primary key (site_id, phone)
+);
+alter table public.motor_bot_state enable row level security;
+create table if not exists public.motor_maint_requests (
+  id          uuid primary key default gen_random_uuid(),
+  site_id     uuid not null,
+  customer_id uuid,
+  phone       text not null default '',
+  phone_ok    boolean not null default false,
+  note        text not null default '',
+  staff_id    uuid,
+  status      text not null default 'new',
+  created_at  timestamptz not null default now()
+);
+create index if not exists motor_maint_requests_site on public.motor_maint_requests (site_id, created_at desc);
+alter table public.motor_maint_requests enable row level security;
+
+drop function if exists public.motor_wc_bot_save(text,text,text,boolean);
+create or replace function public.motor_wc_bot_save(p_slug text, p_token text, p_secret text default null, p_on boolean default null,
+                                                    p_maint_staff uuid default null, p_clear_maint boolean default false)
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare w jsonb; sid uuid; st public.motor_sites%rowtype;
 begin
@@ -575,36 +601,109 @@ begin
     update public.motor_sites set wc_hook_secret = trim(p_secret) where id = sid;
   end if;
   if p_on is not null then update public.motor_sites set wc_bot_on = p_on and wc_hook_secret <> '' where id = sid; end if;
+  if p_maint_staff is not null then
+    if not exists (select 1 from public.motor_staff where id = p_maint_staff and site_id = sid) then perform public._motor_err('forbidden'); end if;
+    update public.motor_sites set wc_maint_staff = p_maint_staff where id = sid;
+  elsif p_clear_maint then
+    update public.motor_sites set wc_maint_staff = null where id = sid;
+  end if;
   select * into st from public.motor_sites where id = sid;
-  return jsonb_build_object('on', st.wc_bot_on, 'has_secret', st.wc_hook_secret <> '');
+  return jsonb_build_object('on', st.wc_bot_on, 'has_secret', st.wc_hook_secret <> '', 'maint_staff', st.wc_maint_staff);
 end $$;
+grant execute on function public.motor_wc_bot_save(text,text,text,boolean,uuid,boolean) to anon, authenticated;
 
--- بيستدعيها الـWorker بمفتاح الخدمة فقط
+-- طلبات الصيانة (للأدمن)
+create or replace function public.motor_maint_list(p_slug text, p_token text)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w jsonb; sid uuid;
+begin
+  w := public._motor_admin(p_slug, p_token);
+  sid := (w->>'site_id')::uuid;
+  return coalesce((select jsonb_agg(jsonb_build_object('id', m.id, 'at', m.created_at, 'phone', m.phone, 'phone_ok', m.phone_ok,
+           'note', m.note, 'status', m.status, 'name', c.name, 'code', c.code, 'box', c.box, 'area', c.area, 'staff', s.name)
+           order by m.created_at desc)
+    from (select * from public.motor_maint_requests where site_id = sid order by created_at desc limit 30) m
+    left join public.motor_customers c on c.id = m.customer_id
+    left join public.motor_staff s on s.id = m.staff_id), '[]'::jsonb);
+end $$;
+create or replace function public.motor_maint_done(p_slug text, p_token text, p_id uuid, p_done boolean default true)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w jsonb;
+begin
+  w := public._motor_admin(p_slug, p_token);
+  update public.motor_maint_requests set status = case when p_done then 'done' else 'new' end
+   where id = p_id and site_id = (w->>'site_id')::uuid;
+  return jsonb_build_object('ok', true);
+end $$;
+grant execute on function public.motor_maint_list(text,text) to anon, authenticated;
+grant execute on function public.motor_maint_done(text,text,uuid,boolean) to anon, authenticated;
+
+-- البوت: قائمة (1 كشف حساب، 2 طلب صيانة) + حالة المحادثة لكل رقم
 create or replace function public.motor_bot_lookup(p_site uuid, p_event text, p_phone text, p_text text)
 returns jsonb language plpgsql security definer set search_path = public as $$
-declare c public.motor_customers%rowtype; st public.motor_sites%rowtype; tok text; ph text; cm text;
+declare c public.motor_customers%rowtype; st public.motor_sites%rowtype; tok text; ph text; cm text; txt text; norm text;
         acc numeric := 0; r record; bills jsonb := '[]'::jsonb; part numeric; li public.motor_invoices%rowtype; lp record;
+        cur_state text := ''; phone_ok boolean; note text; mid uuid; sf public.motor_staff%rowtype;
 begin
   select * into st from public.motor_sites where id = p_site;
   if not found or not st.wc_bot_on then return jsonb_build_object('status', 'off'); end if;
   begin insert into public.motor_bot_events (id, site_id) values (p_event, p_site);
   exception when unique_violation then return jsonb_build_object('status', 'dup'); end;
   delete from public.motor_bot_events where created_at < now() - interval '7 days';
-  -- الباركود: أول كلمة فيها رقم (حروف وأرقام و -)، وإذا رقم فقط منقبل رقم المشترك كمان
-  select m[1] into tok from regexp_matches(upper(translate(coalesce(p_text,''), '٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹', '01234567890123456789')),
-                                           '([A-Z0-9][A-Z0-9_-]*)', 'g') m where m[1] ~ '[0-9]' limit 1;
-  if tok is null then return jsonb_build_object('status', 'help', 'site', st.name); end if;
+  ph := regexp_replace(coalesce(p_phone,''), '\D', '', 'g');
+  txt := trim(coalesce(p_text,''));
+  norm := upper(translate(txt, '٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹', '01234567890123456789'));
+  select s.state into cur_state from public.motor_bot_state s where s.site_id = p_site and s.phone = ph and s.at > now() - interval '30 minutes';
+  cur_state := coalesce(cur_state, '');
+
+  -- اختيار من القائمة
+  if norm in ('2', '٢') or txt ~ '(صيان|عطل|عطّل|اعطال|أعطال|مقطوع|قطعت|ما في كهربا|مافي كهربا)' and norm !~ '[0-9]{3,}' then
+    insert into public.motor_bot_state (site_id, phone, state, at) values (p_site, ph, 'maint', now())
+      on conflict (site_id, phone) do update set state = 'maint', at = now();
+    return jsonb_build_object('status', 'ask_maint', 'site', st.name);
+  end if;
+  if norm = '1' or (txt ~ '(كشف|حساب|رصيد|فاتور)' and norm !~ '[0-9]') then
+    insert into public.motor_bot_state (site_id, phone, state, at) values (p_site, ph, 'account', now())
+      on conflict (site_id, phone) do update set state = 'account', at = now();
+    return jsonb_build_object('status', 'ask_account', 'site', st.name);
+  end if;
+
+  -- الباركود: أول كلمة فيها رقم
+  select m[1] into tok from regexp_matches(norm, '([A-Z0-9][A-Z0-9_-]*)', 'g') m where m[1] ~ '[0-9]' limit 1;
+  if tok is null then
+    delete from public.motor_bot_state where site_id = p_site and phone = ph;
+    return jsonb_build_object('status', 'menu', 'site', st.name);
+  end if;
   select * into c from public.motor_customers where site_id = p_site and deleted_at is null and lower(barcode) = lower(tok) limit 1;
   if not found and tok ~ '^[0-9]{1,7}$' then
     select * into c from public.motor_customers where site_id = p_site and deleted_at is null and code = tok::int limit 1;
   end if;
-  if not found then return jsonb_build_object('status', 'not_found', 'site', st.name, 'barcode', tok); end if;
-  -- التحقق من رقم التلفون: آخر 8 أرقام
-  ph := regexp_replace(coalesce(p_phone,''), '\D', '', 'g');
+  if not found then return jsonb_build_object('status', 'not_found', 'site', st.name, 'barcode', tok, 'flow', cur_state); end if;
   cm := ltrim(regexp_replace(coalesce(c.mobile,''), '\D', '', 'g'), '0');
   if cm ~ '^961' and length(cm) >= 10 then cm := ltrim(substr(cm, 4), '0'); end if;
-  if length(ph) < 7 or length(cm) < 7 or right(ph, length(cm)) <> cm then return jsonb_build_object('status', 'phone_mismatch', 'site', st.name); end if;
-  -- الفواتير غير المدفوعة (الأقدم تُسدّد أولاً)
+  phone_ok := length(ph) >= 7 and length(cm) >= 7 and right(ph, length(cm)) = cm;
+
+  -- طلب صيانة
+  if cur_state = 'maint' then
+    delete from public.motor_bot_state where site_id = p_site and phone = ph;
+    if exists (select 1 from public.motor_maint_requests where site_id = p_site and customer_id = c.id and status = 'new'
+                and created_at > now() - interval '30 minutes') then
+      return jsonb_build_object('status', 'maint_dup', 'site', st.name, 'name', c.name);
+    end if;
+    note := trim(regexp_replace(regexp_replace(txt, tok, '', 'i'), '\s+', ' ', 'g'));
+    note := left(note, 300);
+    if st.wc_maint_staff is not null then select * into sf from public.motor_staff where id = st.wc_maint_staff and is_active; end if;
+    insert into public.motor_maint_requests (site_id, customer_id, phone, phone_ok, note, staff_id)
+      values (p_site, c.id, '+' || ph, phone_ok, note, sf.id) returning id into mid;
+    return jsonb_build_object('status', 'maint_ok', 'site', st.name, 'id', mid,
+      'customer', jsonb_build_object('name', c.name, 'code', c.code, 'box', c.box, 'area', c.area, 'meter_no', c.meter_no,
+                                     'lat', c.lat, 'lng', c.lng, 'is_active', c.is_active),
+      'phone_ok', phone_ok, 'note', note, 'staff_phone', coalesce(sf.phone, ''), 'staff_name', coalesce(sf.name, ''));
+  end if;
+
+  -- كشف الحساب: لازم رقم الهاتف يطابق
+  delete from public.motor_bot_state where site_id = p_site and phone = ph;
+  if not phone_ok then return jsonb_build_object('status', 'phone_mismatch', 'site', st.name); end if;
   if c.balance > 0.005 then
     for r in select i.period, i.amount from public.motor_invoices i
               where i.customer_id = c.id and not i.voided and i.amount > 0 and i.kind in ('meter','fixed') and i.period <> ''
@@ -625,6 +724,7 @@ begin
 end $$;
 revoke all on function public.motor_bot_lookup(uuid,text,text,text) from public, anon, authenticated;
 grant execute on function public.motor_bot_lookup(uuid,text,text,text) to service_role;
+
 
 -- ============================================================
 --  20k) إقفال صندوق الموظف: يسلّم كل النقد للمكتب ويطلع تقرير
@@ -910,7 +1010,7 @@ begin
     'motor_cash_statement(text,text,date,date)', 'motor_cash_close(text,text,numeric,numeric,text)',
     'motor_set_active(text,text,uuid,boolean,text,double precision,double precision)',
     'motor_note_add(text,text,uuid,text)', 'motor_ping(text,text,double precision,double precision,double precision)',
-    'motor_staff_map(text,text)', 'motor_unpaid(text,text,text,integer)', 'motor_wc_check(text,text)', 'motor_wc_save(text,text,text,boolean)', 'motor_wc_status(text,text)', 'motor_wc_bot_save(text,text,text,boolean)', 'motor_sale_add(text,text,uuid,jsonb,text)', 'motor_sales_list(text,text,date,date)', 'motor_unpaid_msg_save(text,text,text)', 'motor_backup_page(text,text,text,integer,integer)', 'motor_fin_get(text,text,text)', 'motor_fin_save(text,text,text,jsonb)', 'motor_fin_delete(text,text,text)', 'motor_2fa_setup(text,text)', 'motor_2fa_enable(text,text,text)',
+    'motor_staff_map(text,text)', 'motor_unpaid(text,text,text,integer)', 'motor_wc_check(text,text)', 'motor_wc_save(text,text,text,boolean)', 'motor_wc_status(text,text)', 'motor_wc_bot_save(text,text,text,boolean,uuid,boolean)', 'motor_maint_list(text,text)', 'motor_maint_done(text,text,uuid,boolean)', 'motor_sale_add(text,text,uuid,jsonb,text)', 'motor_sales_list(text,text,date,date)', 'motor_unpaid_msg_save(text,text,text)', 'motor_backup_page(text,text,text,integer,integer)', 'motor_fin_get(text,text,text)', 'motor_fin_save(text,text,text,jsonb)', 'motor_fin_delete(text,text,text)', 'motor_2fa_setup(text,text)', 'motor_2fa_enable(text,text,text)',
     'motor_2fa_disable(text,text,text,uuid)', 'motor_wa_outbox(text,text,integer)', 'motor_wa_mark(text,text,text,uuid)',
     'motor_reading_edit(text,text,uuid,numeric,text)', 'motor_customer_set_login(text,text,uuid,text,text)', 'motor_cust_me(text,text)',
     'motor_invoice_edit(text,text,uuid,numeric,text)', 'motor_payment_edit(text,text,uuid,numeric,text)',

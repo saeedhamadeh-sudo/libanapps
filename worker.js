@@ -1799,7 +1799,11 @@ function motorBotText(r) {
     const names = ['كانون الثاني','شباط','آذار','نيسان','أيار','حزيران','تموز','آب','أيلول','تشرين الأول','تشرين الثاني','كانون الأول'];
     return names[Number(m[2]) - 1] + ' ' + m[1]; };
   const site = r.site || '';
-  if (r.status === 'help') return `أهلاً بكم في ${site}.\nلمعرفة تفاصيل حسابكم، أرسلوا رقم الباركود المكتوب على العدّاد أو على الفاتورة (مثال: AWZ-00005).`;
+  if (r.status === 'help' || r.status === 'menu') return `أهلاً بكم في *${site}* 👋\nأرسلوا رقم الخدمة المطلوبة:\n\n1️⃣ كشف الحساب\n2️⃣ طلب صيانة\n\nيمكنكم أيضاً إرسال الباركود مباشرة لمعرفة تفاصيل الحساب.`;
+  if (r.status === 'ask_account') return 'أرسلوا رقم الباركود المكتوب على العدّاد أو على الفاتورة.\nمثال: AWZ-00123';
+  if (r.status === 'ask_maint') return '🔧 *طلب صيانة*\nأرسلوا رقم الباركود المكتوب على العدّاد أو على الفاتورة، ويمكنكم كتابة وصف المشكلة في نفس الرسالة.\nمثال: AWZ-00123 لا يوجد كهرباء';
+  if (r.status === 'maint_ok') return `✅ تم استلام طلب الصيانة للمشترك ${(r.customer || {}).name || ''}.\nسيتواصل معكم فريق الصيانة في أقرب وقت ممكن.\nشكراً لكم.`;
+  if (r.status === 'maint_dup') return `طلب الصيانة للمشترك ${r.name || ''} مسجّل لدينا وقيد المتابعة.\nشكراً لصبركم.`;
   if (r.status === 'not_found') return `لم نجد اشتراكاً بالرقم ${r.barcode || ''}.\nيرجى التأكد من الباركود المكتوب على العدّاد أو على الفاتورة وإرساله مجدداً.`;
   if (r.status === 'phone_mismatch') return `عذراً، رقم هاتفكم غير مسجّل لهذا الاشتراك، لذلك لا يمكننا عرض تفاصيل الحساب.\nيرجى مراجعة إدارة ${site} لتحديث رقم الهاتف.`;
   if (r.status !== 'ok') return '';
@@ -1824,6 +1828,29 @@ function motorBotText(r) {
   if (lp) L.push(`آخر دفعة: ${n(lp.amount)} ${cur} بتاريخ ${String(lp.at || '').slice(0, 10)}`);
   L.push('', 'شكراً لكم.');
   return L.join('\n');
+}
+// إشعار موظف الصيانة: بالـtemplate المعتمد (work_order)، وإذا ما انقبل منبعت نص (بيمشي إذا الموظف راسل الرقم خلال 24 ساعة)
+async function motorMaintNotify(r, H, idem) {
+  let sp = String(r.staff_phone).replace(/\D/g, '');
+  if (sp.startsWith('00')) sp = sp.slice(2);
+  if (!sp.startsWith('961') || sp.length < 10) sp = '961' + sp.replace(/^0+/, '');
+  const c = r.customer || {}; const to = '+' + sp;
+  const when = new Date().toLocaleString('en-GB', { timeZone: 'Asia/Beirut', hour12: false }).replace(',', '');
+  const map = (c.lat != null && c.lng != null) ? `https://maps.google.com/?q=${c.lat},${c.lng}` : '';
+  const who = r.phone_from + (r.phone_ok ? '' : ' (رقم غير مسجّل للمشترك)');
+  const noteOne = [r.note ? 'المشكلة: ' + r.note : 'بدون وصف', 'هاتف المرسل: ' + who, map ? 'الموقع: ' + map : '', 'الوقت: ' + when].filter(Boolean).join(' — ');
+  const t1 = await fetch('https://api.whatchimp.com/v1/messages', { method: 'POST', headers: Object.assign({ 'Idempotency-Key': 'mt-' + idem }, H),
+    body: JSON.stringify({ to, template: { name: 'work_order', language: 'ar', values: {
+      action: '🔧 طلب صيانة عبر واتساب', name: String(c.name || ''), customer_no: String(c.code ?? ''), box: String(c.box || '—'), area: String(c.area || '—'), note: noteOne } } }) });
+  if (t1.ok) return;
+  const L = [`🔧 *طلب صيانة جديد* — ${r.site || ''}`, '', `المشترك: ${c.name || ''} (رقم ${c.code ?? ''})`,
+    `العلبة: ${c.box || '—'} — المنطقة: ${c.area || '—'}`];
+  if (c.meter_no) L.push(`رقم العدّاد: ${c.meter_no}`);
+  L.push(`حالة الخط: ${c.is_active ? 'مفعّل' : 'مقطوع'}`, `وصف المشكلة: ${r.note || '—'}`, `هاتف المرسل: ${who}`, `https://wa.me/${String(r.phone_from).replace(/\D/g, '')}`);
+  if (map) L.push(`📍 الموقع: ${map}`);
+  L.push(`🕒 ${when}`);
+  await fetch('https://api.whatchimp.com/v1/messages', { method: 'POST', headers: Object.assign({ 'Idempotency-Key': 'mx-' + idem }, H),
+    body: JSON.stringify({ to, text: L.join('\n') }) });
 }
 async function motorWaHook(request, env, ctx, slugRaw) {
   const slug = String(slugRaw || '').trim().toLowerCase();
@@ -1853,11 +1880,14 @@ async function motorWaHook(request, env, ctx, slugRaw) {
       body: JSON.stringify({ p_site: site.id, p_event: String(id).slice(0, 200), p_phone: String(phone), p_text: String(mtext).slice(0, 500) }) });
     if (!lr.ok) return;
     const r = await lr.json().catch(() => null);
+    if (r) r.phone_from = '+' + String(phone).replace(/\D/g, '');
     const text = r && motorBotText(r);
     if (!text) return;
+    const H = { Authorization: `Bearer ${site.wc_api_key}`, 'Content-Type': 'application/json' };
     await fetch('https://api.whatchimp.com/v1/messages', { method: 'POST',
-      headers: { Authorization: `Bearer ${site.wc_api_key}`, 'Content-Type': 'application/json', 'Idempotency-Key': 'bot-' + String(id).slice(0, 100) },
+      headers: Object.assign({ 'Idempotency-Key': 'bot-' + String(id).slice(0, 100) }, H),
       body: JSON.stringify({ to: '+' + String(phone).replace(/\D/g, ''), text }) });
+    if (r.status === 'maint_ok' && r.staff_phone) await motorMaintNotify(r, H, String(id).slice(0, 100));
   })().catch(() => {});
   if (ctx && ctx.waitUntil) ctx.waitUntil(work); else await work;
   return json(200, { ok: true });
