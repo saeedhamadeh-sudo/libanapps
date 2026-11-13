@@ -727,6 +727,44 @@ grant execute on function public.motor_bot_lookup(uuid,text,text,text) to servic
 
 
 -- ============================================================
+--  20j8) حد الإرسال اليومي عبر واتساب الرسمي: 240 رقم مختلف كل 24 ساعة (حد Meta 250)
+-- ============================================================
+create table if not exists public.motor_wa_sends (
+  id      bigserial primary key,
+  site_id uuid not null,
+  to_num  text not null,
+  at      timestamptz not null default now()
+);
+create index if not exists motor_wa_sends_site_at on public.motor_wa_sends (site_id, at desc);
+alter table public.motor_wa_sends enable row level security;
+
+-- بيستدعيها الـWorker قبل كل إرسال (مفتاح الخدمة فقط). p_to فاضي = استعلام بلا حجز
+create or replace function public.motor_wa_quota(p_site uuid, p_to text default '', p_limit integer default 240)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare used integer; known boolean := false; nid bigint;
+begin
+  perform pg_advisory_xact_lock(hashtext('motor_wa_' || p_site::text));
+  delete from public.motor_wa_sends where at < now() - interval '2 days';
+  select count(distinct to_num) into used from public.motor_wa_sends where site_id = p_site and at > now() - interval '24 hours';
+  if coalesce(p_to, '') = '' then return jsonb_build_object('ok', true, 'used', used, 'limit', p_limit, 'left', greatest(p_limit - used, 0)); end if;
+  known := exists (select 1 from public.motor_wa_sends where site_id = p_site and to_num = p_to and at > now() - interval '24 hours');
+  if not known and used >= p_limit then
+    return jsonb_build_object('ok', false, 'used', used, 'limit', p_limit, 'left', 0);
+  end if;
+  insert into public.motor_wa_sends (site_id, to_num) values (p_site, p_to) returning id into nid;
+  if not known then used := used + 1; end if;
+  return jsonb_build_object('ok', true, 'id', nid, 'used', used, 'limit', p_limit, 'left', greatest(p_limit - used, 0));
+end $$;
+create or replace function public.motor_wa_quota_undo(p_id bigint)
+returns void language sql security definer set search_path = public as $$
+  delete from public.motor_wa_sends where id = p_id;
+$$;
+revoke all on function public.motor_wa_quota(uuid,text,integer) from public, anon, authenticated;
+revoke all on function public.motor_wa_quota_undo(bigint) from public, anon, authenticated;
+grant execute on function public.motor_wa_quota(uuid,text,integer) to service_role;
+grant execute on function public.motor_wa_quota_undo(bigint) to service_role;
+
+-- ============================================================
 --  20k) إقفال صندوق الموظف: يسلّم كل النقد للمكتب ويطلع تقرير
 -- ============================================================
 create or replace function public.motor_staff_close(p_slug text, p_token text, p_staff uuid default null)

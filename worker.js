@@ -1766,15 +1766,32 @@ async function motorWa(request, env) {
     const code = typeof j.error === 'string' ? j.error : (j.error && (j.error.code || j.error.type));
     return json(r.status, { ok: false, error: code || ('http_' + r.status), message: j.message || (j.error && j.error.message) || t.slice(0, 200), fix: j.fix || '' }); };
   if (body.op === 'templates') return out(await fetch('https://api.whatchimp.com/v1/templates?limit=100', { headers: H }));
+  const SH = { apikey: env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`, 'Content-Type': 'application/json' };
+  if (body.op === 'quota') { const q = await motorWaQuota(env, SH, sid, ''); return json(200, Object.assign({ ok: true }, q || {})); }
   if (body.op !== 'send') return json(400, { ok: false, error: 'bad_op' });
   if (!site.wc_on && !body.test) return json(409, { ok: false, error: 'wc_off' });
   const to = String(body.to || '').replace(/\D/g, '');
   const name = String(body.template || '');
   if (to.length < 8 || !/^[a-z0-9_]{1,512}$/.test(name)) return json(400, { ok: false, error: 'bad_fields' });
   const values = {}; for (const [k, v] of Object.entries(body.values || {})) values[String(k).slice(0, 60)] = String(v == null ? '' : v).slice(0, 1000);
-  return out(await fetch('https://api.whatchimp.com/v1/messages', { method: 'POST',
+  // حد Meta: 250 رقم مختلف كل 24 ساعة — منوقف على 240
+  const q = await motorWaQuota(env, SH, sid, to);
+  if (q && q.ok === false) return json(429, { ok: false, error: 'daily_limit', used: q.used, limit: q.limit, left: 0 });
+  const r = await fetch('https://api.whatchimp.com/v1/messages', { method: 'POST',
     headers: Object.assign({ 'Idempotency-Key': crypto.randomUUID() }, H),
-    body: JSON.stringify({ to: '+' + to, template: { name, language: 'ar', values } }) }));
+    body: JSON.stringify({ to: '+' + to, template: { name, language: 'ar', values } }) });
+  if (!r.ok && q && q.id) await motorWaQuotaUndo(env, SH, q.id);
+  const res = await out(r);
+  if (!r.ok || !q) return res;
+  const j = await res.json(); return json(200, Object.assign(j, { left: q.left, used: q.used, limit: q.limit }));
+}
+async function motorWaQuota(env, SH, sid, to) {
+  try { const r = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/motor_wa_quota`, { method: 'POST', headers: SH,
+      body: JSON.stringify({ p_site: sid, p_to: to, p_limit: 240 }) });
+    return r.ok ? await r.json() : null; } catch { return null; }
+}
+async function motorWaQuotaUndo(env, SH, id) {
+  try { await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/motor_wa_quota_undo`, { method: 'POST', headers: SH, body: JSON.stringify({ p_id: id }) }); } catch {}
 }
 
 // ---------- motorapp: بوت واتساب (WhatChimp webhook) ----------
@@ -1839,6 +1856,7 @@ async function motorMaintNotify(r, H, idem) {
   const map = (c.lat != null && c.lng != null) ? `https://maps.google.com/?q=${c.lat},${c.lng}` : '';
   const who = r.phone_from + (r.phone_ok ? '' : ' (رقم غير مسجّل للمشترك)');
   const noteOne = [r.note ? 'المشكلة: ' + r.note : 'بدون وصف', 'هاتف المرسل: ' + who, map ? 'الموقع: ' + map : '', 'الوقت: ' + when].filter(Boolean).join(' — ');
+  if (r._quota) { const q = await r._quota(sp); if (q && q.ok === false) return; }
   const t1 = await fetch('https://api.whatchimp.com/v1/messages', { method: 'POST', headers: Object.assign({ 'Idempotency-Key': 'mt-' + idem }, H),
     body: JSON.stringify({ to, template: { name: 'work_order', language: 'ar', values: {
       action: '🔧 طلب صيانة عبر واتساب', name: String(c.name || ''), customer_no: String(c.code ?? ''), box: String(c.box || '—'), area: String(c.area || '—'), note: noteOne } } }) });
@@ -1881,6 +1899,7 @@ async function motorWaHook(request, env, ctx, slugRaw) {
     if (!lr.ok) return;
     const r = await lr.json().catch(() => null);
     if (r) r.phone_from = '+' + String(phone).replace(/\D/g, '');
+    if (r) r._quota = (to) => motorWaQuota(env, SH, site.id, to);
     const text = r && motorBotText(r);
     if (!text) return;
     const H = { Authorization: `Bearer ${site.wc_api_key}`, 'Content-Type': 'application/json' };

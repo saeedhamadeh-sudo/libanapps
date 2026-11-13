@@ -2250,7 +2250,10 @@ Object.assign(D,{
  wc_e_off:['واتساب الرسمي غير مفعّل أو لا يوجد مفتاح API','Official WhatsApp is off or has no API key','WhatsApp officiel désactivé ou sans clé'],
  wc_e_plan:['انتهت رسائل الشهر في باقة WhatChimp','The WhatChimp plan’s monthly messages are used up','Quota mensuel WhatChimp épuisé'], wc_e:['خطأ من WhatChimp','WhatChimp error','Erreur WhatChimp'],
  wc_act_on:['وصل','Connect','Rebrancher'], wc_act_cut:['قطع','Cut','Couper'],
- wc_batch_q:['إرسال {n} رسالة عبر واتساب الرسمي؟ (الحد 240 رقماً كل 24 ساعة حتى يتم توثيق الحساب — أكمل الباقي غداً)','Send {n} messages through official WhatsApp?','Envoyer {n} messages via WhatsApp officiel ?'],
+ wc_batch_q:['إرسال {n} رسالة عبر واتساب الرسمي؟\nالمتبقّي خلال آخر 24 ساعة: {l} من 240 رقماً.','Send {n} messages through official WhatsApp?\nRemaining in the last 24 hours: {l} of 240 numbers.','Envoyer {n} messages via WhatsApp officiel ?\nRestant sur 24 h : {l} sur 240 numéros.'],
+ wc_batch_cut:['تم تحديد {n} رسالة فقط لأن الحد اليومي 240 رقماً. أكمل الباقي بعد 24 ساعة.','Only {n} messages queued: the daily limit is 240 numbers. Send the rest after 24 hours.','Seulement {n} messages : limite de 240 numéros par 24 h.'],
+ wc_e_daily:['وصلت للحد اليومي (240 رقماً خلال 24 ساعة). أكمل الإرسال لاحقاً.','Daily limit reached (240 numbers in 24 hours). Continue later.','Limite quotidienne atteinte (240 numéros / 24 h).'],
+ wc_quota:['المُرسَل خلال آخر 24 ساعة: {u} من 240 رقماً (المتبقّي {l})','Sent in the last 24 hours: {u} of 240 numbers ({l} left)','Envoyés sur 24 h : {u} sur 240 ({l} restants)'],
  wc_chip:['✅ واتساب الرسمي','✅ Official WhatsApp','✅ WhatsApp officiel'],
  wa_upd:['تحديث برنامج واتساب للمكتب متوفر','Office WhatsApp connector update available','Mise à jour du connecteur disponible'],
  wa_upd_hint:['نزّل الملف، وانسخ server.cjs الجديد فوق القديم في مجلد wa-connector، ثم سكّر نافذة واتساب السوداء وشغّل START-WHATSAPP.bat من جديد. الربط يبقى كما هو.','Download, copy the new server.cjs over the old one in wa-connector, close the black WhatsApp window and run START-WHATSAPP.bat again. The link stays.','Téléchargez, remplacez server.cjs, fermez la fenêtre noire et relancez START-WHATSAPP.bat.'],
@@ -2259,8 +2262,8 @@ Object.assign(D,{
  wa_url:['عنوان البرنامج','Connector address','Adresse'], wa_key:['مفتاح الربط','Link key','Clé'],
  wa_sent:['أُرسلت الرسالة عبر واتساب','Sent on WhatsApp','Envoyé sur WhatsApp'], wa_failed:['فشل الإرسال','Send failed','Échec'],
  wa_e_nowa:['هذا الرقم ليس عليه واتساب','This number is not on WhatsApp','Ce numéro n’a pas WhatsApp'],
- wa_need_link:['اربط واتساب من الإعدادات أولاً','Link WhatsApp in settings first','Liez WhatsApp d’abord'],
- wa_batch50:['إرسال دفعة (50)','Send a batch (50)','Envoyer un lot (50)'],
+ wa_need_link:['فعّل واتساب الرسمي (WhatChimp) من الإعدادات أولاً','Enable official WhatsApp (WhatChimp) in settings first','Activez WhatsApp officiel (WhatChimp) dans les paramètres'],
+ wa_batch50:['إرسال للجميع (حتى 240 يومياً)','Send to all (up to 240 a day)','Envoyer à tous (240 max par jour)'],
  wa_batch_q:['إرسال {n} رسالة بالتدريج؟\nلحماية الرقم من الحظر تُرسل الرسائل على فترات عشوائية (رسالة كل دقيقة إلى 3 دقائق تقريباً)، وقد يستغرق الإرسال حتى {m} دقيقة.\nيمكنك متابعة العمل في البرنامج، لكن لا تغلقه ولا تُعد تحميل الصفحة.','Send {n} messages gradually?\nTo protect the number from being banned, messages go out at random intervals (about one every 1–3 minutes); this may take up to {m} minutes.\nYou can keep working in the app, but do not close or reload it.','Envoyer {n} messages progressivement ?\nPour éviter le blocage du numéro, les messages partent à intervalles aléatoires (environ 1 à 3 min) ; jusqu’à {m} min.\nVous pouvez continuer à travailler, sans fermer ni recharger.'],
  wa_batch_prog:['تم إرسال {i} من {n} — ✓ {ok} · ✗ {bad} — الإرسال مستمر بالتدريج','Sent {i} of {n} — ✓ {ok} · ✗ {bad} — sending gradually','Envoyé {i}/{n} — ✓ {ok} · ✗ {bad} — envoi progressif'],
  wa_batch_wait:['⏳ بانتظار الرسالة التالية — تُرسل تلقائياً بعد فاصل عشوائي (دقيقة إلى 3 دقائق) لحماية الرقم من الحظر','⏳ Waiting for the next message — sent automatically after a random 1–3 minute gap to protect the number','⏳ Message suivant envoyé automatiquement après 1 à 3 min (protection anti-blocage)'],
@@ -2677,7 +2680,7 @@ VIEWS.dash=async function(main){
   if(can('cut')) acts.push('<button class="btn lg acc" data-go="switch">🔌 '+esc(t('nav_switch'))+'</button>');
   main.innerHTML=licBanner()+
     (acts.length?'<div class="big-actions">'+acts.join('')+'</div>':'')+
-    (isAdmin()&&waHere()?'<div id="dwa">'+waCard(false)+'</div>':'')+
+    
     '<div class="card"><div class="row"><b>💱 '+esc(t('rate_t'))+':</b>'+(isAdmin()?'<input id="drate" inputmode="decimal" value="'+esc(n2(d.lbp_rate))+'" style="max-width:160px"><span>'+esc(sym('LBP'))+'</span><button class="btn sm" id="drs">'+esc(t('save'))+'</button>':'<b class="num">1$ = '+esc(fmtN(d.lbp_rate,0))+' '+esc(sym('LBP'))+'</b>')+'</div></div>'+
     '<div class="stats">'+
       stat(t('st_active_c'), fmtN(d.customers_active,0)+' / '+fmtN(d.customers_total,0),'customers|on')+
@@ -3341,8 +3344,8 @@ function billText(o){
    ========================================================= */
 var WAC={status:'off',me:null,qr:null,err:''}, WAC_T=null;
 function waUrl(){ return (lsGet('motor_wa_url','')||'http://127.0.0.1:3999').replace(/\/+$/,''); }
-function waKey(){ return lsGet('motor_wa_key',''); }
-function waAuto(){ return !!waKey()&&WAC.status==='connected'; }
+function waKey(){ return ''; }   // واتساب ويب (برنامج المكتب) أُلغي — الإرسال عبر واتساب الرسمي فقط
+function waAuto(){ return false; }
 async function waApi(path,body){
   var ctl=new AbortController(), tm=setTimeout(function(){ ctl.abort(); },body?60000:6000);
   try{ var r=await fetch(waUrl()+path,{method:body?'POST':'GET',headers:Object.assign({'x-key':waKey()},body?{'content-type':'application/json'}:{}),body:body?JSON.stringify(body):undefined,signal:ctl.signal});
@@ -3402,9 +3405,9 @@ async function waSendAuto(num,text,doc){
 }
 var WA_LOCK=false;
 function wcErr(e){ var c=String(e.code||'').slice(3);
-  return c==='template_not_approved'?t('wc_e_pending'):c==='wc_no_key'||c==='wc_off'?t('wc_e_off'):c==='plan_limit'?t('wc_e_plan'):c==='contact_has_no_number'||c==='bad_fields'?t('no_mobile'):
+  return c==='daily_limit'?t('wc_e_daily'):c==='template_not_approved'?t('wc_e_pending'):c==='wc_no_key'||c==='wc_off'?t('wc_e_off'):c==='plan_limit'?t('wc_e_plan'):c==='contact_has_no_number'||c==='bad_fields'?t('no_mobile'):
     (t('wc_e')+': '+(e.message||c)); }
-function waErr(e){ var c=e&&e.code; if(c&&String(c).indexOf('wc:')===0) return wcErr(e); if(c==='wa_463') WA_LOCK=true; return c==='wa_463'?t('wa_e_463'):c==='rejected'?t('wa_e_rej'):c==='not_on_whatsapp'?t('wa_e_nowa'):c==='not_connected'?t('wa_down'):c==='bad_number'?t('no_mobile'):(e&&e.message||''); }
+function waErr(e){ var c=e&&e.code; if(c==='wc:daily_limit') WA_LOCK=true; if(c&&String(c).indexOf('wc:')===0) return wcErr(e); if(c==='wa_463') WA_LOCK=true; return c==='wa_463'?t('wa_e_463'):c==='rejected'?t('wa_e_rej'):c==='not_on_whatsapp'?t('wa_e_nowa'):c==='not_connected'?t('wa_down'):c==='bad_number'?t('no_mobile'):(e&&e.message||''); }
 function waNum(cc,mobile){ var num=String(mobile||'').replace(/\D/g,''); if(!num) return ''; cc=String(cc||'961').replace(/\D/g,'');
   if(num.indexOf('00')===0) num=num.slice(2); else if(!(num.indexOf(cc)===0&&num.length>9)) num=cc+num.replace(/^0+/,''); return num; }
 
@@ -3792,9 +3795,10 @@ async function wcCard(box){
     '<input id="wck" type="password" autocomplete="off" placeholder="wc_live_…"></div>'+
     '<div style="display:flex;align-items:flex-end"><label class="chk"><input type="checkbox" id="wco"'+(st.on?' checked':'')+'> '+esc(t('wc_enable'))+'</label></div></div>'+
     '<div class="row" style="margin-top:8px;gap:8px;flex-wrap:wrap"><button class="btn" id="wcs">💾 '+esc(t('save'))+'</button><button class="btn ghost" id="wcc">'+esc(t('wc_check'))+'</button></div>'+
-    '<div id="wct" style="margin-top:10px"></div>'+
+    '<div id="wcq" class="muted" style="margin-top:8px"></div><div id="wct" style="margin-top:10px"></div>'+
     '<div class="g2" style="margin-top:10px"><div><label>'+esc(t('wc_test'))+'</label><input id="wcn" inputmode="tel" placeholder="03xxxxxx"></div>'+
     '<div style="display:flex;align-items:flex-end"><button class="btn alt" id="wcx">'+esc(t('wc_test_btn'))+'</button></div></div><div id="wcm" class="msg" style="margin-top:6px"></div>';
+  if(st.has_key) wcApi({op:'quota'}).then(function(q){ var el=$('#wcq',box); if(el&&q&&q.used!=null) el.textContent='📊 '+t('wc_quota',{u:q.used,l:q.left}); }).catch(function(){});
   $('#wcs',box).addEventListener('click',async function(){ var b=this; busy(b,true,t('saving'));
     try{ var r=await call('motor_wc_save',{p_key:$('#wck',box).value.trim()||null,p_on:$('#wco',box).checked}); SITE.wc_on=!!r.on; $('#wck',box).value=''; toast(t('saved'),'s'); wcCard(box); waPaint(); }
     catch(e){ toast(errText(e),'e'); busy(b,false); } });
@@ -4589,7 +4593,7 @@ VIEWS.settings=async function(main){
     '<div class="g2" style="margin-top:8px"><div><label>'+esc(t('ble_chunk'))+'</label><input id="blech" inputmode="numeric" value="'+esc(lsGet('motor_ble_chunk','100'))+'"></div><div><label>'+esc(t('ble_delay'))+'</label><input id="bledl" inputmode="numeric" value="'+esc(lsGet('motor_ble_delay','20'))+'"></div></div>'+
     '<p class="muted">'+esc(t('ble_hint'))+'</p></div>'+
     '<p class="muted" id="rawhint">'+esc(t('rawbt_hint'))+'</p><button class="btn alt" id="ptest">'+esc(t('test_print'))+'</button>'+
-    '</div>'+(adm&&ME.is_main?'<div class="card" id="swc"></div>':'')+(adm?'<div id="swa2">'+waCard(true)+'</div>':'')+lblCard()+
+    '</div>'+(adm&&ME.is_main?'<div class="card" id="swc"></div>':'')+lblCard()+
     (adm?'<div class="card"><h3>📥 '+esc(t('old_prog'))+'</h3><p class="muted" style="margin-top:0">'+esc(t('old_prog_hint'))+'</p><div class="row">'+
       '<button class="btn acc" id="cprevpdf">📄 '+esc(t('prev_pdf'))+'</button><button class="btn acc" id="cinvimp">🧾 '+esc(t('inv_imp'))+'</button><button class="btn acc" id="cstimp">📑 '+esc(t('st_imp'))+'</button></div></div>':'')+
     (adm?'<div class="card"><button class="btn" id="bkn">'+esc(t('backup_now'))+'</button></div>':'');
@@ -4734,14 +4738,19 @@ async function sendBillWa(o,after,quiet){
   var k=o.pay?'pay':'inv', id=o.pay?o.pay.id:(o.inv&&o.inv.id); if(id) call('motor_wa_mark',{p_kind:k,p_id:id}).then(function(){ after&&after(); }).catch(function(){});
   return true;
 }
-/* إرسال دفعة (50) بالدور — بس إذا الواتساب مربوط */
+/* إرسال دفعة عبر واتساب الرسمي — حتى 240 رقماً كل 24 ساعة */
 function waBatchBar(id){ return '<div class="card hidden" id="'+id+'"><div class="row"><b data-bt></b><span class="sp"></span><button class="btn danger sm" data-bstop>'+esc(t('wa_stop'))+'</button></div><div class="pbar" style="margin-top:8px"><i data-bp></i></div><div class="hidden wa-wait" data-bw style="margin-top:6px;font-size:13px;color:var(--mut,#667)"></div><div class="muted" data-bl style="margin-top:6px;max-height:120px;overflow:auto;font-size:12px"></div></div>'; }
 var WA_BATCH_ON=false;
 async function waBatch(box,items,sendOne,onDone){
-  if(!waAuto()&&!wcOn()){ toast(t('wa_need_link'),'e'); return; }
-  var list=items.slice(0,wcOn()?240:50);   // واتساب الرسمي: حد Meta للحسابات غير الموثّقة 250 رقم مختلف كل 24 ساعة if(!list.length) return;
+  if(!wcOn()){ toast(t('wa_need_link'),'e'); return; }
   if(WA_BATCH_ON){ toast(t('wa_batch_busy'),'e'); return; }
-  if(!(await confirmBox(wcOn()?t('wc_batch_q',{n:list.length}):t('wa_batch_q',{n:list.length,m:Math.ceil(list.length*3)})))) return;
+  var left=240; try{ var q=await wcApi({op:'quota'}); if(q&&q.left!=null) left=q.left; }catch(e){}
+  if(left<=0){ toast(t('wc_e_daily'),'e'); return; }
+  var list=items.slice(0,left);   // حد Meta: 250 رقماً مختلفاً كل 24 ساعة — منوقف على 240
+  if(!list.length) return;
+  if(list.length<items.length) toast(t('wc_batch_cut',{n:list.length}));
+  if(!(await confirmBox(t('wc_batch_q',{n:list.length,l:left})))) return;
+  WA_LOCK=false;
   var stop=false, ok=0, bad=0; box.classList.remove('hidden'); WA_BATCH_ON=true;
   var sb=$('[data-bstop]',box); sb.onclick=function(){ stop=true; sb.disabled=true; };
   sb.disabled=false;
@@ -4750,17 +4759,12 @@ async function waBatch(box,items,sendOne,onDone){
   $('[data-bt]',box).textContent=t('wa_batch_prog',{i:0,n:list.length,ok:0,bad:0}); $('[data-bp]',box).style.width='0%';
   try{
     for(var i=0;i<list.length&&!stop;i++){
-      if(i>0){ // فترة عشوائية بين كل رسالتين (45 ثانية إلى 3 دقائق) ضد الحظر — بلا عدّاد ظاهر
-        var wait=wcOn()?1500:45000+Math.floor(Math.random()*135001), until=Date.now()+wait;
-        $('[data-bw]',box).textContent=t('wa_batch_wait'); $('[data-bw]',box).classList.remove('hidden');
-        while(!stop&&Date.now()<until) await new Promise(function(r){ setTimeout(r,1000); });
-        $('[data-bw]',box).classList.add('hidden');
-        if(stop) break;
-      }
+      if(i>0) await new Promise(function(r){ setTimeout(r,500); });   // واتساب الرسمي: بلا انتظار (نص ثانية بس)
+      if(stop) break;
       $('[data-bw]',box).textContent=t('wa_batch_sending',{i:i+1,n:list.length}); $('[data-bw]',box).classList.remove('hidden');
       var r=false; try{ r=await sendOne(list[i]); }catch(e){ r=false; }
       $('[data-bw]',box).classList.add('hidden');
-      if(r===true) ok++; else { bad++; if(WA_LOCK){ stop=true; toast(t('wa_e_463_stop'),'e'); } $('[data-bl]',box).insertAdjacentHTML('beforeend','<div>✗ '+esc(r&&r.name||(list[i].customer&&list[i].customer.name)||'')+(r&&r.err?' — '+esc(r.err):'')+'</div>'); }
+      if(r===true) ok++; else { bad++; if(WA_LOCK){ stop=true; toast(t('wc_e_daily'),'e'); } $('[data-bl]',box).insertAdjacentHTML('beforeend','<div>✗ '+esc(r&&r.name||(list[i].customer&&list[i].customer.name)||'')+(r&&r.err?' — '+esc(r.err):'')+'</div>'); }
       $('[data-bt]',box).textContent=t('wa_batch_prog',{i:i+1,n:list.length,ok:ok,bad:bad});
       $('[data-bp]',box).style.width=Math.round((i+1)/list.length*100)+'%';
     }
