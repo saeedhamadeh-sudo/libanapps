@@ -3827,9 +3827,11 @@ async function wcCard(box){
       if(on && !sec && !st.has_secret){ toast(t('bot_need_secret'),'e'); return; }
       busy(b,true,t('saving'));
       var ms=$('#bhm',bx).value;
-      try{ await call('motor_wc_bot_save',{p_secret:sec||null,p_on:on,p_maint_staff:ms||null,p_clear_maint:!ms}); $('#bhs',bx).value=''; toast(t('saved'),'s'); wcCard(box); }
+      try{ try{ await call('motor_wc_bot_save',{p_secret:sec||null,p_on:on,p_maint_staff:ms||null,p_clear_maint:!ms}); }
+        catch(e1){ if(!/function|schema cache|PGRST202/i.test(String(e1&&(e1.message||e1)))) throw e1; await call('motor_wc_bot_save',{p_secret:sec||null,p_on:on}); }
+        $('#bhs',bx).value=''; toast(t('saved'),'s'); wcCard(box); }
       catch(e){ toast(errText(e),'e'); busy(b,false); } });
-    var mlist=async function(){ var el=$('#bml',bx), L=[]; try{ L=await call('motor_maint_list'); }catch(e){ el.textContent=errText(e); return; }
+    var mlist=async function(){ var el=$('#bml',bx), L=[]; try{ L=await call('motor_maint_list'); }catch(e){ el.textContent=t('mt_none'); return; }
       if(!L.length){ el.textContent=t('mt_none'); return; }
       el.className=''; el.innerHTML='<div class="tw"><table><thead><tr><th>'+esc(t('date'))+'</th><th>'+esc(t('customer'))+'</th><th>'+esc(t('box'))+'</th><th>'+esc(t('note'))+'</th><th>📱</th><th></th></tr></thead><tbody>'+
         L.map(function(m){ var done=m.status==='done';
