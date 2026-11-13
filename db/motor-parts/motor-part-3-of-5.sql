@@ -35,6 +35,10 @@ declare w jsonb; sid uuid; d jsonb := coalesce(p_data,'{}'::jsonb); st public.mo
 begin
   w := public._motor_admin(p_slug, p_token);
   sid := (w->>'site_id')::uuid;
+  -- الإعدادات للمدير الأساسي؛ باقي المدراء بس سعر الصرف من الرئيسية
+  if not coalesce((w->>'is_main')::boolean, false) then
+    d := case when d ? 'lbp_rate' then jsonb_build_object('lbp_rate', d->'lbp_rate') else '{}'::jsonb end;
+  end if;
   if d ? 'bill_period' and (d->>'bill_period') !~ '^\d{4}-(0[1-9]|1[0-2])$' then perform public._motor_err('bad_period'); end if;
   if d ? 'currency' and (d->>'currency') not in ('USD','LBP') then perform public._motor_err('bad_currency'); end if;
   update public.motor_sites set

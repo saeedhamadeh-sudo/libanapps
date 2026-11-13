@@ -1143,6 +1143,8 @@ begin
   c.sub_date        := case when d ? 'sub_date' then nullif(d->>'sub_date','')::date else c.sub_date end;
   c.is_active       := coalesce((d->>'is_active')::boolean, c.is_active, true);
   c.credit_limit    := case when d ? 'credit_limit' then nullif(d->>'credit_limit','')::numeric else c.credit_limit end;
+  -- الحسومات للمدير الأساسي فقط
+  if not coalesce((w->>'is_main')::boolean, false) then d := d - 'charge_discount' - 'discount_desc'; end if;
   c.charge_discount := coalesce(nullif(d->>'charge_discount','')::numeric, case when d ? 'charge_discount' then 0 end, c.charge_discount, 0);
   c.discount_desc   := coalesce(d->>'discount_desc', c.discount_desc, '');
   c.charge_addition := coalesce(nullif(d->>'charge_addition','')::numeric, case when d ? 'charge_addition' then 0 end, c.charge_addition, 0);
@@ -1594,6 +1596,10 @@ declare w jsonb; sid uuid; d jsonb := coalesce(p_data,'{}'::jsonb); st public.mo
 begin
   w := public._motor_admin(p_slug, p_token);
   sid := (w->>'site_id')::uuid;
+  -- الإعدادات للمدير الأساسي؛ باقي المدراء بس سعر الصرف من الرئيسية
+  if not coalesce((w->>'is_main')::boolean, false) then
+    d := case when d ? 'lbp_rate' then jsonb_build_object('lbp_rate', d->'lbp_rate') else '{}'::jsonb end;
+  end if;
   if d ? 'bill_period' and (d->>'bill_period') !~ '^\d{4}-(0[1-9]|1[0-2])$' then perform public._motor_err('bad_period'); end if;
   if d ? 'currency' and (d->>'currency') not in ('USD','LBP') then perform public._motor_err('bad_currency'); end if;
   update public.motor_sites set
@@ -3940,6 +3946,81 @@ grant execute on function public.motor_restore_site(text,text,jsonb) to anon, au
 grant execute on function public.motor_gd_disconnect(text,text) to anon, authenticated;
 grant execute on function public.motor_gd_check(text,text) to anon, authenticated;
 grant execute on function public.motor_gd_check_admin(text,text) to anon, authenticated;
+
+-- ============================================================
+--  20j10) الحسومات (المدير الأساسي فقط): حسم دائم لكل الدورات + حسم على فاتورة معيّنة
+-- ============================================================
+alter table public.motor_invoices add column if not exists disc_note text not null default '';
+
+create or replace function public.motor_disc_list(p_slug text, p_token text)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w jsonb; sid uuid;
+begin
+  w := public._motor_main(p_slug, p_token);
+  sid := (w->>'site_id')::uuid;
+  return jsonb_build_object(
+    'permanent', coalesce((select jsonb_agg(jsonb_build_object('id', c.id, 'code', c.code, 'name', c.name, 'box', c.box, 'area', c.area,
+                   'amount', c.charge_discount, 'desc', c.discount_desc) order by c.code)
+                   from public.motor_customers c where c.site_id = sid and c.deleted_at is null and c.charge_discount <> 0), '[]'::jsonb),
+    'once', coalesce((select jsonb_agg(jsonb_build_object('id', i.id, 'no', i.no, 'at', i.created_at, 'period', i.period, 'kind', i.kind,
+                   'discount', i.discount, 'amount', i.amount, 'note', i.disc_note, 'customer', jsonb_build_object('id', c.id, 'code', c.code, 'name', c.name))
+                   order by i.created_at desc)
+                   from (select * from public.motor_invoices where site_id = sid and disc_note <> '' and not voided order by created_at desc limit 200) i
+                   join public.motor_customers c on c.id = i.customer_id), '[]'::jsonb));
+end $$;
+
+-- فواتير زبون لاختيار الفاتورة يلّي بدنا نحسم عليها
+create or replace function public.motor_disc_invoices(p_slug text, p_token text, p_customer uuid)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w jsonb; sid uuid;
+begin
+  w := public._motor_main(p_slug, p_token);
+  sid := (w->>'site_id')::uuid;
+  return coalesce((select jsonb_agg(jsonb_build_object('id', i.id, 'no', i.no, 'at', i.created_at, 'period', i.period, 'kind', i.kind,
+           'amount', i.amount, 'discount', i.discount, 'note', i.disc_note) order by i.created_at desc)
+    from (select * from public.motor_invoices where site_id = sid and customer_id = p_customer and not voided and kind in ('meter','fixed','sale') and amount > 0
+           order by created_at desc limit 12) i), '[]'::jsonb);
+end $$;
+
+create or replace function public.motor_disc_set(p_slug text, p_token text, p_customer uuid, p_amount numeric, p_desc text)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w jsonb; sid uuid;
+begin
+  w := public._motor_main(p_slug, p_token);
+  sid := (w->>'site_id')::uuid;
+  if p_amount is null or p_amount < 0 then perform public._motor_err('bad_amount'); end if;
+  update public.motor_customers set charge_discount = round(p_amount, 2), discount_desc = left(coalesce(p_desc, ''), 200), updated_at = now()
+   where id = p_customer and site_id = sid;
+  if not found then perform public._motor_err('customer_not_found'); end if;
+  return jsonb_build_object('ok', true);
+end $$;
+
+create or replace function public.motor_invoice_discount(p_slug text, p_token text, p_invoice uuid, p_amount numeric, p_note text)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w jsonb; sid uuid; inv public.motor_invoices%rowtype; amt numeric;
+begin
+  w := public._motor_main(p_slug, p_token);
+  sid := (w->>'site_id')::uuid;
+  select * into inv from public.motor_invoices where id = p_invoice and site_id = sid for update;
+  if not found or inv.voided then perform public._motor_err('not_found'); end if;
+  amt := round(coalesce(p_amount, 0), 2);
+  if amt <= 0 or amt > inv.amount then perform public._motor_err('bad_amount'); end if;
+  if coalesce(trim(p_note), '') = '' then p_note := 'حسم'; end if;
+  update public.motor_invoices set discount = discount + amt, amount = amount - amt, balance_after = balance_after - amt,
+         disc_note = left(trim(p_note), 200) where id = inv.id;
+  -- الأرصدة المطبوعة على الحركات يلّي بعدها
+  update public.motor_invoices set balance_before = balance_before - amt, balance_after = balance_after - amt
+   where customer_id = inv.customer_id and id <> inv.id and created_at > inv.created_at;
+  update public.motor_payments set balance_before = balance_before - amt, balance_after = balance_after - amt
+   where customer_id = inv.customer_id and created_at > inv.created_at;
+  update public.motor_customers set balance = balance - amt, updated_at = now() where id = inv.customer_id;
+  return jsonb_build_object('ok', true, 'invoice', (select to_jsonb(i) - 'site_id' from public.motor_invoices i where i.id = inv.id));
+end $$;
+
+grant execute on function public.motor_disc_list(text,text) to anon, authenticated;
+grant execute on function public.motor_disc_invoices(text,text,uuid) to anon, authenticated;
+grant execute on function public.motor_disc_set(text,text,uuid,numeric,text) to anon, authenticated;
+grant execute on function public.motor_invoice_discount(text,text,uuid,numeric,text) to anon, authenticated;
 
 -- ============================================================
 --  20k) إقفال صندوق الموظف: يسلّم كل النقد للمكتب ويطلع تقرير

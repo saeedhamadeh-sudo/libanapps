@@ -313,6 +313,8 @@ begin
   c.sub_date        := case when d ? 'sub_date' then nullif(d->>'sub_date','')::date else c.sub_date end;
   c.is_active       := coalesce((d->>'is_active')::boolean, c.is_active, true);
   c.credit_limit    := case when d ? 'credit_limit' then nullif(d->>'credit_limit','')::numeric else c.credit_limit end;
+  -- الحسومات للمدير الأساسي فقط
+  if not coalesce((w->>'is_main')::boolean, false) then d := d - 'charge_discount' - 'discount_desc'; end if;
   c.charge_discount := coalesce(nullif(d->>'charge_discount','')::numeric, case when d ? 'charge_discount' then 0 end, c.charge_discount, 0);
   c.discount_desc   := coalesce(d->>'discount_desc', c.discount_desc, '');
   c.charge_addition := coalesce(nullif(d->>'charge_addition','')::numeric, case when d ? 'charge_addition' then 0 end, c.charge_addition, 0);
