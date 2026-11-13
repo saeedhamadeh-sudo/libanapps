@@ -1768,6 +1768,41 @@ async function motorWa(request, env) {
   if (body.op === 'templates') return out(await fetch('https://api.whatchimp.com/v1/templates?limit=100', { headers: H }));
   const SH = { apikey: env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`, 'Content-Type': 'application/json' };
   if (body.op === 'quota') { const q = await motorWaQuota(env, SH, sid, ''); return json(200, Object.assign({ ok: true }, q || {})); }
+  // ---- مزامنة الزبائن مع جهات اتصال WhatChimp ----
+  const WC_LABEL = 'مشتركي المولد';
+  const normPh = (cc, m) => { let n = String(m || '').replace(/\D/g, ''); if (!n) return ''; cc = String(cc || '961').replace(/\D/g, '');
+    if (n.startsWith('00')) n = n.slice(2); else if (!(n.startsWith(cc) && n.length > 9)) n = cc + n.replace(/^0+/, ''); return n.length >= 8 ? '+' + n : ''; };
+  if (body.op === 'contact_upsert') {
+    const ph = normPh(body.cc, body.mobile); if (!ph) return json(200, { ok: true, skipped: true });
+    const nm = String(body.name || '').trim().slice(0, 100);
+    const c = { phone: ph, first_name: nm || null, labels_add: [WC_LABEL] };
+    if (body.code != null && body.code !== '') c.external_id = 'motor-' + String(sid).slice(0, 8) + '-' + String(body.code).replace(/[^\w-]/g, '').slice(0, 40);
+    let r = await fetch('https://api.whatchimp.com/v1/contacts', { method: 'POST', headers: Object.assign({ 'Idempotency-Key': crypto.randomUUID() }, H), body: JSON.stringify(c) });
+    if (r.status === 409 && c.external_id) { delete c.external_id; r = await fetch('https://api.whatchimp.com/v1/contacts', { method: 'POST', headers: Object.assign({ 'Idempotency-Key': crypto.randomUUID() }, H), body: JSON.stringify(c) }); }
+    return out(r);
+  }
+  if (body.op === 'contacts_sync' || body.op === 'contacts_csv') {
+    const rows = []; const seen = new Set();
+    for (let off = 0; off < 20000; off += 1000) {
+      const r = await fetch(`${env.SUPABASE_URL}/rest/v1/motor_customers?site_id=eq.${sid}&deleted_at=is.null&archived=is.false&mobile=neq.&select=code,name,mobile,mobile_cc&order=code.asc&offset=${off}&limit=1000`,
+        { headers: { apikey: env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}` } });
+      const list = await r.json().catch(() => []); if (!Array.isArray(list)) break;
+      for (const c of list) { const ph = normPh(c.mobile_cc, c.mobile); if (!ph || seen.has(ph)) continue; seen.add(ph); rows.push([ph, String(c.name || '').replace(/[\r\n"]/g, ' ').trim(), c.code]); }
+      if (list.length < 1000) break;
+    }
+    const csv = 'phone,first_name,code\n' + rows.map((x) => `${x[0]},"${x[1]}",${x[2]}`).join('\n');
+    if (body.op === 'contacts_csv') return json(200, { ok: true, count: rows.length, csv });
+    const imp = { csv, label: WC_LABEL, columns: { phone: 'phone', first_name: 'first_name', code: 'ignore' }, on_conflict: 'update', default_country: 'LB' };
+    if (body.consent === true) { imp.opt_in = 'subscribed'; imp.consent = true; }
+    const r = await fetch('https://api.whatchimp.com/v1/contacts/import', { method: 'POST', headers: Object.assign({ 'Idempotency-Key': crypto.randomUUID() }, H), body: JSON.stringify(imp) });
+    const res = await out(r); if (!r.ok) return res;
+    const j = await res.json(); return json(200, Object.assign(j, { count: rows.length }));
+  }
+  if (body.op === 'contacts_status') {
+    const id = String(body.id || '').replace(/[^\w-]/g, '');
+    if (!id) return json(400, { ok: false, error: 'bad_fields' });
+    return out(await fetch(`https://api.whatchimp.com/v1/contacts/import/${id}`, { headers: H }));
+  }
   if (body.op !== 'send') return json(400, { ok: false, error: 'bad_op' });
   if (!site.wc_on && !body.test) return json(409, { ok: false, error: 'wc_off' });
   const to = String(body.to || '').replace(/\D/g, '');

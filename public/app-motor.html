@@ -1888,6 +1888,14 @@ var D={
  g_hero_t:['إدارة اشتراكات المولّد بسهولة','Run your generator subscriptions with ease','Gérez vos abonnements facilement'],
  g_hero_p:['العدادات، الفواتير، القبض، واتساب، الصندوق والتقارير — كل شي بمكان واحد، على الهاتف والكمبيوتر.','Meters, bills, payments, WhatsApp, cash and reports — all in one place, on phone and computer.','Compteurs, factures, encaissements, WhatsApp, caisse et rapports — au même endroit.'],
  g_f1:['📷 أخذ العداد','📷 Meter reading','📷 Relevés'], g_f2:['💵 القبض','💵 Payments','💵 Encaissements'], g_f3:['📲 واتساب رسمي','📲 Official WhatsApp','📲 WhatsApp officiel'], g_f4:['☁️ نسخ احتياطي','☁️ Backups','☁️ Sauvegardes'],
+ wcs_title:['جهات الاتصال على WhatChimp','Contacts on WhatChimp','Contacts WhatChimp'],
+ wcs_hint:['يضيف كل الزبائن الذين لديهم رقم إلى WhatChimp بالاسم والرقم، تحت تصنيف «مشتركي المولد» (للإرسال الجماعي). كل زبون جديد أو تعديل رقم يُضاف تلقائياً.','Adds every customer with a number to WhatChimp (name + number) under the label “مشتركي المولد” for broadcasts. New customers are added automatically.','Ajoute les clients à WhatChimp sous l’étiquette « مشتركي المولد ».'],
+ wcs_consent:['المشتركون وافقوا على استقبال الإعلانات (تفعيل الاشتراك بالرسائل الجماعية)','Subscribers agreed to receive announcements (opt them in)','Les abonnés ont accepté les annonces'],
+ wcs_sync:['مزامنة كل الزبائن الآن','Sync all customers now','Synchroniser tous les clients'], wcs_csv:['تصدير الأسماء والأرقام (CSV)','Export names & numbers (CSV)','Exporter (CSV)'],
+ wcs_running:['يتم إرسال الأرقام إلى WhatChimp…','Sending numbers to WhatChimp…','Envoi…'], wcs_sent:['تم إرسال {n} رقماً، يتم إدخالها الآن…','{n} numbers sent, importing…','{n} numéros envoyés…'],
+ wcs_status:['الحالة: {s} · جديد {c} · محدّث {u} · فشل {f}','Status: {s} · new {c} · updated {u} · failed {f}','Statut : {s} · {c} nouveaux · {u} mis à jour · {f} échecs'],
+ wcs_scope:['أعطِ مفتاح الـAPI صلاحية «Contacts and labels» من WhatChimp','Give the API key the “Contacts and labels” permission in WhatChimp','Donnez la permission « Contacts and labels » à la clé'],
+ wcs_csv_ok:['تم تصدير {n} رقماً','{n} numbers exported','{n} numéros exportés'],
  hm_g_daily:['العمل اليومي','Daily work','Travail quotidien'], hm_g_cust:['الزبائن والفواتير','Customers & bills','Clients et factures'],
  hm_g_money:['الصندوق والمالية','Cash & finance','Caisse et finances'], hm_g_stock:['المخزون والموردون','Stock & suppliers','Stock et fournisseurs'],
  hm_g_reports:['التقارير','Reports','Rapports'], hm_g_admin:['الإدارة','Administration','Administration'],
@@ -4025,6 +4033,19 @@ async function wcCard(box){
     try{ await wcSend('961',$('#wcn',box).value,'payment_receipt',{name:ME.name||'Test',amount:wcMoney(1),date:TODAY,receipt:'0',balance:wcMoney(0),generator:SITE.name||''},true);
       m.className='okmsg'; m.textContent='✅ '+t('wa_sent'); }
     catch(e){ m.className='err msg'; m.textContent=waErr(e); } busy(b,false); });
+  if(ME.is_main && st.has_key){
+    var cx=document.createElement('div'); cx.style.cssText='margin-top:16px;padding-top:12px;border-top:1px solid var(--line,#ddd)';
+    cx.innerHTML='<h3>👥 '+esc(t('wcs_title'))+'</h3><p class="muted" style="white-space:pre-line;margin-top:0">'+esc(t('wcs_hint'))+'</p>'+
+      '<label class="chk"><input type="checkbox" id="wcsc"> '+esc(t('wcs_consent'))+'</label>'+
+      '<div class="row" style="gap:8px;flex-wrap:wrap;margin-top:8px"><button class="btn" id="wcsy">🔄 '+esc(t('wcs_sync'))+'</button><button class="btn alt" id="wcsx">📄 '+esc(t('wcs_csv'))+'</button></div><div id="wcsm" class="muted" style="margin-top:8px"></div>';
+    box.appendChild(cx);
+    $('#wcsy',cx).addEventListener('click',async function(){ var b=this, m0=$('#wcsm',cx); busy(b,true); m0.className='muted'; m0.textContent=t('wcs_running');
+      try{ var r=await wcApi({op:'contacts_sync',consent:$('#wcsc',cx).checked}); m0.textContent='✅ '+t('wcs_sent',{n:fmtN(r.count,0)});
+        var iid=r.id||(r.import&&r.import.id); if(iid){ for(var k=0;k<20;k++){ await new Promise(function(z){ setTimeout(z,3000); });
+          try{ var q=await wcApi({op:'contacts_status',id:iid}); var c=q.counts||q; m0.textContent=t('wcs_status',{s:q.status||'',c:fmtN(c.created||0,0),u:fmtN(c.updated||0,0),f:fmtN(c.failed||0,0)}); if(/done|completed|finished|failed/.test(String(q.status))) break; }catch(e){ break; } } } }
+      catch(e){ m0.className='err msg'; m0.textContent=waErr(e)+(/scope|permission|forbidden|403/i.test(String(e.code||e.message))?' — '+t('wcs_scope'):''); } busy(b,false); });
+    $('#wcsx',cx).addEventListener('click',async function(){ var b=this; busy(b,true); try{ var r=await wcApi({op:'contacts_csv'}); downloadBlob(new Blob(['\ufeff'+r.csv],{type:'text/csv'}),'whatchimp-contacts-'+SLUG+'.csv'); toast(t('wcs_csv_ok',{n:fmtN(r.count,0)}),'s'); }catch(e){ toast(waErr(e),'e'); } busy(b,false); });
+  }
   if(ME.is_main && st.slug){
     var hook=location.origin+'/api/motor-wa-hook/'+st.slug, bx=document.createElement('div');
     bx.style.cssText='margin-top:16px;padding-top:12px;border-top:1px solid var(--line,#ddd)';
@@ -4430,7 +4451,9 @@ async function editCustomer(id){
     var d={}; if(!newc) d.id=id;
     $$('[data-f]',m.body).forEach(function(el){ d[el.dataset.f]=el.type==='checkbox'?el.checked:el.value.trim(); });
     busy(sv,true);
-    try{ await call('motor_customer_save',{p_data:d}); toast(t('saved'),'s'); m.close(); await loadCustomers(); if(TAB==='customers') go('customers'); }
+    try{ await call('motor_customer_save',{p_data:d}); toast(t('saved'),'s'); m.close();
+      if(wcOn()&&d.mobile) wcApi({op:'contact_upsert',cc:d.mobile_cc,mobile:d.mobile,name:d.name,code:d.code}).catch(function(){});   // جهة اتصال على WhatChimp
+      await loadCustomers(); if(TAB==='customers') go('customers'); }
     catch(err){ $('#cmsg',m.body).textContent=errText(err); busy(sv,false); }
   });
 }
