@@ -1258,6 +1258,83 @@ grant execute on function public.motor_journal_delete(text,text,uuid) to anon, a
 grant execute on function public.motor_account_save(text,text,text,text) to anon, authenticated;
 
 -- ============================================================
+--  20j12) دومين خاص لكل مولّد (Custom domain) — بيديره الـWorker بمفتاح الخدمة فقط
+-- ============================================================
+create table if not exists public.motor_domains (
+  id             uuid primary key default gen_random_uuid(),
+  site_id        uuid not null unique references public.motor_sites(id) on delete cascade,
+  domain         text not null unique,
+  cf_hostname_id text,
+  status         text not null default 'pending',
+  cf_status      text not null default '',
+  ssl_status     text not null default '',
+  info           jsonb not null default '{}'::jsonb,
+  verified_at    timestamptz,
+  created_at     timestamptz not null default now()
+);
+alter table public.motor_domains enable row level security;
+revoke all on public.motor_domains from anon, authenticated;
+
+-- ============================================================
+--  20j13) إشعار الدفع التلقائي على واتساب بعد كل قبض (WhatChimp)
+-- ============================================================
+alter table public.motor_sites add column if not exists wc_pay_auto boolean not null default true;
+
+-- أي موظف بيقبض: بيرجع بيانات إشعار الدفع للـWorker (ما بيرجع مفتاح ولا بيسمح بإرسال نص حر)
+create or replace function public.motor_pay_wa(p_slug text, p_token text, p_pay uuid)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w jsonb; sid uuid; st public.motor_sites%rowtype; p public.motor_payments%rowtype; c public.motor_customers%rowtype;
+begin
+  w := public._motor_who(p_slug, p_token);
+  sid := (w->>'site_id')::uuid;
+  select * into st from public.motor_sites where id = sid;
+  if not st.wc_on or not st.wc_pay_auto or coalesce(st.wc_api_key,'') = '' then return jsonb_build_object('skip', 'off'); end if;
+  select * into p from public.motor_payments where id = p_pay and site_id = sid;
+  if not found or p.voided then return jsonb_build_object('skip', 'none'); end if;
+  if p.wa_sent_at is not null then return jsonb_build_object('skip', 'sent'); end if;
+  if p.created_at < now() - interval '1 day' then return jsonb_build_object('skip', 'old'); end if;
+  select * into c from public.motor_customers where id = p.customer_id;
+  if coalesce(c.mobile,'') = '' then return jsonb_build_object('skip', 'no_mobile'); end if;
+  return jsonb_build_object('site_id', sid, 'pay_id', p.id, 'by', w->>'name', 'cc', c.mobile_cc, 'mobile', c.mobile, 'name', c.name,
+    'amount', p.amount, 'no', p.no, 'at', p.created_at, 'balance', p.balance_after, 'currency', st.currency, 'generator', st.name);
+end $$;
+grant execute on function public.motor_pay_wa(text,text,uuid) to anon, authenticated;
+
+-- بعد نجاح الإرسال (مفتاح الخدمة فقط)
+create or replace function public.motor_pay_wa_done(p_site uuid, p_pay uuid, p_by text)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare cid uuid;
+begin
+  select customer_id into cid from public.motor_payments where id = p_pay and site_id = p_site;
+  update public.motor_payments set wa_sent_at = now(), wa_sent_by = coalesce(p_by,'') || ' (تلقائي)'
+   where site_id = p_site and customer_id = cid and wa_sent_at is null;
+  return jsonb_build_object('ok', true);
+end $$;
+revoke all on function public.motor_pay_wa_done(uuid,uuid,text) from public, anon, authenticated;
+grant execute on function public.motor_pay_wa_done(uuid,uuid,text) to service_role;
+
+create or replace function public.motor_wc_pay_auto(p_slug text, p_token text, p_on boolean)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w jsonb;
+begin
+  w := public._motor_main(p_slug, p_token);
+  update public.motor_sites set wc_pay_auto = coalesce(p_on, true) where id = (w->>'site_id')::uuid;
+  return jsonb_build_object('pay_auto', coalesce(p_on, true));
+end $$;
+grant execute on function public.motor_wc_pay_auto(text,text,boolean) to anon, authenticated;
+
+do $m$
+declare d text;
+begin
+  d := pg_get_functiondef('public.motor_wc_status(text,text)'::regprocedure);
+  if position('pay_auto' in d) = 0 then
+    d := replace(d, '''maint_staffs'', to_jsonb(st.wc_maint_staffs));', '''maint_staffs'', to_jsonb(st.wc_maint_staffs), ''pay_auto'', st.wc_pay_auto);');
+    if position('pay_auto' in d) = 0 then raise exception 'status patch failed'; end if;
+    execute d;
+  end if;
+end $m$;
+
+-- ============================================================
 --  20k) إقفال صندوق الموظف: يسلّم كل النقد للمكتب ويطلع تقرير
 -- ============================================================
 create or replace function public.motor_staff_close(p_slug text, p_token text, p_staff uuid default null)

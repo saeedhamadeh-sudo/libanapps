@@ -1750,6 +1750,7 @@ async function motorWa(request, env) {
   const hdr = { apikey: anon, 'Content-Type': 'application/json' };
   const auth = request.headers.get('Authorization') || '';
   if (!token && /^Bearer\s+\S+/.test(auth)) hdr.Authorization = auth;
+  if (body.op === 'pay_auto') return await motorPayAuto(env, hdr, slug, token, String(body.pay || ''));
   const chk = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/motor_wc_check`, { method: 'POST', headers: hdr, body: JSON.stringify({ p_slug: slug, p_token: token || null }) });
   const chkText = await chk.text();
   if (!chk.ok) { const m = chkText.match(/MOTOR:[a-z_]+/); return json(403, { ok: false, error: m ? m[0] : 'forbidden' }); }
@@ -1819,6 +1820,39 @@ async function motorWa(request, env) {
   const res = await out(r);
   if (!r.ok || !q) return res;
   const j = await res.json(); return json(200, Object.assign(j, { left: q.left, used: q.used, limit: q.limit }));
+}
+// إشعار دفع تلقائي بعد القبض (أي موظف) — القالب payment_receipt فقط، والرقم من ملف الزبون
+async function motorPayAuto(env, hdr, slug, token, pay) {
+  if (!/^[0-9a-f-]{36}$/i.test(pay)) return json(400, { ok: false, error: 'bad_fields' });
+  const r0 = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/motor_pay_wa`, { method: 'POST', headers: hdr, body: JSON.stringify({ p_slug: slug, p_token: token || null, p_pay: pay }) });
+  const t0 = await r0.text();
+  if (!r0.ok) { const m = t0.match(/MOTOR:[a-z_]+/); return json(403, { ok: false, error: m ? m[0] : 'forbidden' }); }
+  let d = {}; try { d = JSON.parse(t0) || {}; } catch {}
+  if (d.skip) return json(200, { ok: true, skipped: d.skip });
+  const SH = { apikey: env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`, 'Content-Type': 'application/json' };
+  const sr = await fetch(`${env.SUPABASE_URL}/rest/v1/motor_sites?id=eq.${d.site_id}&select=wc_api_key`, { headers: SH });
+  const key = String((((await sr.json().catch(() => [])) || [])[0] || {}).wc_api_key || '');
+  if (!key) return json(200, { ok: true, skipped: 'off' });
+  let n = String(d.mobile || '').replace(/\D/g, ''); const cc = String(d.cc || '961').replace(/\D/g, '');
+  if (n.startsWith('00')) n = n.slice(2); else if (!(n.startsWith(cc) && n.length > 9)) n = cc + n.replace(/^0+/, '');
+  if (n.length < 8) return json(200, { ok: true, skipped: 'no_mobile' });
+  const cur = d.currency || 'USD', dg = cur === 'LBP' ? 0 : 2;
+  const money = (v) => Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: dg, maximumFractionDigits: dg }) + ' ' + cur;
+  const date = new Date(d.at || Date.now()).toLocaleDateString('en-CA', { timeZone: 'Asia/Beirut' });
+  const values = { name: String(d.name || ''), amount: money(d.amount), date, receipt: String(d.no || ''), balance: money(d.balance), generator: String(d.generator || '') };
+  const q = await motorWaQuota(env, SH, d.site_id, n);
+  if (q && q.ok === false) return json(200, { ok: false, error: 'daily_limit' });
+  const r = await fetch('https://api.whatchimp.com/v1/messages', { method: 'POST',
+    headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', 'Idempotency-Key': 'pay-' + pay },
+    body: JSON.stringify({ to: '+' + n, template: { name: 'payment_receipt', language: 'ar', values } }) });
+  if (!r.ok) {
+    if (q && q.id) await motorWaQuotaUndo(env, SH, q.id);
+    let j = {}; try { j = await r.json(); } catch {}
+    const code = typeof j.error === 'string' ? j.error : (j.error && (j.error.code || j.error.type));
+    return json(200, { ok: false, error: code || ('http_' + r.status) });
+  }
+  await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/motor_pay_wa_done`, { method: 'POST', headers: SH, body: JSON.stringify({ p_site: d.site_id, p_pay: pay, p_by: d.by || '' }) }).catch(() => {});
+  return json(200, { ok: true, sent: true, to: n.slice(-4) });
 }
 async function motorWaQuota(env, SH, sid, to) {
   try { const r = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/motor_wa_quota`, { method: 'POST', headers: SH,
@@ -2937,6 +2971,110 @@ async function storeDomain(request, env) {
   return json(400, { error: 'unknown action' });
 }
 
+// ---------- motorapp: دومين خاص لكل مولّد (Cloudflare for SaaS) ----------
+async function motorDomain(request, env) {
+  let body; try { body = await request.json(); } catch { return json(400, { ok: false, error: 'bad_json' }); }
+  const slug = String(body.slug || '').trim().toLowerCase(), token = String(body.token || '');
+  if (!/^[a-z0-9][a-z0-9-]{1,30}$/.test(slug)) return json(400, { ok: false, error: 'missing_fields' });
+  let sid;
+  try { sid = await motorRpcAnon(env, request, 'motor_gd_check', { p_slug: slug, p_token: token || null }); }
+  catch (e) { return json(e.status || 403, { ok: false, error: e.message || 'forbidden' }); }
+  if (!/^[0-9a-f-]{36}$/i.test(String(sid))) return json(403, { ok: false, error: 'forbidden' });
+  const cfOn = !!(env.CF_API_TOKEN && env.CF_ZONE_ID);
+  const target = env.STORE_CNAME_TARGET || 'stores.libanapps.com';
+  const existing = (await sbGet(env, `motor_domains?site_id=eq.${sid}&select=*&limit=1`))[0];
+  const out = (row) => json(200, { ok: true, domain: row || null, cname_target: target, cf: cfOn });
+  const action = body.action || 'get';
+  if (action === 'get') return out(existing);
+  if (action === 'add') {
+    if (existing) return json(400, { ok: false, error: 'dom_exists' });
+    const domain = normalizeDomain(body.domain);
+    if (!domain) return json(400, { ok: false, error: 'dom_bad' });
+    if (isPlatformHost(domain, env)) return json(400, { ok: false, error: 'dom_reserved' });
+    const d1 = await sbGet(env, `motor_domains?domain=eq.${encodeURIComponent(domain)}&select=id&limit=1`);
+    const d2 = await sbGet(env, `store_domains?domain=eq.${encodeURIComponent(domain)}&select=id&limit=1`);
+    if (d1.length || d2.length) return json(400, { ok: false, error: 'dom_taken' });
+    const info = { cname_target: target };
+    let cfId = null, mapped = { status: 'pending', cf_status: '', ssl_status: '' };
+    if (cfOn) {
+      const j = await cfApi(env, 'POST', '/custom_hostnames', { hostname: domain, ssl: { method: 'http', type: 'dv', settings: { min_tls_version: '1.2' } } });
+      if (!j.success) return json(400, { ok: false, error: 'dom_cf', detail: cfError(j) });
+      cfId = j.result.id; mapped = mapCf(j.result);
+      const ov = j.result.ownership_verification;
+      if (ov && ov.name) { info.txt_name = ov.name; info.txt_value = ov.value; }
+    }
+    const ins = await fetch(`${env.SUPABASE_URL}/rest/v1/motor_domains`, {
+      method: 'POST', headers: { ...sbHeaders(env), 'Content-Type': 'application/json', Prefer: 'return=representation' },
+      body: JSON.stringify({ site_id: sid, domain, cf_hostname_id: cfId, info, ...mapped })
+    });
+    if (!ins.ok) {
+      if (cfOn && cfId) await cfApi(env, 'DELETE', `/custom_hostnames/${cfId}`);
+      return json(500, { ok: false, error: 'dom_save', detail: (await ins.text()).slice(0, 120) });
+    }
+    return out((await ins.json())[0]);
+  }
+  if (!existing) return json(404, { ok: false, error: 'dom_none' });
+  if (action === 'refresh') {
+    let upd = {};
+    if (cfOn && existing.cf_hostname_id) {
+      const j = await cfApi(env, 'GET', `/custom_hostnames/${existing.cf_hostname_id}`);
+      if (!j.success) return json(400, { ok: false, error: 'dom_cf', detail: cfError(j) });
+      upd = mapCf(j.result);
+      const ov = j.result.ownership_verification, info = { ...(existing.info || {}) };
+      if (ov && ov.name) { info.txt_name = ov.name; info.txt_value = ov.value; }
+      const vr = (j.result.ssl && j.result.ssl.validation_errors) || j.result.verification_errors || [];
+      info.errors = vr.map(x => (x && x.message) || String(x)).slice(0, 3);
+      upd.info = info;
+    }
+    // فحص فعلي: هل الدومين عم يوصل لعنّا؟
+    let live = false;
+    try {
+      const ac = new AbortController(), tm = setTimeout(() => ac.abort(), 6000);
+      const r = await fetch('https://' + existing.domain + '/__motor_ping', { signal: ac.signal, redirect: 'manual' });
+      clearTimeout(tm);
+      live = r.headers.get('x-motor-site') === String(sid);
+    } catch (e) {}
+    if (live) upd.status = 'active';
+    upd.verified_at = (upd.status || existing.status) === 'active' ? (existing.verified_at || new Date().toISOString()) : null;
+    await sbPatch(env, `motor_domains?id=eq.${existing.id}`, upd);
+    motorDomCache.delete(existing.domain);
+    return json(200, { ok: true, domain: { ...existing, ...upd }, cname_target: target, cf: cfOn, live });
+  }
+  if (action === 'remove') {
+    if (cfOn && existing.cf_hostname_id) await cfApi(env, 'DELETE', `/custom_hostnames/${existing.cf_hostname_id}`);
+    await fetch(`${env.SUPABASE_URL}/rest/v1/motor_domains?id=eq.${existing.id}`, { method: 'DELETE', headers: sbHeaders(env) });
+    motorDomCache.delete(existing.domain);
+    return out(null);
+  }
+  return json(400, { ok: false, error: 'bad_op' });
+}
+const motorDomCache = new Map();
+async function resolveMotorDomain(env, ctx, host) {
+  const c = motorDomCache.get(host);
+  if (c && c.exp > Date.now()) return c.v;
+  let row;
+  try { row = (await sbGet(env, `motor_domains?domain=eq.${encodeURIComponent(host)}&select=id,site_id,status,motor_sites(slug)&limit=1`))[0]; }
+  catch (e) { return c ? c.v : null; }
+  const v = row && row.motor_sites && row.motor_sites.slug ? { slug: row.motor_sites.slug, sid: row.site_id } : null;
+  if (row && row.status !== 'active' && ctx && ctx.waitUntil) {
+    ctx.waitUntil(sbPatch(env, `motor_domains?id=eq.${row.id}`, { status: 'active', verified_at: new Date().toISOString() }));
+  }
+  motorDomCache.set(host, { v, exp: Date.now() + (v ? 300000 : 60000) });
+  return v;
+}
+async function serveMotorOnDomain(env, request, url, md) {
+  if (url.pathname === '/__motor_ping') return new Response('ok', { headers: { 'x-motor-site': md.sid, 'Cache-Control': 'no-store' } });
+  if (/\.[a-z0-9]{2,5}$/i.test(url.pathname)) {
+    const asset = await env.ASSETS.fetch(request);
+    if (asset.status !== 404) return withCache(asset, url.pathname);
+    return new Response('Not found', { status: 404, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
+  }
+  const res = await env.ASSETS.fetch(new URL('/app-motor.html', url.origin));
+  let html = await res.text();
+  html = html.replace('<head>', '<head><script>window.MOTOR_SLUG=' + JSON.stringify(md.slug) + ';</script>');
+  return new Response(html, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' } });
+}
+
 // ---------- خدمة متجر على دومين الزبون ----------
 const domCache = new Map();
 async function resolveDomain(env, ctx, host) {
@@ -3925,6 +4063,10 @@ export default {
           if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
           return await motorWaHook(request, env, ctx, url.pathname.slice('/api/motor-wa-hook/'.length));
         }
+        if (url.pathname === '/api/motor-domain') {
+          if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
+          return await motorDomain(request, env);
+        }
         if (url.pathname === '/api/motor-wa') {
           if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
           return await motorWa(request, env);
@@ -3968,6 +4110,9 @@ export default {
     // 1.5) دومين خاص بمتجر زبون — أي مسار غير الـAPI والصور بيعرض متجره
     if (!isPlatformHost(url.hostname, env)) {
       const host = url.hostname.toLowerCase();
+      // دومين خاص بمولّد (motorapp) قبل المتاجر
+      const md = await resolveMotorDomain(env, ctx, host);
+      if (md) return await serveMotorOnDomain(env, request, url, md);
       let slug = await resolveDomain(env, ctx, host);
       if (slug === undefined) return new Response('Temporary error, try again', { status: 503, headers: { 'Retry-After': '120', 'Cache-Control': 'no-store' } });
       // www وبدون www بيشتغلوا مع بعض: لو واحد منهم بس مسجّل بنخدم التاني لنفس المتجر،
