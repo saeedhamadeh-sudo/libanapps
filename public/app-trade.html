@@ -422,6 +422,9 @@
     .pc-mobile-sum #pc_go_cart{flex:1; text-align:start;}
     .pc-mobile-sum .pc-mpay{background:var(--credit, #2e7d4f); color:#fff; border-color:transparent; font-weight:800; min-width:96px;}
     .pc-mobile-sum .pc-mpay:disabled{opacity:.45;}
+    .pc-order.open{position:fixed; left:0; right:0; bottom:calc(64px + env(safe-area-inset-bottom)); top:auto; max-height:72vh; overflow:auto; z-index:39; margin:0; border-radius:18px 18px 0 0; box-shadow:0 -12px 30px rgba(0,0,0,.22); background:var(--white); padding:10px 12px;}
+    .pc-order.open .pc-lines{max-height:none;}
+    html.pc-cart-open .pc-mobile-sum #pc_go_cart{background:#fde68a; border-color:#f59e0b; font-weight:800;}
   }
   @media(max-width:520px){
     .pos-tile-grid{grid-template-columns:repeat(auto-fill, minmax(115px, 1fr));}
@@ -7250,7 +7253,7 @@ function posViewPro(){
       ${tool('pc_t_stock','📦','المخزون', !(sel && sel.itemId))}
     </nav>
 
-    <section class="pc-order" id="pc_order">
+    <section class="pc-order ${window._pcCartOpen? 'open' : ''}" id="pc_order">
       <div class="pc-cust">
         <button type="button" class="pc-cust-btn" id="pos_pick_customer_btn">👤 <b>${escapeHtml(ticket.customerLabel)}</b>${named? ` <small style="color:${custBal>0?'var(--debit)':'var(--ink-soft)'};">الرصيد: <span class="num">${fmtMoney(custBal)}</span></small>`:' <small>— اختيار زبون</small>'}</button>
         <button type="button" class="pc-held" id="pc_list_btn2" title="التذاكر المعلّقة">🧾<span class="num">${heldCount}</span></button>
@@ -7460,7 +7463,11 @@ function bindPosProEvents(){
   on('pc_print_btn', posPrintLastInvoice);
   on('pc_hold_btn', ()=>posHoldTicket(ticket));
   on('pc_split_btn', ()=>posSplitLine(ticket));
-  on('pc_go_cart', ()=>{ const o = byId('pc_order'); if(o) o.scrollIntoView({behavior:'smooth', block:'start'}); });
+  // عالتلفون: السلة بتطلع فوق المنتجات (لوح من تحت) — كبسة تانية بتسكّرها
+  on('pc_go_cart', ()=>{ const o = byId('pc_order'); if(!o) return;
+    if(innerWidth<=900){ window._pcCartOpen = !window._pcCartOpen; o.classList.toggle('open', window._pcCartOpen); document.documentElement.classList.toggle('pc-cart-open', window._pcCartOpen); return; }
+    o.scrollIntoView({behavior:'smooth', block:'start'}); });
+  document.documentElement.classList.toggle('pc-cart-open', !!window._pcCartOpen && innerWidth<=900);
   on('pc_mobile_pay', ()=>{ const b = byId('pos_pay_btn'); if(b) b.click(); });
   document.querySelectorAll('[data-pc-key]').forEach(b=>b.addEventListener('click', ()=>{
     const k = b.getAttribute('data-pc-key');
@@ -7482,12 +7489,14 @@ function bindPosProEvents(){
     }
   }));
   // صفحة وحدة بلا scroll: ارتفاع الشاشة = الشاشة ناقص الشريط العلوي
-  const fitPc = ()=>{ const w = document.querySelector('.pc-wrap'); if(!w) return; window.scrollTo(0,0);
+  const fitPc = ()=>{ const w = document.querySelector('.pc-wrap'); if(!w) return;
+    // عالتلفون الصفحة بتنزل لتحت عادي — ما منرجّعها لفوق (شريط العنوان بيعمل resize كل ما تنزل)
+    if(innerWidth > 900) window.scrollTo(0,0);
     const top = Math.max(0, Math.round(w.getBoundingClientRect().top));
     document.documentElement.style.setProperty('--pc-top', top+'px');
     document.documentElement.classList.toggle('pc-tiny', innerWidth>900 && (innerHeight - top) < 560); };
   document.documentElement.classList.add('pc-noscroll'); fitPc();
-  if(!window._pcFitBound){ window._pcFitBound = true; window.addEventListener('resize', ()=>{ if(document.querySelector('.pc-wrap')) fitPc(); });
+  if(!window._pcFitBound){ window._pcFitBound = true; let lastW = innerWidth; window.addEventListener('resize', ()=>{ if(innerWidth<=900 && innerWidth===lastW) return; lastW = innerWidth; if(document.querySelector('.pc-wrap')) fitPc(); });
     document.addEventListener('fullscreenchange', ()=>setTimeout(()=>{ if(document.querySelector('.pc-wrap')) fitPc(); }, 120)); }
   // ساعة الشاشة
   clearInterval(window._pcClockTimer);
@@ -11747,7 +11756,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-11-14 · 21:00 · v93';
+const APP_TRADE_BUILD = '2026-11-14 · 22:40 · v94';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 function settingsView(){
   const s = DB.settings;
