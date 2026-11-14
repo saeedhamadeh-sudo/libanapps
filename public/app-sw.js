@@ -23,7 +23,7 @@ function handled(url, req) {
   if (url.origin !== self.location.origin) return false;
   var p = url.pathname;
   return p === '/app-trade.html' || p === '/app-alum.html' || p.indexOf('/portal-trade/') === 0 || p.indexOf('/portal/') === 0 ||
-         p === '/assets/lang-engine.js' || p === '/assets/acc-i18n.js';
+         p === '/assets/lang-engine.js' || p === '/assets/acc-i18n.js' || p === '/assets/la-home.js';
 }
 
 self.addEventListener('fetch', function (e) {
