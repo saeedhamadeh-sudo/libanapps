@@ -4343,8 +4343,10 @@ begin
     return coalesce((select jsonb_agg(x order by x->>'sent_at' desc) from (
       select jsonb_build_object('id',i.id,'sent_at',i.wa_sent_at,'by',i.wa_sent_by,'no',i.no,'period',i.period,'amount',i.amount,
              'name',c.name,'code',c.code,'mobile',c.mobile,'mobile_cc',c.mobile_cc) x
-        from public.motor_invoices i join public.motor_customers c on c.id = i.customer_id
-       where i.site_id = sid and not i.voided and i.wa_sent_at is not null and i.wa_sent_at > now() - make_interval(days => d)
+        from (select distinct on (i0.customer_id, i0.wa_sent_at) i0.* from public.motor_invoices i0   -- رسالة وحدة لكل زبون بكل إرسال
+               where i0.site_id = sid and not i0.voided and i0.wa_sent_at is not null and i0.wa_sent_at > now() - make_interval(days => d)
+               order by i0.customer_id, i0.wa_sent_at, i0.created_at desc) i
+        join public.motor_customers c on c.id = i.customer_id
        order by i.wa_sent_at desc limit 3000) q), '[]'::jsonb);
   end if;
   return coalesce((select jsonb_agg(x order by x->>'sent_at' desc) from (
@@ -4352,8 +4354,10 @@ begin
            'paid_amount',p.paid_amount,'paid_currency',p.paid_currency,'balance',p.balance_after,
            'name',c.name,'code',c.code,'mobile',c.mobile,'mobile_cc',c.mobile_cc,
            'collector',p.staff_name) x
-      from public.motor_payments p join public.motor_customers c on c.id = p.customer_id
-     where p.site_id = sid and not p.voided and p.wa_sent_at is not null and p.wa_sent_at > now() - make_interval(days => d)
+      from (select distinct on (p0.customer_id, p0.wa_sent_at) p0.* from public.motor_payments p0
+             where p0.site_id = sid and not p0.voided and p0.wa_sent_at is not null and p0.wa_sent_at > now() - make_interval(days => d)
+             order by p0.customer_id, p0.wa_sent_at, p0.created_at desc) p
+      join public.motor_customers c on c.id = p.customer_id
      order by p.wa_sent_at desc limit 3000) q), '[]'::jsonb);
 end $$;
 grant execute on function public.motor_wa_sent(text,text,text,integer) to anon, authenticated;

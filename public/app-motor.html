@@ -1855,6 +1855,7 @@ var D={
  compact_t:['تصغير/تكبير الجداول','Compact tables','Tableaux compacts'],
  ws_btn:['الرسائل المرسلة','Sent messages','Messages envoyés'],
  ws_title:['إشعارات الدفع المرسلة على واتساب','Payment notices sent on WhatsApp','Avis de paiement envoyés sur WhatsApp'],
+ ws_title_inv:['رسائل قيمة الفاتورة المرسلة على واتساب','Invoice messages sent on WhatsApp','Messages de facture envoyés sur WhatsApp'],
  ws_d1:['آخر 24 ساعة','Last 24 hours','Dernières 24 h'],
  ws_d7:['آخر 7 أيام','Last 7 days','7 derniers jours'],
  ws_d30:['آخر 30 يوماً','Last 30 days','30 derniers jours'],
@@ -3018,14 +3019,18 @@ VIEWS.wa=async function(main){
 };
 
 /* سجل إشعارات الدفع المرسلة */
-async function openWaSent(){
-  var m=modal(t('ws_title'),'<div class="toolbar" style="margin:0 0 10px"><select id="wsd"><option value="1">'+esc(t('ws_d1'))+'</option><option value="7">'+esc(t('ws_d7'))+'</option><option value="30" selected>'+esc(t('ws_d30'))+'</option><option value="90">'+esc(t('ws_d90'))+'</option></select>'+
+async function openWaSent(kind){
+  kind=kind==='inv'?'inv':'pay';
+  var m=modal(t(kind==='inv'?'ws_title_inv':'ws_title'),'<div class="toolbar" style="margin:0 0 10px"><select id="wsd"><option value="1">'+esc(t('ws_d1'))+'</option><option value="7">'+esc(t('ws_d7'))+'</option><option value="30" selected>'+esc(t('ws_d30'))+'</option><option value="90">'+esc(t('ws_d90'))+'</option></select>'+
     '<input id="wsq" type="search" placeholder="'+esc(t('search_ph'))+'" style="flex:1;min-width:160px"><b id="wsn"></b></div><div id="wsb"><div class="muted">'+esc(t('loading'))+'</div></div>',false,true);
   var rows=[];
   function paint(){
     var q=$('#wsq',m.body).value.trim().toLowerCase();
     var list=rows.filter(function(r){ return !q||(String(r.name)+' '+r.code+' '+(r.mobile||'')+' '+r.no+' '+(r.by||'')).toLowerCase().indexOf(q)>=0; });
     $('#wsn',m.body).textContent=fmtN(list.length,0)+' '+t('ws_count');
+    if(kind==='inv'){ $('#wsb',m.body).innerHTML='<div class="tw"><table><thead><tr><th>'+esc(t('ws_at'))+'</th><th>'+esc(t('invoice'))+'</th><th>'+esc(t('name'))+'</th><th>'+esc(t('mobile'))+'</th><th>'+esc(t('inv_amount'))+'</th><th>'+esc(t('ws_by'))+'</th></tr></thead><tbody>'+
+      (list.map(function(r){ return '<tr><td class="num">'+esc(dt(r.sent_at))+'</td><td class="num">#'+esc(r.no)+(r.period?' · '+esc(monthName(r.period,true)):'')+'</td><td><b>'+esc(r.name)+'</b> <span class="muted">#'+esc(r.code)+'</span></td>'+
+          '<td class="num">'+(r.mobile?esc('+'+r.mobile_cc+' '+r.mobile):'—')+'</td><td class="num">'+esc(money(r.amount))+'</td><td>'+esc(r.by||'')+'</td></tr>'; }).join('')||'<tr><td colspan="6"><div class="muted">'+esc(t('ws_none'))+'</div></td></tr>')+'</tbody></table></div>'; return; }
     $('#wsb',m.body).innerHTML='<div class="tw"><table><thead><tr><th>'+esc(t('ws_at'))+'</th><th>'+esc(t('receipt'))+'</th><th>'+esc(t('name'))+'</th><th>'+esc(t('mobile'))+'</th><th>'+esc(t('amount'))+'</th><th>'+esc(t('ws_collector'))+'</th><th>'+esc(t('ws_by'))+'</th></tr></thead><tbody>'+
       (list.map(function(r){ var auto=/\(تلقائي\)/.test(r.by||'');
         return '<tr><td class="num">'+esc(dt(r.sent_at))+'</td><td class="num">#'+esc(r.no)+'</td><td><b>'+esc(r.name)+'</b> <span class="muted">#'+esc(r.code)+'</span></td>'+
@@ -3034,7 +3039,7 @@ async function openWaSent(){
   }
   async function load(){
     $('#wsb',m.body).innerHTML='<div class="muted">'+esc(t('loading'))+'</div>';
-    try{ rows=await call('motor_wa_sent',{p_kind:'pay',p_days:+$('#wsd',m.body).value}); paint(); }
+    try{ rows=await call('motor_wa_sent',{p_kind:kind,p_days:+$('#wsd',m.body).value}); paint(); }
     catch(e){ $('#wsb',m.body).innerHTML='<div class="err msg" style="display:block">'+esc(errText(e))+'</div>'; }
   }
   $('#wsd',m.body).addEventListener('change',load);
@@ -3141,7 +3146,7 @@ VIEWS.bills=async function(main){
   setWaBadge(all.length, rows.length);
   var q='';
   main.innerHTML='<div class="card"><p class="muted" style="margin:0">'+esc(t('bills_hint'))+'</p></div>'+
-    '<div class="toolbar"><input type="search" id="bq" placeholder="'+esc(t('search_ph'))+'"><span data-wachip>'+waChip()+'</span><button class="btn wa" id="bbatch" data-waon>📤 '+esc(t('wa_batch50'))+'</button><span class="sp"></span><b id="bc"></b></div>'+waBatchBar('bbar')+
+    '<div class="toolbar"><input type="search" id="bq" placeholder="'+esc(t('search_ph'))+'"><span data-wachip>'+waChip()+'</span><button class="btn wa" id="bbatch" data-waon>📤 '+esc(t('wa_batch50'))+'</button><button class="btn alt" id="bsent">📜 '+esc(t('ws_btn'))+'</button><span class="sp"></span><b id="bc"></b></div>'+waBatchBar('bbar')+
     '<div class="tw"><table><thead><tr><th>'+esc(t('date'))+'</th><th>'+esc(t('name'))+'</th><th>'+esc(t('mobile'))+'</th><th>'+esc(t('consumption'))+'</th><th>'+esc(t('inv_amount'))+'</th><th>'+esc(t('due_count'))+'</th><th>'+esc(t('balance'))+'</th><th>'+esc(t('by'))+'</th><th></th></tr></thead><tbody id="btb"></tbody></table></div>';
   function paint(){
     var k=normS(q), list=rows.filter(function(r){ return !k||normS(r.customer.name).indexOf(k)>=0||String(r.customer.code)===k||normS(r.customer.box)===k; });
@@ -3157,6 +3162,7 @@ VIEWS.bills=async function(main){
   }
   function drop(r){ rows.splice(rows.indexOf(r),1); setWaBadge(WA_PENDING-1, rows.length); paint(); }
   $('#bq',main).addEventListener('input',function(){ q=this.value; paint(); });
+  $('#bsent',main).addEventListener('click',function(){ openWaSent('inv'); });
   $('#bbatch',main).addEventListener('click',function(){
     var list=rows.filter(function(r){ return r.customer.mobile; });
     waBatch($('#bbar',main),list,async function(r){
