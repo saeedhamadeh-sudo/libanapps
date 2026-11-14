@@ -1367,6 +1367,73 @@ end $$;
 grant execute on function public.motor_wa_sent(text,text,text,integer) to anon, authenticated;
 
 -- ============================================================
+--  20j15) طابور إيصالات القبض على واتساب: إذا خلص رصيد الـ250 بتنبعت تلقائياً لما يرجع الرصيد (cron كل 15 دقيقة)
+-- ============================================================
+alter table public.motor_payments add column if not exists wa_auto_tries smallint not null default 0;
+
+create or replace function public._motor_wa_num(p_cc text, p_mobile text)
+returns text language sql immutable as $$
+  select case when length(x) >= 8 then x else '' end from (
+    select case when n like '00%' then substr(n, 3)
+                when n like cc || '%' and length(n) > 9 then n
+                else cc || ltrim(n, '0') end as x
+      from (select regexp_replace(coalesce(p_mobile,''), '\D', '', 'g') as n,
+                   coalesce(nullif(regexp_replace(coalesce(p_cc,''), '\D', '', 'g'), ''), '961') as cc) a) b;
+$$;
+
+-- بيحجز من الرصيد ويرجّع الإيصالات الجاهزة للإرسال (الأقدم أولاً) — مفتاح الخدمة فقط
+create or replace function public.motor_pay_wa_claim(p_limit integer default 40)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare st record; r record; q jsonb; num text; out jsonb := '[]'::jsonb; n integer := 0;
+begin
+  for st in select s.id, s.name, s.currency, s.wc_api_key from public.motor_sites s
+             where s.wc_on and s.wc_pay_auto and coalesce(s.wc_api_key,'') <> '' loop
+    for r in select p.*, c.name as cname, c.mobile, c.mobile_cc from (
+               select distinct on (p0.customer_id) p0.* from public.motor_payments p0
+                where p0.site_id = st.id and not p0.voided and p0.wa_sent_at is null and p0.wa_auto_tries < 5
+                  and p0.created_at > now() - interval '7 days' and p0.created_at < now() - interval '2 minutes'
+                order by p0.customer_id, p0.created_at desc) p
+             join public.motor_customers c on c.id = p.customer_id
+            where coalesce(c.mobile,'') <> '' and c.deleted_at is null
+            order by p.created_at loop
+      exit when n >= p_limit;
+      num := public._motor_wa_num(r.mobile_cc, r.mobile);
+      if num = '' then update public.motor_payments set wa_auto_tries = 5 where id = r.id; continue; end if;
+      q := public.motor_wa_quota(st.id, num, 250);
+      exit when not coalesce((q->>'ok')::boolean, false);   -- خلص الرصيد لهالمولّد: منكمّل بالدورة الجاية
+      update public.motor_payments set wa_auto_tries = wa_auto_tries + 1 where id = r.id;
+      out := out || jsonb_build_object('site_id', st.id, 'pay_id', r.id, 'qid', q->>'id', 'key', st.wc_api_key, 'to', num,
+        'name', r.cname, 'amount', r.amount, 'no', r.no, 'at', r.created_at, 'balance', r.balance_after, 'currency', st.currency, 'generator', st.name);
+      n := n + 1;
+    end loop;
+    exit when n >= p_limit;
+  end loop;
+  return out;
+end $$;
+revoke all on function public.motor_pay_wa_claim(integer) from public, anon, authenticated;
+grant execute on function public.motor_pay_wa_claim(integer) to service_role;
+
+-- نتيجة الإرسال: الناجح بيتعلّم، والفاشل بيرجع رصيدو
+create or replace function public.motor_pay_wa_finish(p_items jsonb)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare it jsonb; cid uuid; ok integer := 0;
+begin
+  for it in select * from jsonb_array_elements(coalesce(p_items,'[]'::jsonb)) loop
+    if coalesce((it->>'ok')::boolean, false) then
+      select customer_id into cid from public.motor_payments where id = (it->>'pay_id')::uuid and site_id = (it->>'site_id')::uuid;
+      update public.motor_payments set wa_sent_at = now(), wa_sent_by = 'النظام (تلقائي)'
+       where site_id = (it->>'site_id')::uuid and customer_id = cid and wa_sent_at is null;
+      ok := ok + 1;
+    elsif it->>'qid' is not null then
+      delete from public.motor_wa_sends where id = (it->>'qid')::bigint;
+    end if;
+  end loop;
+  return jsonb_build_object('ok', ok);
+end $$;
+revoke all on function public.motor_pay_wa_finish(jsonb) from public, anon, authenticated;
+grant execute on function public.motor_pay_wa_finish(jsonb) to service_role;
+
+-- ============================================================
 --  20k) إقفال صندوق الموظف: يسلّم كل النقد للمكتب ويطلع تقرير
 -- ============================================================
 create or replace function public.motor_staff_close(p_slug text, p_token text, p_staff uuid default null)

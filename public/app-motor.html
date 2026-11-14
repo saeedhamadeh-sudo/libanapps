@@ -1868,7 +1868,7 @@ var D={
  ws_none:['لا توجد رسائل مرسلة في هذه الفترة.','No messages sent in this period.','Aucun message envoyé sur cette période.'],
  pa_title:['إشعار الدفع التلقائي','Automatic payment notice','Avis de paiement automatique'],
  pa_on:['إرسال إشعار الدفع للزبون على واتساب تلقائياً بعد كل قبض','Send the payment notice to the customer on WhatsApp after every collection','Envoyer l’avis de paiement au client sur WhatsApp après chaque encaissement'],
- pa_hint:['يُرسل من أي موظف (الجابي أو المكتب) بقالب payment_receipt إلى رقم الزبون المسجّل، ويُحسب من حد الـ250 اليومي. الزبون الذي وصله الإشعار لا يظهر في قائمة إشعارات الدفع.','Sent by any staff (collector or office) using the payment_receipt template to the customer’s saved number; counts toward the 250/day limit.','Envoyé par tout employé avec le modèle payment_receipt ; compte dans la limite de 250/jour.'],
+ pa_hint:['يُرسل الإيصال تلقائياً بعد كل قبض من أي موظف (قالب payment_receipt) إلى رقم الزبون، بدون أي تنبيه للموظف. إذا انتهى رصيد الـ250 اليومي يدخل الإيصال في الانتظار ويُرسله النظام وحده خلال 15 دقيقة من عودة الرصيد (حتى 7 أيام).','Sent automatically after every collection by any staff, silently. If the 250/day limit is reached, it is queued and the system sends it within 15 minutes once quota frees up (up to 7 days).','Envoyé automatiquement après chaque encaissement. Si la limite de 250/jour est atteinte, il est mis en file et envoyé dès que le quota revient (jusqu’à 7 jours).'],
  pa_sent:['تم إرسال إشعار الدفع للزبون على واتساب','Payment notice sent to the customer on WhatsApp','Avis de paiement envoyé sur WhatsApp'],
  pa_nomob:['لم يُرسل إشعار الدفع: لا يوجد رقم هاتف للزبون','Payment notice not sent: customer has no phone number','Avis non envoyé : pas de numéro'],
  pa_fail:['تعذّر إرسال إشعار الدفع على واتساب','Could not send the WhatsApp payment notice','Échec de l’avis WhatsApp'],
@@ -4108,12 +4108,9 @@ async function wcApi(body){
 function wcSend(cc,mobile,template,values,test){ var n=waNum(cc,mobile); if(!n){ var e=new Error(t('no_mobile')); e.code='bad_number'; return Promise.reject(e); }
   return wcApi({op:'send',to:n,template:template,values:values,test:!!test}); }
 /* بعد كل قبض: إشعار الدفع يُرسل تلقائياً للزبون (قالب payment_receipt) — من أي موظف */
-function payAutoWa(pay){
+function payAutoWa(pay){   // صامت: ما في أي تنبيه للموظف — وإذا ما انبعت هلق، النظام بيبعتو لحالو لما يرجع الرصيد
   if(!(SITE&&SITE.wc_on)||!pay||!pay.id) return;
-  wcApi({op:'pay_auto',pay:pay.id}).then(function(r){
-    if(r.sent){ setTimeout(function(){ toast('📲 '+t('pa_sent'),'s'); },1800); WC_Q=null; }
-    else if(r.skipped==='no_mobile') setTimeout(function(){ toast(t('pa_nomob'),'e'); },1800);
-  }).catch(function(e){ setTimeout(function(){ toast(t('pa_fail')+' — '+wcErr(e),'e'); },1800); });
+  wcApi({op:'pay_auto',pay:pay.id}).then(function(r){ if(r&&r.sent) WC_Q=null; }).catch(function(){});
 }
 function wcMoney(v){ var c=mainCur(); return fmtN(v,c==='LBP'?0:2)+' '+c; }
 // قيم template الفاتورة/الإيصال من نفس بيانات الطباعة

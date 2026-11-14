@@ -1836,10 +1836,7 @@ async function motorPayAuto(env, hdr, slug, token, pay) {
   let n = String(d.mobile || '').replace(/\D/g, ''); const cc = String(d.cc || '961').replace(/\D/g, '');
   if (n.startsWith('00')) n = n.slice(2); else if (!(n.startsWith(cc) && n.length > 9)) n = cc + n.replace(/^0+/, '');
   if (n.length < 8) return json(200, { ok: true, skipped: 'no_mobile' });
-  const cur = d.currency || 'USD', dg = cur === 'LBP' ? 0 : 2;
-  const money = (v) => Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: dg, maximumFractionDigits: dg }) + ' ' + cur;
-  const date = new Date(d.at || Date.now()).toLocaleDateString('en-CA', { timeZone: 'Asia/Beirut' });
-  const values = { name: String(d.name || ''), amount: money(d.amount), date, receipt: String(d.no || ''), balance: money(d.balance), generator: String(d.generator || '') };
+  const values = payReceiptValues(d);
   const q = await motorWaQuota(env, SH, d.site_id, n);
   if (q && q.ok === false) return json(200, { ok: false, error: 'daily_limit' });
   const r = await fetch('https://api.whatchimp.com/v1/messages', { method: 'POST',
@@ -1853,6 +1850,32 @@ async function motorPayAuto(env, hdr, slug, token, pay) {
   }
   await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/motor_pay_wa_done`, { method: 'POST', headers: SH, body: JSON.stringify({ p_site: d.site_id, p_pay: pay, p_by: d.by || '' }) }).catch(() => {});
   return json(200, { ok: true, sent: true, to: n.slice(-4) });
+}
+function payReceiptValues(d) {
+  const cur = d.currency || 'USD', dg = cur === 'LBP' ? 0 : 2;
+  const money = (v) => Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: dg, maximumFractionDigits: dg }) + ' ' + cur;
+  const date = new Date(d.at || Date.now()).toLocaleDateString('en-CA', { timeZone: 'Asia/Beirut' });
+  return { name: String(d.name || ''), amount: money(d.amount), date, receipt: String(d.no || ''), balance: money(d.balance), generator: String(d.generator || '') };
+}
+// كل 15 دقيقة: الإيصالات يلي ما انبعتت (خلص الرصيد أو انقطع النت) بتنبعت لحالها أول ما يرجع رصيد الـ250
+async function motorPayQueueCron(env) {
+  if (!env.SUPABASE_SERVICE_KEY) return;
+  const SH = { apikey: env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`, 'Content-Type': 'application/json' };
+  const r = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/motor_pay_wa_claim`, { method: 'POST', headers: SH, body: JSON.stringify({ p_limit: 40 }) });
+  const list = r.ok ? await r.json().catch(() => []) : [];
+  if (!Array.isArray(list) || !list.length) return;
+  const done = [];
+  for (const d of list) {
+    let ok = false;
+    try {
+      const s = await fetch('https://api.whatchimp.com/v1/messages', { method: 'POST',
+        headers: { Authorization: `Bearer ${d.key}`, 'Content-Type': 'application/json', 'Idempotency-Key': 'pay-' + d.pay_id },
+        body: JSON.stringify({ to: '+' + d.to, template: { name: 'payment_receipt', language: 'ar', values: payReceiptValues(d) } }) });
+      ok = s.ok;
+    } catch (e) {}
+    done.push({ site_id: d.site_id, pay_id: d.pay_id, qid: d.qid, ok });
+  }
+  await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/motor_pay_wa_finish`, { method: 'POST', headers: SH, body: JSON.stringify({ p_items: done }) }).catch(() => {});
 }
 async function motorWaQuota(env, SH, sid, to) {
   try { const r = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/motor_wa_quota`, { method: 'POST', headers: SH,
@@ -3877,7 +3900,8 @@ function pageFor(pathname) {
 
 export default {
   async scheduled(event, env, ctx) {
-    ctx.waitUntil(motorGdCron(env).catch(() => {}));
+    if (event.cron === '*/15 * * * *') ctx.waitUntil(motorPayQueueCron(env).catch(() => {}));
+    else ctx.waitUntil(motorGdCron(env).catch(() => {}));
   },
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
