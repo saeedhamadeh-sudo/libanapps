@@ -1853,6 +1853,10 @@ var D={
  k_sale:['فاتورة مبيعات','Sales invoice','Facture de vente'],
  nav_sales:['فاتورة مبيعات وإيصال قبض','Sales invoice & receipt','Facture de vente et reçu'],
  compact_t:['تصغير/تكبير الجداول','Compact tables','Tableaux compacts'],
+ rx_price:['سعر الكيلو واط لهذه الفاتورة','kWh price for this invoice','Prix du kWh pour cette facture'],
+ rx_note:['هذا المشترك أُخذ عداده في هذه الدورة. ستُسجَّل قراءة خارج الدورة (تصفية حساب) وتصدر فاتورة فورية بالاستهلاك منذ آخر قراءة وبالسعر الذي تحدّده. قراءة الدورة القادمة تبدأ من هذه القراءة.','This subscriber was already read this cycle. An out-of-cycle (settlement) reading will be saved and an invoice issued now for the consumption since the last reading, at the price you set. The next cycle starts from this reading.','Compteur déjà relevé ce cycle : un relevé hors cycle (solde) sera enregistré avec une facture immédiate au prix indiqué.'],
+ take_reading_x:['أخذ عداد (تصفية حساب)','Read meter (settlement)','Relevé (solde)'],
+ e_price_required:['أدخل سعر الكيلو واط لإصدار الفاتورة','Enter the kWh price to issue the invoice','Saisissez le prix du kWh'],
  mp_title:['سعر الكيلو واط لكل شهر','kWh price per month','Prix du kWh par mois'],
  mp_hint:['حدّد سعر الكيلو واط لكل شهر بشهره. رسائل قيمة الفاتورة لا تُرسل قبل تحديد سعر الشهر. عند الحفظ تُعاد حسابات فواتير العداد لهذا الشهر على السعر الجديد، ثم يُرسل النظام رسائل قيمة الفاتورة تلقائياً (ضمن حد الـ250 اليومي).','Set the kWh price for each month. Invoice messages are not sent before the month price is set. On save, that month’s meter invoices are recalculated and the system sends invoice messages automatically (within the 250/day limit).','Définissez le prix du kWh pour chaque mois. Les messages de facture ne partent qu’après. À l’enregistrement, les factures du mois sont recalculées et les messages envoyés automatiquement (limite 250/jour).'],
  mp_month:['الشهر','Month','Mois'],
@@ -3210,7 +3214,8 @@ VIEWS.bills=async function(main){
   var all=await call('motor_wa_outbox',{p_days:60}), rows=all.filter(function(r){ return r.t==='inv'; });
   setWaBadge(all.length, rows.length);
   var mpd=await loadMonthPrices(true), priced={}; (mpd.rows||[]).forEach(function(x){ priced[x.period]=true; });
-  var unpriced=[]; rows.forEach(function(r){ var pr=r.inv&&r.inv.period; if(pr&&!priced[pr]&&unpriced.indexOf(pr)<0) unpriced.push(pr); });
+  rows.forEach(function(r){ if(r.inv) r.inv._ok=!!(r.inv.price_fixed||priced[r.inv.period]); });
+  var unpriced=[]; rows.forEach(function(r){ var pr=r.inv&&r.inv.period; if(pr&&!r.inv._ok&&unpriced.indexOf(pr)<0) unpriced.push(pr); });
   var q='';
   main.innerHTML='<div class="card"><p class="muted" style="margin:0">'+esc(t('bills_hint'))+'</p></div>'+
     unpriced.map(function(pr){ return '<div class="lic" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px">⚠️ <span style="flex:1">'+esc(t('mp_need',{m:monthName(pr,true)}))+'</span>'+
@@ -3234,8 +3239,8 @@ VIEWS.bills=async function(main){
   $('#bsent',main).addEventListener('click',function(){ openWaSent('inv'); });
   $$('[data-mpset]',main).forEach(function(b){ b.addEventListener('click',function(){ askMonthPrice(b.dataset.mpset,function(){ VIEWS.bills(main); }); }); });
   $('#bbatch',main).addEventListener('click',function(){
-    if(unpriced.length&&!rows.some(function(r){ return r.customer.mobile&&priced[r.inv.period]; })){ askMonthPrice(unpriced[0],function(){ VIEWS.bills(main); }); return; }
-    var list=rows.filter(function(r){ return r.customer.mobile&&priced[r.inv.period]; });
+    if(unpriced.length&&!rows.some(function(r){ return r.customer.mobile&&r.inv._ok; })){ askMonthPrice(unpriced[0],function(){ VIEWS.bills(main); }); return; }
+    var list=rows.filter(function(r){ return r.customer.mobile&&r.inv._ok; });
     waBatch($('#bbar',main),list,async function(r){
       try{ if(wcOn()){ var a2=wcBillArgs({c:r.customer,inv:r.inv}); a2[1].balance=wcMoney(r.due&&r.due.balance!=null?r.due.balance:r.customer.balance); await wcSend(r.customer.mobile_cc,r.customer.mobile,a2[0],a2[1]); } else await waSendAuto(waNum(r.customer.mobile_cc,r.customer.mobile),waTag(dueText(r))); }catch(e){ return {name:r.customer.name,err:waErr(e)}; }
       try{ await call('motor_wa_mark',{p_kind:'inv',p_id:r.id}); }catch(e){} drop(r); return true; }); });
@@ -3243,7 +3248,7 @@ VIEWS.bills=async function(main){
   $('#btb',main).addEventListener('click',async function(e){
     var sb2=e.target.closest('[data-bs]'), mk=e.target.closest('[data-bm]'), vw=e.target.closest('[data-bv]');
     if(vw){ var rv=rows[+vw.dataset.bv]; modal(rv.customer.name,'<pre style="white-space:pre-wrap;font-family:inherit;margin:0">'+esc(dueText(rv))+'</pre>'); return; }
-    if(sb2&&!sb2.disabled&&rows[+sb2.dataset.bs].inv&&!priced[rows[+sb2.dataset.bs].inv.period]){ askMonthPrice(rows[+sb2.dataset.bs].inv.period,function(){ VIEWS.bills(main); }); return; }
+    if(sb2&&!sb2.disabled&&rows[+sb2.dataset.bs].inv&&!rows[+sb2.dataset.bs].inv._ok){ askMonthPrice(rows[+sb2.dataset.bs].inv.period,function(){ VIEWS.bills(main); }); return; }
     if(sb2&&!sb2.disabled){ var r=rows[+sb2.dataset.bs]; sb2.disabled=true; var okk;
       if(wcOn()){ var a3=wcBillArgs({c:r.customer,inv:r.inv}); a3[1].balance=wcMoney(r.due&&r.due.balance!=null?r.due.balance:r.customer.balance);
         try{ await wcSend(r.customer.mobile_cc,r.customer.mobile,a3[0],a3[1]); toast('✅ '+t('wa_sent'),'s'); okk=true; }catch(e){ toast(waErr(e),'e'); okk=false; } }
@@ -3470,7 +3475,7 @@ async function openCustomer(id,barcode,mode){
       '<div class="bigbal"><span class="muted">'+esc(t('balance'))+'</span><b>'+balHtml(c.balance)+'</b>'+(second(c.balance)?'<span class="muted num">≈ '+esc(second(c.balance))+'</span>':'')+'</div>'+
       '<div class="kv">'+info.map(function(x){return '<div>'+esc(x[0])+'<b dir="auto">'+esc(x[1])+'</b></div>'}).join('')+'</div>'+
       '<div class="row" style="margin-top:10px">'+
-        (can('read')?'<button class="btn" data-a="read" '+(d.read_now||!c.is_active?'disabled':'')+'>'+esc(t('take_reading'))+'</button>':'')+
+        (can('read')?'<button class="btn" data-a="read" '+((d.read_now&&!isAdmin())||!c.is_active?'disabled':'')+'>'+esc(t(d.read_now&&isAdmin()?'take_reading_x':'take_reading'))+'</button>':'')+
         (can('collect')?'<button class="btn ok" data-a="pay">'+esc(t('collect'))+'</button>':'')+
         (can('cut')?(c.is_active?'<button class="btn danger" data-a="cut">'+esc(t('cut'))+'</button>':'<button class="btn acc" data-a="connect">'+esc(t('connect'))+'</button>'):'')+
         '<button class="btn alt" data-a="stmt">'+esc(t('statement'))+'</button>'+
@@ -3567,7 +3572,7 @@ async function openCustomer(id,barcode,mode){
     var r=$('#gpsRetry',m.body); if(r) r.addEventListener('click',startGeo); }
   function estimate(v){
     var p=d.plan||{}, prev=d.baseline?n2(v):n2(d.prev_value), k=Math.max(0,n2(v)-prev);
-    var price=p.kind==='fixed'?0:(p.kwh_price!=null&&p.kwh_price!==''?n2(p.kwh_price):n2(SITE.kwh_price));
+    var kp=m.body.querySelector('#rkp'), price=p.kind==='fixed'?0:(kp&&kp.value.trim()!==''?n2(kp.value):(p.kwh_price!=null&&p.kwh_price!==''?n2(p.kwh_price):n2(SITE.kwh_price)));
     return {kwh:k,price:price,amt:n2(p.fee)+k*price-n2(c.charge_discount)+n2(c.charge_addition)};
   }
   function readForm(){
@@ -3575,6 +3580,8 @@ async function openCustomer(id,barcode,mode){
     box.innerHTML='<div class="step"><label>'+esc(t('enter_value'))+' — '+esc(t('prev_reading'))+': <b class="num">'+esc(fmtN(d.prev_value))+'</b></label>'+
       '<input id="rv" class="valinput" type="text" inputmode="decimal" autocomplete="off" placeholder="'+esc(fmtN(d.prev_value))+'">'+
       (d.baseline?'<div class="lic" style="margin-top:8px">'+esc(t('baseline_note'))+'</div>':'')+
+      (isAdmin()&&(d.plan||{}).kind!=='fixed'?(d.read_now?'<div class="lic" style="margin-top:8px">'+esc(t('rx_note'))+'</div>':'')+
+        '<label style="margin-top:8px">⚡ '+esc(t('rx_price'))+' ('+esc(sym(mainCur()))+' / '+esc(t('kwh'))+')</label><input id="rkp" type="text" inputmode="decimal" autocomplete="off" style="max-width:220px">':'')+
       '<div id="rest" class="muted" style="margin:8px 0"></div>'+
       '<label class="chk" style="margin:6px 0"><input type="checkbox" id="rremote"> '+esc(t('remote_read'))+'</label><div id="rremn" class="muted hidden" style="font-size:13px">'+esc(t('remote_note'))+'</div>'+
       '<div id="gpsLine" style="margin:6px 0"></div>'+
@@ -3582,11 +3589,14 @@ async function openCustomer(id,barcode,mode){
       '<button class="btn full" id="rnext" style="margin-top:8px">'+esc(t('next_photo'))+'</button>'+
       (isAdmin()?'<button class="btn ghost full" id="rnophoto" style="margin-top:8px">'+esc(t('save_no_photo'))+'</button>':'')+'</div>';
     startGeo();
-    var remote=false;
+    var remote=false, kpi=$('#rkp',box);
+    if(kpi){ loadMonthPrices().then(function(md){ var per=d.read_now?String(TODAY).slice(0,7):(md.current||d.period); var r=(md.rows||[]).filter(function(x){ return x.period===per; })[0]; if(r&&kpi.value==='') kpi.value=String(Number(r.price)); });
+      kpi.addEventListener('input',function(){ kpi.value=kpi.value.replace(/[٠-٩]/g,function(x){return '٠١٢٣٤٥٦٧٨٩'.indexOf(x)}).replace(/[^0-9.]/g,''); inp.dispatchEvent(new Event('input')); }); }
+    function kpOk(){ if(!kpi) return true; var v=kpi.value.trim(); if(v===''||!isFinite(Number(v))){ $('#rmsg',box).textContent=t('e_price_required'); kpi.focus(); return false; } return true; }
     $('#rremote',box).addEventListener('change',function(){ remote=this.checked; $('#rremn',box).classList.toggle('hidden',!remote);
       if(remote){ geo=null; $('#gpsLine',box).innerHTML='<span class="chip gray">📷 '+esc(t('remote_chip'))+'</span>'; } else startGeo();
       if(!photoBlob) $('#rnext',box).innerHTML=esc(remote?t('remote_pick'):t('next_photo')); });
-    var np=$('#rnophoto',box); if(np) np.addEventListener('click',function(){ var v=inp.value.trim(); if(v===''||!isFinite(Number(v))){ $('#rmsg',box).textContent=t('e_bad_value'); return; } photoBlob=null; saveReading(Number(v),true,$('#rremote',box).checked); });
+    var np=$('#rnophoto',box); if(np) np.addEventListener('click',function(){ var v=inp.value.trim(); if(v===''||!isFinite(Number(v))){ $('#rmsg',box).textContent=t('e_bad_value'); return; } if(!kpOk()) return; photoBlob=null; saveReading(Number(v),true,$('#rremote',box).checked); });
     var inp=$('#rv',box); setTimeout(function(){ inp.focus(); },60);
     inp.addEventListener('input',function(){ inp.value=inp.value.replace(/[٠-٩]/g,function(x){return '٠١٢٣٤٥٦٧٨٩'.indexOf(x)}).replace(/[^0-9.]/g,'');
       var v=inp.value; if(!v){ $('#rest',box).textContent=''; return; } var e=estimate(v);
@@ -3595,6 +3605,7 @@ async function openCustomer(id,barcode,mode){
       var msg=$('#rmsg',box); msg.textContent='';
       var v=inp.value.trim(); if(v===''||!isFinite(Number(v))){ msg.textContent=t('e_bad_value'); return; }
       if(!d.baseline&&Number(v)<n2(d.prev_value)){ msg.textContent=t('e_lower_than_prev',{x:fmtN(d.prev_value)}); return; }
+      if(!kpOk()) return;
       if(photoBlob){ return saveReading(Number(v),false,remote); }
       var blob=remote?await pickGallery():await takePhoto(); if(!blob) return;
       photoBlob=blob; inp.readOnly=true;
@@ -3611,7 +3622,7 @@ async function openCustomer(id,barcode,mode){
     try{
       var path=photoBlob?await uploadPhoto(photoBlob):'';
       btn.textContent=t('saving');
-      var r=await call('motor_read',{p_customer:c.id,p_value:v,p_photo:path,p_lat:geo?geo.lat:null,p_lng:geo?geo.lng:null,p_accuracy:geo?geo.acc:null,p_remote:!!remote});
+      var r=await call('motor_read',{p_customer:c.id,p_value:v,p_photo:path,p_lat:geo?geo.lat:null,p_lng:geo?geo.lng:null,p_accuracy:geo?geo.acc:null,p_remote:!!remote,p_price:(function(){ var k=$('#rkp',box); return k&&k.value.trim()!==''?Number(k.value):null; })()});
       toast(t('read_saved'),'s');
       await reload(); paint();
       showBill({inv:r.invoice,c:c,dist:r.dist_m,title:t('read_saved')});
@@ -5138,7 +5149,7 @@ function downloadBlob(blob,name){ var a=document.createElement('a'); a.href=URL.
 /* واتساب مع PDF: منعمل PDF للإيصال، منرفعو، ومنبعت الرابط مع الرسالة */
 async function sendBillWa(o,after,quiet){
   var num=String(o.c.mobile||'').replace(/\D/g,''); if(!num){ if(!quiet) toast(t('no_mobile'),'e'); return false; }
-  if(!o.pay&&o.inv&&o.inv.period&&!(await periodPriced(o.inv.period))){ if(!quiet) askMonthPrice(o.inv.period); return false; }
+  if(!o.pay&&o.inv&&o.inv.period&&!o.inv.price_fixed&&!(await periodPriced(o.inv.period))){ if(!quiet) askMonthPrice(o.inv.period); return false; }
   var k0=o.pay?'pay':'inv', id0=o.pay?o.pay.id:(o.inv&&o.inv.id);
   if(wcOn()){ var a=wcBillArgs(o);
     try{ await wcSend(o.c.mobile_cc,o.c.mobile,a[0],a[1]); if(id0) await call('motor_wa_mark',{p_kind:k0,p_id:id0}).catch(function(){});

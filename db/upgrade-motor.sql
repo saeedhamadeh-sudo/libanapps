@@ -4583,6 +4583,134 @@ begin
 end $m$;
 
 -- ============================================================
+--  20j17) المدير بياخد العداد بأي وقت مع سعر الكيلو مباشرة (تصفية حساب / وقف اشتراك):
+--         إذا الزبون مأخوذ عدادو بهالدورة → قراءة مرحلية (period = اليوم) والفاتورة بتطلع فوراً بالسعر المُدخل
+-- ============================================================
+alter table public.motor_invoices add column if not exists price_fixed boolean not null default false;  -- السعر حدّدو المدير وقت أخذ العداد
+
+drop function if exists public.motor_read(text,text,uuid,numeric,text,double precision,double precision,double precision,boolean);
+create or replace function public.motor_read(p_slug text, p_token text, p_customer uuid, p_value numeric,
+  p_photo text, p_lat double precision, p_lng double precision, p_accuracy double precision default null,
+  p_remote boolean default false, p_price numeric default null)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w jsonb; sid uuid; st public.motor_sites%rowtype; c public.motor_customers%rowtype;
+        pl public.motor_plans%rowtype; prev numeric; d integer; rid uuid; seq integer;
+        kwh numeric; price numeric; fee numeric; energy numeric; amt numeric; inv public.motor_invoices%rowtype;
+        today date := public._motor_today(); baseline boolean := false;
+        adm boolean; interim boolean := false; r_per text; i_per text; mp numeric; expl boolean;
+begin
+  w := public._motor_who(p_slug, p_token);
+  sid := (w->>'site_id')::uuid;
+  adm := coalesce((w->>'is_admin')::boolean, false);
+  select * into st from public.motor_sites where id = sid for update;   -- يرتّب الأرقام المتسلسلة
+  select * into c from public.motor_customers where id = p_customer and site_id = sid for update;
+  if not found then perform public._motor_err('customer_not_found'); end if;
+  if not (w->>'can_read')::boolean then perform public._motor_err('forbidden'); end if;
+  if not adm then p_price := null; end if;                 -- السعر المباشر للمدير بس
+  expl := p_price is not null;
+  if p_price is not null and (p_price < 0 or p_price > 100000) then perform public._motor_err('bad_amount'); end if;
+  if w->>'role' = 'collector' then
+    if not st.collector_sees_all and c.collector_id is distinct from (w->>'staff_id')::uuid then
+      perform public._motor_err('forbidden');
+    end if;
+    -- فترة أخذ العداد ثابتة: من 26 لآخر يوم بالشهر، وبشباط من 23
+    if extract(day from today) < public._motor_read_start(today) then
+      perform public._motor_err('out_of_window', to_char(today, 'YYYY-MM') || '-' || public._motor_read_start(today));
+    end if;
+  end if;
+  if not c.is_active then perform public._motor_err('customer_inactive'); end if;
+  select * into pl from public.motor_plans where id = c.plan_id;
+  r_per := st.bill_period; i_per := st.bill_period;
+  if exists (select 1 from public.motor_readings where customer_id = c.id and period = st.bill_period) then
+    -- المدير: قراءة مرحلية (تصفية حساب) بأي وقت — لازم سعر الكيلو مباشرة
+    if not adm then perform public._motor_err('already_read', st.bill_period); end if;
+    interim := true;
+    r_per := to_char(today, 'YYYY-MM-DD'); i_per := to_char(today, 'YYYY-MM');
+    if exists (select 1 from public.motor_readings where customer_id = c.id and period = r_per) then
+      perform public._motor_err('already_read', r_per);
+    end if;
+  end if;
+  if adm and coalesce(pl.kind,'meter') = 'meter' and p_price is null then
+    mp := public._motor_month_price(sid, i_per);
+    if mp is null then perform public._motor_err('price_required'); end if;
+    p_price := mp;
+  end if;
+  if p_value is null or p_value < 0 then perform public._motor_err('bad_value'); end if;
+  if st.require_photo and coalesce(p_photo,'') = '' and not adm then perform public._motor_err('photo_required'); end if;
+  if coalesce(p_photo,'') <> '' and p_photo !~ ('^/img/motor/' || sid::text || '/') then
+    perform public._motor_err('bad_photo');
+  end if;
+  if coalesce(p_remote, false) then p_lat := null; p_lng := null; p_accuracy := null; end if;
+  if st.require_gps and not coalesce(p_remote, false) and not public._motor_geo_ok(p_lat, p_lng) and not adm then perform public._motor_err('gps_required'); end if;
+
+  select value into prev from public.motor_readings where customer_id = c.id order by created_at desc limit 1;
+  if not found then
+    prev := coalesce(c.initial_reading, 0);
+    baseline := st.first_read_baseline and coalesce(c.initial_reading, 0) = 0 and c.next_prev is null;
+  end if;
+  if c.next_prev is not null then prev := c.next_prev; end if;
+  if baseline then prev := p_value; end if;
+  if p_value < prev then perform public._motor_err('lower_than_prev', prev::text); end if;
+
+  d := null;
+  if public._motor_geo_ok(p_lat, p_lng) and public._motor_geo_ok(c.lat, c.lng) then
+    d := public._motor_dist(c.lat, c.lng, p_lat, p_lng);
+  end if;
+
+  insert into public.motor_readings (site_id, customer_id, period, prev_value, value, photo_url, lat, lng, accuracy,
+                                     dist_m, staff_id, staff_name, remote)
+  values (sid, c.id, r_per, prev, p_value, coalesce(p_photo,''), p_lat, p_lng, p_accuracy, d,
+          (w->>'staff_id')::uuid, w->>'name', coalesce(p_remote, false))
+  returning id into rid;
+
+  if not public._motor_geo_ok(c.lat, c.lng) and public._motor_geo_ok(p_lat, p_lng) and coalesce(p_accuracy, 0) <= 60 then
+    update public.motor_customers set lat = p_lat, lng = p_lng where id = c.id;
+  end if;
+
+  kwh := p_value - prev;
+  fee := coalesce(pl.fee, 0);
+  if coalesce(pl.kind,'meter') = 'meter' then
+    price := coalesce(p_price, public._motor_month_price(sid, i_per), pl.kwh_price, st.kwh_price, 0);
+    energy := kwh * price;
+  else
+    price := 0; energy := 0;
+  end if;
+  amt := public._motor_round(sid, fee + energy - coalesce(c.charge_discount,0) + coalesce(c.charge_addition,0));
+
+  update public.motor_sites set invoice_seq = invoice_seq + 1 where id = sid returning invoice_seq into seq;
+  insert into public.motor_invoices (site_id, no, customer_id, period, kind, reading_id, plan_name, prev_value, cur_value,
+         kwh, kwh_price, fee, energy, discount, addition, amount, balance_before, balance_after, staff_id, staff_name)
+  values (sid, seq, c.id, i_per, coalesce(pl.kind,'meter'), rid, coalesce(pl.name,''), prev, p_value,
+          kwh, price, fee, round(energy,2), coalesce(c.charge_discount,0), coalesce(c.charge_addition,0), amt,
+          c.balance, c.balance + amt, (w->>'staff_id')::uuid, w->>'name')
+  returning * into inv;
+  if coalesce(pl.kind,'meter') = 'meter' then
+    if expl then update public.motor_invoices set price_fixed = true where id = inv.id; inv.price_fixed := true;
+    else update public.motor_invoices set price_auto = true where id = inv.id; end if;
+  end if;
+  if interim then update public.motor_invoices set note = 'قراءة خارج الدورة (تصفية حساب)' where id = inv.id; inv.note := 'قراءة خارج الدورة (تصفية حساب)'; end if;
+  if baseline then update public.motor_invoices set note = 'قراءة أولى (عداد أولي)' where id = inv.id; inv.note := 'قراءة أولى (عداد أولي)'; end if;
+  update public.motor_customers set balance = balance + amt, next_prev = null, updated_at = now() where id = c.id;
+
+  return jsonb_build_object('ok', true, 'invoice', to_jsonb(inv) - 'site_id', 'dist_m', d, 'reading_id', rid, 'baseline', baseline, 'interim', interim);
+end $$;
+grant execute on function public.motor_read(text,text,uuid,numeric,text,double precision,double precision,double precision,boolean,numeric) to anon, authenticated;
+
+-- الفواتير بسعر مباشر من المدير كمان بتنبعت تلقائياً
+do $m$
+declare d text;
+begin
+  d := pg_get_functiondef('public.motor_inv_wa_claim(integer)'::regprocedure);
+  if position('price_fixed' in d) = 0 then
+    d := replace(d, 'and exists (select 1 from public.motor_month_prices m where m.site_id = st.id and m.period = i.period)',
+                    'and (i.price_fixed or exists (select 1 from public.motor_month_prices m where m.site_id = st.id and m.period = i.period))');
+    d := replace(d, 'and exists (select 1 from public.motor_month_prices m where m.site_id = s.id) loop', 'loop');
+    if position('price_fixed' in d) = 0 then raise exception 'claim patch failed'; end if;
+    execute d;
+  end if;
+end $m$;
+
+-- ============================================================
 --  20k) إقفال صندوق الموظف: يسلّم كل النقد للمكتب ويطلع تقرير
 -- ============================================================
 create or replace function public.motor_staff_close(p_slug text, p_token text, p_staff uuid default null)
