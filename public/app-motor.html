@@ -3622,7 +3622,9 @@ async function openCustomer(id,barcode,mode){
     try{
       var path=photoBlob?await uploadPhoto(photoBlob):'';
       btn.textContent=t('saving');
-      var r=await call('motor_read',{p_customer:c.id,p_value:v,p_photo:path,p_lat:geo?geo.lat:null,p_lng:geo?geo.lng:null,p_accuracy:geo?geo.acc:null,p_remote:!!remote,p_price:(function(){ var k=$('#rkp',box); return k&&k.value.trim()!==''?Number(k.value):null; })()});
+      var rargs={p_customer:c.id,p_value:v,p_photo:path,p_lat:geo?geo.lat:null,p_lng:geo?geo.lng:null,p_accuracy:geo?geo.acc:null,p_remote:!!remote};
+      var rk=$('#rkp',box); if(rk&&rk.value.trim()!=='') rargs.p_price=Number(rk.value);   // بس إذا في سعر (توافق مع النسخة القديمة)
+      var r=await call('motor_read',rargs);
       toast(t('read_saved'),'s');
       await reload(); paint();
       showBill({inv:r.invoice,c:c,dist:r.dist_m,title:t('read_saved')});
