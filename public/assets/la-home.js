@@ -93,7 +93,111 @@ function whishify(root){
   });
 }
 window.laWhishify = whishify;
-var _q = false; var mo = new MutationObserver(function(){ if(_q) return; _q = true; requestAnimationFrame(function(){ _q = false; mo.disconnect(); try{ upgrade(); upgradeTop(); whishify(); }catch(e){} mo.observe(document.body, {childList:true, subtree:true, characterData:true}); }); });
+
+/* ===== ☁️ Google Drive + 💬 WhatChimp لبرامج المحاسبة — البرنامج بيعرّف window.LA_APP ===== */
+var API = 'https://libanapps.com/api/acc-int';
+var ST = null, STAT_AT = 0;
+function A(){ return window.LA_APP || null; }
+async function call(op, extra){
+  var a = A(); if(!a || !a.cid()) throw new Error('no_client');
+  var r = await fetch(API, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(Object.assign({ op:op, cid:a.cid(), product:a.product, key: await a.key() }, extra||{})) });
+  var j = await r.json().catch(function(){ return {}; }); if(!r.ok || j.ok===false){ var e = new Error(j.error||('http_'+r.status)); e.j = j; throw e; } return j;
+}
+async function status(force){ if(!force && ST && Date.now()-STAT_AT < 60000) return ST; try{ ST = await call('status'); STAT_AT = Date.now(); }catch(e){ ST = { err:e.message }; } return ST; }
+window.laIntStatus = status;
+function errTxt(e){ var m = String(e && e.message || e); return ({ gd_not_configured:'ربط Google Drive مش مفعّل عالسيرفر بعد', gd_off:'Google Drive مش مربوط', key_mismatch:'مفتاح الربط مش مطابق — تواصل مع LibanApps', no_client:'افتح البرنامج من رابطو الرسمي أول', wc_bad_key:'مفتاح WhatChimp غلط', wc_no_key:'حط مفتاح WhatChimp أول', bad_key:'مفتاح WhatChimp غلط' })[m] || (m.indexOf('gd_token')===0? 'انتهى ربط Google Drive — افصلو واربطو من جديد' : m); }
+function T(msg){ var a = A(); if(a && a.toast) a.toast(msg); }
+// رفع نسخة احتياطية على Drive (why: logout / daily / manual)
+window.laDriveBackup = async function(why){
+  var a = A(); if(!a) return { ok:false };
+  var st = await status(); if(!st || !st.gd || !st.gd.on) return { ok:false, error:'gd_off' };
+  var body = a.backup();
+  var u = API + '/upload?' + new URLSearchParams({ cid:a.cid(), product:a.product, key: await a.key(), name: a.name()||'', why: why||'' }).toString();
+  var r = await fetch(u, { method:'POST', headers:{'Content-Type':'application/json'}, body: body });
+  var j = await r.json().catch(function(){ return {}; }); if(r.ok && j.ok){ ST = null; } return j;
+};
+// نسخة يومية تلقائية (مرة كل يوم) — للمدير
+window.laDriveDaily = async function(){
+  try{ var a = A(); if(!a || !a.canAdmin()) return; var st = await status(); if(!st || !st.gd || !st.gd.on) return;
+    var last = st.gd.last_at? Date.parse(st.gd.last_at) : 0; if(Date.now()-last < 20*3600000) return;
+    await window.laDriveBackup('daily'); }catch(e){}
+};
+// WhatChimp: كل زبون جديد أو تعديل رقم → جهة اتصال
+var _wcMap = null;
+window.laWcCustomersSaved = function(list){
+  var a = A(); if(!a || !Array.isArray(list)) return;
+  var m = {}; list.forEach(function(c){ if(c && !c.deleted && c.phone) m[c.id] = String(c.phone)+'|'+String(c.name||''); });
+  var prev = _wcMap; _wcMap = m; if(!prev) return;
+  if(!ST || !ST.wc || !ST.wc.on) return;
+  Object.keys(m).forEach(function(id){ if(prev[id]!==m[id]){ var c = list.find(function(x){ return x.id===id; }); if(c) call('wc_upsert', { phone:c.phone, name:c.name }).catch(function(){}); } });
+};
+window.laIntCardHtml = function(){
+  return '<div class="card" id="laIntDrive"><h2><span class="dot"></span> ☁️ نسخ احتياطي على Google Drive</h2>'
+    + '<p style="font-size:12.5px; color:var(--ink-soft); line-height:1.7;">بيرفع نسخة كاملة من البيانات على Google Drive تبعك: <b>كل يوم مرة</b> و<b>عند الخروج</b>. النسخ الأقدم من 30 يوم بتنمحى لحالها.</p>'
+    + '<div class="la-int-body" data-int="gd" style="font-size:13.5px;">⏳ ...</div></div>'
+    + '<div class="card" id="laIntWc"><h2><span class="dot"></span> 💬 WhatsApp — WhatChimp API</h2>'
+    + '<p style="font-size:12.5px; color:var(--ink-soft); line-height:1.7;">اعمل مفتاح API من WhatChimp: Settings ← Integrations ← API keys ← Create API key (صلاحية «Contacts and labels»)، والصقو هون. المفتاح بينحفظ عالسيرفر وما بيبيّن بعد الحفظ. بعدها كل زبون إلو رقم بينضاف جهة اتصال على WhatChimp تحت التصنيف يلي بتختارو.</p>'
+    + '<div class="la-int-body" data-int="wc" style="font-size:13.5px;">⏳ ...</div></div>';
+};
+function fmtD(t){ try{ return new Date(t).toLocaleString('en-GB',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}); }catch(e){ return t; } }
+async function fillInt(){
+  var boxes = document.querySelectorAll('.la-int-body:not([data-filled])'); if(!boxes.length) return;
+  boxes.forEach(function(b){ b.setAttribute('data-filled','1'); });
+  var st = await status(true);
+  boxes.forEach(function(b){
+    if(st.err){ b.innerHTML = '<span style="color:var(--debit);">⚠️ '+errTxt(st.err)+'</span>'; return; }
+    if(b.getAttribute('data-int')==='gd'){
+      var g = st.gd||{};
+      b.innerHTML = g.on
+        ? '<div>✅ مربوط بـ <b dir="ltr">'+(g.email||'Google')+'</b></div><div style="color:var(--ink-soft); margin:4px 0 10px;">آخر نسخة: '+(g.last_at? '<b class="num">'+fmtD(g.last_at)+'</b>' : 'بعد ما انرفعت ولا نسخة')+(g.last_err? ' — <span style="color:var(--debit);">'+errTxt(g.last_err)+'</span>' : '')+'</div>'
+          + '<div class="action-row"><button class="btn btn-primary" data-la-int="gd_now">☁️ نسخة على Drive هلق</button><button class="btn" data-la-int="gd_restore">↺ استرجاع نسخة من Drive</button><button class="btn" data-la-int="dl_now">⬇ تنزيل نسخة عالجهاز</button><button class="btn btn-danger" data-la-int="gd_unlink">فصل Drive</button></div>'
+        : (st.gd_conf===false? '<div style="color:var(--debit);">ربط Google Drive مش مفعّل عالسيرفر بعد</div>' : '<div style="margin-bottom:10px;">❌ مش مربوط</div><div class="action-row"><button class="btn btn-primary" data-la-int="gd_link">🔗 ربط Google Drive</button><button class="btn" data-la-int="dl_now">⬇ تنزيل نسخة عالجهاز</button></div>');
+    } else {
+      var w = st.wc||{};
+      b.innerHTML = (w.on? '<div style="margin-bottom:8px;">✅ مفتاح WhatChimp محفوظ</div>' : '<div style="margin-bottom:8px;">❌ ما في مفتاح بعد</div>')
+        + '<div class="grid grid-2"><div class="field" style="margin:0;"><label>مفتاح API</label><input type="password" id="laWcKey" placeholder="'+(w.on? '•••••••• (محفوظ — اكتب جديد لتغيّرو)' : 'الصق المفتاح هون')+'" dir="ltr"></div>'
+        + '<div class="field" style="margin:0;"><label>تصنيف جهات الاتصال (Label)</label><input type="text" id="laWcLabel" value="'+String(w.label||'زبائن').replace(/"/g,'&quot;')+'"></div></div>'
+        + '<div class="action-row" style="margin-top:10px;"><button class="btn btn-primary" data-la-int="wc_save">💾 حفظ</button>'
+        + (w.on? '<button class="btn" data-la-int="wc_sync">🔄 إضافة كل الزباين على WhatChimp</button><button class="btn btn-danger" data-la-int="wc_clear">شيل المفتاح</button>' : '') + '</div><div id="laWcMsg" style="font-size:12.5px; margin-top:6px;"></div>';
+    }
+  });
+}
+document.addEventListener('click', async function(e){
+  var b = e.target.closest && e.target.closest('[data-la-int]'); if(!b) return; e.preventDefault();
+  var a = A(); if(!a) return; var op = b.getAttribute('data-la-int');
+  var redo = function(){ document.querySelectorAll('.la-int-body').forEach(function(x){ x.removeAttribute('data-filled'); }); ST = null; fillInt(); };
+  try{
+    if(op==='dl_now'){ a.download(); return; }
+    if(op==='gd_link'){ var j = await call('gd_auth_url', { ret: location.href.split('#')[0] }); location.href = j.url; return; }
+    if(op==='gd_unlink'){ if(!confirm('فصل Google Drive؟ النسخ يلي عليه بتضل.')) return; await call('gd_unlink'); T('انفصل Google Drive'); redo(); return; }
+    if(op==='gd_now'){ b.disabled = true; b.textContent = '⏳ عم يرفع…'; var r = await window.laDriveBackup('manual'); T(r && r.ok? '☁️ انرفعت النسخة على Google Drive ✅' : '⚠️ '+errTxt(r && r.error)); redo(); return; }
+    if(op==='gd_restore'){ var l = await call('gd_list'); openRestore(l.files||[]); return; }
+    if(op==='wc_save'){ var k = (document.getElementById('laWcKey')||{}).value||'', lab = (document.getElementById('laWcLabel')||{}).value||'';
+      if(k.trim()) await call('wc_set', { wc_key:k.trim(), wc_label:lab }); else await call('wc_label', { wc_label:lab });
+      T('تم الحفظ ✅'); redo(); return; }
+    if(op==='wc_clear'){ if(!confirm('شيل مفتاح WhatChimp؟')) return; await call('wc_clear'); redo(); return; }
+    if(op==='wc_sync'){ var cs = a.contacts(); b.disabled = true; var r2 = await call('wc_sync', { contacts: cs }); var mm = document.getElementById('laWcMsg'); if(mm) mm.textContent = '✅ انبعتو '+(r2.count||0)+' رقم على WhatChimp — عم يتضافو هلق'; b.disabled = false; return; }
+  }catch(err){ T('⚠️ '+errTxt(err)); b.disabled = false; }
+});
+var _homeOnce = false;
+function onHome(){ if(_homeOnce || !document.querySelector('.hub-grid') || !A()) return; _homeOnce = true;
+  setTimeout(function(){ status(true).then(function(){ try{ window.laWcCustomersSaved(A().customers()); }catch(e){} window.laDriveDaily(); }); }, 4000); }
+function openRestore(files){
+  var a = A(); var w = document.createElement('div'); w.className = 'modal-bg';
+  w.innerHTML = '<div class="modal" style="max-width:520px;"><h3>↺ استرجاع نسخة من Google Drive</h3><div style="font-size:12.5px; color:var(--debit); margin-bottom:8px;">⚠️ الاسترجاع بيستبدل كل البيانات الحالية بالنسخة يلي بتختارها.</div>'
+    + (files.length? '<div style="max-height:50vh; overflow:auto;">'+files.map(function(f){ return '<div style="display:flex; justify-content:space-between; gap:8px; align-items:center; padding:6px 0; border-bottom:1px dashed var(--line);"><span><b dir="ltr" style="font-size:12.5px;">'+f.name+'</b><br><small class="num" style="color:var(--ink-soft);">'+fmtD(f.createdTime)+' · '+Math.round((+f.size||0)/1024)+' KB</small></span><button class="btn btn-sm btn-primary" data-gd-pick="'+f.id+'">استرجاع</button></div>'; }).join('')+'</div>' : '<div>ما في نسخ على Drive بعد</div>')
+    + '<div class="row" style="margin-top:10px;"><button class="btn" id="gdr_x">إغلاق</button></div></div>';
+  document.body.appendChild(w);
+  w.querySelector('#gdr_x').addEventListener('click', function(){ w.remove(); });
+  w.querySelectorAll('[data-gd-pick]').forEach(function(btn){ btn.addEventListener('click', async function(){
+    if(!confirm('أكيد؟ رح تتبدّل كل البيانات الحالية بهالنسخة.')) return;
+    btn.disabled = true; btn.textContent = '⏳';
+    try{ var r = await fetch(API, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ op:'gd_get', id:btn.getAttribute('data-gd-pick'), cid:a.cid(), product:a.product, key: await a.key() }) });
+      if(!r.ok) throw new Error('http_'+r.status); var data = await r.json(); w.remove(); await a.restore(data); }
+    catch(e){ T('⚠️ '+errTxt(e)); btn.disabled = false; btn.textContent = 'استرجاع'; }
+  }); });
+}
+var _q = false; var mo = new MutationObserver(function(){ if(_q) return; _q = true; requestAnimationFrame(function(){ _q = false; mo.disconnect(); try{ upgrade(); upgradeTop(); whishify(); fillInt(); onHome(); }catch(e){} mo.observe(document.body, {childList:true, subtree:true, characterData:true}); }); });
 function start(){ upgrade(); upgradeTop(); whishify(); mo.observe(document.body, {childList:true, subtree:true, characterData:true}); }
 if(document.body) start(); else document.addEventListener('DOMContentLoaded', start);
 

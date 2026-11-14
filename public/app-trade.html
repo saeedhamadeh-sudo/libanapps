@@ -915,6 +915,7 @@ function splitWhTrash(){
   return ch;
 }
 async function save(key, value){
+  if(key===KEYS.customers && window.laWcCustomersSaved){ try{ window.laWcCustomersSaved(value); }catch(e){} }
   if(key===KEYS.warehouseItems){ const same = value===DB.warehouseItems; splitWhTrash(); value = same? DB.warehouseItems : (Array.isArray(value)? value.filter(x=>!(x && x.deleted)) : value); }
   try{
     localStorage.setItem(skey(key), JSON.stringify(key===KEYS.warehouseItems? whWithTrash(value) : value));
@@ -1252,7 +1253,7 @@ function settingsToDb(s){
     company_name: s.companyName||null, company_tag: s.companyTag||null, company_phone: s.companyPhone||null,
     logo: s.logo||null, default_exchange_rate: s.defaultExchangeRate||90000,
     invoice_start: s.invoiceStart||0, receipt_start: s.receiptStart||1000,
-    auto_backup_on_close: !!s.autoBackupOnClose,
+    auto_backup_on_close: !!s.autoBackupOnClose, int_key: s.intKey||null,
     expiry_alert_days: s.expiryAlertDays||20, barcode_scan_method: s.barcodeScanMethod||'camera',
     pos_auto_open_drawer: s.posAutoOpenDrawer!==false,
     cash_box_lbp: s.cashBoxLBP||0, cash_box_usd: s.cashBoxUSD||0,
@@ -1301,7 +1302,7 @@ function applySettingsFromDb(row, base){
     defaultExchangeRate: row.default_exchange_rate!=null? row.default_exchange_rate : base.defaultExchangeRate,
     invoiceStart: row.invoice_start!=null? row.invoice_start : base.invoiceStart,
     receiptStart: row.receipt_start!=null? row.receipt_start : base.receiptStart,
-    autoBackupOnClose: !!row.auto_backup_on_close,
+    autoBackupOnClose: !!row.auto_backup_on_close, intKey: row.int_key || base.intKey || null,
     expiryAlertDays: row.expiry_alert_days!=null? row.expiry_alert_days : base.expiryAlertDays,
     barcodeScanMethod: row.barcode_scan_method!=null? row.barcode_scan_method : base.barcodeScanMethod,
     posAutoOpenDrawer: row.pos_auto_open_drawer!=null? !!row.pos_auto_open_drawer : base.posAutoOpenDrawer,
@@ -2038,13 +2039,37 @@ function timestampForFilename(){
   const pad = n=>String(n).padStart(2,'0');
   return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}_${pad(d.getHours())}-${pad(d.getMinutes())}`;
 }
+// نسخة احتياطية كاملة: كل جداول البرنامج + الإعدادات
+function backupPayload(){
+  const p = { app:'trade', exportedAt:new Date().toISOString(), settings:DB.settings };
+  Object.keys(KEYS).forEach(k=>{ if(k!=='settings' && Array.isArray(DB[k])) p[k] = (k==='warehouseItems' && typeof whWithTrash==='function')? whWithTrash(DB[k]) : DB[k]; });
+  return p;
+}
+async function applyBackupData(data){
+  if(!data || typeof data!=='object' || !Array.isArray(data.customers)) throw new Error('bad');
+  Object.keys(KEYS).forEach(k=>{ if(k!=='settings' && Array.isArray(data[k])) DB[k] = data[k]; });
+  if(data.settings){ const key = DB.settings.intKey; DB.settings = {...DB.settings, ...data.settings}; if(key) DB.settings.intKey = key; }
+  if(typeof migrateUsers==='function') migrateUsers();
+  if(typeof migrateBudgetCategories==='function') migrateBudgetCategories();
+  await Promise.all(Object.keys(KEYS).filter(k=>k==='settings' || Array.isArray(data[k])).map(k=>save(KEYS[k], DB[k])));
+  toast('تم استرجاع النسخة الاحتياطية بنجاح ✅'); go('#/'); render();
+}
+// ربط Google Drive و WhatChimp (assets/la-home.js)
+window.LA_APP = {
+  product:'trade',
+  cid: ()=>CLIENT_ID,
+  key: async ()=>{ if(!DB.settings.intKey){ const a = new Uint8Array(24); crypto.getRandomValues(a); DB.settings.intKey = Array.from(a).map(b=>b.toString(16).padStart(2,'0')).join(''); await save(KEYS.settings, DB.settings); } return DB.settings.intKey; },
+  name: ()=>DB.settings.companyName||'',
+  backup: ()=>JSON.stringify(backupPayload()),
+  download: ()=>downloadBackupFile(),
+  restore: (d)=>applyBackupData(d),
+  customers: ()=>DB.customers||[],
+  contacts: ()=>(DB.customers||[]).filter(c=>!c.deleted && c.phone).map(c=>({phone:c.phone, name:c.name})),
+  toast: (m)=>toast(m),
+  canAdmin: ()=>!!(currentUser && isPrivilegedUser(currentUser))
+};
 function downloadBackupFile(){
-  const payload = {exportedAt:new Date().toISOString(), customers:DB.customers, invoices:DB.invoices, receipts:DB.receipts, settings:DB.settings,
-    suppliers:DB.suppliers, purchaseInvoices:DB.purchaseInvoices, paymentVouchers:DB.paymentVouchers,
-    warehouseItems:DB.warehouseItems, stockIns:DB.stockIns, stockOuts:DB.stockOuts,
-    customerAccounts:DB.customerAccounts,
-    budgetCategories:DB.budgetCategories, budgetEntries:DB.budgetEntries,
-    workers:DB.workers, workEntries:DB.workEntries, workerPayments:DB.workerPayments, workerAccounts:DB.workerAccounts};
+  const payload = backupPayload();
   const blob = new Blob([JSON.stringify(payload,null,2)], {type:'application/json'});
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -2056,41 +2081,12 @@ async function handleBackupImportFile(inputEl){
   const file = inputEl.files[0];
   if(!file) return;
   if(!confirm('استيراد النسخة الاحتياطية سيستبدل كل البيانات الحالية بالكامل. هل أنت متأكد؟')) { inputEl.value=''; return; }
-  try{
-    const text = await file.text();
-    const data = JSON.parse(text);
-    if(!data.customers || !data.invoices || !data.receipts) throw new Error('ملف غير صالح');
-    DB.customers = data.customers; DB.invoices = data.invoices; DB.receipts = data.receipts;
-    DB.suppliers = data.suppliers||[]; DB.purchaseInvoices = data.purchaseInvoices||[]; DB.paymentVouchers = data.paymentVouchers||[];
-    DB.warehouseItems = data.warehouseItems||[]; DB.stockIns = data.stockIns||[]; DB.stockOuts = data.stockOuts||[];
-    DB.customerAccounts = data.customerAccounts||[];
-    DB.budgetCategories = data.budgetCategories||[]; DB.budgetEntries = data.budgetEntries||[];
-    DB.workers = data.workers||[]; DB.workEntries = data.workEntries||[]; DB.workerPayments = data.workerPayments||[]; DB.workerAccounts = data.workerAccounts||[];
-    if(data.settings) DB.settings = {...DB.settings, ...data.settings};
-    migrateUsers();
-    migrateBudgetCategories();
-    await Promise.all([
-      save(KEYS.customers, DB.customers), save(KEYS.invoices, DB.invoices), save(KEYS.receipts, DB.receipts), save(KEYS.settings, DB.settings),
-      save(KEYS.suppliers, DB.suppliers), save(KEYS.purchaseInvoices, DB.purchaseInvoices), save(KEYS.paymentVouchers, DB.paymentVouchers),
-      save(KEYS.warehouseItems, DB.warehouseItems), save(KEYS.stockIns, DB.stockIns), save(KEYS.stockOuts, DB.stockOuts),
-      save(KEYS.customerAccounts, DB.customerAccounts),
-      save(KEYS.budgetCategories, DB.budgetCategories), save(KEYS.budgetEntries, DB.budgetEntries),
-      save(KEYS.workers, DB.workers), save(KEYS.workEntries, DB.workEntries), save(KEYS.workerPayments, DB.workerPayments), save(KEYS.workerAccounts, DB.workerAccounts)
-    ]);
-    if(supabaseClient && DB.customers.length){
-      const rows = DB.customers.map(customerToDb);
-      const { error } = await supabaseClient.from(T('customers')).upsert(rows.map(withClient));
-      if(error) toast('استُرجعت النسخة محليًا لكن حدث خطأ في مزامنة الزبائن مع السحابة');
-    }
-    toast('تم استرجاع النسخة الاحتياطية بنجاح');
-    go('#/');
-  }catch(e){
-    toast('حدث خطأ: الملف ليس نسخة احتياطية صالحة');
-  }
+  try{ await applyBackupData(JSON.parse(await file.text())); }
+  catch(e){ toast('حدث خطأ: الملف ليس نسخة احتياطية صالحة'); }
   inputEl.value='';
 }
 window.addEventListener('beforeunload', ()=>{
-  if(DB.settings && DB.settings.autoBackupOnClose){
+  if(DB.settings && DB.settings.autoBackupOnClose && !(window.laIntStatus && window._laGdOn)){
     try{ downloadBackupFile(); }catch(e){ /* best-effort */ }
   }
 });
@@ -11751,7 +11747,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-11-14 · 19:50 · v92';
+const APP_TRADE_BUILD = '2026-11-14 · 21:00 · v93';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 function settingsView(){
   const s = DB.settings;
@@ -12051,8 +12047,10 @@ function settingsView(){
     <button class="btn btn-primary" id="autoGroupBtn">🤖 توزيع تلقائي</button>
   </div>
 
+  ${(isPrivilegedUser(currentUser) && window.laIntCardHtml)? laIntCardHtml() : ''}
+
   <div class="card">
-    <h2><span class="dot"></span> نسخة احتياطية</h2>
+    <h2><span class="dot"></span> نسخة احتياطية (ملف)</h2>
     <div style="font-size:13px; color:var(--ink-soft); margin-bottom:12px; line-height:1.7;">
       يُحدَّد اسم ملف النسخة الاحتياطية تلقائيًا بتاريخ ووقت اللحظة (مثلاً hmadeh-backup-2026-08-26_14-32.json) لتسهيل الاسترجاع.
     </div>
@@ -13797,23 +13795,29 @@ async function performFactoryReset(){
 function openLogoutModal(){
   const wrap = document.createElement('div');
   wrap.className='modal-bg';
-  wrap.innerHTML = `<div class="modal">
-    <h3>⚠ قبل الإغلاق</h3>
-    <p style="font-size:13.5px; color:var(--ink-soft); line-height:1.7;">
-      يجب أخذ نسخة احتياطية قبل تسجيل الخروج، حتى لا تضيع بياناتك.
-    </p>
-    <div class="row">
-      <button class="btn" id="logout_cancel">إلغاء</button>
-      <button class="btn btn-primary" id="logout_backup_confirm">⬇ خذ نسخة احتياطية واخرج</button>
-    </div>
-  </div>`;
+  wrap.innerHTML = `<div class="modal"><h3>🔒 تسجيل الخروج</h3><div id="lo_body" style="font-size:13.5px; line-height:1.8;">⏳ ...</div>
+    <div class="row" id="lo_row"><button class="btn" id="logout_cancel">إلغاء</button></div></div>`;
   document.body.appendChild(wrap);
   wrap.querySelector('#logout_cancel').addEventListener('click', ()=>wrap.remove());
-  wrap.querySelector('#logout_backup_confirm').addEventListener('click', async ()=>{
-    downloadBackupFile();
-    wrap.remove();
-    await signOutEverywhere();
-  });
+  const body = wrap.querySelector('#lo_body'), row = wrap.querySelector('#lo_row');
+  const btn = (id, cls, txt)=>{ const b = document.createElement('button'); b.id = id; b.className = 'btn '+cls; b.textContent = txt; row.appendChild(b); return b; };
+  (async ()=>{
+    let st = null; try{ st = window.laIntStatus? await window.laIntStatus(true) : null; }catch(e){}
+    const on = !!(st && st.gd && st.gd.on); window._laGdOn = on;
+    if(on){
+      body.innerHTML = '☁️ رح ينرفع نسخة احتياطية على <b dir="ltr">'+escapeHtml(st.gd.email||'Google Drive')+'</b> قبل الخروج.';
+      btn('logout_backup_confirm','btn-primary','☁️ نسخة على Drive واخرج').addEventListener('click', async (e)=>{
+        e.target.disabled = true; e.target.textContent = '⏳ عم يرفع النسخة…';
+        let r = null; try{ r = await window.laDriveBackup('logout'); }catch(err){}
+        if(!(r && r.ok) && !confirm('⚠️ ما قدرنا نرفع النسخة على Drive ('+((r && r.error)||'خطأ')+'). بدك تطلع هيك؟')){ e.target.disabled = false; e.target.textContent = '☁️ نسخة على Drive واخرج'; return; }
+        wrap.remove(); await signOutEverywhere();
+      });
+    } else {
+      body.innerHTML = 'Google Drive مش مربوط — اربطو من <b>الإعدادات</b> حتى تنرفع نسخة لحالها عند الخروج.';
+      btn('logout_dl','','⬇ نزّل نسخة واخرج').addEventListener('click', async ()=>{ downloadBackupFile(); wrap.remove(); await signOutEverywhere(); });
+      btn('logout_plain','btn-primary','خروج').addEventListener('click', async ()=>{ wrap.remove(); await signOutEverywhere(); });
+    }
+  })();
 }
 function openDeleteCustomerModal(cust){
   if(denyIfNo('delete','الحذف')) return;

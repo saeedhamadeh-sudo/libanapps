@@ -2060,6 +2060,7 @@ async function motorGdCallback(url, env) {
   const state = url.searchParams.get('state') || '', code = url.searchParams.get('code') || '';
   const [st, sig] = state.split('.');
   let d = {}; try { d = JSON.parse(atob(st || '')); } catch {}
+  if (d && d.k === 'acc') return await accGdCallback(env, d, st, sig, code);   // برامج المحاسبة (تجارة / صناعيين)
   if (!st || !sig || sig !== await gdSign(env, st) || !(d.e > Date.now()) || !/^[0-9a-f-]{36}$/.test(String(d.s))) return back(d.g, 'bad_state');
   if (!code) return back(d.g, 'denied');
   const tr = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -2070,6 +2071,148 @@ async function motorGdCallback(url, env) {
   await fetch(`${env.SUPABASE_URL}/rest/v1/motor_sites?id=eq.${d.s}`, { method: 'PATCH', headers: svcH(env),
     body: JSON.stringify({ gd_refresh: tj.refresh_token, gd_email: email, gd_folder: '', gd_last_err: '' }) });
   return back(d.g, 'ok');
+}
+// ---------- برامج المحاسبة (تجارة / صناعيين): Google Drive + WhatChimp ----------
+//  المصادقة بمفتاح سرّي للزبون (محفوظ بإعدادات البرنامج) — بيشتغل للسحابة وللنسخة المحلية.
+//  مفاتيح Google و WhatChimp بتضل عالسيرفر (acc_integrations) وما بتوصل للمتصفح.
+async function accSha(s) { return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(String(s))))).map((b) => b.toString(16).padStart(2, '0')).join(''); }
+function accRet(u) { try { const x = new URL(String(u || '')); if (x.protocol === 'https:' && (x.hostname === 'libanapps.com' || x.hostname.endsWith('.libanapps.com'))) return x.toString(); } catch {} return 'https://libanapps.com/'; }
+async function accRow(env, cid, product) {
+  const r = await fetch(`${env.SUPABASE_URL}/rest/v1/acc_integrations?client_id=eq.${cid}&product=eq.${product}&select=*`, { headers: svcH(env) });
+  return ((await r.json().catch(() => [])) || [])[0] || null;
+}
+async function accPatch(env, cid, product, o) {
+  return fetch(`${env.SUPABASE_URL}/rest/v1/acc_integrations?client_id=eq.${cid}&product=eq.${product}`, { method: 'PATCH', headers: svcH(env), body: JSON.stringify(Object.assign({ updated_at: new Date().toISOString() }, o)) });
+}
+// بيتحقق من الزبون والمفتاح — وأول مرة بيسجّل المفتاح
+async function accAuth(env, cid, product, key) {
+  if (!/^[0-9a-f-]{36}$/.test(String(cid)) || !['trade', 'alum'].includes(product) || String(key || '').length < 24) { const e = new Error('bad_fields'); e.status = 400; throw e; }
+  const kh = await accSha(key);
+  let row = await accRow(env, cid, product);
+  if (!row) {
+    const ok = await fetch(`${env.SUPABASE_URL}/rest/v1/app_settings?client_id=eq.${cid}&product_code=eq.${product}&select=client_id&limit=1`, { headers: svcH(env) }).then((r) => r.json()).catch(() => []);
+    if (!ok || !ok[0]) { const e = new Error('no_client'); e.status = 404; throw e; }
+    await fetch(`${env.SUPABASE_URL}/rest/v1/acc_integrations`, { method: 'POST', headers: Object.assign({ Prefer: 'resolution=ignore-duplicates' }, svcH(env)), body: JSON.stringify({ client_id: cid, product, key_hash: kh }) });
+    row = await accRow(env, cid, product);
+  }
+  if (!row || row.key_hash !== kh) { const e = new Error('key_mismatch'); e.status = 403; throw e; }
+  return row;
+}
+async function accGdFolder(env, row, GH, name) {
+  let folder = row.gd_folder;
+  if (folder) { const fr = await fetch(`https://www.googleapis.com/drive/v3/files/${folder}?fields=id,trashed`, { headers: GH }); const fj = await fr.json().catch(() => ({})); if (!fr.ok || fj.trashed) folder = ''; }
+  if (!folder) {
+    const cr = await fetch('https://www.googleapis.com/drive/v3/files?fields=id', { method: 'POST', headers: Object.assign({ 'Content-Type': 'application/json' }, GH),
+      body: JSON.stringify({ name: 'LibanApps - ' + (name || 'محاسبة') + ' (نسخ احتياطي)', mimeType: 'application/vnd.google-apps.folder' }) });
+    const cj = await cr.json(); if (!cj.id) throw new Error('gd_folder'); folder = cj.id; await accPatch(env, row.client_id, row.product, { gd_folder: folder });
+  }
+  return folder;
+}
+async function accInt(request, env, url) {
+  try {
+    // رفع نسخة احتياطية: الجسم هو ملف الـJSON نفسو
+    if (url.pathname === '/api/acc-int/upload') {
+      const cid = url.searchParams.get('cid'), product = url.searchParams.get('product'), key = url.searchParams.get('key') || '';
+      const row = await accAuth(env, cid, product, key);
+      if (!row.gd_refresh) return json(409, { ok: false, error: 'gd_off' });
+      const body = await request.text();
+      if (body.length < 20) return json(400, { ok: false, error: 'empty' });
+      try {
+        const at = await gdAccess(env, row.gd_refresh); const GH = { Authorization: `Bearer ${at}` };
+        const folder = await accGdFolder(env, row, GH, url.searchParams.get('name') || '');
+        const p2 = (x) => String(x).padStart(2, '0'); const bz = new Date(Date.now() + 2 * 3600000);
+        const why = (url.searchParams.get('why') || '').replace(/[^a-z]/g, '').slice(0, 10);
+        const fname = `${product}-backup-${bz.getUTCFullYear()}${p2(bz.getUTCMonth() + 1)}${p2(bz.getUTCDate())}-${p2(bz.getUTCHours())}${p2(bz.getUTCMinutes())}${why ? '-' + why : ''}.json`;
+        const bnd = 'lbk' + crypto.randomUUID().replace(/-/g, '');
+        const mp = `--${bnd}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n` + JSON.stringify({ name: fname, parents: [folder], mimeType: 'application/json' }) +
+          `\r\n--${bnd}\r\nContent-Type: application/json\r\n\r\n` + body + `\r\n--${bnd}--`;
+        const ur = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,size', { method: 'POST', headers: Object.assign({ 'Content-Type': `multipart/related; boundary=${bnd}` }, GH), body: mp });
+        const uj = await ur.json().catch(() => ({})); if (!uj.id) throw new Error('gd_upload:' + ur.status);
+        const cutoff = new Date(Date.now() - 30 * 86400000).toISOString();
+        const lr = await fetch('https://www.googleapis.com/drive/v3/files?' + new URLSearchParams({ q: `'${folder}' in parents and trashed=false and createdTime < '${cutoff}'`, fields: 'files(id)', pageSize: '20' }), { headers: GH });
+        const lj = await lr.json().catch(() => ({ files: [] })); let removed = 0;
+        for (const f of (lj.files || []).slice(0, 10)) { const dr = await fetch(`https://www.googleapis.com/drive/v3/files/${f.id}`, { method: 'DELETE', headers: GH }); if (dr.ok) removed++; }
+        await accPatch(env, cid, product, { gd_last_at: new Date().toISOString(), gd_last_err: '' });
+        return json(200, { ok: true, name: fname, size: Number(uj.size || body.length), removed });
+      } catch (e) { const msg = String(e && e.message || e).slice(0, 200); await accPatch(env, cid, product, { gd_last_err: msg }); return json(502, { ok: false, error: msg }); }
+    }
+    let b; try { b = await request.json(); } catch { return json(400, { ok: false, error: 'bad_json' }); }
+    const cid = String(b.cid || ''), product = String(b.product || ''), op = String(b.op || '');
+    const row = await accAuth(env, cid, product, b.key);
+    if (op === 'status') return json(200, { ok: true, gd: { on: !!row.gd_refresh, email: row.gd_email || '', last_at: row.gd_last_at, last_err: row.gd_last_err || '' }, wc: { on: !!row.wc_api_key, label: row.wc_label || '' }, gd_conf: !!(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET) });
+    if (op === 'gd_auth_url') {
+      if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET) return json(409, { ok: false, error: 'gd_not_configured' });
+      const st = btoa(unescape(encodeURIComponent(JSON.stringify({ k: 'acc', c: cid, p: product, h: row.key_hash.slice(0, 16), r: accRet(b.ret), e: Date.now() + 15 * 60000 })))).replace(/=+$/, '');
+      const state = st + '.' + await gdSign(env, st);
+      return json(200, { ok: true, url: 'https://accounts.google.com/o/oauth2/v2/auth?' + new URLSearchParams({ client_id: env.GOOGLE_CLIENT_ID, redirect_uri: gdRedirect(env),
+        response_type: 'code', scope: GD_SCOPE, access_type: 'offline', prompt: 'consent', include_granted_scopes: 'true', state }) });
+    }
+    if (op === 'gd_unlink') { await accPatch(env, cid, product, { gd_refresh: null, gd_email: null, gd_folder: null, gd_last_err: '' }); return json(200, { ok: true }); }
+    if (op === 'gd_list' || op === 'gd_get') {
+      if (!row.gd_refresh) return json(409, { ok: false, error: 'gd_off' });
+      const at = await gdAccess(env, row.gd_refresh); const GH = { Authorization: `Bearer ${at}` };
+      if (op === 'gd_get') {
+        const id = String(b.id || '').replace(/[^\w-]/g, ''); if (!id) return json(400, { ok: false, error: 'bad_fields' });
+        const meta = await fetch(`https://www.googleapis.com/drive/v3/files/${id}?fields=parents`, { headers: GH }).then((r) => r.json()).catch(() => ({}));
+        if (!row.gd_folder || !(meta.parents || []).includes(row.gd_folder)) return json(403, { ok: false, error: 'not_ours' });
+        const fr = await fetch(`https://www.googleapis.com/drive/v3/files/${id}?alt=media`, { headers: GH });
+        return new Response(fr.body, { status: fr.status, headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' } });
+      }
+      if (!row.gd_folder) return json(200, { ok: true, files: [] });
+      const lr = await fetch('https://www.googleapis.com/drive/v3/files?' + new URLSearchParams({ q: `'${row.gd_folder}' in parents and trashed=false`, fields: 'files(id,name,size,createdTime)', orderBy: 'createdTime desc', pageSize: '60' }), { headers: GH });
+      const lj = await lr.json().catch(() => ({})); return json(200, { ok: true, files: lj.files || [] });
+    }
+    // ---- WhatChimp ----
+    if (op === 'wc_set') {
+      const k = String(b.wc_key || '').trim(); const label = String(b.wc_label || '').trim().slice(0, 60) || 'زبائن';
+      if (k.length < 10) return json(400, { ok: false, error: 'bad_key' });
+      const t = await fetch('https://api.whatchimp.com/v1/contacts?limit=1', { headers: { Authorization: `Bearer ${k}` } });
+      if (t.status === 401) return json(400, { ok: false, error: 'wc_bad_key' });
+      await accPatch(env, cid, product, { wc_api_key: k, wc_label: label });
+      return json(200, { ok: true, check: t.status });
+    }
+    if (op === 'wc_label') { await accPatch(env, cid, product, { wc_label: String(b.wc_label || '').trim().slice(0, 60) || 'زبائن' }); return json(200, { ok: true }); }
+    if (op === 'wc_clear') { await accPatch(env, cid, product, { wc_api_key: null }); return json(200, { ok: true }); }
+    if (!row.wc_api_key) return json(409, { ok: false, error: 'wc_no_key' });
+    const H = { Authorization: `Bearer ${row.wc_api_key}`, 'Content-Type': 'application/json' };
+    const LABEL = row.wc_label || 'زبائن';
+    const out = async (r) => { const t = await r.text(); let j = {}; try { j = JSON.parse(t); } catch {}
+      if (r.ok) return json(200, Object.assign({ ok: true }, j));
+      const code = typeof j.error === 'string' ? j.error : (j.error && (j.error.code || j.error.type));
+      return json(r.status, { ok: false, error: code || ('http_' + r.status), message: j.message || (j.error && j.error.message) || t.slice(0, 200) }); };
+    const normPh = (m) => { let n = String(m || '').replace(/\D/g, ''); if (!n) return ''; if (n.startsWith('00')) n = n.slice(2); else if (!(n.startsWith('961') && n.length > 9)) n = '961' + n.replace(/^0+/, ''); return n.length >= 8 ? '+' + n : ''; };
+    if (op === 'wc_upsert') {
+      const ph = normPh(b.phone); if (!ph) return json(200, { ok: true, skipped: true });
+      return out(await fetch('https://api.whatchimp.com/v1/contacts', { method: 'POST', headers: Object.assign({ 'Idempotency-Key': crypto.randomUUID() }, H),
+        body: JSON.stringify({ phone: ph, first_name: String(b.name || '').trim().slice(0, 100) || null, labels_add: [LABEL] }) }));
+    }
+    if (op === 'wc_sync') {
+      const seen = new Set(), rows = [];
+      for (const c of (Array.isArray(b.contacts) ? b.contacts : []).slice(0, 20000)) { const ph = normPh(c.phone); if (!ph || seen.has(ph)) continue; seen.add(ph); rows.push([ph, String(c.name || '').replace(/[\r\n",]/g, ' ').trim()]); }
+      if (!rows.length) return json(200, { ok: true, count: 0 });
+      const csv = 'phone,first_name\n' + rows.map((x) => `${x[0]},"${x[1]}"`).join('\n');
+      const r = await fetch('https://api.whatchimp.com/v1/contacts/import', { method: 'POST', headers: Object.assign({ 'Idempotency-Key': crypto.randomUUID() }, H),
+        body: JSON.stringify({ csv, label: LABEL, columns: { phone: 'phone', first_name: 'first_name' }, on_conflict: 'update', default_country: 'LB' }) });
+      const res = await out(r); if (!r.ok) return res; const j = await res.json(); return json(200, Object.assign(j, { count: rows.length }));
+    }
+    if (op === 'wc_import_status') { const id = String(b.id || '').replace(/[^\w-]/g, ''); return out(await fetch(`https://api.whatchimp.com/v1/contacts/import/${id}`, { headers: H })); }
+    return json(400, { ok: false, error: 'bad_op' });
+  } catch (e) { return json(e.status || 500, { ok: false, error: e.message || 'error' }); }
+}
+async function accGdCallback(env, d, st, sig, code) {
+  const ret = accRet(d.r);
+  const back = (q) => { const u = new URL(ret); u.hash = '#/settings?gd=' + q; return Response.redirect(u.toString(), 302); };
+  if (!st || !sig || sig !== await gdSign(env, st) || !(d.e > Date.now())) return back('bad_state');
+  if (!code) return back('denied');
+  const row = await accRow(env, d.c, d.p);
+  if (!row || row.key_hash.slice(0, 16) !== d.h) return back('bad_state');
+  const tr = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ code, client_id: env.GOOGLE_CLIENT_ID, client_secret: env.GOOGLE_CLIENT_SECRET, redirect_uri: gdRedirect(env), grant_type: 'authorization_code' }) });
+  const tj = await tr.json().catch(() => ({}));
+  if (!tj.refresh_token) return back('no_refresh');
+  let email = ''; try { email = JSON.parse(atob(String(tj.id_token || '').split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))).email || ''; } catch {}
+  await accPatch(env, d.c, d.p, { gd_refresh: tj.refresh_token, gd_email: email, gd_folder: null, gd_last_err: '' });
+  return back('ok');
 }
 async function gdAccess(env, refresh) {
   const r = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -4085,6 +4228,13 @@ export default {
           return await portalToken(request, env);
         }
         if (url.pathname === '/api/motor-gdrive/callback') return await motorGdCallback(url, env);
+        if (url.pathname === '/api/acc-int' || url.pathname === '/api/acc-int/upload') {
+          if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'POST', 'Access-Control-Allow-Headers': 'Content-Type' } });
+          if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
+          const res = await accInt(request, env, url);
+          const h = new Headers(res.headers); h.set('Access-Control-Allow-Origin', '*');
+          return new Response(res.body, { status: res.status, headers: h });
+        }
         if (url.pathname === '/api/motor-gdrive') {
           if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
           return await motorGd(request, env);
