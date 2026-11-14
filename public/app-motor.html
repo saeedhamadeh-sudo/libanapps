@@ -1853,6 +1853,25 @@ var D={
  k_sale:['فاتورة مبيعات','Sales invoice','Facture de vente'],
  nav_sales:['فاتورة مبيعات وإيصال قبض','Sales invoice & receipt','Facture de vente et reçu'],
  compact_t:['تصغير/تكبير الجداول','Compact tables','Tableaux compacts'],
+ mp_title:['سعر الكيلو واط لكل شهر','kWh price per month','Prix du kWh par mois'],
+ mp_hint:['حدّد سعر الكيلو واط لكل شهر بشهره. رسائل قيمة الفاتورة لا تُرسل قبل تحديد سعر الشهر. عند الحفظ تُعاد حسابات فواتير العداد لهذا الشهر على السعر الجديد، ثم يُرسل النظام رسائل قيمة الفاتورة تلقائياً (ضمن حد الـ250 اليومي).','Set the kWh price for each month. Invoice messages are not sent before the month price is set. On save, that month’s meter invoices are recalculated and the system sends invoice messages automatically (within the 250/day limit).','Définissez le prix du kWh pour chaque mois. Les messages de facture ne partent qu’après. À l’enregistrement, les factures du mois sont recalculées et les messages envoyés automatiquement (limite 250/jour).'],
+ mp_month:['الشهر','Month','Mois'],
+ mp_save:['حفظ السعر','Save price','Enregistrer le prix'],
+ mp_invoices:['فواتير الشهر','Month invoices','Factures du mois'],
+ mp_pending:['رسائل بانتظار الإرسال','Messages pending','Messages en attente'],
+ mp_need_t:['حدّد سعر الكيلو واط لهذا الشهر','Set this month’s kWh price','Fixez le prix du kWh de ce mois'],
+ mp_need:['حدّد سعر الكيلو واط لشهر {m} حتى يصبح إرسال قيمة الفاتورة ممكناً.','Set the kWh price for {m} to enable sending invoice amounts.','Fixez le prix du kWh de {m} pour pouvoir envoyer les factures.'],
+ mp_price_for:['سعر الكيلو واط لشهر {m}','kWh price for {m}','Prix du kWh pour {m}'],
+ mp_auto_note:['بعد الحفظ تُعاد حسابات فواتير هذا الشهر على هذا السعر، وتُرسل رسائل قيمة الفاتورة تلقائياً خلال 15 دقيقة.','After saving, this month’s invoices are recalculated and invoice messages are sent automatically within 15 minutes.','Après enregistrement, les factures sont recalculées et les messages partent automatiquement sous 15 minutes.'],
+ mp_ask_admin:['تحديد السعر من صلاحية المدير. اطلب منه تحديد سعر الكيلو واط لهذا الشهر من تبويب «الاشتراكات والأسعار».','Only an admin can set the price — ask them to set it from “Plans & prices”.','Seul un administrateur peut fixer le prix.'],
+ mp_saved:['تم تحديد سعر شهر {m} — أُعيد حساب {n} فاتورة، وسيرسل النظام رسائل قيمة الفاتورة تلقائياً.','{m} price saved — {n} invoices recalculated; invoice messages will be sent automatically.','Prix de {m} enregistré — {n} factures recalculées ; envoi automatique des messages.'],
+ mp_set_btn:['تحديد السعر','Set price','Fixer le prix'],
+ mp_bad_month:['اختر الشهر','Choose the month','Choisissez le mois'],
+ mp_confirm:['تحديد سعر الكيلو واط لشهر {m} بـ {v}؟\nستُعاد حسابات فواتير العداد لهذا الشهر، وتُرسل رسائل قيمة الفاتورة تلقائياً للزبائن.','Set {m} kWh price to {v}?\nThat month’s meter invoices will be recalculated and invoice messages sent automatically.','Fixer le prix de {m} à {v} ?\nFactures recalculées et messages envoyés automatiquement.'],
+ mp_confirm_change:['تعديل سعر الكيلو واط لشهر {m} إلى {v}؟\nستُعاد حسابات فواتير العداد لهذا الشهر وتتغيّر أرصدة الزبائن. الرسائل المرسلة سابقاً لا تُعاد.','Change {m} kWh price to {v}?\nInvoices and balances will be recalculated. Already-sent messages are not re-sent.','Modifier le prix de {m} à {v} ?\nFactures et soldes recalculés. Les messages déjà envoyés ne sont pas renvoyés.'],
+ ia_title:['إرسال قيمة الفاتورة التلقائي','Automatic invoice messages','Messages de facture automatiques'],
+ ia_on:['إرسال رسائل قيمة الفاتورة تلقائياً بعد تحديد سعر الكيلو واط للشهر','Send invoice messages automatically once the month’s kWh price is set','Envoyer automatiquement après fixation du prix du mois'],
+ ia_hint:['لا تُرسل أي رسالة قيمة فاتورة قبل تحديد سعر الشهر من «الاشتراكات والأسعار». بعد التحديد يرسلها النظام وحده كل 15 دقيقة ضمن حد الـ250 اليومي (إيصالات القبض أولاً).','No invoice message is sent before the month price is set. Afterwards the system sends them every 15 minutes within the daily limit (receipts first).','Aucun message avant la fixation du prix. Ensuite envoi automatique toutes les 15 min (reçus d’abord).'],
  ws_btn:['الرسائل المرسلة','Sent messages','Messages envoyés'],
  ws_title:['إشعارات الدفع المرسلة على واتساب','Payment notices sent on WhatsApp','Avis de paiement envoyés sur WhatsApp'],
  ws_title_inv:['رسائل قيمة الفاتورة المرسلة على واتساب','Invoice messages sent on WhatsApp','Messages de facture envoyés sur WhatsApp'],
@@ -3018,6 +3037,52 @@ VIEWS.wa=async function(main){
   paint(); waPaint();
 };
 
+/* ===== سعر الكيلو واط لكل شهر: رسائل قيمة الفاتورة مقفولة لحدّ ما ينحدد سعر الشهر ===== */
+var MP=null;
+async function loadMonthPrices(force){
+  if(MP&&!force) return MP;
+  try{ MP=await call('motor_month_prices_list'); }catch(e){ MP=MP||{current:'',rows:[]}; }
+  return MP;
+}
+async function periodPriced(per){ function has(d){ return (d.rows||[]).some(function(r){ return r.period===per; }); } return has(await loadMonthPrices())||has(await loadMonthPrices(true)); }
+function askMonthPrice(per,after){
+  var adm=isAdmin();
+  var m=modal('⚡ '+t('mp_need_t'),'<div class="lic" style="margin-bottom:10px">'+esc(t('mp_need',{m:monthName(per,true)}))+'</div>'+
+    (adm?'<label>'+esc(t('mp_price_for',{m:monthName(per,true)}))+'</label><div class="row"><input id="mpv" inputmode="decimal" style="max-width:200px;font-size:20px"><b>'+esc(sym(mainCur()))+' / '+esc(t('kwh'))+'</b></div>'+
+      '<p class="muted" style="margin:8px 0 0">'+esc(t('mp_auto_note'))+'</p><div id="mpm" class="err msg" style="margin-top:8px"></div>'
+       :'<p class="muted" style="margin:0">'+esc(t('mp_ask_admin'))+'</p>'),
+    adm?'<button class="btn ghost" data-x>'+esc(t('cancel'))+'</button><button class="btn" data-s>💾 '+esc(t('mp_save'))+'</button>':'<button class="btn" data-x>'+esc(t('close'))+'</button>');
+  m.foot.addEventListener('click',async function(e){ if(e.target.closest('[data-x]')) return m.close(); var b=e.target.closest('[data-s]'); if(!b) return;
+    var v=String($('#mpv',m.body).value).trim().replace(',','.'); if(v===''||!isFinite(Number(v))||Number(v)<0){ $('#mpm',m.body).textContent=t('e_bad_amount'); return; }
+    busy(b,true); try{ var r=await saveMonthPrice(per,Number(v)); m.close(); after&&after(r); }catch(err){ $('#mpm',m.body).textContent=errText(err); busy(b,false); } });
+}
+async function saveMonthPrice(per,v){
+  var r=await call('motor_month_price_set',{p_period:per,p_price:v});
+  await loadMonthPrices(true);
+  toast(t('mp_saved',{m:monthName(per,true),n:fmtN(r.recalc||0,0)}),'s');
+  return r;
+}
+async function monthPriceCard(box){
+  var d=await loadMonthPrices(true), adm=isAdmin(), cur=d.current||String(TODAY).slice(0,7);
+  var has=(d.rows||[]).some(function(r){ return r.period===cur; });
+  box.innerHTML='<h3>📅 '+esc(t('mp_title'))+'</h3><p class="muted" style="margin-top:0">'+esc(t('mp_hint'))+'</p>'+
+    (!has?'<div class="lic" style="margin-bottom:10px">⚠️ '+esc(t('mp_need',{m:monthName(cur,true)}))+'</div>':'')+
+    (adm?'<div class="row" style="gap:8px;flex-wrap:wrap;align-items:flex-end"><div><label>'+esc(t('mp_month'))+'</label><input type="month" id="mpp" value="'+esc(cur)+'"></div>'+
+      '<div><label>'+esc(t('kwh_price'))+' ('+esc(sym(mainCur()))+')</label><input id="mpx" inputmode="decimal" style="max-width:160px"></div><button class="btn" id="mps">💾 '+esc(t('mp_save'))+'</button></div>':'')+
+    '<div class="tw" style="margin-top:12px"><table><thead><tr><th>'+esc(t('mp_month'))+'</th><th>'+esc(t('kwh_price'))+'</th><th>'+esc(t('mp_invoices'))+'</th><th>'+esc(t('mp_pending'))+'</th><th>'+esc(t('by'))+'</th><th>'+esc(t('date'))+'</th></tr></thead><tbody>'+
+    ((d.rows||[]).map(function(r){ return '<tr><td><b>'+esc(monthName(r.period,true))+'</b></td><td class="num"><b>'+esc(fmtN(r.price,4).replace(/\.?0+$/,''))+'</b> '+esc(sym(mainCur()))+'</td><td class="num">'+esc(fmtN(r.invoices,0))+'</td>'+
+      '<td class="num">'+(r.pending?'<span class="chip warn">📤 '+esc(fmtN(r.pending,0))+'</span>':'<span class="chip on">✅</span>')+'</td><td>'+esc(r.by||'')+'</td><td class="num">'+esc(dt(r.at))+'</td></tr>'; }).join('')||
+      '<tr><td colspan="6" class="muted">'+esc(t('no_results'))+'</td></tr>')+'</tbody></table></div>';
+  var mp=$('#mpp',box);
+  function fill(){ var r=(d.rows||[]).filter(function(x){ return x.period===mp.value; })[0]; $('#mpx',box).value=r?String(Number(r.price)):''; }
+  if(mp){ mp.addEventListener('change',fill); fill();
+    $('#mps',box).addEventListener('click',async function(){ var b=this, per=mp.value, v=String($('#mpx',box).value).trim().replace(',','.');
+      if(!/^\d{4}-\d{2}$/.test(per)) return toast(t('mp_bad_month'),'e');
+      if(v===''||!isFinite(Number(v))||Number(v)<0) return toast(t('e_bad_amount'),'e');
+      var old=(d.rows||[]).filter(function(x){ return x.period===per; })[0];
+      if(!(await confirmBox(t(old?'mp_confirm_change':'mp_confirm',{m:monthName(per,true),v:v+' '+sym(mainCur())})))) return;
+      busy(b,true); try{ await saveMonthPrice(per,Number(v)); monthPriceCard(box); }catch(e){ toast(errText(e),'e'); busy(b,false); } }); }
+}
 /* سجل إشعارات الدفع المرسلة */
 async function openWaSent(kind){
   kind=kind==='inv'?'inv':'pay';
@@ -3144,8 +3209,12 @@ VIEWS.bills=async function(main){
   if(waKey()&&!WAC_T){ waRefresh(); waStartPoll(); }
   var all=await call('motor_wa_outbox',{p_days:60}), rows=all.filter(function(r){ return r.t==='inv'; });
   setWaBadge(all.length, rows.length);
+  var mpd=await loadMonthPrices(true), priced={}; (mpd.rows||[]).forEach(function(x){ priced[x.period]=true; });
+  var unpriced=[]; rows.forEach(function(r){ var pr=r.inv&&r.inv.period; if(pr&&!priced[pr]&&unpriced.indexOf(pr)<0) unpriced.push(pr); });
   var q='';
   main.innerHTML='<div class="card"><p class="muted" style="margin:0">'+esc(t('bills_hint'))+'</p></div>'+
+    unpriced.map(function(pr){ return '<div class="lic" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px">⚠️ <span style="flex:1">'+esc(t('mp_need',{m:monthName(pr,true)}))+'</span>'+
+      (isAdmin()?'<button class="btn sm" data-mpset="'+esc(pr)+'">⚡ '+esc(t('mp_set_btn'))+'</button>':'')+'</div>'; }).join('')+
     '<div class="toolbar"><input type="search" id="bq" placeholder="'+esc(t('search_ph'))+'"><span data-wachip>'+waChip()+'</span><button class="btn wa" id="bbatch" data-waon>📤 '+esc(t('wa_batch50'))+'</button><button class="btn alt" id="bsent">📜 '+esc(t('ws_btn'))+'</button><span class="sp"></span><b id="bc"></b></div>'+waBatchBar('bbar')+
     '<div class="tw"><table><thead><tr><th>'+esc(t('date'))+'</th><th>'+esc(t('name'))+'</th><th>'+esc(t('mobile'))+'</th><th>'+esc(t('consumption'))+'</th><th>'+esc(t('inv_amount'))+'</th><th>'+esc(t('due_count'))+'</th><th>'+esc(t('balance'))+'</th><th>'+esc(t('by'))+'</th><th></th></tr></thead><tbody id="btb"></tbody></table></div>';
   function paint(){
@@ -3163,8 +3232,10 @@ VIEWS.bills=async function(main){
   function drop(r){ rows.splice(rows.indexOf(r),1); setWaBadge(WA_PENDING-1, rows.length); paint(); }
   $('#bq',main).addEventListener('input',function(){ q=this.value; paint(); });
   $('#bsent',main).addEventListener('click',function(){ openWaSent('inv'); });
+  $$('[data-mpset]',main).forEach(function(b){ b.addEventListener('click',function(){ askMonthPrice(b.dataset.mpset,function(){ VIEWS.bills(main); }); }); });
   $('#bbatch',main).addEventListener('click',function(){
-    var list=rows.filter(function(r){ return r.customer.mobile; });
+    if(unpriced.length&&!rows.some(function(r){ return r.customer.mobile&&priced[r.inv.period]; })){ askMonthPrice(unpriced[0],function(){ VIEWS.bills(main); }); return; }
+    var list=rows.filter(function(r){ return r.customer.mobile&&priced[r.inv.period]; });
     waBatch($('#bbar',main),list,async function(r){
       try{ if(wcOn()){ var a2=wcBillArgs({c:r.customer,inv:r.inv}); a2[1].balance=wcMoney(r.due&&r.due.balance!=null?r.due.balance:r.customer.balance); await wcSend(r.customer.mobile_cc,r.customer.mobile,a2[0],a2[1]); } else await waSendAuto(waNum(r.customer.mobile_cc,r.customer.mobile),waTag(dueText(r))); }catch(e){ return {name:r.customer.name,err:waErr(e)}; }
       try{ await call('motor_wa_mark',{p_kind:'inv',p_id:r.id}); }catch(e){} drop(r); return true; }); });
@@ -3172,6 +3243,7 @@ VIEWS.bills=async function(main){
   $('#btb',main).addEventListener('click',async function(e){
     var sb2=e.target.closest('[data-bs]'), mk=e.target.closest('[data-bm]'), vw=e.target.closest('[data-bv]');
     if(vw){ var rv=rows[+vw.dataset.bv]; modal(rv.customer.name,'<pre style="white-space:pre-wrap;font-family:inherit;margin:0">'+esc(dueText(rv))+'</pre>'); return; }
+    if(sb2&&!sb2.disabled&&rows[+sb2.dataset.bs].inv&&!priced[rows[+sb2.dataset.bs].inv.period]){ askMonthPrice(rows[+sb2.dataset.bs].inv.period,function(){ VIEWS.bills(main); }); return; }
     if(sb2&&!sb2.disabled){ var r=rows[+sb2.dataset.bs]; sb2.disabled=true; var okk;
       if(wcOn()){ var a3=wcBillArgs({c:r.customer,inv:r.inv}); a3[1].balance=wcMoney(r.due&&r.due.balance!=null?r.due.balance:r.customer.balance);
         try{ await wcSend(r.customer.mobile_cc,r.customer.mobile,a3[0],a3[1]); toast('✅ '+t('wa_sent'),'s'); okk=true; }catch(e){ toast(waErr(e),'e'); okk=false; } }
@@ -4165,6 +4237,8 @@ async function wcCard(box){
     px.innerHTML='<h3>🧾 '+esc(t('pa_title'))+'</h3><label class="chk"><input type="checkbox" id="pao"'+(st.pay_auto!==false?' checked':'')+'> '+esc(t('pa_on'))+'</label>'+
       '<p class="muted" style="margin:6px 0 0">'+esc(t('pa_hint'))+'</p>';
     box.appendChild(px);
+    px.insertAdjacentHTML('beforeend','<h3 style="margin-top:14px">🧾 '+esc(t('ia_title'))+'</h3><label class="chk"><input type="checkbox" id="iao"'+(st.inv_auto!==false?' checked':'')+'> '+esc(t('ia_on'))+'</label><p class="muted" style="margin:6px 0 0">'+esc(t('ia_hint'))+'</p>');
+    $('#iao',px).addEventListener('change',async function(){ var cb=this; try{ await call('motor_wc_inv_auto',{p_on:cb.checked}); toast(t('saved'),'s'); }catch(e){ cb.checked=!cb.checked; toast(errText(e),'e'); } });
     $('#pao',px).addEventListener('change',async function(){ var cb=this; try{ await call('motor_wc_pay_auto',{p_on:cb.checked}); toast(t('saved'),'s'); }catch(e){ cb.checked=!cb.checked; toast(errText(e),'e'); } });
   }
   if(ME.is_main && st.slug){
@@ -4877,7 +4951,7 @@ VIEWS.whish=async function(main){
    ========================================================= */
 VIEWS.plans=async function(main){
   var me=await call('motor_me'); PLANS=me.plans||[]; SITE=me.site;
-  main.innerHTML='<div class="card"><h3>⚡ '+esc(t('kwh_general'))+'</h3><div class="row"><input id="kp" type="text" inputmode="decimal" value="'+esc(SITE.kwh_price)+'" style="max-width:200px"><b>'+esc(sym(mainCur()))+' / '+esc(t('kwh'))+'</b><button class="btn" id="kps">'+esc(t('save'))+'</button></div>'+
+  main.innerHTML='<div class="card" id="mpc"></div><div class="card"><h3>⚡ '+esc(t('kwh_general'))+'</h3><div class="row"><input id="kp" type="text" inputmode="decimal" value="'+esc(SITE.kwh_price)+'" style="max-width:200px"><b>'+esc(sym(mainCur()))+' / '+esc(t('kwh'))+'</b><button class="btn" id="kps">'+esc(t('save'))+'</button></div>'+
     '<p class="muted" style="margin-bottom:0">'+esc(t('plan_hint'))+'</p></div>'+
     '<div class="toolbar"><b>'+esc(t('plans_t'))+'</b><span class="sp"></span><button class="btn" id="padd">'+esc(t('new_plan'))+'</button></div>'+
     '<div class="tw"><table><thead><tr><th>'+esc(t('name'))+'</th><th>'+esc(t('amps'))+'</th><th>'+esc(t('kind'))+'</th><th>'+esc(t('fee'))+'</th><th>'+esc(t('kwh_price'))+'</th><th>'+esc(t('status'))+'</th><th></th></tr></thead><tbody>'+
@@ -4886,6 +4960,7 @@ VIEWS.plans=async function(main){
       '<td><span class="chip '+(p.is_active?'on':'off')+'">'+esc(p.is_active?t('active'):t('staff_off'))+'</span></td><td><button class="btn ghost sm" data-pe="'+esc(p.id)+'">'+esc(t('edit'))+'</button></td></tr>'; }).join('')||'<tr><td colspan="7" class="muted">'+esc(t('no_results'))+'</td></tr>')+'</tbody></table></div>';
   $('#kps',main).addEventListener('click',async function(){ var b=this, v=$('#kp',main).value.trim(); if(v===''||!isFinite(Number(v))) return toast(t('e_bad_amount'),'e');
     busy(b,true); try{ SITE=await call('motor_settings_save',{p_data:{kwh_price:v}}); toast(t('saved'),'s'); }catch(e){ toast(errText(e),'e'); } busy(b,false); });
+  monthPriceCard($('#mpc',main));
   $('#padd',main).addEventListener('click',function(){ planForm(null); });
   $$('[data-pe]',main).forEach(function(b){ b.addEventListener('click',function(){ planForm(PLANS.filter(function(p){return p.id===b.dataset.pe})[0]); }); });
 };
@@ -5063,6 +5138,7 @@ function downloadBlob(blob,name){ var a=document.createElement('a'); a.href=URL.
 /* واتساب مع PDF: منعمل PDF للإيصال، منرفعو، ومنبعت الرابط مع الرسالة */
 async function sendBillWa(o,after,quiet){
   var num=String(o.c.mobile||'').replace(/\D/g,''); if(!num){ if(!quiet) toast(t('no_mobile'),'e'); return false; }
+  if(!o.pay&&o.inv&&o.inv.period&&!(await periodPriced(o.inv.period))){ if(!quiet) askMonthPrice(o.inv.period); return false; }
   var k0=o.pay?'pay':'inv', id0=o.pay?o.pay.id:(o.inv&&o.inv.id);
   if(wcOn()){ var a=wcBillArgs(o);
     try{ await wcSend(o.c.mobile_cc,o.c.mobile,a[0],a[1]); if(id0) await call('motor_wa_mark',{p_kind:k0,p_id:id0}).catch(function(){});

@@ -1857,13 +1857,40 @@ function payReceiptValues(d) {
   const date = new Date(d.at || Date.now()).toLocaleDateString('en-CA', { timeZone: 'Asia/Beirut' });
   return { name: String(d.name || ''), amount: money(d.amount), date, receipt: String(d.no || ''), balance: money(d.balance), generator: String(d.generator || '') };
 }
+const AR_MONTHS = ['كانون الثاني','شباط','آذار','نيسان','أيار','حزيران','تموز','آب','أيلول','تشرين الأول','تشرين الثاني','كانون الأول'];
+async function motorInvQueue(env, SH, limit) {
+  const r = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/motor_inv_wa_claim`, { method: 'POST', headers: SH, body: JSON.stringify({ p_limit: limit }) });
+  const list = r.ok ? await r.json().catch(() => []) : [];
+  if (!Array.isArray(list) || !list.length) return;
+  const done = [];
+  for (const d of list) {
+    const cur = d.currency || 'USD', dg = cur === 'LBP' ? 0 : 2;
+    const money = (v) => Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: dg, maximumFractionDigits: dg }) + ' ' + cur;
+    const num = (v) => v == null ? '—' : Number(v).toLocaleString('en-US', { maximumFractionDigits: 2 });
+    const m = String(d.period || '').match(/^(\d{4})-(\d{2})$/);
+    const isM = d.kind === 'meter';
+    const values = { generator: String(d.generator || ''), name: String(d.name || ''), month: m ? AR_MONTHS[Number(m[2]) - 1] + ' ' + m[1] : '—',
+      prev: isM ? num(d.prev) : '—', cur: isM ? num(d.cur) : '—', amount: money(d.amount), balance: money(d.balance) };
+    let ok = false;
+    try {
+      const s = await fetch('https://api.whatchimp.com/v1/messages', { method: 'POST',
+        headers: { Authorization: `Bearer ${d.key}`, 'Content-Type': 'application/json', 'Idempotency-Key': 'inv-' + d.inv_id },
+        body: JSON.stringify({ to: '+' + d.to, template: { name: 'bill_notice', language: 'ar', values } }) });
+      ok = s.ok;
+    } catch (e) {}
+    done.push({ site_id: d.site_id, inv_id: d.inv_id, qid: d.qid, ok });
+  }
+  await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/motor_inv_wa_finish`, { method: 'POST', headers: SH, body: JSON.stringify({ p_items: done }) }).catch(() => {});
+}
 // كل 15 دقيقة: الإيصالات يلي ما انبعتت (خلص الرصيد أو انقطع النت) بتنبعت لحالها أول ما يرجع رصيد الـ250
 async function motorPayQueueCron(env) {
   if (!env.SUPABASE_SERVICE_KEY) return;
   const SH = { apikey: env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`, 'Content-Type': 'application/json' };
   const r = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/motor_pay_wa_claim`, { method: 'POST', headers: SH, body: JSON.stringify({ p_limit: 40 }) });
-  const list = r.ok ? await r.json().catch(() => []) : [];
-  if (!Array.isArray(list) || !list.length) return;
+  const list0 = r.ok ? await r.json().catch(() => []) : [];
+  const list = Array.isArray(list0) ? list0 : [];
+  if (list.length < 40) await motorInvQueue(env, SH, 40 - list.length);   // بعد الإيصالات: رسائل قيمة الفاتورة للأشهر المحدّد سعرها
+  if (!list.length) return;
   const done = [];
   for (const d of list) {
     let ok = false;

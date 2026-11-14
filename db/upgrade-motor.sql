@@ -4430,6 +4430,159 @@ revoke all on function public.motor_pay_wa_finish(jsonb) from public, anon, auth
 grant execute on function public.motor_pay_wa_finish(jsonb) to service_role;
 
 -- ============================================================
+--  20j16) سعر الكيلو واط لكل شهر: رسائل قيمة الفاتورة ما بتنبعت قبل ما يتحدّد سعر الشهر،
+--         ولما المدير يحدّدو: بتنحسب فواتير الشهر عالسعر الجديد وبتنبعت الرسائل تلقائياً (cron كل 15 دقيقة)
+-- ============================================================
+create table if not exists public.motor_month_prices (
+  site_id   uuid not null references public.motor_sites(id) on delete cascade,
+  period    text not null check (period ~ '^\d{4}-\d{2}$'),
+  kwh_price numeric(12,4) not null check (kwh_price >= 0),
+  set_by    text not null default '',
+  set_at    timestamptz not null default now(),
+  primary key (site_id, period)
+);
+alter table public.motor_month_prices enable row level security;
+revoke all on public.motor_month_prices from anon, authenticated;
+alter table public.motor_sites add column if not exists wc_inv_auto boolean not null default true;
+alter table public.motor_invoices add column if not exists price_auto boolean not null default false;  -- فاتورة عداد محسوبة بسعر الكيلو (مش مستوردة)
+alter table public.motor_invoices add column if not exists wa_auto_tries smallint not null default 0;
+update public.motor_invoices set price_auto = true where kind = 'meter' and kwh_price > 0 and not price_auto;
+
+create or replace function public._motor_month_price(p_site uuid, p_period text)
+returns numeric language sql stable security definer set search_path = public as $$
+  select kwh_price from public.motor_month_prices where site_id = p_site and period = p_period;
+$$;
+
+create or replace function public.motor_month_prices_list(p_slug text, p_token text)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w jsonb; sid uuid; st public.motor_sites%rowtype;
+begin
+  w := public._motor_who(p_slug, p_token);
+  sid := (w->>'site_id')::uuid;
+  select * into st from public.motor_sites where id = sid;
+  return jsonb_build_object('current', st.bill_period,
+    'rows', coalesce((select jsonb_agg(jsonb_build_object('period', m.period, 'price', m.kwh_price, 'by', m.set_by, 'at', m.set_at,
+              'invoices', (select count(*) from public.motor_invoices i where i.site_id = sid and i.period = m.period and not i.voided and i.kind in ('meter','fixed')),
+              'pending', (select count(distinct i.customer_id) from public.motor_invoices i where i.site_id = sid and i.period = m.period and not i.voided
+                            and i.kind in ('meter','fixed') and i.wa_sent_at is null))
+            order by m.period desc) from public.motor_month_prices m where m.site_id = sid), '[]'::jsonb));
+end $$;
+grant execute on function public.motor_month_prices_list(text,text) to anon, authenticated;
+
+-- المدير أو المدير الأساسي: تحديد سعر الشهر + إعادة حساب فواتير العداد لهالشهر
+create or replace function public.motor_month_price_set(p_slug text, p_token text, p_period text, p_price numeric)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w jsonb; sid uuid; i record; amt numeric; en numeric; delta numeric; n integer := 0; tot numeric := 0;
+begin
+  w := public._motor_admin(p_slug, p_token);
+  sid := (w->>'site_id')::uuid;
+  if coalesce(p_period,'') !~ '^\d{4}-(0[1-9]|1[0-2])$' then perform public._motor_err('bad_period'); end if;
+  if p_price is null or p_price < 0 or p_price > 100000 then perform public._motor_err('bad_amount'); end if;
+  insert into public.motor_month_prices (site_id, period, kwh_price, set_by, set_at)
+    values (sid, p_period, p_price, coalesce(w->>'name',''), now())
+    on conflict (site_id, period) do update set kwh_price = excluded.kwh_price, set_by = excluded.set_by, set_at = now();
+  for i in select * from public.motor_invoices
+            where site_id = sid and period = p_period and not voided and kind = 'meter' and price_auto and kwh_price <> p_price
+            for update loop
+    en := round(coalesce(i.kwh,0) * p_price, 2);
+    amt := public._motor_round(sid, coalesce(i.fee,0) + en - coalesce(i.discount,0) + coalesce(i.addition,0));
+    delta := amt - i.amount;
+    update public.motor_invoices set kwh_price = p_price, energy = en, amount = amt, balance_after = balance_after + delta where id = i.id;
+    update public.motor_customers set balance = balance + delta, updated_at = now() where id = i.customer_id;
+    n := n + 1; tot := tot + delta;
+  end loop;
+  return jsonb_build_object('ok', true, 'period', p_period, 'price', p_price, 'recalc', n, 'delta', tot);
+end $$;
+grant execute on function public.motor_month_price_set(text,text,text,numeric) to anon, authenticated;
+
+create or replace function public.motor_wc_inv_auto(p_slug text, p_token text, p_on boolean)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w jsonb;
+begin
+  w := public._motor_main(p_slug, p_token);
+  update public.motor_sites set wc_inv_auto = coalesce(p_on, true) where id = (w->>'site_id')::uuid;
+  return jsonb_build_object('inv_auto', coalesce(p_on, true));
+end $$;
+grant execute on function public.motor_wc_inv_auto(text,text,boolean) to anon, authenticated;
+
+-- طابور رسائل قيمة الفاتورة: آخر فاتورة لكل زبون من شهر محدّد سعرو — مفتاح الخدمة فقط
+create or replace function public.motor_inv_wa_claim(p_limit integer default 40)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare st record; r record; q jsonb; num text; out jsonb := '[]'::jsonb; n integer := 0;
+begin
+  if coalesce(p_limit,0) <= 0 then return out; end if;
+  for st in select s.id, s.name, s.currency, s.wc_api_key from public.motor_sites s
+             where s.wc_on and s.wc_inv_auto and coalesce(s.wc_api_key,'') <> ''
+               and exists (select 1 from public.motor_month_prices m where m.site_id = s.id) loop
+    for r in select i.*, c.name as cname, c.mobile, c.mobile_cc, c.balance as cbal from (
+               select distinct on (i0.customer_id) i0.* from public.motor_invoices i0
+                where i0.site_id = st.id and not i0.voided and i0.kind in ('meter','fixed')
+                  and i0.created_at > now() - interval '45 days'
+                order by i0.customer_id, i0.created_at desc) i
+             join public.motor_customers c on c.id = i.customer_id
+            where i.wa_sent_at is null and i.wa_auto_tries < 5 and coalesce(c.mobile,'') <> '' and c.deleted_at is null
+              and exists (select 1 from public.motor_month_prices m where m.site_id = st.id and m.period = i.period)
+            order by i.created_at loop
+      exit when n >= p_limit;
+      num := public._motor_wa_num(r.mobile_cc, r.mobile);
+      if num = '' then update public.motor_invoices set wa_auto_tries = 5 where id = r.id; continue; end if;
+      q := public.motor_wa_quota(st.id, num, 250);
+      exit when not coalesce((q->>'ok')::boolean, false);
+      update public.motor_invoices set wa_auto_tries = wa_auto_tries + 1 where id = r.id;
+      out := out || jsonb_build_object('site_id', st.id, 'inv_id', r.id, 'qid', q->>'id', 'key', st.wc_api_key, 'to', num,
+        'name', r.cname, 'period', r.period, 'kind', r.kind, 'prev', r.prev_value, 'cur', r.cur_value, 'amount', r.amount,
+        'balance', r.cbal, 'currency', st.currency, 'generator', st.name);
+      n := n + 1;
+    end loop;
+    exit when n >= p_limit;
+  end loop;
+  return out;
+end $$;
+revoke all on function public.motor_inv_wa_claim(integer) from public, anon, authenticated;
+grant execute on function public.motor_inv_wa_claim(integer) to service_role;
+
+create or replace function public.motor_inv_wa_finish(p_items jsonb)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare it jsonb; cid uuid; ok integer := 0;
+begin
+  for it in select * from jsonb_array_elements(coalesce(p_items,'[]'::jsonb)) loop
+    if coalesce((it->>'ok')::boolean, false) then
+      select customer_id into cid from public.motor_invoices where id = (it->>'inv_id')::uuid and site_id = (it->>'site_id')::uuid;
+      update public.motor_invoices set wa_sent_at = now(), wa_sent_by = 'النظام (تلقائي)'
+       where site_id = (it->>'site_id')::uuid and customer_id = cid and wa_sent_at is null;
+      ok := ok + 1;
+    elsif it->>'qid' is not null then
+      delete from public.motor_wa_sends where id = (it->>'qid')::bigint;
+    end if;
+  end loop;
+  return jsonb_build_object('ok', ok);
+end $$;
+revoke all on function public.motor_inv_wa_finish(jsonb) from public, anon, authenticated;
+grant execute on function public.motor_inv_wa_finish(jsonb) to service_role;
+
+do $m$
+declare d text;
+begin
+  -- أخذ العداد: سعر الشهر (إذا محدّد) لكل اشتراكات العداد
+  d := pg_get_functiondef('public.motor_read(text,text,uuid,numeric,text,double precision,double precision,double precision,boolean)'::regprocedure);
+  if position('_motor_month_price' in d) = 0 then
+    d := replace(d, 'price := coalesce(pl.kwh_price, st.kwh_price, 0);',
+                    'price := coalesce(public._motor_month_price(sid, st.bill_period), pl.kwh_price, st.kwh_price, 0);');
+    d := replace(d, '  if baseline then update public.motor_invoices set note',
+                    '  if coalesce(pl.kind,''meter'') = ''meter'' then update public.motor_invoices set price_auto = true where id = inv.id; end if;
+  if baseline then update public.motor_invoices set note');
+    if position('_motor_month_price' in d) = 0 or position('price_auto = true' in d) = 0 then raise exception 'motor_read patch failed'; end if;
+    execute d;
+  end if;
+  d := pg_get_functiondef('public.motor_wc_status(text,text)'::regprocedure);
+  if position('inv_auto' in d) = 0 then
+    d := replace(d, '''pay_auto'', st.wc_pay_auto);', '''pay_auto'', st.wc_pay_auto, ''inv_auto'', st.wc_inv_auto);');
+    if position('inv_auto' in d) = 0 then raise exception 'status patch failed'; end if;
+    execute d;
+  end if;
+end $m$;
+
+-- ============================================================
 --  20k) إقفال صندوق الموظف: يسلّم كل النقد للمكتب ويطلع تقرير
 -- ============================================================
 create or replace function public.motor_staff_close(p_slug text, p_token text, p_staff uuid default null)
