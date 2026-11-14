@@ -1715,7 +1715,7 @@ var D={
  st_hand:['النقد الذي بحوزتي','Cash in my hand','Espèces en main'],
  scan:['مسح باركود العداد','Scan meter barcode','Scanner le code-barres'],
  scan_pay:['مسح الباركود للقبض','Scan to collect','Scanner pour encaisser'],
- search_ph:['ابحث بالاسم أو الباركود أو رقم العداد أو العلبة','Search name, barcode, meter or box','Rechercher nom, code, compteur ou boîte'],
+ search_ph:['ابحث بالاسم أو الهاتف أو الباركود أو رقم العداد أو العلبة','Search name, phone, barcode, meter or box','Rechercher nom, téléphone, code, compteur ou boîte'],
  window_none:['لم يحدّد المدير فترة أخذ العدادات لك بعد','The admin has not set your reading period yet','L’admin n’a pas encore fixé votre période de relevé'],
  window_is:['فترة أخذ العدادات: من {f} إلى {t}','Reading period: {f} → {t}','Période de relevé : {f} → {t}'],
  window_closed:['خارج فترة أخذ العدادات','Outside the reading period','Hors période de relevé'],
@@ -2921,9 +2921,14 @@ function loadCustomers(){ custLoading=call('motor_customers').then(function(d){ 
   .catch(function(e){ custLoading=null; toast(errText(e),'e'); return CUST; }); return custLoading; }
 function patchCust(id,obj){ var c=CUST.filter(function(x){return x.id===id})[0]; if(c) Object.assign(c,obj); }
 function normS(s){ return String(s||'').toLowerCase().replace(/[أإآ]/g,'ا').replace(/ة/g,'ه').replace(/ى/g,'ي').replace(/\s+/g,' ').trim(); }
+/* البحث برقم التلفون: أرقام بس، بغض النظر عن المسافات و- و0 بالأول و961/+961 */
+function phDigits(v){ return String(v||'').replace(/[٠-٩]/g,function(x){ return '٠١٢٣٤٥٦٧٨٩'.indexOf(x); }).replace(/[۰-۹]/g,function(x){ return '۰۱۲۳۴۵۶۷۸۹'.indexOf(x); }).replace(/\D/g,''); }
+function phCore(v){ var d=phDigits(v); if(d.indexOf('00')===0) d=d.slice(2); if(d.indexOf('961')===0&&d.length>8) d=d.slice(3); return d.replace(/^0+/,''); }
+function phoneHit(c,raw){ var q=phCore(raw); if(q.length<3||!/^[\s\d٠-٩۰-۹+()\-]+$/.test(String(raw||'').trim())) return false;
+  return [c.mobile,c.phone,c.mobile2].some(function(m){ var d=phCore(m); return d&&d.indexOf(q)>=0; }); }
 function searchCust(q,lim){
-  q=normS(q); if(!q) return [];
-  return CUST.filter(function(c){ return normS(c.name).indexOf(q)>=0 || normS(c.alt_name).indexOf(q)>=0 || normS(c.barcode)===q || normS(c.barcode).indexOf(q)>=0
+  var raw=q; q=normS(q); if(!q) return [];
+  return CUST.filter(function(c){ return phoneHit(c,raw) || normS(c.name).indexOf(q)>=0 || normS(c.alt_name).indexOf(q)>=0 || normS(c.barcode)===q || normS(c.barcode).indexOf(q)>=0
     || normS(c.meter_no).indexOf(q)>=0 || normS(c.box)===q || String(c.code)===q || normS(c.mobile).indexOf(q)>=0; }).slice(0,lim||40);
 }
 function custItem(c,mode){
@@ -4590,7 +4595,7 @@ VIEWS.customers=async function(main){
     return CUST.filter(function(c){
       if(CF.st==='on'&&!(c.is_active&&!c.archived)) return false; if(CF.st==='off'&&c.is_active) return false; if(CF.st==='arch'&&!c.archived) return false; if(CF.st==='debt'&&!(n2(c.balance)>0)) return false;
       if(CF.plan&&c.plan_id!==CF.plan) return false; if(CF.col&&c.collector_id!==CF.col) return false; if(CF.area&&c.area!==CF.area) return false;
-      if(q&&!(normS(c.name).indexOf(q)>=0||normS(c.barcode).indexOf(q)>=0||normS(c.meter_no).indexOf(q)>=0||normS(c.box)===q||String(c.code)===q||normS(c.mobile).indexOf(q)>=0||normS(c.alt_name).indexOf(q)>=0)) return false;
+      if(q&&!(phoneHit(c,CF.q)||normS(c.name).indexOf(q)>=0||normS(c.barcode).indexOf(q)>=0||normS(c.meter_no).indexOf(q)>=0||normS(c.box)===q||String(c.code)===q||normS(c.mobile).indexOf(q)>=0||normS(c.alt_name).indexOf(q)>=0)) return false;
       return true; });
   }
   function paint(){
