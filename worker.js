@@ -1904,39 +1904,18 @@ async function wcVerify(secret, id, ts, body, sigHeader) {
 function motorBotText(r) {
   const n = (x) => { const v = Number(x || 0); return (Math.round(v * 100) / 100).toLocaleString('en-US', { maximumFractionDigits: 2 }); };
   const cur = r.cur_label || r.currency || '';
-  const ym = (p) => { const m = String(p || '').match(/^(\d{4})-(\d{2})$/); if (!m) return p || '';
-    const names = ['كانون الثاني','شباط','آذار','نيسان','أيار','حزيران','تموز','آب','أيلول','تشرين الأول','تشرين الثاني','كانون الأول'];
-    return names[Number(m[2]) - 1] + ' ' + m[1]; };
   const site = r.site || '';
-  if (r.status === 'help' || r.status === 'menu') return `أهلاً بكم في *${site}* 👋\nأرسلوا رقم الخدمة المطلوبة:\n\n1️⃣ كشف الحساب\n2️⃣ طلب صيانة\n\nيمكنكم أيضاً إرسال الباركود مباشرة لمعرفة تفاصيل الحساب.`;
-  if (r.status === 'ask_account') return 'أرسلوا رقم الباركود المكتوب على العدّاد أو على الفاتورة.\nمثال: AWZ-00123';
+  if (r.status === 'help' || r.status === 'menu') return `أهلاً بكم في *${site}* 👋\nأرسلوا رقم الخدمة المطلوبة:\n\n1️⃣ الاستعلام عن الرصيد\n2️⃣ طلب صيانة\n\nيمكنكم أيضاً إرسال الباركود مباشرة لمعرفة الرصيد.`;
+  if (r.status === 'ask_account') return '💰 *الاستعلام عن الرصيد*\nأرسلوا رقم الباركود المكتوب على العدّاد أو على الفاتورة.\nمثال: AWZ-00123';
   if (r.status === 'ask_maint') return '🔧 *طلب صيانة*\nأرسلوا رقم الباركود المكتوب على العدّاد أو على الفاتورة، ويمكنكم كتابة وصف المشكلة في نفس الرسالة.\nمثال: AWZ-00123 لا يوجد كهرباء';
   if (r.status === 'maint_ok') return `✅ تم استلام طلب الصيانة للمشترك ${(r.customer || {}).name || ''}.\nسيتواصل معكم فريق الصيانة في أقرب وقت ممكن.\nشكراً لكم.`;
   if (r.status === 'maint_dup') return `طلب الصيانة للمشترك ${r.name || ''} مسجّل لدينا وقيد المتابعة.\nشكراً لصبركم.`;
   if (r.status === 'not_found') return `لم نجد اشتراكاً بالرقم ${r.barcode || ''}.\nيرجى التأكد من الباركود المكتوب على العدّاد أو على الفاتورة وإرساله مجدداً.`;
-  if (r.status === 'phone_mismatch') return `عذراً، رقم هاتفكم غير مسجّل لهذا الاشتراك، لذلك لا يمكننا عرض تفاصيل الحساب.\nيرجى مراجعة إدارة ${site} لتحديث رقم الهاتف.`;
+  // الرقم مش مسجّل لهالاشتراك: ما منبعت شي
   if (r.status !== 'ok') return '';
-  const c = r.customer || {}; const L = [];
-  L.push(`*${site}*`, `حضرة المشترك ${c.name || ''}`, '');
-  L.push(`رقم الاشتراك: ${c.code ?? ''}`);
-  if (c.box) L.push(`العلبة: ${c.box}`);
-  if (c.area) L.push(`المنطقة: ${c.area}`);
-  L.push(`حالة الخط: ${c.is_active ? 'مفعّل' : 'مقطوع'}`, '');
-  const bal = Number(c.balance || 0);
-  if (bal > 0.005) {
-    L.push(`*الرصيد المتوجّب: ${n(bal)} ${cur}*`);
-    const bills = r.bills || [];
-    if (bills.length) { L.push(`الفواتير غير المدفوعة (${bills.length}):`); bills.forEach((b) => L.push(`• ${ym(b.period)}: ${n(b.amount)} ${cur}`)); }
-    if (Number(r.older || 0) > 0.005) L.push(`• رصيد سابق: ${n(r.older)} ${cur}`);
-  } else if (bal < -0.005) L.push(`*لديكم رصيد دائن: ${n(-bal)} ${cur}*`);
-  else L.push('*لا يوجد رصيد متوجّب. شكراً لكم.*');
-  const li = r.last_invoice;
-  if (li) { L.push('', `آخر فاتورة (${ym(li.period)}): ${n(li.amount)} ${cur}`);
-    if (li.kind === 'meter' && li.cur != null) L.push(`العدّاد: ${n(li.prev)} ← ${n(li.cur)} (${n(li.kwh)} ك.و.س)`); }
-  const lp = r.last_pay;
-  if (lp) L.push(`آخر دفعة: ${n(lp.amount)} ${cur} بتاريخ ${String(lp.at || '').slice(0, 10)}`);
-  L.push('', 'شكراً لكم.');
-  return L.join('\n');
+  const c = r.customer || {}; const bal = Number(c.balance || 0);
+  const line = bal > 0.005 ? `*الرصيد المتوجّب: ${n(bal)} ${cur}*` : bal < -0.005 ? `*لديكم رصيد دائن: ${n(-bal)} ${cur}*` : '*لا يوجد رصيد متوجّب.*';
+  return [`*${site}*`, `حضرة المشترك ${c.name || ''}`, '', line, '', 'شكراً لكم.'].join('\n');
 }
 // إشعار موظف الصيانة: بالـtemplate المعتمد (work_order)، وإذا ما انقبل منبعت نص (بيمشي إذا الموظف راسل الرقم خلال 24 ساعة)
 async function motorMaintNotify(r, H, idem) {
