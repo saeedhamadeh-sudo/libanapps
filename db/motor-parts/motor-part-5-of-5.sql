@@ -563,7 +563,7 @@ begin
   select * into st from public.motor_sites where id = (w->>'site_id')::uuid;
   return jsonb_build_object('on', st.wc_on, 'has_key', st.wc_api_key <> '', 'key4', right(st.wc_api_key, 4),
                             'bot_on', st.wc_bot_on, 'has_secret', st.wc_hook_secret <> '', 'slug', st.slug,
-                            'maint_staff', st.wc_maint_staff);
+                            'maint_staff', st.wc_maint_staff, 'maint_staffs', to_jsonb(st.wc_maint_staffs));
 end $$;
 
 -- ============================================================
@@ -576,7 +576,9 @@ create table if not exists public.motor_bot_events (
 );
 alter table public.motor_bot_events enable row level security;
 
-alter table public.motor_sites add column if not exists wc_maint_staff uuid;   -- الموظف الذي يستلم طلبات الصيانة
+alter table public.motor_sites add column if not exists wc_maint_staff uuid;   -- الموظف الذي يستلم طلبات الصيانة (قديم)
+alter table public.motor_sites add column if not exists wc_maint_staffs uuid[] not null default '{}';   -- موظفو الصيانة (أكثر من واحد)
+update public.motor_sites set wc_maint_staffs = array[wc_maint_staff] where wc_maint_staff is not null and wc_maint_staffs = '{}';
 create table if not exists public.motor_bot_state (
   site_id uuid not null,
   phone   text not null,
@@ -600,8 +602,9 @@ create index if not exists motor_maint_requests_site on public.motor_maint_reque
 alter table public.motor_maint_requests enable row level security;
 
 drop function if exists public.motor_wc_bot_save(text,text,text,boolean);
+drop function if exists public.motor_wc_bot_save(text,text,text,boolean,uuid,boolean);
 create or replace function public.motor_wc_bot_save(p_slug text, p_token text, p_secret text default null, p_on boolean default null,
-                                                    p_maint_staff uuid default null, p_clear_maint boolean default false)
+                                                    p_maint_staffs uuid[] default null)
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare w jsonb; sid uuid; st public.motor_sites%rowtype;
 begin
@@ -612,16 +615,15 @@ begin
     update public.motor_sites set wc_hook_secret = trim(p_secret) where id = sid;
   end if;
   if p_on is not null then update public.motor_sites set wc_bot_on = p_on and wc_hook_secret <> '' where id = sid; end if;
-  if p_maint_staff is not null then
-    if not exists (select 1 from public.motor_staff where id = p_maint_staff and site_id = sid) then perform public._motor_err('forbidden'); end if;
-    update public.motor_sites set wc_maint_staff = p_maint_staff where id = sid;
-  elsif p_clear_maint then
-    update public.motor_sites set wc_maint_staff = null where id = sid;
+  if p_maint_staffs is not null then
+    update public.motor_sites set wc_maint_staffs = coalesce((select array_agg(id) from public.motor_staff where site_id = sid and id = any(p_maint_staffs)), '{}'),
+           wc_maint_staff = (select id from public.motor_staff where site_id = sid and id = any(p_maint_staffs) limit 1)
+     where id = sid;
   end if;
   select * into st from public.motor_sites where id = sid;
-  return jsonb_build_object('on', st.wc_bot_on, 'has_secret', st.wc_hook_secret <> '', 'maint_staff', st.wc_maint_staff);
+  return jsonb_build_object('on', st.wc_bot_on, 'has_secret', st.wc_hook_secret <> '', 'maint_staffs', to_jsonb(st.wc_maint_staffs));
 end $$;
-grant execute on function public.motor_wc_bot_save(text,text,text,boolean,uuid,boolean) to anon, authenticated;
+grant execute on function public.motor_wc_bot_save(text,text,text,boolean,uuid[]) to anon, authenticated;
 
 -- طلبات الصيانة (للأدمن)
 create or replace function public.motor_maint_list(p_slug text, p_token text)
@@ -633,7 +635,7 @@ begin
   return coalesce((select jsonb_agg(jsonb_build_object('id', m.id, 'at', m.created_at, 'phone', m.phone, 'phone_ok', m.phone_ok,
            'note', m.note, 'status', m.status, 'name', c.name, 'code', c.code, 'box', c.box, 'area', c.area, 'staff', s.name)
            order by m.created_at desc)
-    from (select * from public.motor_maint_requests where site_id = sid order by created_at desc limit 30) m
+    from (select * from public.motor_maint_requests where site_id = sid order by created_at desc limit 300) m
     left join public.motor_customers c on c.id = m.customer_id
     left join public.motor_staff s on s.id = m.staff_id), '[]'::jsonb);
 end $$;
@@ -703,13 +705,15 @@ begin
     end if;
     note := trim(regexp_replace(regexp_replace(txt, tok, '', 'i'), '\s+', ' ', 'g'));
     note := left(note, 300);
-    if st.wc_maint_staff is not null then select * into sf from public.motor_staff where id = st.wc_maint_staff and is_active; end if;
+    select * into sf from public.motor_staff where id = any(st.wc_maint_staffs) and is_active and coalesce(phone,'') <> '' order by name limit 1;
     insert into public.motor_maint_requests (site_id, customer_id, phone, phone_ok, note, staff_id)
       values (p_site, c.id, '+' || ph, phone_ok, note, sf.id) returning id into mid;
     return jsonb_build_object('status', 'maint_ok', 'site', st.name, 'id', mid,
       'customer', jsonb_build_object('name', c.name, 'code', c.code, 'box', c.box, 'area', c.area, 'meter_no', c.meter_no,
                                      'lat', c.lat, 'lng', c.lng, 'is_active', c.is_active),
-      'phone_ok', phone_ok, 'note', note, 'staff_phone', coalesce(sf.phone, ''), 'staff_name', coalesce(sf.name, ''));
+      'phone_ok', phone_ok, 'note', note, 'staff_phone', coalesce(sf.phone, ''), 'staff_name', coalesce(sf.name, ''),
+      'staffs', coalesce((select jsonb_agg(jsonb_build_object('phone', x.phone, 'name', x.name)) from public.motor_staff x
+                           where x.id = any(st.wc_maint_staffs) and x.is_active and coalesce(x.phone,'') <> ''), '[]'::jsonb));
   end if;
 
   -- كشف الحساب: لازم رقم الهاتف يطابق
@@ -1027,6 +1031,233 @@ grant execute on function public.motor_disc_set(text,text,uuid,numeric,text) to 
 grant execute on function public.motor_invoice_discount(text,text,uuid,numeric,text) to anon, authenticated;
 
 -- ============================================================
+--  20j11) المحاسبة حسب التصميم المحاسبي اللبناني: دليل الحسابات + القيود + الميزانية
+--  الحسابات بتنحسب من الحركات (فواتير، إيصالات، صندوق، Whish، مصاريف، معاشات، موردين، تأمينات)
+--  + قيود يدوية للمدير الأساسي (رأس مال، أصول ثابتة، قروض، استهلاكات…)
+-- ============================================================
+create table if not exists public.motor_accounts (       -- حسابات إضافية خاصة بالموقع
+  site_id uuid not null references public.motor_sites(id) on delete cascade,
+  code    text not null check (code ~ '^[1-7][0-9]{1,9}$'),
+  name    text not null,
+  created_at timestamptz not null default now(),
+  primary key (site_id, code)
+);
+alter table public.motor_accounts enable row level security;
+create table if not exists public.motor_journal (         -- قيود يدوية
+  id      uuid primary key default gen_random_uuid(),
+  site_id uuid not null references public.motor_sites(id) on delete cascade,
+  no      integer not null,
+  day     date not null,
+  descr   text not null default '',
+  lines   jsonb not null,           -- [{acct, dr, cr, note}]
+  by_name text not null default '',
+  created_at timestamptz not null default now()
+);
+create index if not exists motor_journal_site on public.motor_journal (site_id, day);
+alter table public.motor_journal enable row level security;
+
+-- الدليل الأساسي (التصميم المحاسبي العام اللبناني) — الفئات السبع
+create or replace function public._motor_coa_default()
+returns table (code text, name text) language sql immutable as $$
+  values
+  ('1','حسابات الأموال الدائمة'),('10','رأس المال'),('101','رأس المال'),('108','حساب المالك الجاري'),
+  ('11','الاحتياطات'),('12','النتائج المدوّرة'),('120','نتائج مدوّرة وأرصدة افتتاحية'),('13','نتيجة الدورة'),('131','نتيجة الدورة - ربح'),('139','نتيجة الدورة - خسارة'),
+  ('16','القروض والديون المماثلة'),('164','قروض من المصارف'),
+  ('2','حسابات الأصول الثابتة'),('21','الأصول الثابتة غير المادية'),('22','الأصول الثابتة المادية'),('221','أراضٍ'),('223','أبنية'),
+  ('224','آلات ومعدات (مولّدات)'),('2241','مولّدات الكهرباء'),('2242','شبكة الكابلات والعدّادات'),('225','وسائل نقل'),('226','أثاث ومعدات مكتب'),
+  ('28','استهلاكات الأصول الثابتة'),('2824','استهلاك الآلات والمعدات'),
+  ('3','حسابات المخزون'),('37','مخزون البضائع وقطع الغيار'),('370','مخزون البضائع وقطع الغيار'),
+  ('4','حسابات الذمم'),('40','الموردون'),('401','الموردون'),('4011','حسابات الموردين'),('41','الزبائن'),('411','الزبائن - المشتركون'),('4111','حسابات المشتركين'),('419','الزبائن الدائنون'),('4191','تأمينات المشتركين'),
+  ('42','المستخدمون'),('421','المستخدمون - رواتب مستحقة'),('4211','حسابات المستخدمين'),('43','الضمان الاجتماعي'),('44','الدولة والهيئات العامة'),('46','مدينون ودائنون آخرون'),
+  ('5','الحسابات المالية'),('51','المصارف والمؤسسات المالية'),('512','Whish'),('5120','حساب Whish'),('53','الصندوق'),('530','الصندوق الرئيسي'),('531','صندوق الجباة'),
+  ('6','حسابات الأعباء'),('60','المشتريات'),('601','مشتريات بضائع وقطع غيار'),('602','محروقات (مازوت وزيوت)'),('603','تغيّر المخزون'),('606','مشتريات غير مخزّنة'),
+  ('61','خدمات خارجية'),('613','إيجارات'),('615','صيانة وتصليح'),('62','خدمات خارجية أخرى'),('624','نقل وانتقال'),('626','هاتف واتصالات'),
+  ('63','ضرائب ورسوم'),('64','أعباء المستخدمين'),('641','رواتب وأجور'),('65','أعباء تشغيل أخرى'),('658','فروقات صندوق وأعباء متفرقة'),
+  ('66','أعباء مالية'),('68','مخصصات الاستهلاكات'),('681','مخصصات استهلاك الأصول الثابتة'),
+  ('7','حسابات الإيرادات'),('70','المبيعات'),('701','مبيعات بضائع'),('706','مبيعات الكهرباء والاشتراكات'),('709','حسومات وتسويات على المبيعات'),
+  ('75','إيرادات تشغيل أخرى'),('758','إيرادات متفرقة وفروقات صندوق'),('76','إيرادات مالية');
+$$;
+
+-- حساب المصروف حسب فئة المصروف
+create or replace function public._motor_exp_acct(p_cat text)
+returns text language sql immutable as $$
+  select case
+    when p_cat ~ '(مازوت|ديزل|وقود|بنزين|زيت|محروقات)' then '602'
+    when p_cat ~ '(صيان|تصليح|قطع|فلتر|كابل|ورش)' then '615'
+    when p_cat ~ '(ايجار|إيجار|أجار)' then '613'
+    when p_cat ~ '(نقل|سيارة|توصيل|مواصلات)' then '624'
+    when p_cat ~ '(هاتف|تلفون|انترنت|إنترنت|خط)' then '626'
+    when p_cat ~ '(ضريب|رسوم|بلدية)' then '63'
+    when p_cat ~ '(معاش|راتب|أجر|اجر)' then '641'
+    else '658' end;
+$$;
+
+-- أرقام الحسابات التفصيلية: زبون 4111xxxx، مورد 4011xxxx، موظف 4211xxxx
+create or replace function public._motor_sub_accts(sid uuid)
+returns table (code text, name text, kind text, ref uuid) language sql stable security definer set search_path = public as $$
+  select '4111' || lpad(c.code::text, 4, '0'), c.name, 'customer', c.id from public.motor_customers c where c.site_id = sid and c.deleted_at is null
+  union all
+  select '4011' || lpad((row_number() over (order by s.created_at, s.id))::text, 4, '0'), s.name, 'supplier', s.id from public.motor_suppliers s where s.site_id = sid
+  union all
+  select '4211' || lpad((row_number() over (order by f.created_at, f.id))::text, 4, '0'), f.name, 'staff', f.id from public.motor_staff f where f.site_id = sid;
+$$;
+
+-- دفتر الأستاذ العام: كل الحركات كقيود (مدين/دائن)
+create or replace function public._motor_gl(sid uuid, p_from date default null, p_to date default null)
+returns table (acct text, dr numeric, cr numeric, at timestamptz, src text, ref text, descr text)
+language sql stable security definer set search_path = public as $$
+  with sub as (select * from public._motor_sub_accts(sid)),
+  bz as (select coalesce(p_from, date '1900-01-01') f, coalesce(p_to, date '2999-12-31') t),
+  inv as (select i.*, s.code cacct, c.name cname from public.motor_invoices i join sub s on s.ref = i.customer_id and s.kind = 'customer'
+            join public.motor_customers c on c.id = i.customer_id, bz
+           where i.site_id = sid and not i.voided and i.amount <> 0 and (i.created_at at time zone 'Asia/Beirut')::date between bz.f and bz.t),
+  inv_c as (select i.*, case when i.kind in ('meter','fixed') then '706' when i.kind = 'sale' then '701' when i.kind = 'opening' then '120'
+                             when i.kind = 'adjust' and i.amount < 0 and coalesce(i.note,'') like 'ايصال%' then '108' else '709' end contra
+              from inv i),
+  pay as (select p.*, s.code cacct, c.name cname, case when p.method = 'whish' then '5120' when st.role = 'collector' then '531' else '530' end cashacct
+            from public.motor_payments p join sub s on s.ref = p.customer_id and s.kind = 'customer' join public.motor_customers c on c.id = p.customer_id
+            left join public.motor_staff st on st.id = p.staff_id, bz
+           where p.site_id = sid and not p.voided and (p.created_at at time zone 'Asia/Beirut')::date between bz.f and bz.t),
+  mv as (select m.*, coalesce(m.extra->>'type','') ty from public.motor_moves m, bz
+          where m.site_id = sid and (m.created_at at time zone 'Asia/Beirut')::date between bz.f and bz.t),
+  mv_c as (select m.*,
+             case m.account when 'whish' then '5120' when 'collector' then '531' else '530' end bacct,
+             case when m.account = 'collector' and m.kind = 'handover' then '530'
+                  when m.ty = 'expense' then public._motor_exp_acct(m.category)
+                  when m.ty = 'salary' then coalesce((select code from sub where ref = m.pay_staff and kind = 'staff'), '421')
+                  when m.ty = 'supplier' then coalesce((select code from sub where ref = m.supplier_id and kind = 'supplier'), '401')
+                  when m.ty = 'insurance' then '4191'
+                  when m.kind = 'adjust' then case when m.amount < 0 then '658' else '758' end
+                  else '108' end contra,
+             case when m.account = 'collector' and m.kind = 'handover' then -abs(m.amount)            -- من صندوق الجباة
+                  when m.kind in ('out','close','withdraw') then -abs(m.amount) else m.amount end signed
+           from mv m)
+  -- الفواتير
+  select cacct, greatest(amount,0), greatest(-amount,0), created_at, 'inv', no::text, kind || ' ' || coalesce(period,'') || ' ' || cname from inv_c
+  union all select contra, greatest(-amount,0), greatest(amount,0), created_at, 'inv', no::text, kind || ' ' || coalesce(period,'') || ' ' || cname from inv_c
+  -- الإيصالات
+  union all select cashacct, amount, 0, created_at, 'pay', no::text, 'إيصال ' || cname from pay
+  union all select cacct, 0, amount, created_at, 'pay', no::text, 'إيصال ' || cname from pay
+  -- حركات الصندوق وWhish
+  union all select bacct, greatest(signed,0), greatest(-signed,0), created_at, 'move', coalesce(vno::text,''), coalesce(nullif(category,''), kind) || ' ' || coalesce(note,'') from mv_c
+  union all select contra, greatest(-signed,0), greatest(signed,0), created_at, 'move', coalesce(vno::text,''), coalesce(nullif(category,''), kind) || ' ' || coalesce(note,'') from mv_c
+  -- المعاشات المستحقة
+  union all select '641', d.amount, 0, d.created_at, 'sal', d.period, 'معاش ' || f.name || ' ' || d.period
+    from public.motor_salary_dues d join public.motor_staff f on f.id = d.staff_id, bz where d.site_id = sid and (d.created_at at time zone 'Asia/Beirut')::date between bz.f and bz.t
+  union all select coalesce((select code from sub where ref = d.staff_id and kind = 'staff'), '421'), 0, d.amount, d.created_at, 'sal', d.period, 'معاش ' || f.name || ' ' || d.period
+    from public.motor_salary_dues d join public.motor_staff f on f.id = d.staff_id, bz where d.site_id = sid and (d.created_at at time zone 'Asia/Beirut')::date between bz.f and bz.t
+  -- فواتير المشتريات
+  union all select case when u.to_stock then '601' else '606' end, u.total, 0, u.created_at, 'pur', u.no::text, 'مشتريات ' || s.name
+    from public.motor_purchases u join public.motor_suppliers s on s.id = u.supplier_id, bz where u.site_id = sid and not u.voided and (u.created_at at time zone 'Asia/Beirut')::date between bz.f and bz.t
+  union all select coalesce((select code from sub where ref = u.supplier_id and kind = 'supplier'), '401'), 0, u.total, u.created_at, 'pur', u.no::text, 'مشتريات ' || s.name
+    from public.motor_purchases u join public.motor_suppliers s on s.id = u.supplier_id, bz where u.site_id = sid and not u.voided and (u.created_at at time zone 'Asia/Beirut')::date between bz.f and bz.t
+  -- تأمينات قديمة (مستوردة بلا حركة صندوق)
+  union all select case when x.kind = 'in' then '108' else '4191' end, x.amount, 0, x.created_at, 'ins', x.ref_no, 'تأمين ' || x.name
+    from public.motor_insurance x, bz where x.site_id = sid and x.move_id is null and (x.created_at at time zone 'Asia/Beirut')::date between bz.f and bz.t
+  union all select case when x.kind = 'in' then '4191' else '108' end, 0, x.amount, x.created_at, 'ins', x.ref_no, 'تأمين ' || x.name
+    from public.motor_insurance x, bz where x.site_id = sid and x.move_id is null and (x.created_at at time zone 'Asia/Beirut')::date between bz.f and bz.t
+  -- القيود اليدوية
+  union all select l->>'acct', coalesce(nullif(l->>'dr','')::numeric,0), coalesce(nullif(l->>'cr','')::numeric,0), j.day::timestamptz, 'jv', j.no::text,
+                   coalesce(nullif(l->>'note',''), j.descr)
+    from public.motor_journal j cross join lateral jsonb_array_elements(j.lines) l, bz where j.site_id = sid and j.day between bz.f and bz.t;
+$$;
+
+-- قيمة المخزون الحالية (للميزانية)
+create or replace function public._motor_stock_value(sid uuid)
+returns numeric language sql stable security definer set search_path = public as $$
+  select coalesce(sum(greatest(qty,0) * coalesce(unit_price,0)), 0) from public.motor_stock where site_id = sid;
+$$;
+
+-- دليل الحسابات مع الأرصدة
+create or replace function public.motor_coa(p_slug text, p_token text, p_to date default null)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w jsonb; sid uuid; sv numeric;
+begin
+  w := public._motor_main(p_slug, p_token);
+  sid := (w->>'site_id')::uuid;
+  sv := case when p_to is null or p_to >= (now() at time zone 'Asia/Beirut')::date then public._motor_stock_value(sid) else 0 end;
+  return jsonb_build_object('to', p_to, 'stock_value', sv,
+    'accounts', (select coalesce(jsonb_agg(jsonb_build_object('code', a.code, 'name', a.name) order by a.code), '[]')
+                   from (select code, name from public._motor_coa_default() union select code, name from public.motor_accounts where site_id = sid) a),
+    'subs', (select coalesce(jsonb_agg(jsonb_build_object('code', s.code, 'name', s.name, 'kind', s.kind) order by s.code), '[]') from public._motor_sub_accts(sid) s),
+    'totals', (select coalesce(jsonb_agg(jsonb_build_object('a', g.acct, 'dr', round(g.dr, 2), 'cr', round(g.cr, 2))), '[]')
+                 from (select acct, sum(dr) dr, sum(cr) cr from public._motor_gl(sid, null, p_to) group by acct) g));
+end $$;
+
+-- كشف حساب (مع الحسابات الفرعية إذا الرقم رئيسي)
+create or replace function public.motor_acct_stmt(p_slug text, p_token text, p_acct text, p_from date default null, p_to date default null)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w jsonb; sid uuid; op numeric := 0;
+begin
+  w := public._motor_main(p_slug, p_token);
+  sid := (w->>'site_id')::uuid;
+  if coalesce(p_acct,'') !~ '^[1-7][0-9]*$' then perform public._motor_err('bad_account'); end if;
+  if p_from is not null then
+    select coalesce(sum(dr - cr), 0) into op from public._motor_gl(sid, null, p_from - 1) where acct like p_acct || '%';
+  end if;
+  return jsonb_build_object('opening', op,
+    'rows', coalesce((select jsonb_agg(jsonb_build_object('acct', g.acct, 'dr', g.dr, 'cr', g.cr, 'at', g.at, 'src', g.src, 'ref', g.ref, 'descr', g.descr) order by g.at, g.src)
+                        from (select * from public._motor_gl(sid, p_from, p_to) where acct like p_acct || '%' order by at limit 3000) g), '[]'::jsonb),
+    'count', (select count(*) from public._motor_gl(sid, p_from, p_to) where acct like p_acct || '%'));
+end $$;
+
+-- قيود يدوية + حسابات إضافية
+create or replace function public.motor_journal_list(p_slug text, p_token text)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w jsonb;
+begin
+  w := public._motor_main(p_slug, p_token);
+  return coalesce((select jsonb_agg(to_jsonb(j) - 'site_id' order by j.day desc, j.no desc) from public.motor_journal j where j.site_id = (w->>'site_id')::uuid), '[]'::jsonb);
+end $$;
+create or replace function public.motor_journal_save(p_slug text, p_token text, p_day date, p_descr text, p_lines jsonb)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w jsonb; sid uuid; tdr numeric := 0; tcr numeric := 0; l jsonb; n int; clean jsonb := '[]'::jsonb;
+begin
+  w := public._motor_main(p_slug, p_token);
+  sid := (w->>'site_id')::uuid;
+  if jsonb_typeof(p_lines) <> 'array' or jsonb_array_length(p_lines) < 2 then perform public._motor_err('bad_entry'); end if;
+  for l in select * from jsonb_array_elements(p_lines) loop
+    if coalesce(l->>'acct','') !~ '^[1-7][0-9]*$' then perform public._motor_err('bad_account'); end if;
+    tdr := tdr + coalesce(nullif(l->>'dr','')::numeric, 0); tcr := tcr + coalesce(nullif(l->>'cr','')::numeric, 0);
+    clean := clean || jsonb_build_array(jsonb_build_object('acct', l->>'acct', 'dr', round(coalesce(nullif(l->>'dr','')::numeric,0),2),
+                                                           'cr', round(coalesce(nullif(l->>'cr','')::numeric,0),2), 'note', left(coalesce(l->>'note',''),200)));
+  end loop;
+  if round(tdr,2) <> round(tcr,2) or tdr <= 0 then perform public._motor_err('unbalanced'); end if;
+  select coalesce(max(no),0) + 1 into n from public.motor_journal where site_id = sid;
+  insert into public.motor_journal (site_id, no, day, descr, lines, by_name) values (sid, n, coalesce(p_day, (now() at time zone 'Asia/Beirut')::date), left(coalesce(p_descr,''),300), clean, w->>'name');
+  return jsonb_build_object('ok', true, 'no', n);
+end $$;
+create or replace function public.motor_journal_delete(p_slug text, p_token text, p_id uuid)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w jsonb;
+begin
+  w := public._motor_main(p_slug, p_token);
+  delete from public.motor_journal where id = p_id and site_id = (w->>'site_id')::uuid;
+  return jsonb_build_object('ok', true);
+end $$;
+create or replace function public.motor_account_save(p_slug text, p_token text, p_code text, p_name text)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w jsonb;
+begin
+  w := public._motor_main(p_slug, p_token);
+  if coalesce(p_code,'') !~ '^[1-7][0-9]{1,9}$' or coalesce(trim(p_name),'') = '' then perform public._motor_err('bad_account'); end if;
+  if left(p_code, 4) in ('4111','4011','4211') and length(p_code) = 8 then perform public._motor_err('bad_account'); end if;
+  insert into public.motor_accounts (site_id, code, name) values ((w->>'site_id')::uuid, p_code, trim(p_name))
+    on conflict (site_id, code) do update set name = excluded.name;
+  return jsonb_build_object('ok', true);
+end $$;
+
+revoke all on function public._motor_gl(uuid,date,date) from public, anon, authenticated;
+revoke all on function public._motor_sub_accts(uuid) from public, anon, authenticated;
+revoke all on function public._motor_stock_value(uuid) from public, anon, authenticated;
+grant execute on function public.motor_coa(text,text,date) to anon, authenticated;
+grant execute on function public.motor_acct_stmt(text,text,text,date,date) to anon, authenticated;
+grant execute on function public.motor_journal_list(text,text) to anon, authenticated;
+grant execute on function public.motor_journal_save(text,text,date,text,jsonb) to anon, authenticated;
+grant execute on function public.motor_journal_delete(text,text,uuid) to anon, authenticated;
+grant execute on function public.motor_account_save(text,text,text,text) to anon, authenticated;
+
+-- ============================================================
 --  20k) إقفال صندوق الموظف: يسلّم كل النقد للمكتب ويطلع تقرير
 -- ============================================================
 create or replace function public.motor_staff_close(p_slug text, p_token text, p_staff uuid default null)
@@ -1310,7 +1541,7 @@ begin
     'motor_cash_statement(text,text,date,date)', 'motor_cash_close(text,text,numeric,numeric,text)',
     'motor_set_active(text,text,uuid,boolean,text,double precision,double precision)',
     'motor_note_add(text,text,uuid,text)', 'motor_ping(text,text,double precision,double precision,double precision)',
-    'motor_staff_map(text,text)', 'motor_unpaid(text,text,text,integer)', 'motor_wc_check(text,text)', 'motor_wc_save(text,text,text,boolean)', 'motor_wc_status(text,text)', 'motor_remind_mark(text,text,uuid)', 'motor_wc_bot_save(text,text,text,boolean,uuid,boolean)', 'motor_maint_list(text,text)', 'motor_maint_done(text,text,uuid,boolean)', 'motor_sale_add(text,text,uuid,jsonb,text)', 'motor_sales_list(text,text,date,date)', 'motor_unpaid_msg_save(text,text,text)', 'motor_backup_page(text,text,text,integer,integer)', 'motor_fin_get(text,text,text)', 'motor_fin_save(text,text,text,jsonb)', 'motor_fin_delete(text,text,text)', 'motor_2fa_setup(text,text)', 'motor_2fa_enable(text,text,text)',
+    'motor_staff_map(text,text)', 'motor_unpaid(text,text,text,integer)', 'motor_wc_check(text,text)', 'motor_wc_save(text,text,text,boolean)', 'motor_wc_status(text,text)', 'motor_remind_mark(text,text,uuid)', 'motor_coa(text,text,date)', 'motor_acct_stmt(text,text,text,date,date)', 'motor_journal_list(text,text)', 'motor_journal_save(text,text,date,text,jsonb)', 'motor_journal_delete(text,text,uuid)', 'motor_account_save(text,text,text,text)', 'motor_wc_bot_save(text,text,text,boolean,uuid[])', 'motor_maint_list(text,text)', 'motor_maint_done(text,text,uuid,boolean)', 'motor_sale_add(text,text,uuid,jsonb,text)', 'motor_sales_list(text,text,date,date)', 'motor_unpaid_msg_save(text,text,text)', 'motor_backup_page(text,text,text,integer,integer)', 'motor_fin_get(text,text,text)', 'motor_fin_save(text,text,text,jsonb)', 'motor_fin_delete(text,text,text)', 'motor_2fa_setup(text,text)', 'motor_2fa_enable(text,text,text)',
     'motor_2fa_disable(text,text,text,uuid)', 'motor_wa_outbox(text,text,integer)', 'motor_wa_mark(text,text,text,uuid)',
     'motor_reading_edit(text,text,uuid,numeric,text)', 'motor_customer_set_login(text,text,uuid,text,text)', 'motor_cust_me(text,text)',
     'motor_invoice_edit(text,text,uuid,numeric,text)', 'motor_payment_edit(text,text,uuid,numeric,text)',

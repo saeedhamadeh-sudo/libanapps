@@ -1941,7 +1941,10 @@ async function motorWaHook(request, env, ctx, slugRaw) {
     await fetch('https://api.whatchimp.com/v1/messages', { method: 'POST',
       headers: Object.assign({ 'Idempotency-Key': 'bot-' + String(id).slice(0, 100) }, H),
       body: JSON.stringify({ to: '+' + String(phone).replace(/\D/g, ''), text }) });
-    if (r.status === 'maint_ok' && r.staff_phone) await motorMaintNotify(r, H, String(id).slice(0, 100));
+    if (r.status === 'maint_ok') {   // إشعار لكل موظفي الصيانة المختارين
+      const list = (Array.isArray(r.staffs) && r.staffs.length) ? r.staffs : (r.staff_phone ? [{ phone: r.staff_phone, name: r.staff_name }] : []);
+      for (let k = 0; k < Math.min(list.length, 10); k++) await motorMaintNotify(Object.assign({}, r, { staff_phone: list[k].phone, staff_name: list[k].name }), H, String(id).slice(0, 90) + '-' + k);
+    }
   })().catch(() => {});
   if (ctx && ctx.waitUntil) ctx.waitUntil(work); else await work;
   return json(200, { ok: true });
