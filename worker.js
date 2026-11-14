@@ -1905,7 +1905,7 @@ function motorBotText(r) {
   const n = (x) => { const v = Number(x || 0); return (Math.round(v * 100) / 100).toLocaleString('en-US', { maximumFractionDigits: 2 }); };
   const cur = r.cur_label || r.currency || '';
   const site = r.site || '';
-  if (r.status === 'help' || r.status === 'menu') return `⚠️ هذا الرقم غير مخصص للتواصل، والرسائل المرسلة إليه لا تتم قراءتها.\n\nخدمات *${site}* المتاحة هنا — أرسلوا رقم الخدمة:\n1️⃣ الاستعلام عن الرصيد\n2️⃣ طلب صيانة`;
+  if (r.status === 'help' || r.status === 'menu') return `⚠️ هذا الرقم غير مخصص للتواصل المباشر، وقد يتم الرد على رسالتكم خلال أوقات الدوام.\n\nخدمات *${site}* المتاحة هنا — أرسلوا رقم الخدمة:\n1️⃣ الاستعلام عن الرصيد\n2️⃣ طلب صيانة`;
   if (r.status === 'ask_account') return '💰 *الاستعلام عن الرصيد*\nأرسلوا رقم الباركود المكتوب على العدّاد أو على الفاتورة.\nمثال: AWZ-00123';
   if (r.status === 'ask_maint') return '🔧 *طلب صيانة*\nأرسلوا رقم الباركود المكتوب على العدّاد أو على الفاتورة، ويمكنكم كتابة وصف المشكلة في نفس الرسالة.\nمثال: AWZ-00123 لا يوجد كهرباء';
   if (r.status === 'maint_ok') return `✅ تم استلام طلب الصيانة للمشترك ${(r.customer || {}).name || ''}.\nسيتواصل معكم فريق الصيانة في أقرب وقت ممكن.\nشكراً لكم.`;
