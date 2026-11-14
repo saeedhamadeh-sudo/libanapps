@@ -1853,6 +1853,18 @@ var D={
  k_sale:['فاتورة مبيعات','Sales invoice','Facture de vente'],
  nav_sales:['فاتورة مبيعات وإيصال قبض','Sales invoice & receipt','Facture de vente et reçu'],
  compact_t:['تصغير/تكبير الجداول','Compact tables','Tableaux compacts'],
+ ws_btn:['الرسائل المرسلة','Sent messages','Messages envoyés'],
+ ws_title:['إشعارات الدفع المرسلة على واتساب','Payment notices sent on WhatsApp','Avis de paiement envoyés sur WhatsApp'],
+ ws_d1:['آخر 24 ساعة','Last 24 hours','Dernières 24 h'],
+ ws_d7:['آخر 7 أيام','Last 7 days','7 derniers jours'],
+ ws_d30:['آخر 30 يوماً','Last 30 days','30 derniers jours'],
+ ws_d90:['آخر 90 يوماً','Last 90 days','90 derniers jours'],
+ ws_count:['رسالة','messages','messages'],
+ ws_at:['وقت الإرسال','Sent at','Envoyé le'],
+ ws_collector:['القابض','Collected by','Encaissé par'],
+ ws_by:['أُرسل بواسطة','Sent by','Envoyé par'],
+ ws_auto:['تلقائي','Automatic','Automatique'],
+ ws_none:['لا توجد رسائل مرسلة في هذه الفترة.','No messages sent in this period.','Aucun message envoyé sur cette période.'],
  pa_title:['إشعار الدفع التلقائي','Automatic payment notice','Avis de paiement automatique'],
  pa_on:['إرسال إشعار الدفع للزبون على واتساب تلقائياً بعد كل قبض','Send the payment notice to the customer on WhatsApp after every collection','Envoyer l’avis de paiement au client sur WhatsApp après chaque encaissement'],
  pa_hint:['يُرسل من أي موظف (الجابي أو المكتب) بقالب payment_receipt إلى رقم الزبون المسجّل، ويُحسب من حد الـ250 اليومي. الزبون الذي وصله الإشعار لا يظهر في قائمة إشعارات الدفع.','Sent by any staff (collector or office) using the payment_receipt template to the customer’s saved number; counts toward the 250/day limit.','Envoyé par tout employé avec le modèle payment_receipt ; compte dans la limite de 250/jour.'],
@@ -2979,7 +2991,7 @@ VIEWS.wa=async function(main){
   var all=await call('motor_wa_outbox',{p_days:60}), rows=all.filter(function(r){ return r.t==='pay'; });
   setWaBadge(all.length, all.length-rows.length);
   main.innerHTML='<div class="card"><p class="muted" style="margin:0">'+esc(t('wa_hint'))+'</p></div>'+
-    '<div class="toolbar"><span data-wachip>'+waChip()+'</span><button class="btn wa" id="wbatch" data-waon>📤 '+esc(t('wa_batch50'))+'</button><span class="sp"></span><b id="wac"></b></div>'+waBatchBar('wbar')+
+    '<div class="toolbar"><span data-wachip>'+waChip()+'</span><button class="btn wa" id="wbatch" data-waon>📤 '+esc(t('wa_batch50'))+'</button><button class="btn alt" id="wsent">📜 '+esc(t('ws_btn'))+'</button><span class="sp"></span><b id="wac"></b></div>'+waBatchBar('wbar')+
     '<div class="tw"><table><thead><tr><th>'+esc(t('date'))+'</th><th>'+esc(t('type'))+'</th><th>'+esc(t('name'))+'</th><th>'+esc(t('mobile'))+'</th><th>'+esc(t('amount'))+'</th><th>'+esc(t('by'))+'</th><th></th></tr></thead><tbody id="watb"></tbody></table></div>';
   function paint(){
     var list=rows;
@@ -2998,12 +3010,37 @@ VIEWS.wa=async function(main){
     if(s&&!s.disabled){ var r=rows[+s.dataset.ws]; s.disabled=true; var okk=await sendBillWa({inv:r.inv,pay:r.pay,c:r.customer}); if(okk) drop(r); else s.disabled=false; }
     if(mk){ var r2=rows[+mk.dataset.wm]; try{ await call('motor_wa_mark',{p_kind:r2.t,p_id:r2.id}); drop(r2); }catch(err){ toast(errText(err),'e'); } }
   });
+  $('#wsent',main).addEventListener('click',function(){ openWaSent(); });
   $('#wbatch',main).addEventListener('click',function(){
     var list=rows.filter(function(r){ return r.customer.mobile; });
     waBatch($('#wbar',main),list,async function(r){ var okk=await sendBillWa({inv:r.inv,pay:r.pay,c:r.customer},null,true); if(okk){ drop(r); return true; } return {name:r.customer.name,err:t('wa_failed')}; }); });
   paint(); waPaint();
 };
 
+/* سجل إشعارات الدفع المرسلة */
+async function openWaSent(){
+  var m=modal(t('ws_title'),'<div class="toolbar" style="margin:0 0 10px"><select id="wsd"><option value="1">'+esc(t('ws_d1'))+'</option><option value="7">'+esc(t('ws_d7'))+'</option><option value="30" selected>'+esc(t('ws_d30'))+'</option><option value="90">'+esc(t('ws_d90'))+'</option></select>'+
+    '<input id="wsq" type="search" placeholder="'+esc(t('search_ph'))+'" style="flex:1;min-width:160px"><b id="wsn"></b></div><div id="wsb"><div class="muted">'+esc(t('loading'))+'</div></div>',false,true);
+  var rows=[];
+  function paint(){
+    var q=$('#wsq',m.body).value.trim().toLowerCase();
+    var list=rows.filter(function(r){ return !q||(String(r.name)+' '+r.code+' '+(r.mobile||'')+' '+r.no+' '+(r.by||'')).toLowerCase().indexOf(q)>=0; });
+    $('#wsn',m.body).textContent=fmtN(list.length,0)+' '+t('ws_count');
+    $('#wsb',m.body).innerHTML='<div class="tw"><table><thead><tr><th>'+esc(t('ws_at'))+'</th><th>'+esc(t('receipt'))+'</th><th>'+esc(t('name'))+'</th><th>'+esc(t('mobile'))+'</th><th>'+esc(t('amount'))+'</th><th>'+esc(t('ws_collector'))+'</th><th>'+esc(t('ws_by'))+'</th></tr></thead><tbody>'+
+      (list.map(function(r){ var auto=/\(تلقائي\)/.test(r.by||'');
+        return '<tr><td class="num">'+esc(dt(r.sent_at))+'</td><td class="num">#'+esc(r.no)+'</td><td><b>'+esc(r.name)+'</b> <span class="muted">#'+esc(r.code)+'</span></td>'+
+          '<td class="num">'+(r.mobile?esc('+'+r.mobile_cc+' '+r.mobile):'—')+'</td><td class="num">'+esc(money(r.paid_amount,r.paid_currency))+'</td><td>'+esc(r.collector||'')+'</td>'+
+          '<td>'+(auto?'<span class="chip on">🤖 '+esc(t('ws_auto'))+'</span>':esc(r.by||''))+'</td></tr>'; }).join('')||'<tr><td colspan="7"><div class="muted">'+esc(t('ws_none'))+'</div></td></tr>')+'</tbody></table></div>';
+  }
+  async function load(){
+    $('#wsb',m.body).innerHTML='<div class="muted">'+esc(t('loading'))+'</div>';
+    try{ rows=await call('motor_wa_sent',{p_kind:'pay',p_days:+$('#wsd',m.body).value}); paint(); }
+    catch(e){ $('#wsb',m.body).innerHTML='<div class="err msg" style="display:block">'+esc(errText(e))+'</div>'; }
+  }
+  $('#wsd',m.body).addEventListener('change',load);
+  $('#wsq',m.body).addEventListener('input',paint);
+  load();
+}
 /* =========================================================
    إرسال قيمة الفاتورة: كل عداد بيتسجّل بيوصل لهون، والرسالة حسب كشف حساب الزبون
    ========================================================= */

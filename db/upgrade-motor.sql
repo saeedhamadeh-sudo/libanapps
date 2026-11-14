@@ -4331,6 +4331,34 @@ begin
 end $m$;
 
 -- ============================================================
+--  20j14) سجل الرسائل المرسلة (إشعارات الدفع / قيمة الفاتورة)
+-- ============================================================
+create or replace function public.motor_wa_sent(p_slug text, p_token text, p_kind text default 'pay', p_days integer default 30)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w jsonb; sid uuid; d integer := least(greatest(coalesce(p_days,30),1),366);
+begin
+  w := public._motor_admin(p_slug, p_token);
+  sid := (w->>'site_id')::uuid;
+  if p_kind = 'inv' then
+    return coalesce((select jsonb_agg(x order by x->>'sent_at' desc) from (
+      select jsonb_build_object('id',i.id,'sent_at',i.wa_sent_at,'by',i.wa_sent_by,'no',i.no,'period',i.period,'amount',i.amount,
+             'name',c.name,'code',c.code,'mobile',c.mobile,'mobile_cc',c.mobile_cc) x
+        from public.motor_invoices i join public.motor_customers c on c.id = i.customer_id
+       where i.site_id = sid and not i.voided and i.wa_sent_at is not null and i.wa_sent_at > now() - make_interval(days => d)
+       order by i.wa_sent_at desc limit 3000) q), '[]'::jsonb);
+  end if;
+  return coalesce((select jsonb_agg(x order by x->>'sent_at' desc) from (
+    select jsonb_build_object('id',p.id,'sent_at',p.wa_sent_at,'by',p.wa_sent_by,'no',p.no,'at',p.created_at,
+           'paid_amount',p.paid_amount,'paid_currency',p.paid_currency,'balance',p.balance_after,
+           'name',c.name,'code',c.code,'mobile',c.mobile,'mobile_cc',c.mobile_cc,
+           'collector',p.staff_name) x
+      from public.motor_payments p join public.motor_customers c on c.id = p.customer_id
+     where p.site_id = sid and not p.voided and p.wa_sent_at is not null and p.wa_sent_at > now() - make_interval(days => d)
+     order by p.wa_sent_at desc limit 3000) q), '[]'::jsonb);
+end $$;
+grant execute on function public.motor_wa_sent(text,text,text,integer) to anon, authenticated;
+
+-- ============================================================
 --  20k) إقفال صندوق الموظف: يسلّم كل النقد للمكتب ويطلع تقرير
 -- ============================================================
 create or replace function public.motor_staff_close(p_slug text, p_token text, p_staff uuid default null)
