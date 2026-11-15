@@ -889,7 +889,12 @@ async function boot(){
   applyVendorLabels();
   paintPause();
   $('#viewLink').href='/'+R.slug;
-  $('#staffOrdersLink').href='/orders.html?r='+R.slug;
+  $('#staffOrdersLink').href='#';
+  sb.rpc('staff_orders_key',{rid:R.id}).then(function(k){
+    if(k.error||!k.data){ $('#staffOrdersLink').onclick=function(e){ e.preventDefault(); alert('تعذّر تجهيز رابط الموظف: '+((k.error&&k.error.message)||'')); }; return; }
+    $('#staffOrdersLink').onclick=null;
+    $('#staffOrdersLink').href='/orders.html?r='+encodeURIComponent(R.slug)+'&k='+encodeURIComponent(k.data);
+  });
   await licBadge(); siteHelp();
   paintLock();
   await loadCats(); await loadItems(); fillSettings(); loadSub(); loadPay(); loadBanners(); loadPromos(); loadDp();

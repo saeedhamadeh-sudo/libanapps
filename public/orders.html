@@ -137,15 +137,22 @@ var sb=window.supabase.createClient(CFG.SUPABASE_URL,CFG.SUPABASE_ANON_KEY);
 // get restaurant slug from ?r=slug
 var params=new URLSearchParams(location.search);
 var slug=params.get('r')||'';
+var skey=params.get('k')||'';   // مفتاح الموظف السري — من «رابط الموظف» بلوحة الإدارة
 var REST=null;
 var ORDERS=[];
 
-if(!slug){
-  $('#root').innerHTML='<div class="empty">❌ رابط غير صحيح — يرجى استخدام الرابط من لوحة الإدارة</div>';
+if(!slug||!skey){
+  $('#root').innerHTML='<div class="empty">❌ رابط غير صحيح أو قديم — خود «رابط الموظف» الجديد من لوحة الإدارة</div>';
+}
+function rpcErr(r){
+  if(!r||!r.error) return false;
+  var m=String(r.error.message||'');
+  alert(/STAFF:bad_key/.test(m)?'❌ الرابط غير صالح أو انتهى — خود «رابط الموظف» الجديد من لوحة الإدارة':'❌ خطأ: '+m);
+  return true;
 }
 
 async function init(){
-  if(!slug) return;
+  if(!slug||!skey) return;
   // get restaurant name via public RPC
   var r=await sb.from('restaurants').select('id,name_ar,slug').eq('slug',slug).maybeSingle();
   if(r.data){
@@ -162,8 +169,8 @@ async function init(){
 
 async function load(){
   // Use security-definer RPC (accessible with anon key)
-  var r=await sb.rpc('staff_get_orders',{p_slug:slug});
-  if(r.error){ $('#root').innerHTML='<div class="empty">❌ خطأ: '+esc(r.error.message)+'</div>'; return; }
+  var r=await sb.rpc('staff_get_orders',{p_slug:slug, p_key:skey});
+  if(r.error){ var m=String(r.error.message||''); $('#root').innerHTML='<div class="empty">❌ '+(/STAFF:bad_key/.test(m)?'الرابط غير صالح أو انتهى — خود «رابط الموظف» الجديد من لوحة الإدارة':'خطأ: '+esc(m))+'</div>'; return; }
   ORDERS=r.data||[];
   render();
 }
@@ -231,7 +238,7 @@ function orderCard(o, pending){
 async function doAccept(id, type){
   var btn=document.querySelector('[data-acc="'+id+'"]');
   if(btn){ btn.disabled=true; btn.textContent='…'; }
-  await sb.rpc('staff_accept_order',{p_slug:slug, p_order_id:Number(id)});
+  rpcErr(await sb.rpc('staff_accept_order',{p_slug:slug, p_key:skey, p_order_id:Number(id)}));
   await load();
 }
 
@@ -268,7 +275,7 @@ $('#sendReject').addEventListener('click',async function(){
   var reason=sel.value==='custom'?$('#customReason').value.trim():sel.value;
   if(!reason){ alert('اكتب السبب'); return; }
   this.disabled=true; this.textContent='جاري…';
-  await sb.rpc('staff_reject_order',{p_slug:slug, p_order_id:id, p_reason:reason});
+  if(rpcErr(await sb.rpc('staff_reject_order',{p_slug:slug, p_key:skey, p_order_id:id, p_reason:reason}))){ this.disabled=false; this.textContent='رفض وإرسال للزبون'; return; }
   if(phone){
     var orderNo=ORDERS.find(function(o){return o.id===id});
     var no=orderNo?orderNo.order_no:id;
@@ -295,8 +302,8 @@ $('#clearBtn').addEventListener('click',async function(){
   if(!old.length){ alert('ما في طلبات قديمة للمسح'); return; }
   if(!confirm('بتحذف '+old.length+' طلب نهائياً. متأكد؟')) return;
   this.disabled=true; this.textContent='جاري…';
-  var r=await sb.rpc('staff_clear_orders',{p_slug:slug});
-  if(r.error){ alert('خطأ: '+r.error.message); }
+  var r=await sb.rpc('staff_clear_orders',{p_slug:slug, p_key:skey});
+  rpcErr(r);
   await load();
   this.disabled=false; this.textContent='🗑️ مسح القديمة';
 });
