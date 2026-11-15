@@ -2083,6 +2083,8 @@ async function motorGdCallback(url, env) {
     body: new URLSearchParams({ code, client_id: env.GOOGLE_CLIENT_ID, client_secret: env.GOOGLE_CLIENT_SECRET, redirect_uri: gdRedirect(env), grant_type: 'authorization_code' }) });
   const tj = await tr.json().catch(() => ({}));
   if (!tj.refresh_token) return back(d.g, 'no_refresh');
+  // Google بيسمح يشيل علامة «الوصول لملفات Drive» بشاشة الموافقة — بلاها ما فينا نرفع شي
+  if (tj.scope && String(tj.scope).indexOf('auth/drive.file') < 0) return back(d.g, 'no_scope');
   let email = ''; try { email = JSON.parse(atob(String(tj.id_token || '').split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))).email || ''; } catch {}
   await fetch(`${env.SUPABASE_URL}/rest/v1/motor_sites?id=eq.${d.s}`, { method: 'PATCH', headers: svcH(env),
     body: JSON.stringify({ gd_refresh: tj.refresh_token, gd_email: email, gd_folder: '', gd_last_err: '' }) });
@@ -2278,7 +2280,10 @@ async function gdBackup(env, sid) {
     if (!folder) {
       const cr = await fetch('https://www.googleapis.com/drive/v3/files?fields=id', { method: 'POST', headers: Object.assign({ 'Content-Type': 'application/json' }, GH),
         body: JSON.stringify({ name: 'LibanApps - ' + (site.name || site.slug) + ' (نسخ احتياطي)', mimeType: 'application/vnd.google-apps.folder' }) });
-      const cj = await cr.json(); if (!cj.id) throw new Error('gd_folder'); folder = cj.id; await setSite({ gd_folder: folder });
+      const cj = await cr.json().catch(() => ({}));
+      if (!cj.id) { const ge = (cj.error || {}); const why = ((ge.errors || [])[0] || {}).reason || ge.status || '';
+        throw new Error('gd_folder:' + cr.status + ':' + why + (ge.message ? ':' + String(ge.message).slice(0, 160) : '')); }
+      folder = cj.id; await setSite({ gd_folder: folder });
     }
     // 3) الرفع
     const p2 = (x) => String(x).padStart(2, '0');

@@ -1886,6 +1886,9 @@ var D={
  bc_none:['كل الزبائن باركودهم يبدأ بـ {p}','All customers already start with {p}','Tous les clients commencent déjà par {p}'],
  bc_confirm:['سيتغيّر باركود {n} زبون ليبدأ بـ {p}- مع الحفاظ على الرقم نفسه.\nالملصقات المطبوعة سابقاً لهؤلاء الزبائن تحتاج إلى إعادة طباعة. متابعة؟','{n} customers’ barcodes will change to start with {p}- (same number).\nPrinted labels for them must be reprinted. Continue?','{n} codes-barres passeront à {p}- (même numéro).\nRéimprimez leurs étiquettes. Continuer ?'],
  bc_done:['تم تغيير {n} باركود (تخطّي {s} بسبب تكرار)','{n} barcodes changed ({s} skipped as duplicates)','{n} codes changés ({s} ignorés)'],
+ gd_e_scope:['Google لم يعطِ البرنامج إذن الوصول إلى Drive. اضغط «فصل Google Drive» ثم اربطه من جديد، وفي شاشة Google علّم على خانة «See, edit, create, and delete only the specific Google Drive files you use with this app» قبل «Continue».','Google did not grant Drive access. Disconnect, reconnect, and tick the Drive files checkbox on Google’s screen.','Google n’a pas accordé l’accès à Drive. Déconnectez puis reconnectez en cochant la case Drive.'],
+ gd_e_api:['خدمة Google Drive API غير مفعّلة في مشروع Google Cloud.','Google Drive API is not enabled in the Google Cloud project.','L’API Google Drive n’est pas activée.'],
+ gd_e_full:['مساحة Google Drive ممتلئة.','Google Drive storage is full.','Espace Google Drive plein.'],
  mp_title:['سعر الكيلو واط لكل شهر','kWh price per month','Prix du kWh par mois'],
  mp_hint:['حدّد سعر الكيلو واط لكل شهر بشهره. رسائل قيمة الفاتورة لا تُرسل قبل تحديد سعر الشهر. عند الحفظ تُعاد حسابات فواتير العداد لهذا الشهر على السعر الجديد، ثم يُرسل النظام رسائل قيمة الفاتورة تلقائياً (ضمن حد الـ250 اليومي).','Set the kWh price for each month. Invoice messages are not sent before the month price is set. On save, that month’s meter invoices are recalculated and the system sends invoice messages automatically (within the 250/day limit).','Définissez le prix du kWh pour chaque mois. Les messages de facture ne partent qu’après. À l’enregistrement, les factures du mois sont recalculées et les messages envoyés automatiquement (limite 250/jour).'],
  mp_month:['الشهر','Month','Mois'],
@@ -2808,7 +2811,7 @@ async function enter(quiet){
     loadCustomers();   // بالخلفية — القوائم بتتحدّث لما توصل
     startSync();
     var gdq=(location.search.match(/[?&]gd=([a-z_]+)/)||[])[1];
-    if(gdq){ try{ history.replaceState(null,'',location.pathname); }catch(e){} toast(gdq==='ok'?'☁️ '+t('gd_res_ok'):t('gd_res_bad')+' ('+gdq+')',gdq==='ok'?'s':'e'); go('settings'); }
+    if(gdq){ try{ history.replaceState(null,'',location.pathname); }catch(e){} toast(gdq==='ok'?'☁️ '+t('gd_res_ok'):gdq==='no_scope'?t('gd_e_scope'):t('gd_res_bad')+' ('+gdq+')',gdq==='ok'?'s':'e'); go('settings'); }
     else go(lsGet('motor_tab:'+SLUG, ME.role==='collector'?'read':'dash'));
     return true;
   }catch(e){ if(!quiet && !isAuthErr(e)) gate('<div class="err">'+esc(errText(e))+'</div>',true); return false; }
@@ -5705,7 +5708,9 @@ async function gdApi(body){
   if(!r.ok||!j.ok){ var er=new Error(gdErr(j.error||('HTTP '+r.status))); er.code='gd:'+(j.error||r.status); throw er; }
   return j;
 }
-function gdErr(c){ c=String(c||''); return c==='gd_not_configured'?t('gd_e_conf'):/^gd_token/.test(c)?t('gd_e_token'):/MOTOR:forbidden/.test(c)?t('e_forbidden'):c; }
+function gdErr(c){ c=String(c||''); return c==='gd_not_configured'?t('gd_e_conf'):/^gd_token/.test(c)?t('gd_e_token'):
+  /^gd_folder:403:(insufficientPermissions|PERMISSION_DENIED|ACCESS_TOKEN_SCOPE_INSUFFICIENT)/i.test(c)||/insufficient.*scope/i.test(c)?t('gd_e_scope'):
+  /accessNotConfigured|SERVICE_DISABLED|has not been used/i.test(c)?t('gd_e_api'):/storageQuotaExceeded/i.test(c)?t('gd_e_full'):/MOTOR:forbidden/.test(c)?t('e_forbidden'):c; }
 /* قبل خروج المدير: إذا Google Drive مربوط منرفع عليه، وإلا منزّل ملف JSON */
 async function backupNow(){
   var gd=null; try{ gd=(await call('motor_bk_info')).gd; }catch(e){}
