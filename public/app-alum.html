@@ -5360,7 +5360,12 @@ function escapeHtml(s){
 // اللصق من الوورد بالجداول والتنسيق). هاي الدالة بتفرّق بينهم عند العرض/الطباعة
 function looksLikeHtml(s){ return /<[a-z][\s\S]*>/i.test(String(s||'')); }
 function customQuoteContentHtml(content){
-  return looksLikeHtml(content) ? content : escapeHtml(content).replace(/\n/g, '<br>');
+  if(!looksLikeHtml(content)) return escapeHtml(content).replace(/\n/g, '<br>');
+  // تنظيف عند العرض كمان (مش بس عند اللصق) — المحتوى المخزّن ممكن يكون انعدّل مباشرة بقاعدة البيانات
+  const t = document.createElement('template');
+  t.innerHTML = String(content);
+  sanitizeEditableHtml(t.content);
+  return t.innerHTML;
 }
 // تنظيف أمان بعد اللصق من الوورد — منشيل السكربتات وأي محاولة تنفيذ كود،
 // وبنخلي الجداول/التنسيق العادي متلما هو
@@ -5370,7 +5375,7 @@ function sanitizeEditableHtml(el){
     [...n.attributes].forEach(attr=>{
       const name = attr.name.toLowerCase();
       if(name.startsWith('on') || name === 'srcdoc') n.removeAttribute(attr.name);
-      if((name==='href'||name==='src') && /^\s*javascript:/i.test(attr.value)) n.removeAttribute(attr.name);
+      if(/^\s*(javascript|vbscript|data:text\/html)/i.test(attr.value) && name!=='alt' && name!=='title') n.removeAttribute(attr.name);
     });
   });
 }

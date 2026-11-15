@@ -722,8 +722,7 @@ async function buyVerify(request, env) {
     const got = Number(st.amount);
     const want = Number(p.amount_usd);
     const okAmount = w.client.validateAmount(got, want, 'USD')
-                     || (isFinite(got) && got >= want - 0.01)
-                     || (isFinite(got) && got >= want * 0.99 - 0.005);
+                     || (isFinite(got) && got >= want - 0.01);
     if (!okAmount) {
       return json(400, {
         error: 'المبلغ غير مطابق',
@@ -1358,10 +1357,26 @@ async function appWaOwnVerify(request, env) {
   if (!validPhone(phone)) return json(400, { error: 'رقم الهاتف غير صحيح' });
   if (code.length !== 6) return json(400, { error: 'أدخل الرمز المكوّن من ٦ أرقام' });
   if (!acc) return json(400, { error: 'account missing' });
-  // بالوضع الآمن: لازم يكون هو نفسه المسجّل دخول بهالحساب
-  const u = await currentUser(request, env);
-  const sess = u ? await sbGet(env, `app_sessions?uid=eq.${u.id}&product=eq.${c.product}&client_id=eq.${c.cid}&kind=eq.staff&select=account_id`).catch(() => []) : [];
-  if (sess.length && !sess.some(x => String(x.account_id) === acc)) return json(403, { error: 'سجّل الدخول بهذا الحساب أولاً' });
+  // لازم يكون هو نفسه المسجّل دخول بهالحساب — منتحقق من جلسة هالجهاز بالذات (session_id تبع التوكن)،
+  // مش من كل جلسات حساب الرابط المشترك (كان أي حدا فاتح الرابط يقدر يربط رقمو بحساب المدير)
+  const anonKey = env.SUPABASE_ANON_KEY || 'sb_publishable_ypfm_aulpcqBpeFpyD_7iw_mA4DNlR5';
+  const userAuth = request.headers.get('Authorization') || '';
+  const curR = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/app_cur`, {
+    method: 'POST', headers: { apikey: anonKey, Authorization: userAuth, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ p_product: c.product })
+  }).catch(() => null);
+  let curS = curR && curR.ok ? await curR.json().catch(() => null) : null;
+  if (Array.isArray(curS)) curS = curS[0] || null;
+  if (curS && curS.sid) {
+    if (curS.kind !== 'staff' || String(curS.client_id) !== String(c.cid) || String(curS.account_id) !== acc)
+      return json(403, { error: 'سجّل الدخول بهذا الحساب أولاً' });
+  } else {
+    // ما في جلسة: مسموح بس للمؤسسات اللي مش بالوضع الآمن (هناك أصلاً ما في تسجيل دخول من السيرفر)
+    const sec = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/app_secure`, {
+      method: 'POST', headers: { ...sbHeaders(env), 'Content-Type': 'application/json' }, body: JSON.stringify({ cid: c.cid })
+    }).then(r => r.ok ? r.json() : true).catch(() => true);
+    if (sec !== false) return json(403, { error: 'سجّل الدخول بهذا الحساب أولاً' });
+  }
   const exists = await sbGet(env, `${c.table}?client_id=eq.${c.cid}&id=eq.${encodeURIComponent(acc)}&select=id&limit=1`);
   if (!exists.length) return json(404, { error: 'المستخدم غير موجود — احفظ المستخدم أولاً' });
   const others = await sbGet(env, `${c.table}?client_id=eq.${c.cid}&phone=eq.${phone}&select=id`);
@@ -1573,10 +1588,11 @@ async function buySuccess(request, env) {
   catch (e) { console.error('buy status failed', e); return json(502, { error: 'status check failed' }); }
 
   if (st.collectStatus !== 'success') return json(400, { error: 'not confirmed' });
+  // Whish ما بيرجّع amount عادةً — المبلغ انربط بالـexternalId وقت createPayment. إذا رجع، لازم يطابق (بلا سماحية 15%)
   const gotCb = Number(st.amount), wantCb = Number(p.amount_usd);
-  const okCb = w.client.validateAmount(gotCb, wantCb, currency || 'USD')
-               || (isFinite(gotCb) && gotCb >= wantCb - 0.01)
-               || (isFinite(gotCb) && gotCb >= wantCb * 0.85);
+  const okCb = (st.amount === undefined || st.amount === null)
+               || w.client.validateAmount(gotCb, wantCb, currency || 'USD')
+               || (isFinite(gotCb) && gotCb >= wantCb - 0.01);
   if (!okCb) {
     console.error('buy amount mismatch', p.id, st.amount, p.amount_usd);
     return json(400, { error: 'amount mismatch', got: gotCb, expected: wantCb });
@@ -4047,13 +4063,80 @@ function pageFor(pathname) {
   return '/menu.html';   // أي مسار آخر = رابط مطعم
 }
 
-export default {
+// ============================================================
+//  طبقة أمان عامة حوالين كل الطلبات:
+//  · HTTPS إجباري  · Security Headers  · Rate limiting خفيف للمسارات الحساسة
+// ============================================================
+// حد بسيط بالذاكرة (لكل نسخة Worker) — بيوقف السكربتات اللي بتضرب نفس المسار بسرعة.
+// للحماية الكاملة: قاعدة Rate Limiting من لوحة Cloudflare (Security › WAF).
+const _rl = new Map();
+function rateLimited(ip, bucket, max, winMs) {
+  const k = bucket + '|' + ip, now = Date.now();
+  let e = _rl.get(k);
+  if (!e || e.r < now) { e = { n: 0, r: now + winMs }; _rl.set(k, e); }
+  e.n++;
+  if (_rl.size > 5000) _rl.clear();
+  return e.n > max;
+}
+const RL_RULES = [
+  [/^\/api\/(otp\/verify|checkout-otp\/verify|app-wa\/verify|app-wa\/own-verify|mfa\/backup-codes\/verify|auth\/reset-with-backup|account\/password)$/, 'auth', 20],
+  [/^\/api\/(otp\/send|phone\/send|app-wa\/send)$/, 'otp', 10],
+  [/^\/api\/portal-token$/, 'portal', 30],
+  [/^\/api\/app\/img-(fetch|search)$/, 'img', 60],
+  [/^\/api\/store\/import-image$/, 'imp', 60],
+];
+function securityHeaders(res, url, env, request) {
+  if (!res || res.status === 101) return res;   // WebSocket
+  const out = new Response(res.body, res);
+  const h = out.headers;
+  const ct = (h.get('Content-Type') || '').toLowerCase();
+  if (!h.has('X-Content-Type-Options')) h.set('X-Content-Type-Options', 'nosniff');
+  if (!h.has('Referrer-Policy')) h.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+  const host = url.hostname.toLowerCase();
+  let site = ''; try { site = new URL(env.WEBSITE_URL || '').hostname.toLowerCase(); } catch (e) {}
+  if (site && (host === site || host === 'www.' + site)) h.set('Strict-Transport-Security', 'max-age=31536000');
+  if (ct.includes('text/html') && isPlatformHost(host, env)) {
+    // صفحات الإدارة والبرامج ما بتنفتح جوّا iframe بموقع غريب (Clickjacking)
+    // المنيو والمتجر بيضلّوا مسموحين (في زباين بيحطّوهم بمواقعهم)
+    const pth = url.pathname;
+    const page = /\.[a-z0-9]{2,5}$/i.test(pth) ? pth : pageFor(pth);
+    const embeddable = page === '/menu.html' || pth.startsWith('/portal-store/') || /^\/(store|invoice|track)\.html$/.test(page);
+    if (!embeddable) {
+      h.set('X-Frame-Options', 'SAMEORIGIN');
+      h.set('Content-Security-Policy', "frame-ancestors 'self'");
+    }
+  }
+  return out;
+}
+
+const LA_WORKER = {
   async scheduled(event, env, ctx) {
     if (event.cron === '*/15 * * * *') ctx.waitUntil(motorPayQueueCron(env).catch(() => {}));
     else ctx.waitUntil(motorGdCron(env).catch(() => {}));
   },
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
+    // HTTPS إجباري (308 بيحافظ على نوع الطلب POST/GET)
+    if (url.protocol === 'http:' && url.hostname !== 'localhost' && url.hostname !== '127.0.0.1') {
+      url.protocol = 'https:';
+      return new Response(null, { status: 308, headers: { Location: url.toString() } });
+    }
+    if (url.pathname.startsWith('/api/') && request.method !== 'OPTIONS') {
+      const ip = request.headers.get('CF-Connecting-IP') || '';
+      for (const [re, bucket, max] of RL_RULES) {
+        if (re.test(url.pathname)) {
+          if (ip && rateLimited(ip, bucket, max, 60000))
+            return new Response(JSON.stringify({ error: 'طلبات كثيرة — حاول بعد دقيقة' }), { status: 429, headers: { 'Content-Type': 'application/json', 'Retry-After': '60', 'Cache-Control': 'no-store' } });
+          break;
+        }
+      }
+    }
+    let res;
+    try { res = await LA_WORKER.handle(request, env, ctx, url); }
+    catch (e) { console.error('unhandled', url.pathname, e); res = new Response('Internal error', { status: 500, headers: { 'Content-Type': 'text/plain; charset=utf-8' } }); }
+    return securityHeaders(res, url, env, request);
+  },
+  async handle(request, env, ctx, url) {
 
     // 00) رابط نسخة محلية (shop1.libanapps.com أو دومين الزبون): الطلب بيكمّل للنفق على كمبيوتر الزبون
     if (await isLocalTunnelHost(url.hostname, env)) return await localPassthrough(request, env, url);
@@ -4373,3 +4456,4 @@ export default {
     });
   }
 };
+export default LA_WORKER;
