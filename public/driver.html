@@ -90,6 +90,7 @@ ol{padding-inline-start:20px;margin:6px 0;color:var(--muted);font-size:13px;line
     </div>
 
     <section data-p="orders">
+      <div id="cancelled"></div>
       <h3 id="mineH" class="hidden">طلباتي</h3>
       <div id="mine"></div>
       <h3>طلبات بانتظار دراجة نارية</h3>
@@ -303,8 +304,20 @@ function departBtn(o){
 function vendorBlocks(o){ var v=vInfo(o); return !!(v && (v.vendors||[]).some(function(x){return x.status==='pending'})); }
 
 /* ---------- الطلبات ---------- */
+var seenCancel={}, firstCancel=true;
 function paintOrders(){
-  var mine=S.mine||[], w=S.waiting||[];
+  var mine=S.mine||[], w=S.waiting||[], cx=S.cancelled||[];
+  // طلبات كانت معي وانلغت (المطعم رفضها أو لغاها) — ما بتنطلّع
+  $('#cancelled').innerHTML=cx.map(function(o){
+    var t=o.at?new Date(o.at).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}):'';
+    return '<div class="card" style="border:2px solid #ef4444;background:rgba(239,68,68,.08)">'+
+      '<div class="row"><span class="no">'+esc(o.order_no)+'</span><span class="chip" style="background:#ef4444;color:#fff">❌ '+(o.status==='rejected'?'المطعم رفض الطلب':'الطلب ملغى')+'</span></div>'+
+      '<div class="meta"><b style="color:var(--text)">لا تطلّع هالطلب.</b> '+(o.customer_name?esc(o.customer_name)+' · ':'')+esc(t)+
+        (o.reason?'<br>السبب: '+esc(o.reason):'')+'</div></div>';
+  }).join('');
+  var newCx=cx.filter(function(o){return !seenCancel[o.id]});
+  if(newCx.length && !firstCancel){ beep(); toast('❌ انلغى الطلب '+newCx.map(function(o){return o.order_no}).join('، ')+' — لا تطلّعو'); }
+  cx.forEach(function(o){seenCancel[o.id]=1}); firstCancel=false;
   $('#mineH').classList.toggle('hidden',!mine.length);
   $('#mine').innerHTML=mine.map(function(o){
     var st=o.dispatch==='on_the_way'?'<span class="chip b">في الطريق</span>'
