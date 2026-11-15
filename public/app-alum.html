@@ -1182,6 +1182,7 @@ async function applyBackupData(data){
 window.LA_APP = {
   product:'alum',
   cid: ()=>CLIENT_ID,
+  token: async ()=>{ try{ const s = supabaseClient && (await supabaseClient.auth.getSession()).data.session; return (s && s.access_token && s.access_token!=='local') ? s.access_token : ''; }catch(e){ return ''; } },
   key: async ()=>{ if(!DB.settings.intKey){ const a = new Uint8Array(24); crypto.getRandomValues(a); DB.settings.intKey = Array.from(a).map(b=>b.toString(16).padStart(2,'0')).join(''); await save(KEYS.settings, DB.settings); } return DB.settings.intKey; },
   name: ()=>DB.settings.companyName||'',
   backup: ()=>JSON.stringify(backupPayload()),

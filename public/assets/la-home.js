@@ -98,14 +98,16 @@ window.laWhishify = whishify;
 var API = 'https://libanapps.com/api/acc-int';
 var ST = null, STAT_AT = 0;
 function A(){ return window.LA_APP || null; }
+// جلسة البرنامج (بالسحابة) — السيرفر بيطلبها أول مرة بينسجّل فيها مفتاح الربط
+async function H(extra){ var h = Object.assign({}, extra||{}); try{ var a = A(); var t = a && a.token ? await a.token() : ''; if(t) h.Authorization = 'Bearer ' + t; }catch(e){} return h; }
 async function call(op, extra){
   var a = A(); if(!a || !a.cid()) throw new Error('no_client');
-  var r = await fetch(API, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(Object.assign({ op:op, cid:a.cid(), product:a.product, key: await a.key() }, extra||{})) });
+  var r = await fetch(API, { method:'POST', headers: await H({'Content-Type':'application/json'}), body: JSON.stringify(Object.assign({ op:op, cid:a.cid(), product:a.product, key: await a.key() }, extra||{})) });
   var j = await r.json().catch(function(){ return {}; }); if(!r.ok || j.ok===false){ var e = new Error(j.error||('http_'+r.status)); e.j = j; throw e; } return j;
 }
 async function status(force){ if(!force && ST && Date.now()-STAT_AT < 60000) return ST; try{ ST = await call('status'); STAT_AT = Date.now(); }catch(e){ ST = { err:e.message }; } return ST; }
 window.laIntStatus = status;
-function errTxt(e){ var m = String(e && e.message || e); return ({ gd_not_configured:'ربط Google Drive مش مفعّل عالسيرفر بعد', gd_off:'Google Drive مش مربوط', key_mismatch:'مفتاح الربط مش مطابق — تواصل مع LibanApps', no_client:'افتح البرنامج من رابطو الرسمي أول', wc_bad_key:'مفتاح WhatChimp غلط', wc_no_key:'حط مفتاح WhatChimp أول', bad_key:'مفتاح WhatChimp غلط' })[m] || (m.indexOf('gd_token')===0? 'انتهى ربط Google Drive — افصلو واربطو من جديد' : m); }
+function errTxt(e){ var m = String(e && e.message || e); return ({ gd_not_configured:'ربط Google Drive مش مفعّل عالسيرفر بعد', gd_off:'Google Drive مش مربوط', need_login:'افتح البرنامج من رابطه وسجّل دخول أول، وبعدين اربط', key_mismatch:'مفتاح الربط مش مطابق — تواصل مع LibanApps', no_client:'افتح البرنامج من رابطو الرسمي أول', wc_bad_key:'مفتاح WhatChimp غلط', wc_no_key:'حط مفتاح WhatChimp أول', bad_key:'مفتاح WhatChimp غلط' })[m] || (m.indexOf('gd_token')===0? 'انتهى ربط Google Drive — افصلو واربطو من جديد' : m); }
 function T(msg){ var a = A(); if(a && a.toast) a.toast(msg); }
 // رفع نسخة احتياطية على Drive (why: logout / daily / manual)
 window.laDriveBackup = async function(why){
@@ -113,7 +115,7 @@ window.laDriveBackup = async function(why){
   var st = await status(); if(!st || !st.gd || !st.gd.on) return { ok:false, error:'gd_off' };
   var body = a.backup();
   var u = API + '/upload?' + new URLSearchParams({ cid:a.cid(), product:a.product, key: await a.key(), name: a.name()||'', why: why||'' }).toString();
-  var r = await fetch(u, { method:'POST', headers:{'Content-Type':'application/json'}, body: body });
+  var r = await fetch(u, { method:'POST', headers: await H({'Content-Type':'application/json'}), body: body });
   var j = await r.json().catch(function(){ return {}; }); if(r.ok && j.ok){ ST = null; } return j;
 };
 // نسخة يومية تلقائية (مرة كل يوم) — للمدير

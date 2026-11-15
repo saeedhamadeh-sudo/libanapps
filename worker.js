@@ -2101,13 +2101,22 @@ async function accPatch(env, cid, product, o) {
   return fetch(`${env.SUPABASE_URL}/rest/v1/acc_integrations?client_id=eq.${cid}&product=eq.${product}`, { method: 'PATCH', headers: svcH(env), body: JSON.stringify(Object.assign({ updated_at: new Date().toISOString() }, o)) });
 }
 // بيتحقق من الزبون والمفتاح — وأول مرة بيسجّل المفتاح
-async function accAuth(env, cid, product, key) {
+async function accAuth(env, cid, product, key, request) {
   if (!/^[0-9a-f-]{36}$/.test(String(cid)) || !['trade', 'alum'].includes(product) || String(key || '').length < 24) { const e = new Error('bad_fields'); e.status = 400; throw e; }
   const kh = await accSha(key);
   let row = await accRow(env, cid, product);
   if (!row) {
     const ok = await fetch(`${env.SUPABASE_URL}/rest/v1/app_settings?client_id=eq.${cid}&product_code=eq.${product}&select=client_id&limit=1`, { headers: svcH(env) }).then((r) => r.json()).catch(() => []);
     if (!ok || !ok[0]) { const e = new Error('no_client'); e.status = 404; throw e; }
+    // أول تسجيل للمفتاح: لازم يكون من جوّا برنامج المؤسسة نفسها (جلسة Supabase تبعها)،
+    // وإلا أي حدا بيعرف client_id كان يسبق الزبون ويحجز الربط. النسخة المحلية (ما فيها جلسة سحابة)
+    // مسموحة بس للمؤسسات اللي عندها نسخة محلية مسجّلة (نفق أو نسخة احتياطية للقراءة).
+    const tokCid = request ? await appClientOf(request, env) : null;
+    if (tokCid !== cid) {
+      const off = await fetch(`${env.SUPABASE_URL}/rest/v1/local_tunnels?client_id=eq.${cid}&select=client_id&limit=1`, { headers: svcH(env) }).then((r) => r.json()).catch(() => []);
+      const mir = (Array.isArray(off) && off.length) ? off : await fetch(`${env.SUPABASE_URL}/rest/v1/local_mirror?client_id=eq.${cid}&select=client_id&limit=1`, { headers: svcH(env) }).then((r) => r.json()).catch(() => []);
+      if (!Array.isArray(mir) || !mir.length) { const e = new Error('need_login'); e.status = 403; throw e; }
+    }
     await fetch(`${env.SUPABASE_URL}/rest/v1/acc_integrations`, { method: 'POST', headers: Object.assign({ Prefer: 'resolution=ignore-duplicates' }, svcH(env)), body: JSON.stringify({ client_id: cid, product, key_hash: kh }) });
     row = await accRow(env, cid, product);
   }
@@ -2129,7 +2138,7 @@ async function accInt(request, env, url) {
     // رفع نسخة احتياطية: الجسم هو ملف الـJSON نفسو
     if (url.pathname === '/api/acc-int/upload') {
       const cid = url.searchParams.get('cid'), product = url.searchParams.get('product'), key = url.searchParams.get('key') || '';
-      const row = await accAuth(env, cid, product, key);
+      const row = await accAuth(env, cid, product, key, request);
       if (!row.gd_refresh) return json(409, { ok: false, error: 'gd_off' });
       const body = await request.text();
       if (body.length < 20) return json(400, { ok: false, error: 'empty' });
@@ -2154,7 +2163,7 @@ async function accInt(request, env, url) {
     }
     let b; try { b = await request.json(); } catch { return json(400, { ok: false, error: 'bad_json' }); }
     const cid = String(b.cid || ''), product = String(b.product || ''), op = String(b.op || '');
-    const row = await accAuth(env, cid, product, b.key);
+    const row = await accAuth(env, cid, product, b.key, request);
     if (op === 'status') return json(200, { ok: true, gd: { on: !!row.gd_refresh, email: row.gd_email || '', last_at: row.gd_last_at, last_err: row.gd_last_err || '' }, wc: { on: !!row.wc_api_key, label: row.wc_label || '' }, gd_conf: !!(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET) });
     if (op === 'gd_auth_url') {
       if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET) return json(409, { ok: false, error: 'gd_not_configured' });
@@ -4312,7 +4321,7 @@ const LA_WORKER = {
         }
         if (url.pathname === '/api/motor-gdrive/callback') return await motorGdCallback(url, env);
         if (url.pathname === '/api/acc-int' || url.pathname === '/api/acc-int/upload') {
-          if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'POST', 'Access-Control-Allow-Headers': 'Content-Type' } });
+          if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'POST', 'Access-Control-Allow-Headers': 'Content-Type, Authorization' } });
           if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
           const res = await accInt(request, env, url);
           const h = new Headers(res.headers); h.set('Access-Control-Allow-Origin', '*');
