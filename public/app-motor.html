@@ -1877,6 +1877,15 @@ var D={
  cc_credit:['لهذا الزبون رصيد دائن: {v}','This customer has a credit of {v}','Ce client a un avoir de {v}'],
  cc_note:['سيُنقل الزبون مع كشف حسابه إلى سلة المحذوفات، ويمكن إرجاعه من هناك.','The customer and their statement move to the recycle bin and can be restored.','Le client et son relevé vont à la corbeille et peuvent être restaurés.'],
  cc_done:['تم إلغاء الزبون «{n}» ونقله إلى سلة المحذوفات','Customer “{n}” removed to the recycle bin','Client « {n} » déplacé dans la corbeille'],
+ bc_title:['الباركود','Barcodes','Codes-barres'],
+ bc_hint:['حدّد بداية الباركود الخاصة بمولّدك (حروف إنكليزية وأرقام فقط)، مثلاً AWZ لمولّد عين وزين. الزبائن الجدد يأخذون هذه البداية تلقائياً مع رقم الزبون.','Set your generator’s barcode prefix (English letters and digits), e.g. AWZ. New customers get it automatically with their number.','Définissez le préfixe des codes-barres (lettres et chiffres), ex. AWZ.'],
+ bc_example:['شكل الباركود','Barcode format','Format'],
+ bc_save_note:['اضغط «حفظ» أسفل الصفحة لحفظ البداية الجديدة.','Press “Save” at the bottom to keep the new prefix.','Cliquez « Enregistrer » en bas.'],
+ bc_apply:['تطبيق البداية على باركود الزبائن الحاليين','Apply the prefix to existing customers','Appliquer aux clients existants'],
+ bc_save_first:['احفظ الإعدادات أولاً ثم طبّق البداية','Save the settings first, then apply','Enregistrez d’abord'],
+ bc_none:['كل الزبائن باركودهم يبدأ بـ {p}','All customers already start with {p}','Tous les clients commencent déjà par {p}'],
+ bc_confirm:['سيتغيّر باركود {n} زبون ليبدأ بـ {p}- مع الحفاظ على الرقم نفسه.\nالملصقات المطبوعة سابقاً لهؤلاء الزبائن تحتاج إلى إعادة طباعة. متابعة؟','{n} customers’ barcodes will change to start with {p}- (same number).\nPrinted labels for them must be reprinted. Continue?','{n} codes-barres passeront à {p}- (même numéro).\nRéimprimez leurs étiquettes. Continuer ?'],
+ bc_done:['تم تغيير {n} باركود (تخطّي {s} بسبب تكرار)','{n} barcodes changed ({s} skipped as duplicates)','{n} codes changés ({s} ignorés)'],
  mp_title:['سعر الكيلو واط لكل شهر','kWh price per month','Prix du kWh par mois'],
  mp_hint:['حدّد سعر الكيلو واط لكل شهر بشهره. رسائل قيمة الفاتورة لا تُرسل قبل تحديد سعر الشهر. عند الحفظ تُعاد حسابات فواتير العداد لهذا الشهر على السعر الجديد، ثم يُرسل النظام رسائل قيمة الفاتورة تلقائياً (ضمن حد الـ250 اليومي).','Set the kWh price for each month. Invoice messages are not sent before the month price is set. On save, that month’s meter invoices are recalculated and the system sends invoice messages automatically (within the 250/day limit).','Définissez le prix du kWh pour chaque mois. Les messages de facture ne partent qu’après. À l’enregistrement, les factures du mois sont recalculées et les messages envoyés automatiquement (limite 250/jour).'],
  mp_month:['الشهر','Month','Mois'],
@@ -5051,8 +5060,13 @@ VIEWS.settings=async function(main){
       '<input type="hidden" data-s="logo_url" value="'+esc(S.logo_url||'')+'"></div></div>'+
       '<div class="card"><h3>'+esc(t('s_money'))+'</h3><div class="g2">'+
       '<div><label>'+esc(t('main_cur'))+'</label><select data-s="currency"><option value="USD">USD $</option><option value="LBP">LBP ل.ل</option></select></div>'+
-      fld('lbp_rate','lbp_rate',S.lbp_rate)+fld('cur_label','cur_label',S.cur_label)+fld('round_step','round_step',S.round_step)+fld('barcode_prefix','barcode_prefix',S.barcode_prefix)+
+      fld('lbp_rate','lbp_rate',S.lbp_rate)+fld('cur_label','cur_label',S.cur_label)+fld('round_step','round_step',S.round_step)+
       '<div style="grid-column:1/-1">'+chk('show_second','show_second',S.show_second)+chk('wa_from_office','wa_from_office',S.wa_from_office)+'</div></div></div>'+
+      '<div class="card" id="sbc"><h3>🏷️ '+esc(t('bc_title'))+'</h3><p class="muted" style="margin-top:0">'+esc(t('bc_hint'))+'</p>'+
+        '<div class="row" style="gap:12px;align-items:flex-end;flex-wrap:wrap"><div><label>'+esc(t('barcode_prefix'))+'</label><input data-s="barcode_prefix" id="bcpre" dir="ltr" maxlength="8" autocomplete="off" value="'+esc(S.barcode_prefix||'')+'" style="max-width:180px;font-size:20px;font-weight:800;text-transform:uppercase;letter-spacing:1px"></div>'+
+        '<div><label>'+esc(t('bc_example'))+'</label><div id="bcex" dir="ltr" style="font:800 22px monospace;padding:8px 12px;border:2px dashed var(--line,#ccc);border-radius:10px"></div></div></div>'+
+        '<p class="muted" style="margin:10px 0 0">'+esc(t('bc_save_note'))+'</p>'+
+        '<div class="row" style="margin-top:12px"><button class="btn alt" id="bcapply" type="button">🔁 '+esc(t('bc_apply'))+'</button></div></div>'+
       '<div class="card"><h3>'+esc(t('invoice_note'))+'</h3><p class="muted" style="margin-top:0">'+esc(t('invoice_note_hint'))+'</p><textarea data-s="invoice_note" rows="3">'+esc(S.invoice_note)+'</textarea></div>'+
       '<div class="card"><h3>'+esc(t('s_read'))+'</h3>'+chk('require_photo','require_photo',S.require_photo)+chk('first_baseline','first_read_baseline',S.first_read_baseline)+chk('require_gps','require_gps',S.require_gps)+chk('sees_all','collector_sees_all',S.collector_sees_all)+
       '<div class="g2" style="margin-top:8px">'+fld('max_dist','max_distance_m',S.max_distance_m)+'</div>'+
@@ -5097,6 +5111,15 @@ VIEWS.settings=async function(main){
   if($('#swa2',main)){ waBind($('#swa2',main)); if(waKey()){ waRefresh(); waStartPoll(); } }
   if($('#swc',main)) wcCard($('#swc',main));
   if($('#sbk',main)) bkCard($('#sbk',main));
+  if($('#bcpre',main)){ var bci=$('#bcpre',main), bcx=$('#bcex',main);
+    function bcPaint(){ bci.value=bci.value.toUpperCase().replace(/[^A-Z0-9]/g,''); bcx.textContent=(bci.value||'M')+'-00001'; }
+    bci.addEventListener('input',bcPaint); bcPaint();
+    $('#bcapply',main).addEventListener('click',async function(){ var b=this;
+      if((bci.value||'')!==(SITE.barcode_prefix||'')){ toast(t('bc_save_first'),'e'); return; }
+      try{ var d=await call('motor_barcode_reprefix',{p_dry:true}); }catch(e){ return toast(errText(e),'e'); }
+      if(!d.todo){ toast(t('bc_none',{p:d.prefix}),'s'); return; }
+      if(!(await confirmBox(t('bc_confirm',{n:fmtN(d.todo,0),p:d.prefix})))) return;
+      busy(b,true); try{ var r=await call('motor_barcode_reprefix',{p_dry:false}); await loadCustomers(); toast(t('bc_done',{n:fmtN(r.changed,0),s:fmtN(r.skipped,0)}),'s'); }catch(e){ toast(errText(e),'e'); } busy(b,false); }); }
   if($('#sdom',main)) domCard($('#sdom',main));
   if($('#cprevpdf',main)) $('#cprevpdf',main).addEventListener('click',prevPdfDialog);
   if($('#cinvimp',main)) $('#cinvimp',main).addEventListener('click',invImportDialog);

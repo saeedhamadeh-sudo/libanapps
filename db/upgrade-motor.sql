@@ -4860,6 +4860,35 @@ begin
 end $m$;
 
 -- ============================================================
+--  20j19) بادئة الباركود: تطبيقها على باركود الزبائن الحاليين (المدير الأساسي)
+-- ============================================================
+create or replace function public.motor_barcode_reprefix(p_slug text, p_token text, p_dry boolean default false)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w jsonb; sid uuid; pre text; r record; nb text; n int := 0; skip int := 0; todo int := 0;
+begin
+  w := public._motor_main(p_slug, p_token);
+  sid := (w->>'site_id')::uuid;
+  select barcode_prefix into pre from public.motor_sites where id = sid;
+  for r in select id, code, barcode from public.motor_customers
+            where site_id = sid and deleted_at is null and upper(barcode) not like upper(pre) || '-%' order by code loop
+    todo := todo + 1;
+    if p_dry then continue; end if;
+    -- نفس الرقم مع البادئة الجديدة (أو رقم الزبون إذا الباركود فاضي أو ما فيه رقم)
+    nb := pre || '-' || coalesce(nullif(substring(r.barcode from '([0-9]+)$'), ''), lpad(r.code::text, 5, '0'));
+    if exists (select 1 from public.motor_customers where site_id = sid and id <> r.id and lower(barcode) = lower(nb)) then
+      nb := pre || '-' || lpad(r.code::text, 5, '0');   -- الرقم مستعمل: منستعمل رقم الزبون
+      if exists (select 1 from public.motor_customers where site_id = sid and id <> r.id and lower(barcode) = lower(nb)) then
+        skip := skip + 1; continue;
+      end if;
+    end if;
+    update public.motor_customers set barcode = nb, updated_at = now() where id = r.id;
+    n := n + 1;
+  end loop;
+  return jsonb_build_object('ok', true, 'prefix', pre, 'todo', todo, 'changed', n, 'skipped', skip);
+end $$;
+grant execute on function public.motor_barcode_reprefix(text,text,boolean) to anon, authenticated;
+
+-- ============================================================
 --  20k) إقفال صندوق الموظف: يسلّم كل النقد للمكتب ويطلع تقرير
 -- ============================================================
 create or replace function public.motor_staff_close(p_slug text, p_token text, p_staff uuid default null)
