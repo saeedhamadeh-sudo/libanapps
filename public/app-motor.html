@@ -1871,6 +1871,12 @@ var D={
  stk_k_sale:['فاتورة مبيعات','Sales invoice','Facture de vente'],
  stk_k_return:['استرجاع','Return','Retour'],
  e_return_too_much:['الكمية المرتجعة أكبر من المباعة في الفاتورة ({x})','Returned quantity exceeds what was sold ({x})','Quantité retournée supérieure à la vente ({x})'],
+ cc_btn:['إلغاء الزبون','Remove customer','Supprimer le client'],
+ cc_q:['هل أنت متأكد من إلغاء الزبون «{n}» (رقم {c})؟','Remove customer “{n}” (#{c})?','Supprimer le client « {n} » (n° {c}) ?'],
+ cc_debt:['على هذا الزبون رصيد متوجّب: {v}','This customer still owes {v}','Ce client doit encore {v}'],
+ cc_credit:['لهذا الزبون رصيد دائن: {v}','This customer has a credit of {v}','Ce client a un avoir de {v}'],
+ cc_note:['سيُنقل الزبون مع كشف حسابه إلى سلة المحذوفات، ويمكن إرجاعه من هناك.','The customer and their statement move to the recycle bin and can be restored.','Le client et son relevé vont à la corbeille et peuvent être restaurés.'],
+ cc_done:['تم إلغاء الزبون «{n}» ونقله إلى سلة المحذوفات','Customer “{n}” removed to the recycle bin','Client « {n} » déplacé dans la corbeille'],
  mp_title:['سعر الكيلو واط لكل شهر','kWh price per month','Prix du kWh par mois'],
  mp_hint:['حدّد سعر الكيلو واط لكل شهر بشهره. رسائل قيمة الفاتورة لا تُرسل قبل تحديد سعر الشهر. عند الحفظ تُعاد حسابات فواتير العداد لهذا الشهر على السعر الجديد، ثم يُرسل النظام رسائل قيمة الفاتورة تلقائياً (ضمن حد الـ250 اليومي).','Set the kWh price for each month. Invoice messages are not sent before the month price is set. On save, that month’s meter invoices are recalculated and the system sends invoice messages automatically (within the 250/day limit).','Définissez le prix du kWh pour chaque mois. Les messages de facture ne partent qu’après. À l’enregistrement, les factures du mois sont recalculées et les messages envoyés automatiquement (limite 250/jour).'],
  mp_month:['الشهر','Month','Mois'],
@@ -2926,6 +2932,14 @@ function phDigits(v){ return String(v||'').replace(/[٠-٩]/g,function(x){ retur
 function phCore(v){ var d=phDigits(v); if(d.indexOf('00')===0) d=d.slice(2); if(d.indexOf('961')===0&&d.length>8) d=d.slice(3); return d.replace(/^0+/,''); }
 function phoneHit(c,raw){ var q=phCore(raw); if(q.length<3||!/^[\s\d٠-٩۰-۹+()\-]+$/.test(String(raw||'').trim())) return false;
   return [c.mobile,c.phone,c.mobile2].some(function(m){ var d=phCore(m); return d&&d.indexOf(q)>=0; }); }
+/* إلغاء الزبون (بينتقل لسلة المحذوفات وبينرجع منها) — مع رسالة تأكيد */
+async function cancelCustomer(c,after){
+  if(!c) return false;
+  var bal=n2(c.balance), msg=t('cc_q',{n:c.name,c:c.code})+(Math.abs(bal)>0.005?'\n\n⚠️ '+t(bal>0?'cc_debt':'cc_credit',{v:money(Math.abs(bal))}):'')+'\n\n'+t('cc_note');
+  if(!(await confirmBox(msg))) return false;
+  try{ await call('motor_customer_delete',{p_id:c.id}); toast(t('cc_done',{n:c.name}),'s'); await loadCustomers(); if(after) after(); return true; }
+  catch(err){ toast(errText(err),'e'); return false; }
+}
 function searchCust(q,lim){
   var raw=q; q=normS(q); if(!q) return [];
   return CUST.filter(function(c){ return phoneHit(c,raw) || normS(c.name).indexOf(q)>=0 || normS(c.alt_name).indexOf(q)>=0 || normS(c.barcode)===q || normS(c.barcode).indexOf(q)>=0
@@ -3499,7 +3513,7 @@ async function openCustomer(id,barcode,mode){
         (can('cut')?(c.is_active?'<button class="btn danger" data-a="cut">'+esc(t('cut'))+'</button>':'<button class="btn acc" data-a="connect">'+esc(t('connect'))+'</button>'):'')+
         '<button class="btn alt" data-a="stmt">'+esc(t('statement'))+'</button>'+
         (c.mobile&&waHere()?'<button class="btn wa sm" data-a="wa">'+esc(t('whatsapp'))+'</button>':'')+
-        (adm?'<button class="btn ghost sm" data-a="edit">✏️ '+esc(t('edit'))+'</button>'+(d.read_now?'<button class="btn ghost sm" data-a="redit">🔢 '+esc(t('edit_reading'))+'</button>':'')+
+        (adm?'<button class="btn ghost sm" data-a="edit">✏️ '+esc(t('edit'))+'</button><button class="btn danger sm" data-a="ccancel">🗑️ '+esc(t('cc_btn'))+'</button>'+(d.read_now?'<button class="btn ghost sm" data-a="redit">🔢 '+esc(t('edit_reading'))+'</button>':'')+
           '<button class="btn ghost sm" data-a="clogin">🔑 '+esc(t('cust_login'))+(d.has_login?' ✓':'')+'</button>'+(c.mobile&&waHere()?'<button class="btn wa sm" data-a="sendlogin">📲 '+esc(t('send_login'))+'</button>':'')+'<button class="btn ghost sm" data-a="adj">'+esc(t('adjust'))+'</button><button class="btn ghost sm" data-a="label">🏷️ '+esc(t('label_one'))+'</button>':'')+
       '</div>';
     $('#cmSide',m.body).innerHTML=
@@ -3516,6 +3530,7 @@ async function openCustomer(id,barcode,mode){
     else if(a==='stmt') openStatement(c.id);
     else if(a==='wa') openWa(c.mobile_cc,c.mobile,'');
     else if(a==='edit'){ m.close(); editCustomer(c.id); }
+    else if(a==='ccancel'){ cancelCustomer(c).then(function(ok){ if(ok){ m.close(); go(TAB); } }); }
     else if(a==='adj') adjustForm();
     else if(a==='label') printLabels([c]);
     else if(a==='note') addNote();
@@ -4588,7 +4603,7 @@ VIEWS.customers=async function(main){
     '</div><div class="toolbar">'+
     (adm?'<button class="btn" id="cadd">'+esc(t('new_customer'))+'</button><button class="btn alt" id="cimp">'+esc(t('import_excel'))+'</button>':'')+
     '<button class="btn ghost" id="cexp">'+esc(t('export_csv'))+'</button>'+(adm?'<button class="btn ghost" id="clbl">'+esc(t('labels'))+'</button><button class="btn ghost" id="cfill">'+esc(t('fill_barcodes'))+'</button>':'')+
-    '<span class="sp"></span><span class="muted" id="ccount"></span></div><div class="tw"><table><thead><tr><th>'+esc(t('code'))+'</th><th>'+esc(t('name'))+'</th><th>'+esc(t('barcode'))+'</th><th>'+esc(t('plan'))+'</th><th>'+esc(t('box'))+'</th><th>'+esc(t('area'))+'</th><th>'+esc(t('collector'))+'</th><th>'+esc(t('status'))+'</th><th>'+esc(t('balance'))+'</th><th>'+esc(t('prev_reading'))+'</th><th>'+esc(t('cur_reading'))+' ('+esc(monthName(SITE.bill_period,true))+')</th></tr></thead><tbody id="ctb"></tbody></table></div><div id="cmore" style="text-align:center;margin-top:10px"></div>';
+    '<span class="sp"></span><span class="muted" id="ccount"></span></div><div class="tw"><table><thead><tr><th>'+esc(t('code'))+'</th><th>'+esc(t('name'))+'</th><th>'+esc(t('barcode'))+'</th><th>'+esc(t('plan'))+'</th><th>'+esc(t('box'))+'</th><th>'+esc(t('area'))+'</th><th>'+esc(t('collector'))+'</th><th>'+esc(t('status'))+'</th><th>'+esc(t('balance'))+'</th><th>'+esc(t('prev_reading'))+'</th><th>'+esc(t('cur_reading'))+' ('+esc(monthName(SITE.bill_period,true))+')</th>'+(adm?'<th></th>':'')+'</tr></thead><tbody id="ctb"></tbody></table></div><div id="cmore" style="text-align:center;margin-top:10px"></div>';
   $('#cst',main).value=CF.st; $('#cpl',main).value=CF.plan; if($('#ccol',main)) $('#ccol',main).value=CF.col; $('#car',main).value=CF.area;
   function filtered(){
     var q=normS(CF.q);
@@ -4603,11 +4618,13 @@ VIEWS.customers=async function(main){
     $('#ccount',main).innerHTML=esc(fmtN(list.length,0))+' · '+esc(t('total'))+': '+balHtml(tot);
     $('#ctb',main).innerHTML=list.slice(0,CF.lim).map(function(c){
       return '<tr data-cust="'+esc(c.id)+'" style="cursor:pointer"><td class="num">'+esc(c.code)+'</td><td><b>'+esc(c.name)+'</b></td><td class="num">'+esc(c.barcode)+'</td><td>'+esc(planName(c.plan_id))+'</td><td>'+esc(c.box)+'</td><td>'+esc(c.area)+'</td><td>'+esc(c.collector_name||'')+'</td>'+
-        '<td><span class="chip '+(c.is_active?'on':'off')+'">'+esc(c.is_active?t('active'):t('inactive'))+'</span>'+(c.archived?' <span class="chip gray">'+esc(t('archived'))+'</span>':'')+'</td><td>'+balHtml(c.balance)+'</td><td class="num">'+(isAdmin()?'<button class="btn ghost sm" data-prev="'+esc(c.id)+'" title="'+esc(t('edit'))+'">✏️ '+esc(fmtN(c.read_now?c.read_now_prev:c.last_value))+'</button>':esc(fmtN(c.read_now?c.read_now_prev:c.last_value)))+'</td><td class="num">'+(c.read_now?'<b>'+esc(fmtN(c.read_now_value))+'</b>':'<span class="muted">—</span>')+'</td></tr>'; }).join('')||'<tr><td colspan="11" class="muted">'+esc(custLoading?t('loading'):t('no_results'))+'</td></tr>';
+        '<td><span class="chip '+(c.is_active?'on':'off')+'">'+esc(c.is_active?t('active'):t('inactive'))+'</span>'+(c.archived?' <span class="chip gray">'+esc(t('archived'))+'</span>':'')+'</td><td>'+balHtml(c.balance)+'</td><td class="num">'+(isAdmin()?'<button class="btn ghost sm" data-prev="'+esc(c.id)+'" title="'+esc(t('edit'))+'">✏️ '+esc(fmtN(c.read_now?c.read_now_prev:c.last_value))+'</button>':esc(fmtN(c.read_now?c.read_now_prev:c.last_value)))+'</td><td class="num">'+(c.read_now?'<b>'+esc(fmtN(c.read_now_value))+'</b>':'<span class="muted">—</span>')+'</td>'+(adm?'<td><button class="btn danger sm" data-ccx="'+esc(c.id)+'" title="'+esc(t('cc_btn'))+'">🗑️</button></td>':'')+'</tr>'; }).join('')||'<tr><td colspan="12" class="muted">'+esc(custLoading?t('loading'):t('no_results'))+'</td></tr>';
     $('#cmore',main).innerHTML=list.length>CF.lim?'<button class="btn ghost" id="cmb">'+esc(t('more'))+' ('+esc(list.length-CF.lim)+')</button>':'';
     var mb=$('#cmb',main); if(mb) mb.addEventListener('click',function(){ CF.lim+=300; paint(); });
   }
   $('#cq',main).addEventListener('input',function(){ CF.q=this.value; CF.lim=200; paint(); });
+  $('#ctb',main).addEventListener('click',function(e){ var x=e.target.closest('[data-ccx]'); if(!x) return; e.stopPropagation(); e.preventDefault();
+    cancelCustomer(CUST.filter(function(c){ return c.id===x.dataset.ccx; })[0],function(){ paint(); }); },true);
   $('#ctb',main).addEventListener('click',function(e){ var b=e.target.closest('[data-prev]'); if(!b) return; e.stopPropagation(); e.preventDefault();
     var c=CUST.filter(function(x){return x.id===b.dataset.prev})[0]; if(!c) return;
     var cur=c.read_now?c.read_now_prev:c.last_value;
@@ -4643,7 +4660,7 @@ var CFIELDS=[
 ];
 async function editCustomer(id){
   var c={is_active:true,mobile_cc:'961'}, newc=!id;
-  var m=modal(newc?t('new_customer'):t('edit_customer'),'<div class="muted">'+esc(t('loading'))+'</div>','<button class="btn ghost" data-x>'+esc(t('cancel'))+'</button>'+(newc?'':'<button class="btn danger" data-del>'+esc(t('delete'))+'</button>')+'<button class="btn" data-save>'+esc(t('save'))+'</button>',true);
+  var m=modal(newc?t('new_customer'):t('edit_customer'),'<div class="muted">'+esc(t('loading'))+'</div>','<button class="btn ghost" data-x>'+esc(t('cancel'))+'</button>'+(newc?'':'<button class="btn danger" data-del>🗑️ '+esc(t('cc_btn'))+'</button>')+'<button class="btn" data-save>'+esc(t('save'))+'</button>',true);
   if(!newc){ try{ c=(await call('motor_customer_get',{p_id:id})).customer; }catch(e){ m.body.innerHTML='<div class="err">'+esc(errText(e))+'</div>'; return; } }
   m.body.innerHTML=CFIELDS.filter(function(sec){ return sec[0]!=='sec_disc'||ME.is_main; }).map(function(sec){
     return '<div class="sec-t">'+esc(t(sec[0]))+'</div><div class="g3">'+sec[1].filter(function(f){ return !(f[0]==='opening_balance'&&!newc); }).map(function(f){
@@ -4661,8 +4678,8 @@ async function editCustomer(id){
       function(){ busy(b,false); toast(t('gps_bad'),'e'); },{enableHighAccuracy:true,timeout:20000}); });
   m.foot.addEventListener('click',async function(e){
     if(e.target.closest('[data-x]')) return m.close();
-    if(e.target.closest('[data-del]')){ if(!(await confirmBox(t('confirm_delete')))) return;
-      try{ await call('motor_customer_delete',{p_id:id}); toast(t('to_trash'),'s'); m.close(); await loadCustomers(); go(TAB); }catch(err){ $('#cmsg',m.body).textContent=errText(err); } return; }
+    if(e.target.closest('[data-del]')){ var cc=CUST.filter(function(x){ return x.id===id; })[0]||{id:id,name:c.name,code:c.code,balance:c.balance};
+      if(await cancelCustomer(cc)){ m.close(); go(TAB); } return; }
     var sv=e.target.closest('[data-save]'); if(!sv) return;
     var d={}; if(!newc) d.id=id;
     $$('[data-f]',m.body).forEach(function(el){ d[el.dataset.f]=el.type==='checkbox'?el.checked:el.value.trim(); });
