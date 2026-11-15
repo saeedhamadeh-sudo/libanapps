@@ -51,7 +51,7 @@ function start(opts){
     if(c && c.m === st.mtimeMs) return c.html;
     let html = fs.readFileSync(full, 'utf8');
     html = html.replace(/<script[^>]+@supabase\/supabase-js[^>]*><\/script>/,
-      '<script>window.LA_LOCAL={version:"' + VERSION + '"};</script><script src="/local/supabase-local.js?v=' + VERSION + '"></script><script src="/local/auto-refresh.js?v=' + VERSION + '" defer></script><script src="/local/local-ui.js?v=' + VERSION + '" defer></script>');
+      '<script>window.LA_LOCAL={version:"' + VERSION + '",accProxy:true};</script><script src="/local/supabase-local.js?v=' + VERSION + '"></script><script src="/local/auto-refresh.js?v=' + VERSION + '" defer></script><script src="/local/local-ui.js?v=' + VERSION + '" defer></script>');
     if(fs.existsSync(path.join(appDir, 'vendor', 'qrcode.min.js')))
       html = html.replace(/https:\/\/cdnjs\.cloudflare\.com\/ajax\/libs\/qrcodejs\/1\.0\.0\/qrcode\.min\.js/g, '/vendor/qrcode.min.js');
     if(fs.existsSync(path.join(appDir, 'vendor', 'fonts', 'fonts.css')))
@@ -218,6 +218,19 @@ function start(opts){
           const r = await fetch('https://libanapps.com' + p + url.search, { signal: AbortSignal.timeout(20000) });
           const buf = Buffer.from(await r.arrayBuffer());
           return send(res, r.status, buf, r.headers.get('content-type') || 'application/octet-stream');
+        }catch(e){ return json(res, { ok: false, error: 'ما في إنترنت' }, 503); }
+      }
+      // ربط Google Drive / WhatChimp: الطلب بيمرق من هون حتى نضيف جلسة حساب libanapps.com تبع صاحب المحل
+      // (السيرفر بيطلبها أول مرة بينسجّل فيها مفتاح الربط — حتى ما حدا غريب يسبق الزبون ويحجز الربط)
+      if((p === '/local-api/acc-int' || p === '/local-api/acc-int/upload') && req.method === 'POST'){
+        try{
+          const body = await readBody(req);
+          const h = { 'Content-Type': 'application/json' };
+          try{ if(license.state.mode === 'cloud') h.Authorization = 'Bearer ' + await license.token(); }catch(e){}
+          const r = await fetch('https://libanapps.com' + p.replace('/local-api/', '/api/') + url.search,
+            { method: 'POST', headers: h, body, signal: AbortSignal.timeout(120000) });
+          const buf = Buffer.from(await r.arrayBuffer());
+          return send(res, r.status, buf, r.headers.get('content-type') || 'application/json');
         }catch(e){ return json(res, { ok: false, error: 'ما في إنترنت' }, 503); }
       }
       if(p === '/api/portal-client' || p === '/api/portal-token') return json(res, { ok: false });

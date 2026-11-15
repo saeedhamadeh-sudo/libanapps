@@ -95,7 +95,8 @@ function whishify(root){
 window.laWhishify = whishify;
 
 /* ===== ☁️ Google Drive + 💬 WhatChimp لبرامج المحاسبة — البرنامج بيعرّف window.LA_APP ===== */
-var API = 'https://libanapps.com/api/acc-int';
+// النسخة المحلية (الإصدار 2.0.2+) بتمرّق الطلب عبر السيرفر المحلي حتى يضيف جلسة صاحب المحل
+var API = (window.LA_LOCAL && !window.LA_LOCAL.mirror && window.LA_LOCAL.accProxy) ? '/local-api/acc-int' : 'https://libanapps.com/api/acc-int';
 var ST = null, STAT_AT = 0;
 function A(){ return window.LA_APP || null; }
 // جلسة البرنامج (بالسحابة) — السيرفر بيطلبها أول مرة بينسجّل فيها مفتاح الربط

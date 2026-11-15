@@ -2109,14 +2109,10 @@ async function accAuth(env, cid, product, key, request) {
     const ok = await fetch(`${env.SUPABASE_URL}/rest/v1/app_settings?client_id=eq.${cid}&product_code=eq.${product}&select=client_id&limit=1`, { headers: svcH(env) }).then((r) => r.json()).catch(() => []);
     if (!ok || !ok[0]) { const e = new Error('no_client'); e.status = 404; throw e; }
     // أول تسجيل للمفتاح: لازم يكون من جوّا برنامج المؤسسة نفسها (جلسة Supabase تبعها)،
-    // وإلا أي حدا بيعرف client_id كان يسبق الزبون ويحجز الربط. النسخة المحلية (ما فيها جلسة سحابة)
-    // مسموحة بس للمؤسسات اللي عندها نسخة محلية مسجّلة (نفق أو نسخة احتياطية للقراءة).
+    // وإلا أي حدا بيعرف client_id كان يسبق الزبون ويحجز الربط.
+    // النسخة المحلية 2.0.2+ بتمرّق الطلب عبر السيرفر المحلي اللي بيضيف جلسة صاحب المحل.
     const tokCid = request ? await appClientOf(request, env) : null;
-    if (tokCid !== cid) {
-      const off = await fetch(`${env.SUPABASE_URL}/rest/v1/local_tunnels?client_id=eq.${cid}&select=client_id&limit=1`, { headers: svcH(env) }).then((r) => r.json()).catch(() => []);
-      const mir = (Array.isArray(off) && off.length) ? off : await fetch(`${env.SUPABASE_URL}/rest/v1/local_mirror?client_id=eq.${cid}&select=client_id&limit=1`, { headers: svcH(env) }).then((r) => r.json()).catch(() => []);
-      if (!Array.isArray(mir) || !mir.length) { const e = new Error('need_login'); e.status = 403; throw e; }
-    }
+    if (tokCid !== cid) { const e = new Error('need_login'); e.status = 403; throw e; }
     await fetch(`${env.SUPABASE_URL}/rest/v1/acc_integrations`, { method: 'POST', headers: Object.assign({ Prefer: 'resolution=ignore-duplicates' }, svcH(env)), body: JSON.stringify({ client_id: cid, product, key_hash: kh }) });
     row = await accRow(env, cid, product);
   }
