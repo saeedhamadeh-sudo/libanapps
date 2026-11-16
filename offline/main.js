@@ -90,7 +90,9 @@ ipcMain.handle('print:silent', (event, opts) => new Promise(resolve => {
   const o = opts || {};
   const options = { silent: true, printBackground: true, margins: { marginType: 'none' } };
   if(o.deviceName) options.deviceName = o.deviceName;
-  if(o.format !== 'a4') options.pageSize = { width: 80000, height: 297000 };
+  // فاتورة حرارية: طول الورقة على قد الفاتورة (البرنامج بيبعت heightMm) — وإلا بتطلع ورقة فاضية طويلة
+  const hMm = Math.round(Number(o.heightMm) || 0);
+  if(o.format !== 'a4') options.pageSize = { width: 80000, height: (hMm >= 40 && hMm <= 3000 ? hMm : 297) * 1000 };
   else options.pageSize = 'A4';
   event.sender.print(options, (success, failureReason) => resolve(success ? { ok: true } : { ok: false, error: failureReason || 'print failed' }));
 }));
