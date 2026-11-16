@@ -148,6 +148,11 @@ async function fillInt(){
   boxes.forEach(function(b){ b.setAttribute('data-filled','1'); });
   var st = await status(true);
   boxes.forEach(function(b){
+    if(st.err==='need_login' || st.err==='key_mismatch'){
+      b.innerHTML = '<div style="margin-bottom:8px;">🔐 قبل أول ربط، أكّد إنو هالنسخة إلك: بتنفتح صفحة libanapps.com، بتسجّل دخول بحساب صاحب المؤسسة وبتكبس «أكّد». بعدها بترجع هون وبتربط عادي — من أي مكان، أونلاين أو محلي.</div>'
+        + '<div class="action-row"><button class="btn btn-primary" data-la-int="pair">🔐 تأكيد الربط بحساب libanapps.com</button>'
+        + (b.getAttribute('data-int')==='gd'? '<button class="btn" data-la-int="dl_now">⬇ تنزيل نسخة عالجهاز</button>' : '') + '</div>';
+      return; }
     if(st.err){ b.innerHTML = '<span style="color:var(--debit);">⚠️ '+errTxt(st.err)+'</span>'; return; }
     if(b.getAttribute('data-int')==='gd'){
       var g = st.gd||{};
@@ -171,6 +176,17 @@ document.addEventListener('click', async function(e){
   var redo = function(){ document.querySelectorAll('.la-int-body').forEach(function(x){ x.removeAttribute('data-filled'); }); ST = null; fillInt(); };
   try{
     if(op==='dl_now'){ a.download(); return; }
+    if(op==='pair'){
+      if(!(window.crypto && crypto.subtle)){ T('⚠️ افتح البرنامج من رابط https أو من الكمبيوتر الأساسي'); return; }
+      var kk = await a.key(); var hb = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(String(kk)));
+      var kh = Array.from(new Uint8Array(hb)).map(function(x){ return x.toString(16).padStart(2,'0'); }).join('');
+      var pu = 'https://libanapps.com/acc-pair?' + new URLSearchParams({ cid:a.cid(), product:a.product, kh:kh }).toString();
+      var wn = window.open(pu, '_blank'); if(!wn) location.href = pu;
+      b.disabled = true; b.textContent = '⏳ ناطر التأكيد…';
+      var tries = 0; var iv = setInterval(async function(){ tries++; ST = null; var s2 = await status(true);
+        if(!s2.err){ clearInterval(iv); T('✅ تأكّد الربط — هلق فيك تربط Google Drive'); redo(); }
+        else if(tries > 60){ clearInterval(iv); b.disabled = false; b.textContent = '🔐 تأكيد الربط بحساب libanapps.com'; } }, 4000);
+      return; }
     if(op==='gd_link'){ var j = await call('gd_auth_url', { ret: location.href.split('#')[0] }); location.href = j.url; return; }
     if(op==='gd_unlink'){ if(!confirm('فصل Google Drive؟ النسخ يلي عليه بتضل.')) return; await call('gd_unlink'); T('انفصل Google Drive'); redo(); return; }
     if(op==='gd_now'){ b.disabled = true; b.textContent = '⏳ عم يرفع…'; var r = await window.laDriveBackup('manual'); T(r && r.ok? '☁️ انرفعت النسخة على Google Drive ✅' : '⚠️ '+errTxt(r && r.error)); redo(); return; }

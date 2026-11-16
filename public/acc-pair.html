@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>تأكيد ربط البرنامج — LibanApps</title>
+<meta name="robots" content="noindex">
+<style>
+  :root{ --bg:#f4f6fb; --card:#fff; --ink:#1d2433; --soft:#667085; --pri:#2563eb; --ok:#16a34a; --bad:#dc2626; --line:#e4e7ef; }
+  *{ box-sizing:border-box; }
+  body{ margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:16px; background:var(--bg); color:var(--ink); font-family:system-ui,"Segoe UI",Tahoma,sans-serif; }
+  .box{ width:100%; max-width:440px; background:var(--card); border:1px solid var(--line); border-radius:18px; padding:26px 22px; box-shadow:0 10px 30px rgba(20,30,60,.08); text-align:center; }
+  h1{ font-size:20px; margin:6px 0 10px; }
+  p{ color:var(--soft); line-height:1.8; font-size:14.5px; margin:8px 0; }
+  .ic{ font-size:44px; }
+  .name{ font-weight:700; color:var(--ink); }
+  button,a.btn{ display:inline-block; margin-top:14px; border:0; border-radius:12px; padding:12px 22px; font:inherit; font-weight:700; font-size:15px; cursor:pointer; background:var(--pri); color:#fff; text-decoration:none; }
+  button[disabled]{ opacity:.6; cursor:default; }
+  .msg{ margin-top:12px; font-size:14px; }
+  .ok{ color:var(--ok); } .bad{ color:var(--bad); }
+</style>
+</head>
+<body>
+<div class="box">
+  <div class="ic">🔐</div>
+  <h1>تأكيد ربط البرنامج</h1>
+  <div id="body"><p>⏳ لحظة…</p></div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.0/dist/umd/supabase.min.js"></script>
+<script>
+(async function(){
+  var sb = window.supabase.createClient('https://moriwmhlgugmjzddwfgv.supabase.co', 'sb_publishable_ypfm_aulpcqBpeFpyD_7iw_mA4DNlR5');
+  var q = new URLSearchParams(location.search), cid = q.get('cid')||'', product = q.get('product')||'', kh = q.get('kh')||'';
+  var B = document.getElementById('body');
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  var ERR = { other_client:'الحساب يلي مسجّل فيه مش تبع هالمؤسسة — اطلع وفوت بحساب صاحب المؤسسة', need_login:'لازم تسجّل دخول أول', no_client:'المؤسسة مش موجودة', bad_fields:'الرابط ناقص — ارجع عالبرنامج وكبوس الزر من جديد' };
+  if(!cid || !product || !kh){ B.innerHTML = '<p class="bad">'+ERR.bad_fields+'</p>'; return; }
+  var s = (await sb.auth.getSession()).data.session;
+  if(!s){ location.href = '/login?next=' + encodeURIComponent(location.pathname + location.search); return; }
+  async function api(extra){
+    var r = await fetch('/api/acc-int/pair', { method:'POST', headers:{ 'Content-Type':'application/json', Authorization:'Bearer '+s.access_token }, body: JSON.stringify(Object.assign({ cid:cid, product:product, kh:kh }, extra||{})) });
+    var j = await r.json().catch(function(){ return {}; }); if(!r.ok || !j.ok) throw new Error(j.error || ('http_'+r.status)); return j;
+  }
+  try{
+    var c = await api({ check:true });
+    var prog = product === 'alum' ? 'برنامج الصناعيين' : 'برنامج التجارة';
+    if(c.paired){ B.innerHTML = '<p class="ok">✅ هالنسخة مربوطة من قبل.</p><p>ارجع عالبرنامج وكمّل ربط Google Drive.</p>'; return; }
+    B.innerHTML = '<p>بدك تأكّد إنو النسخة يلي فاتحها هي تبع <span class="name">'+esc(c.name||'المؤسسة')+'</span> ('+prog+')؟</p>'
+      + '<p style="font-size:13px;">بعد التأكيد بتقدر تربط Google Drive وWhatChimp من هالنسخة (أونلاين أو محلية).</p>'
+      + (c.other? '<p class="bad" style="font-size:13px;">⚠️ في نسخة تانية مربوطة قبل. التأكيد بيحوّل الربط لهالنسخة.</p>' : '')
+      + '<button id="go">✅ أكّد الربط</button><div class="msg" id="m"></div>';
+    document.getElementById('go').addEventListener('click', async function(){
+      var b = this; b.disabled = true; b.textContent = '⏳';
+      try{ await api(); B.innerHTML = '<p class="ok" style="font-size:16px;">✅ تمّ التأكيد</p><p>ارجع عالبرنامج — رح يتحدّث لحالو وبيبيّن زر «🔗 ربط Google Drive».</p>';
+        if(window.opener) setTimeout(function(){ try{ window.close(); }catch(e){} }, 2500);
+      }catch(e){ b.disabled = false; b.textContent = '✅ أكّد الربط'; document.getElementById('m').innerHTML = '<span class="bad">⚠️ '+esc(ERR[e.message]||e.message)+'</span>'; }
+    });
+  }catch(e){
+    B.innerHTML = '<p class="bad">⚠️ '+esc(ERR[e.message]||e.message)+'</p>' + (e.message==='other_client'? '<button id="out">خروج وتسجيل دخول بحساب تاني</button>' : '');
+    var o = document.getElementById('out'); if(o) o.addEventListener('click', async function(){ await sb.auth.signOut(); location.reload(); });
+  }
+})();
+</script>
+</body>
+</html>

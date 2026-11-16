@@ -2094,7 +2094,7 @@ async function motorGdCallback(url, env) {
 //  المصادقة بمفتاح سرّي للزبون (محفوظ بإعدادات البرنامج) — بيشتغل للسحابة وللنسخة المحلية.
 //  مفاتيح Google و WhatChimp بتضل عالسيرفر (acc_integrations) وما بتوصل للمتصفح.
 async function accSha(s) { return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(String(s))))).map((b) => b.toString(16).padStart(2, '0')).join(''); }
-function accRet(u) { try { const x = new URL(String(u || '')); if (x.protocol === 'https:' && (x.hostname === 'libanapps.com' || x.hostname.endsWith('.libanapps.com'))) return x.toString(); } catch {} return 'https://libanapps.com/'; }
+function accRet(u) { try { const x = new URL(String(u || '')); if (x.protocol === 'https:' && (x.hostname === 'libanapps.com' || x.hostname.endsWith('.libanapps.com'))) return x.toString(); if (x.protocol === 'http:' && (x.hostname === '127.0.0.1' || x.hostname === 'localhost')) return x.toString(); } catch {} return 'https://libanapps.com/'; }
 async function accRow(env, cid, product) {
   const r = await fetch(`${env.SUPABASE_URL}/rest/v1/acc_integrations?client_id=eq.${cid}&product=eq.${product}&select=*`, { headers: svcH(env) });
   return ((await r.json().catch(() => [])) || [])[0] || null;
@@ -2133,6 +2133,24 @@ async function accGdFolder(env, row, GH, name) {
 }
 async function accInt(request, env, url) {
   try {
+    // تأكيد الربط من صفحة libanapps.com/acc-pair: صاحب المؤسسة (أو مشرف المنصة) مسجّل دخول هونيك
+    // بيثبّت مفتاح الربط تبع أي نسخة (أونلاين أو محلية قديمة) — بيصلح كمان «المفتاح مش مطابق»
+    if (url.pathname === '/api/acc-int/pair') {
+      let b; try { b = await request.json(); } catch { return json(400, { ok: false, error: 'bad_json' }); }
+      const cid = String(b.cid || ''), product = String(b.product || ''), kh = String(b.kh || '').toLowerCase();
+      if (!/^[0-9a-f-]{36}$/.test(cid) || !['trade', 'alum'].includes(product) || !/^[0-9a-f]{64}$/.test(kh)) return json(400, { ok: false, error: 'bad_fields' });
+      const tokCid = await appClientOf(request, env);
+      const isAdm = tokCid === cid ? true : (await adminRows(env, request)).length > 0;
+      if (!isAdm) return json(403, { ok: false, error: tokCid ? 'other_client' : 'need_login' });
+      const ok = await fetch(`${env.SUPABASE_URL}/rest/v1/app_settings?client_id=eq.${cid}&product_code=eq.${product}&select=client_id&limit=1`, { headers: svcH(env) }).then((r) => r.json()).catch(() => []);
+      if (!ok || !ok[0]) return json(404, { ok: false, error: 'no_client' });
+      const nm = await fetch(`${env.SUPABASE_URL}/rest/v1/clients?id=eq.${cid}&select=name`, { headers: svcH(env) }).then((r) => r.json()).catch(() => []);
+      const row = await accRow(env, cid, product);
+      if (b.check) return json(200, { ok: true, name: (nm && nm[0] && nm[0].name) || '', paired: !!(row && row.key_hash === kh), other: !!(row && row.key_hash !== kh) });
+      if (!row) await fetch(`${env.SUPABASE_URL}/rest/v1/acc_integrations`, { method: 'POST', headers: Object.assign({ Prefer: 'resolution=ignore-duplicates' }, svcH(env)), body: JSON.stringify({ client_id: cid, product, key_hash: kh }) });
+      else if (row.key_hash !== kh) await accPatch(env, cid, product, { key_hash: kh });
+      return json(200, { ok: true, name: (nm && nm[0] && nm[0].name) || '' });
+    }
     // رفع نسخة احتياطية: الجسم هو ملف الـJSON نفسو
     if (url.pathname === '/api/acc-int/upload') {
       const cid = url.searchParams.get('cid'), product = url.searchParams.get('product'), key = url.searchParams.get('key') || '';
@@ -4045,6 +4063,7 @@ function pageFor(pathname) {
   if (p === '/privacy' || p === '/privacy-policy') return '/privacy.html';
   if (p === '/reset')         return '/reset.html';
   if (p === '/account')       return '/account.html';
+  if (p === '/acc-pair')      return '/acc-pair.html';
   if (p === '/alum')          return '/app-alum.html';
   if (p === '/trade')         return '/app-trade.html';
   if (p === '/store-info' || p === '/portal-store') return '/product-store.html';
@@ -4321,7 +4340,7 @@ const LA_WORKER = {
           return await portalToken(request, env);
         }
         if (url.pathname === '/api/motor-gdrive/callback') return await motorGdCallback(url, env);
-        if (url.pathname === '/api/acc-int' || url.pathname === '/api/acc-int/upload') {
+        if (url.pathname === '/api/acc-int' || url.pathname === '/api/acc-int/upload' || url.pathname === '/api/acc-int/pair') {
           if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'POST', 'Access-Control-Allow-Headers': 'Content-Type, Authorization' } });
           if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
           const res = await accInt(request, env, url);
