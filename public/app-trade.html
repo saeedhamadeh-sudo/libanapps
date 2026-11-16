@@ -8676,8 +8676,8 @@ async function printPosReceipt(inv, currency, totalUSD, rate, customerLabel, rec
       body *{ visibility:hidden; }
       #pos-receipt-print, #pos-receipt-print *{ visibility:visible; }
       #pos-receipt-print{ position:absolute; inset-inline-start:0; top:0; width:76mm; font-family:'Cairo',system-ui,sans-serif; }
-    }` + (isCcupClient() ? `
-    /* C Cup: باقي الصفحة مخفية كلياً (مش بس visibility) — وإلا عرض البرنامج المخفي بيصغّر الفاتورة لنص الورقة */
+    }` + (true ? `
+    /* باقي الصفحة مخفية كلياً (مش بس visibility) — وإلا عرض البرنامج المخفي بيصغّر الفاتورة لنص الورقة */
     @media print{
       html, body{ width:76mm !important; min-width:0 !important; max-width:76mm !important; height:auto !important; min-height:0 !important; overflow:visible !important; margin:0 !important; padding:0 !important; background:#fff !important; zoom:1 !important; }
       body > *:not(#pos-receipt-print){ display:none !important; }
@@ -8699,10 +8699,10 @@ async function printPosReceipt(inv, currency, totalUSD, rate, customerLabel, rec
   };
   window.addEventListener('afterprint', cleanup, {once:true});
   wrap.style.display = 'block';
-  // C Cup: «size: 80mm auto» مش صالحة فكان يتطبّق @page A4 تبع البرنامج → الفاتورة تنطبع صغيرة عاليمين وورقة فاضية طويلة.
+  // «size: 80mm auto» مش صالحة فكان يتطبّق @page A4 تبع البرنامج → الفاتورة تنطبع صغيرة عاليمين وورقة فاضية طويلة.
   // منحط مقاس صالح: عرض 80 ملم وطول على قد الفاتورة
   let rcptHmm = 0;
-  if(format==='thermal80' && isCcupClient()){
+  if(format==='thermal80'){
     try{ const pw = wrap.style.width; wrap.style.width = '76mm'; rcptHmm = Math.ceil(wrap.scrollHeight * 25.4 / 96) + 10; wrap.style.width = pw; }catch(e){}
     if(!(rcptHmm >= 40)) rcptHmm = 200; rcptHmm = Math.min(rcptHmm, 3000);
     styleEl.textContent += `\n    @page{ size: 80mm ${rcptHmm}mm; margin: 2mm 2mm 3mm 2mm; }`;
@@ -11773,7 +11773,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-11-17 · 00:30 · v95';
+const APP_TRADE_BUILD = '2026-11-17 · 00:10 · v96';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 function settingsView(){
   const s = DB.settings;
