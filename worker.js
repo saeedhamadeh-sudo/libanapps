@@ -2127,7 +2127,10 @@ async function accGdFolder(env, row, GH, name) {
   if (!folder) {
     const cr = await fetch('https://www.googleapis.com/drive/v3/files?fields=id', { method: 'POST', headers: Object.assign({ 'Content-Type': 'application/json' }, GH),
       body: JSON.stringify({ name: 'LibanApps - ' + (name || 'محاسبة') + ' (نسخ احتياطي)', mimeType: 'application/vnd.google-apps.folder' }) });
-    const cj = await cr.json(); if (!cj.id) throw new Error('gd_folder'); folder = cj.id; await accPatch(env, row.client_id, row.product, { gd_folder: folder });
+    const cj = await cr.json().catch(() => ({}));
+    if (!cj.id) { const ge = (cj.error || {}); const why = ((ge.errors || [])[0] || {}).reason || ge.status || '';
+      throw new Error('gd_folder:' + cr.status + ':' + why + (ge.message ? ':' + String(ge.message).slice(0, 140) : '')); }
+    folder = cj.id; await accPatch(env, row.client_id, row.product, { gd_folder: folder });
   }
   return folder;
 }
@@ -2251,6 +2254,8 @@ async function accGdCallback(env, d, st, sig, code) {
     body: new URLSearchParams({ code, client_id: env.GOOGLE_CLIENT_ID, client_secret: env.GOOGLE_CLIENT_SECRET, redirect_uri: gdRedirect(env), grant_type: 'authorization_code' }) });
   const tj = await tr.json().catch(() => ({}));
   if (!tj.refresh_token) return back('no_refresh');
+  // Google بيسمح يشيل علامة «الوصول لملفات Drive» بشاشة الموافقة — بلاها ما فينا نعمل مجلد ولا نرفع
+  if (tj.scope && String(tj.scope).indexOf('auth/drive.file') < 0) return back('no_scope');
   let email = ''; try { email = JSON.parse(atob(String(tj.id_token || '').split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))).email || ''; } catch {}
   await accPatch(env, d.c, d.p, { gd_refresh: tj.refresh_token, gd_email: email, gd_folder: null, gd_last_err: '' });
   return back('ok');

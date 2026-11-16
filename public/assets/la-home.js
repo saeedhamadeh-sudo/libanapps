@@ -108,7 +108,7 @@ async function call(op, extra){
 }
 async function status(force){ if(!force && ST && Date.now()-STAT_AT < 60000) return ST; try{ ST = await call('status'); STAT_AT = Date.now(); }catch(e){ ST = { err:e.message }; } return ST; }
 window.laIntStatus = status;
-function errTxt(e){ var m = String(e && e.message || e); return ({ gd_not_configured:'ربط Google Drive مش مفعّل عالسيرفر بعد', gd_off:'Google Drive مش مربوط', need_login:'افتح البرنامج من رابطه وسجّل دخول أول، وبعدين اربط', key_mismatch:'مفتاح الربط مش مطابق — تواصل مع LibanApps', no_client:'افتح البرنامج من رابطو الرسمي أول', wc_bad_key:'مفتاح WhatChimp غلط', wc_no_key:'حط مفتاح WhatChimp أول', bad_key:'مفتاح WhatChimp غلط' })[m] || (m.indexOf('gd_token')===0? 'انتهى ربط Google Drive — افصلو واربطو من جديد' : m); }
+function errTxt(e){ var m = String(e && e.message || e); return ({ gd_not_configured:'ربط Google Drive مش مفعّل عالسيرفر بعد', gd_off:'Google Drive مش مربوط', need_login:'افتح البرنامج من رابطه وسجّل دخول أول، وبعدين اربط', key_mismatch:'مفتاح الربط مش مطابق — تواصل مع LibanApps', no_client:'افتح البرنامج من رابطو الرسمي أول', wc_bad_key:'مفتاح WhatChimp غلط', wc_no_key:'حط مفتاح WhatChimp أول', bad_key:'مفتاح WhatChimp غلط' })[m] || (m.indexOf('gd_token')===0? 'انتهى ربط Google Drive — افصلو واربطو من جديد' : /^gd_folder(:(401|403)|$)/.test(m)? 'Google ما عطى إذن Drive — كبوس «فصل Drive» واربطو من جديد، وبشاشة Google علّم صح على «الوصول لملفات Google Drive»' : m.indexOf('gd_folder')===0? 'ما قدرنا نعمل مجلد على Drive ('+m.slice(10)+')' : m); }
 function T(msg){ var a = A(); if(a && a.toast) a.toast(msg); }
 // رفع نسخة احتياطية على Drive (why: logout / daily / manual)
 window.laDriveBackup = async function(why){
@@ -198,6 +198,11 @@ document.addEventListener('click', async function(e){
     if(op==='wc_sync'){ var cs = a.contacts(); b.disabled = true; var r2 = await call('wc_sync', { contacts: cs }); var mm = document.getElementById('laWcMsg'); if(mm) mm.textContent = '✅ انبعتو '+(r2.count||0)+' رقم على WhatChimp — عم يتضافو هلق'; b.disabled = false; return; }
   }catch(err){ T('⚠️ '+errTxt(err)); b.disabled = false; }
 });
+// الرجعة من شاشة Google: ‎#/settings?gd=ok|no_scope|denied|...
+(function(){ var m = String(location.hash).match(/[?&]gd=([a-z_]+)/); if(!m) return;
+  var q = m[1]; try{ history.replaceState(null, '', location.pathname + location.search + location.hash.replace(/[?&]gd=[a-z_]+/, '')); }catch(e){}
+  var msg = q==='ok'? '☁️ انربط Google Drive ✅' : q==='no_scope'? '⚠️ ما انعطى إذن Drive — اربط من جديد وعلّم صح على «الوصول لملفات Google Drive»' : q==='denied'? '⚠️ انلغى الربط' : '⚠️ ما زبط الربط ('+q+')';
+  var tries = 0; var iv = setInterval(function(){ tries++; if(A() && A().toast){ clearInterval(iv); A().toast(msg); } else if(tries > 40) clearInterval(iv); }, 250); })();
 var _homeOnce = false;
 function onHome(){ if(_homeOnce || !document.querySelector('.hub-grid') || !A()) return; _homeOnce = true;
   setTimeout(function(){ status(true).then(function(){ try{ window.laWcCustomersSaved(A().customers()); }catch(e){} window.laDriveDaily(); }); }, 4000); }
