@@ -2513,17 +2513,20 @@ function nextStockOutNumber(){
   return String(max+1);
 }
 /* ===== قسمة منتج لوحدات (كاس من قنينة، فنجان من بن) ===== */
-function openSubUnitModal(baseId, editId){
+// linkId: منتج موجود (مثلاً «فنجان قهوة» كان منتج لحالو) بدنا نربطو كوحدة من أساسي — رصيدو القديم بيتصفّر أول
+function openSubUnitModal(baseId, editId, linkId){
   const edit = editId? DB.warehouseItems.find(x=>x.id===editId) : null;
+  const link = (!edit && linkId)? DB.warehouseItems.find(x=>x.id===linkId) : null;
   const base = DB.warehouseItems.find(x=>x.id===(edit? edit.baseItemId : baseId));
   if(!base){ toast('لم يتم العثور على المنتج'); return; }
   const sec = primIsSec(), L = primSym();
   const mode0 = edit && Number(edit.perUnitContent)>0 ? 'content' : 'units';
   const wrap = document.createElement('div'); wrap.className = 'modal-bg';
   wrap.innerHTML = `<div class="modal" style="max-width:500px;">
-    <h3>🧩 ${edit? 'تعديل القسمة' : 'قسّم لوحدات'} — ${escapeHtml(base.name)}</h3>
+    <h3>🧩 ${edit? 'تعديل القسمة' : link? 'ربط «'+escapeHtml(link.name)+'» كوحدة من' : 'قسّم لوحدات'} — ${escapeHtml(base.name)}</h3>
+    ${link? (()=>{ const own = currentStock(link.id); return `<p style="font-size:12.5px; background:#fff7e6; border:1px solid #f0c36d; border-radius:8px; padding:8px 10px; line-height:1.7;">من هلق ورايح كل ما تبيع «${escapeHtml(link.name)}» بينقص من «${escapeHtml(base.name)}».${Math.abs(own)>1e-9? ' الكمية القديمة تبعو (<b class="num">'+fmtQty(own)+'</b>) بتتصفّر بحركة تسوية، حتى ما تنزاد ولا تنقص على «'+escapeHtml(base.name)+'».' : ''} المبيعات القديمة ما بتنحسب — إذا لازم، صحّح كمية «${escapeHtml(base.name)}» بالجرد.</p>`; })() : ''}
     <p style="font-size:12.5px; color:var(--ink-soft); line-height:1.7;">بتشتري «${escapeHtml(base.name)}» متل العادة، والوحدة الجديدة بتنباع لحالها. كل ما تبيع وحدة بينقص من الأساسي بالنسبة، ولما تخلص كمية بتساوي واحد بينقص واحد.</p>
-    <div class="field"><label>اسم الوحدة *</label><input type="text" id="su_name" value="${escapeHtml(edit? edit.name : 'كاس '+base.name)}">
+    <div class="field"><label>اسم الوحدة *</label><input type="text" id="su_name" value="${escapeHtml(edit? edit.name : link? link.name : 'كاس '+base.name)}">
       <div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:6px;">${['كاس','فنجان','حبة','ظرف','قطعة','شوت'].map(w=>`<button type="button" class="btn btn-sm" data-su-w="${w}">${w}</button>`).join('')}</div></div>
     <p style="font-size:12px; color:var(--bronze-deep, #8a5a1a);">بعد القسمة «${escapeHtml(base.name)}» ما بيعود ينباع لحالو — البيع والضيافة من الوحدات بس.</p>
     <div class="field"><label>طريقة القسمة</label>
@@ -2542,7 +2545,7 @@ function openSubUnitModal(baseId, editId){
       <div id="su_extras"></div>
       <button type="button" class="btn btn-sm" id="su_add_extra">➕ زيد مكوّن تاني</button>
     </div>
-    <div class="field"><label>سعر البيع (${escapeHtml(L)})</label><input type="number" id="su_price" class="num" value="${edit? inPrim(edit.price) : ''}"></div>
+    <div class="field"><label>سعر البيع (${escapeHtml(L)})</label><input type="number" id="su_price" class="num" value="${(edit||link)? inPrim((edit||link).price) : ''}"></div>
     <div id="su_sum" style="font-size:13.5px; background:var(--bg-2); border:1px solid var(--line); border-radius:8px; padding:8px 12px;"></div>
     <div id="su_err" style="color:var(--debit); font-size:13px; min-height:18px;"></div>
     <div class="row"><button class="btn" id="su_cancel">إلغاء</button><button class="btn btn-primary" id="su_ok">💾 حفظ</button></div>
@@ -2584,16 +2587,23 @@ function openSubUnitModal(baseId, editId){
     for(const x of ex){ if(!x.id){ $('#su_err').textContent = 'اختار المنتج لكل مكوّن (أو امحيه)'; return; } if(!(x.f>0)){ $('#su_err').textContent = 'حدّد محتوى «'+(x.base? x.base.name : '')+'» وقديش بتاخد الوحدة منو'; return; } }
     if(new Set(ex.map(x=>x.id)).size !== ex.length){ $('#su_err').textContent = 'في مكوّن مكرّر'; return; }
     const pr = $('#su_price').value;
-    const it = edit || {id:uid(), createdAt:Date.now(), category:base.category||'', brand:base.brand||'', group:base.group};
+    const it = edit || link || {id:uid(), createdAt:Date.now(), category:base.category||'', brand:base.brand||'', group:base.group};
+    let movesCh = false;
+    if(link){   // تصفير رصيدو القديم قبل الربط (وإلا بينزاد/بينقص على الأساسي)
+      const own = currentStock(link.id), now = Date.now(), note = 'تسوية قبل ربط «'+link.name+'» كوحدة من «'+base.name+'»';
+      if(own > 1e-9){ DB.stockOuts.push({id:uid(), createdAt:now, itemId:link.id, qty:own, date:todayISO(), number:nextStockOutNumber(), note}); movesCh = 'out'; }
+      else if(own < -1e-9){ DB.stockIns.push({id:uid(), createdAt:now, itemId:link.id, qty:-own, date:todayISO(), number:nextStockInNumber(), note}); movesCh = 'in'; }
+    }
     it.name = name; it.baseItemId = base.id; it.baseQty = f;
     if($('#su_mode').value==='units'){ it.unitsPerBase = num('#su_n'); delete it.perUnitContent; }
     else { it.perUnitContent = num('#su_p'); delete it.unitsPerBase; base.contentPerUnit = num('#su_c'); base.contentUnit = $('#su_cu').value; }
     if(pr!==''){ const v = Number(pr)||0; if(sec){ it.priceSec = v>0? v : null; it.price = v>0? v/curRate() : 0; } else { it.price = v; it.priceSec = null; } }
     if(ex.length){ it.extraBases = ex.map(x=>({ id:x.id, qty:x.f })); ex.forEach(x=>{ x.base.contentPerUnit = x.c; x.base.contentUnit = x.u; }); } else delete it.extraBases;
-    if(!edit) DB.warehouseItems.push(it);
+    if(!edit && !link) DB.warehouseItems.push(it);
     invalidateWarehouseCaches();
+    if(movesCh==='out') await save(KEYS.stockOuts, DB.stockOuts); else if(movesCh==='in') await save(KEYS.stockIns, DB.stockIns);
     const ok = await save(KEYS.warehouseItems, DB.warehouseItems);
-    wrap.remove(); toast(ok? '🧩 تم حفظ «'+name+'»' : 'حدث خطأ أثناء الحفظ'); if(!edit) go('#/warehouse-item/'+it.id); else render();
+    wrap.remove(); toast(ok? '🧩 تم حفظ «'+name+'»' : 'حدث خطأ أثناء الحفظ'); if(!edit && !link) go('#/warehouse-item/'+it.id); else render();
   });
 }
 /* ===== الضيافة: منتجات متاحة للضيافة بتنقص من الستوك وبتتسجّل مصاريف ضيافة (61801) ===== */
@@ -2674,13 +2684,31 @@ function openHospitalityModal(){
   });
 }
 document.addEventListener('click', e=>{
-  const t = e.target.closest && e.target.closest('[data-sub-new],[data-sub-edit],[data-hosp-set],[data-hosp-open]'); if(!t) return;
+  const t = e.target.closest && e.target.closest('[data-sub-new],[data-sub-edit],[data-sub-link],[data-hosp-set],[data-hosp-open]'); if(!t) return;
   e.preventDefault(); e.stopPropagation();
   if(t.hasAttribute('data-sub-new')) openSubUnitModal(t.getAttribute('data-sub-new'));
+  else if(t.hasAttribute('data-sub-link')) openLinkBasePicker(t.getAttribute('data-sub-link'));
   else if(t.hasAttribute('data-sub-edit')) openSubUnitModal(null, t.getAttribute('data-sub-edit'));
   else if(t.hasAttribute('data-hosp-set')) openHospSetModal(t.getAttribute('data-hosp-set'));
   else openHospitalityModal();
 }, true);
+// ربط منتج موجود كوحدة: أول شي منختار الأساسي (كيلو قهوة، علبة نسلة…)
+function openLinkBasePicker(itemId){
+  const item = DB.warehouseItems.find(x=>x.id===itemId); if(!item) return;
+  const list = DB.warehouseItems.filter(x=>x.id!==itemId && !x.deleted && !x.baseItemId && !isServiceItem(x)).sort((a,b)=>{ const ka = isSoldByUnits(a)? 0 : 1, kb = isSoldByUnits(b)? 0 : 1; return ka-kb || String(a.name).localeCompare(String(b.name),'ar'); });
+  const wrap = document.createElement('div'); wrap.className = 'modal-bg';
+  wrap.innerHTML = `<div class="modal" style="max-width:460px;"><h3>🔗 «${escapeHtml(item.name)}» بينقص من أي منتج؟</h3>
+    <p style="font-size:12.5px; color:var(--ink-soft);">مثلاً «فنجان قهوة» بينقص من «كيلو قهوة». بعد ما تختار بتحدّد قديش بياخد.</p>
+    <input type="text" id="lb_q" placeholder="🔍 دوّر…" style="margin-bottom:8px;">
+    <div id="lb_list" style="max-height:50vh; overflow:auto;"></div>
+    <div class="row" style="margin-top:10px;"><button class="btn" id="lb_x">إلغاء</button></div></div>`;
+  document.body.appendChild(wrap);
+  const draw = ()=>{ const q = wrap.querySelector('#lb_q').value; const arr = q? smartSearchWarehouse(q, list) : list;
+    wrap.querySelector('#lb_list').innerHTML = arr.slice(0, 200).map(x=>`<button type="button" class="btn" data-lb="${x.id}" style="display:block; width:100%; text-align:start; margin-bottom:6px;">${isSoldByUnits(x)? '🧩 ' : '📦 '}${escapeHtml(x.name)} <small class="num" style="color:var(--ink-soft);">(${fmtQty(Math.round(fastStock(x.id)*1000)/1000)})</small></button>`).join('') || '<div style="color:var(--ink-soft);">ما في نتائج</div>'; };
+  draw(); wrap.querySelector('#lb_q').addEventListener('input', draw);
+  wrap.querySelector('#lb_x').addEventListener('click', ()=>wrap.remove());
+  wrap.querySelector('#lb_list').addEventListener('click', ev=>{ const b = ev.target.closest('[data-lb]'); if(!b) return; wrap.remove(); openSubUnitModal(b.getAttribute('data-lb'), null, itemId); });
+}
 function buildStockLedger(itemId){
   const it0 = (DB.warehouseItems||[]).find(x=>x.id===itemId), b0 = subBaseOf(it0);
   if(b0){   // وحدة فرعية: كشف الأساسي محوّل لوحداتها
@@ -10820,7 +10848,7 @@ function warehouseItemView(item){
         <button class="btn btn-debit" data-nav="#/stockout/new?item=${item.id}">📤 أمر سحب</button>
         <button class="btn btn-sm" id="printItemBarcodeBtn" data-item="${item.id}">${item.barcode? '🖨 طباعة باركود' : '🏷 إنشاء باركود'}</button>
         <button class="btn btn-sm" id="editWhItemBtn">✎ تعديل بيانات المنتج</button>
-        ${(unitsHospOn() && hasPermission('edit_products') && !isServiceItem(item))? (item.baseItemId? `<button class="btn btn-sm" data-sub-edit="${item.id}">🧩 تعديل القسمة</button>` : `<button class="btn btn-sm" data-sub-new="${item.id}">🧩 قسّم لوحدات (كاس / فنجان)</button>`) : ''}
+        ${(unitsHospOn() && hasPermission('edit_products') && !isServiceItem(item))? (item.baseItemId? `<button class="btn btn-sm" data-sub-edit="${item.id}">🧩 تعديل القسمة</button>` : `<button class="btn btn-sm" data-sub-new="${item.id}">🧩 قسّم لوحدات (كاس / فنجان)</button>${!isSoldByUnits(item)? `<button class="btn btn-sm" data-sub-link="${item.id}">🔗 اربطو كوحدة من منتج أساسي</button>` : ''}`) : ''}
         ${(unitsHospOn() && hasPermission('edit_products'))? (()=>{ const us = isSoldByUnits(item)? subItemsOf(item.id) : [item]; const on = us.filter(x=>x.hospitality);
           return `<button class="btn btn-sm" data-hosp-set="${item.id}">☕ متاح للضيافة: ${on.length? (isSoldByUnits(item)? on.map(x=>x.name).join('، ') : 'نعم'+(Number(item.hospLimit)>0? ' (حد '+fmtQty(item.hospLimit)+' باليوم)' : '')) : 'لأ'}</button>`; })() : ''}
         <button class="btn btn-sm btn-danger" id="deleteWhItemBtn">🗑 حذف المنتج نهائيًا</button>
@@ -11780,7 +11808,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-11-17 · 01:10 · v100';
+const APP_TRADE_BUILD = '2026-11-17 · 01:45 · v101';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 function settingsView(){
   const s = DB.settings;
