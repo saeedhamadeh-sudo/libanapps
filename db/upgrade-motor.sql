@@ -5010,6 +5010,122 @@ begin
 end $m$;
 
 -- ============================================================
+--  20j21) صندوق لكل موظف (حتى المدير العادي) + الصندوق الأساسي للمدير الأساسي
+--         المدير العادي بيشوف صندوقو بس، وإقفالو بيروح عالصندوق الأساسي.
+--         + حسم بكشف حساب الزبون مع سبب إجباري + كل الجباة بيشوفوا «لم يدفعوا بعد»
+-- ============================================================
+alter table public.motor_payments add column if not exists to_main boolean not null default false;  -- القبض بيروح عالصندوق الأساسي مباشرة
+-- القديم بيضل متل ما هو: قبض المدراء (أو بلا موظف) كان بالصندوق الأساسي
+update public.motor_payments p set to_main = true
+ where not p.to_main and (p.staff_id is null or exists (select 1 from public.motor_staff s where s.id = p.staff_id and s.role = 'admin'));
+
+create or replace function public._motor_pay_box() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  -- من هلق: بس المدير الأساسي (أو قبض بلا موظف) بيروح عالصندوق الأساسي؛ الباقي بصندوق الموظف
+  new.to_main := new.staff_id is null or coalesce((select is_main from public.motor_staff where id = new.staff_id), false);
+  return new;
+end $$;
+drop trigger if exists motor_payments_box on public.motor_payments;
+create trigger motor_payments_box before insert on public.motor_payments for each row execute function public._motor_pay_box();
+
+do $m$
+declare d text; f text;
+begin
+  -- الصندوق الأساسي
+  d := pg_get_functiondef('public._motor_cash_bal(uuid,timestamptz)'::regprocedure);
+  if position('to_main' in d) = 0 then
+    d := replace(d, '(p.staff_id is null or s.role = ''admin'')', 'p.to_main');
+    if position('to_main' in d) = 0 then raise exception 'cash_bal'; end if; execute d;
+  end if;
+  d := pg_get_functiondef('public.motor_cash_statement(text,text,date,date)'::regprocedure);
+  if position('to_main' in d) = 0 then
+    d := replace(d, '(p.staff_id is null or s.role = ''admin'')', 'p.to_main');
+    d := replace(d, 'public._motor_admin(p_slug, p_token)', 'public._motor_main(p_slug, p_token)');
+    if position('to_main' in d) = 0 then raise exception 'cash_stmt'; end if; execute d;
+  end if;
+  for f in select unnest(array['public.motor_cash_close(text,text,numeric,numeric,text)','public.motor_journal(text,text,date,date)','public.motor_day_close(text,text,date)']) loop
+    d := pg_get_functiondef(f::regprocedure);
+    if position('_motor_main(p_slug' in d) = 0 then
+      d := replace(d, 'public._motor_admin(p_slug, p_token)', 'public._motor_main(p_slug, p_token)');
+      if position('_motor_main(p_slug' in d) = 0 then raise exception 'main %', f; end if; execute d;
+    end if;
+  end loop;
+  -- صندوق الموظف: القبض يلي مش بالصندوق الأساسي
+  d := pg_get_functiondef('public.motor_collector_statement(text,text,uuid,date,date)'::regprocedure);
+  if position('to_main' in d) = 0 then
+    d := replace(d, 'if not (w->>''is_admin'')::boolean and p_staff::text is distinct from w->>''staff_id''',
+                    'if not coalesce((w->>''is_main'')::boolean, false) and p_staff::text is distinct from w->>''staff_id''');
+    d := replace(d, 'where staff_id = sf.id and method = ''cash''', 'where staff_id = sf.id and not to_main and method = ''cash''');
+    d := replace(d, '''debit'', case when p.method = ''cash'' then p.amount else 0 end', '''debit'', case when p.method = ''cash'' and not p.to_main then p.amount else 0 end');
+    if position('to_main' in d) = 0 or position('is_main' in d) = 0 then raise exception 'coll_stmt'; end if; execute d;
+  end if;
+  d := pg_get_functiondef('public.motor_staff_close(text,text,uuid)'::regprocedure);
+  if position('to_main' in d) = 0 then
+    d := replace(d, 'and not (w->>''is_admin'')::boolean then perform public._motor_err(''forbidden'')',
+                    'and not coalesce((w->>''is_main'')::boolean, false) then perform public._motor_err(''forbidden'')');
+    d := replace(d, 'where staff_id = sf.id and method = ''cash''', 'where staff_id = sf.id and not to_main and method = ''cash''');
+    if position('to_main' in d) = 0 or position('is_main' in d) = 0 then raise exception 'staff_close'; end if; execute d;
+  end if;
+  d := pg_get_functiondef('public.motor_staff_closes(text,text,uuid)'::regprocedure);
+  if position('is_main' in d) = 0 then
+    d := replace(d, 'case when (w->>''is_admin'')::boolean then p_staff', 'case when coalesce((w->>''is_main'')::boolean, false) then p_staff');
+    if position('is_main' in d) = 0 then raise exception 'staff_closes'; end if; execute d;
+  end if;
+  d := pg_get_functiondef('public._motor_day_totals(uuid,date)'::regprocedure);
+  if position('to_main' in d) = 0 then
+    d := replace(d, 'and p.method = ''cash'' and s.role <> ''admin''', 'and p.method = ''cash'' and not p.to_main');
+    if position('to_main' in d) = 0 then raise exception 'day_totals'; end if; execute d;
+  end if;
+  d := pg_get_functiondef('public._motor_gl(uuid,date,date)'::regprocedure);
+  if position('to_main' in d) = 0 then
+    d := replace(d, 'when st.role = ''collector'' then ''531''', 'when not p.to_main then ''531''');
+    if position('to_main' in d) = 0 then raise exception 'gl'; end if; execute d;
+  end if;
+  -- اللوحة: المدير العادي بيشوف صندوقو
+  d := pg_get_functiondef('public.motor_dashboard(text,text)'::regprocedure);
+  if position('to_main' in d) = 0 then
+    d := replace(d, '''cash_box'', case when mine then null else public._motor_cash_bal(sid, null) end',
+      '''cash_box'', case when mine then null when not coalesce((w->>''is_main'')::boolean, false) then
+                     coalesce((select sum(amount) from public.motor_payments where staff_id = me and not to_main and method = ''cash'' and not voided), 0)
+                   - coalesce((select sum(amount) from public.motor_moves where staff_id = me and account = ''collector''), 0)
+                   else public._motor_cash_bal(sid, null) end');
+    d := replace(d, 'coalesce((select sum(amount) from public.motor_payments where staff_id = me and method = ''cash'' and not voided), 0)
+                   - coalesce((select sum(amount) from public.motor_moves where staff_id = me and account = ''collector''), 0) end);',
+                    'coalesce((select sum(amount) from public.motor_payments where staff_id = me and not to_main and method = ''cash'' and not voided), 0)
+                   - coalesce((select sum(amount) from public.motor_moves where staff_id = me and account = ''collector''), 0) end);');
+    if position('to_main' in d) = 0 then raise exception 'dashboard'; end if; execute d;
+  end if;
+  -- «لم يدفعوا بعد»: كل الجباة (حتى يلي بياخدوا العداد بس)
+  d := pg_get_functiondef('public.motor_unpaid(text,text,text,integer)'::regprocedure);
+  if position('can_read' in d) = 0 then
+    d := replace(d, 'if not ((w->>''is_admin'')::boolean or (w->>''can_collect'')::boolean) then',
+                    'if not ((w->>''is_admin'')::boolean or (w->>''can_collect'')::boolean or (w->>''can_read'')::boolean) then');
+    if position('can_read' in d) = 0 then raise exception 'unpaid'; end if; execute d;
+  end if;
+end $m$;
+
+-- حسم بكشف حساب الزبون: السبب إجباري
+create or replace function public.motor_discount_add(p_slug text, p_token text, p_customer uuid, p_amount numeric, p_reason text)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w jsonb; sid uuid; c public.motor_customers%rowtype; seq integer; inv public.motor_invoices%rowtype; a numeric := round(abs(coalesce(p_amount,0)), 2);
+begin
+  w := public._motor_admin(p_slug, p_token);
+  sid := (w->>'site_id')::uuid;
+  if a <= 0 then perform public._motor_err('bad_amount'); end if;
+  if length(trim(coalesce(p_reason,''))) < 3 then perform public._motor_err('reason_required'); end if;
+  select * into c from public.motor_customers where id = p_customer and site_id = sid and deleted_at is null for update;
+  if not found then perform public._motor_err('customer_not_found'); end if;
+  update public.motor_sites set invoice_seq = invoice_seq + 1 where id = sid returning invoice_seq into seq;
+  insert into public.motor_invoices (site_id, no, customer_id, period, kind, amount, balance_before, balance_after, note, staff_id, staff_name, wa_sent_at)
+  values (sid, seq, c.id, to_char(public._motor_today(), 'YYYY-MM'), 'adjust', -a, c.balance, c.balance - a,
+          left('حسم: ' || trim(p_reason), 500), (w->>'staff_id')::uuid, w->>'name', now())
+  returning * into inv;
+  update public.motor_customers set balance = balance - a, updated_at = now() where id = c.id;
+  return jsonb_build_object('ok', true, 'invoice', to_jsonb(inv) - 'site_id', 'balance', c.balance - a);
+end $$;
+grant execute on function public.motor_discount_add(text,text,uuid,numeric,text) to anon, authenticated;
+
+-- ============================================================
 --  20k) إقفال صندوق الموظف: يسلّم كل النقد للمكتب ويطلع تقرير
 -- ============================================================
 create or replace function public.motor_staff_close(p_slug text, p_token text, p_staff uuid default null)

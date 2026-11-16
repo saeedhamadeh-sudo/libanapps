@@ -1698,7 +1698,7 @@ var D={
  fr_img:['🖼️ صورة','🖼️ Image','🖼️ Image'], fr_item:['البيان','Item','Libellé'], fr_val:['القيمة','Value','Valeur'], fr_no_logo:['لا يوجد شعار — ارفعه من الإعدادات ليظهر في التقرير.','No logo — upload one in settings to show it on the report.','Pas de logo — ajoutez-le dans les paramètres.'],
  k_oldpay:['قبض (البرنامج السابق)','Payment (previous program)','Paiement (ancien programme)'], k_charge:['رسوم إضافية','Extra charge','Frais supplémentaires'], k_credit:['حسم / إشعار دائن','Discount / credit note','Remise / avoir'],
  nav_month:['جدول عدادات الشهر','Monthly readings','Relevés du mois'],
- nav_cstmt:['كشف حساب الجابي','Collector statement','Relevé releveur'],
+ nav_cstmt:['كشف حساب الصندوق','Cash box statement','Relevé de caisse'],
  nav_whish:['كشف حساب Whish','Whish statement','Relevé Whish'],
  nav_staff:['الموظفون','Staff','Personnel'],
  nav_plans:['الاشتراكات والأسعار','Plans & prices','Formules & tarifs'],
@@ -1907,6 +1907,21 @@ var D={
  dr_total:['مجموع الديون','Total debts','Total des dettes'],
  dr_none:['لا يوجد زبائن عليهم ديون','No customers in debt','Aucun client débiteur'],
  dr_with_arch:['مع المؤرشفين','Include archived','Inclure archivés'],
+ select_all:['تحديد الكل','Select all','Tout sélectionner'],
+ my_box:['صندوقي','My cash box','Ma caisse'],
+ sd_btn:['حسم','Discount','Remise'],
+ sd_reason:['سبب الحسم','Discount reason','Motif de la remise'],
+ sd_reason_ph:['مثلاً: عطل بالخط، اتفاق مع المدير…','e.g. line fault, agreement…','ex. panne, accord…'],
+ sd_confirm:['تأكيد حسم {v} من حساب {n}؟\nالسبب: {r}','Confirm a {v} discount for {n}?\nReason: {r}','Confirmer une remise de {v} pour {n} ?\nMotif : {r}'],
+ sd_done:['تم تسجيل الحسم في كشف الحساب','Discount recorded in the statement','Remise enregistrée'],
+ e_reason_required:['اكتب سبب الحسم (3 أحرف على الأقل)','Enter the discount reason (at least 3 characters)','Saisissez le motif (3 caractères min.)'],
+ bv_btn:['إلغاء فواتير','Void invoices','Annuler des factures'],
+ bv_hint:['اختر الفواتير التي تريد إلغاءها. الفاتورة الملغاة تُخصم من رصيد الزبون وتنتقل إلى سلة المحذوفات؛ فاتورة العداد يُحذف معها رقم العداد.','Choose the invoices to void. Voided invoices leave the balance and go to the recycle bin; meter invoices also remove their reading.','Choisissez les factures à annuler.'],
+ bv_sel:['المحدّد: {n} فاتورة — {v}','Selected: {n} invoices — {v}','Sélection : {n} factures — {v}'],
+ bv_go:['إلغاء المحدّد','Void selected','Annuler la sélection'],
+ bv_none:['اختر فاتورة واحدة على الأقل','Select at least one invoice','Sélectionnez au moins une facture'],
+ bv_confirm:['هل أنت متأكد من إلغاء {n} فاتورة بقيمة {v} من حساب {c}؟','Void {n} invoices worth {v} for {c}?','Annuler {n} factures ({v}) pour {c} ?'],
+ bv_done:['تم إلغاء {n} فاتورة','{n} invoices voided','{n} factures annulées'],
  mp_title:['سعر الكيلو واط لكل شهر','kWh price per month','Prix du kWh par mois'],
  mp_hint:['حدّد سعر الكيلو واط لكل شهر بشهره. رسائل قيمة الفاتورة لا تُرسل قبل تحديد سعر الشهر. عند الحفظ تُعاد حسابات فواتير العداد لهذا الشهر على السعر الجديد، ثم يُرسل النظام رسائل قيمة الفاتورة تلقائياً (ضمن حد الـ250 اليومي).','Set the kWh price for each month. Invoice messages are not sent before the month price is set. On save, that month’s meter invoices are recalculated and the system sends invoice messages automatically (within the 250/day limit).','Définissez le prix du kWh pour chaque mois. Les messages de facture ne partent qu’après. À l’enregistrement, les factures du mois sont recalculées et les messages envoyés automatiquement (limite 250/jour).'],
  mp_month:['الشهر','Month','Mois'],
@@ -2221,7 +2236,7 @@ Object.assign(D,{
  e_bad_totp:['رمز التحقق غير صحيح','Wrong verification code','Code incorrect'],
  e_closed_period:['هذه الحركة ضمن فترة مُقفلة في الصندوق — لا يمكن تعديلها','This entry is in a closed cash period','Opération dans une période clôturée'],
  nav_switch:['فتح/قطع اشتراك','Connect / cut','Brancher / couper'],
- nav_cash:['الصندوق','Cash box','Caisse'],
+ nav_cash:['الصندوق الأساسي','Main cash box','Caisse principale'],
  nav_wa:['إرسال إشعارات الدفع عبر واتساب','Payment notices via WhatsApp','Avis de paiement WhatsApp'],
  nav_map:['مواقع الموظفين','Staff map','Carte du personnel'],
  remaining_read:['لم يُقرأ عدادهم بعد ({n})','Not read yet ({n})','Pas encore relevés ({n})'],
@@ -2870,13 +2885,13 @@ var TABS=[
   {id:'sales',k:'nav_sales',i:'🧾',admin:true},
   {id:'switch',k:'nav_switch',i:'🔌',p:'cut'},
   {id:'customers',k:'nav_customers',i:'👥'},
-  {id:'unpaid',k:'nav_unpaid',i:'⏳',p:'collect'},
+  {id:'unpaid',k:'nav_unpaid',i:'⏳',p:'collect|read'},
   {id:'month',k:'nav_month',i:'🗓️'},
   {id:'bills',k:'nav_bills',i:'📨',admin:true},
   {id:'wa',k:'nav_wa',i:'📲',admin:true},
-  {id:'cash',k:'nav_cash',i:'💰',admin:true},
+  {id:'cash',k:'nav_cash',i:'💰',admin:true,main:true},
   {id:'whish',k:'nav_whish',i:'🟣',admin:true},
-  {id:'journal',k:'nav_journal',i:'📒',admin:true},
+  {id:'journal',k:'nav_journal',i:'📒',admin:true,main:true},
   {id:'expenses',k:'nav_expenses',i:'🧾',admin:true},
   {id:'salaries',k:'nav_salaries',i:'👷',admin:true},
   {id:'disc',k:'nav_disc',i:'🏷️',admin:true,main:true},
@@ -2896,7 +2911,7 @@ var TABS=[
   {id:'settings',k:'nav_settings',i:'⚙️'}
 ];
 var WA_PENDING=0, WA_INV=0;
-function visibleTabs(){ return TABS.filter(function(x){ return (!x.admin||isAdmin())&&(!x.main||(ME&&ME.is_main))&&(!x.p||can(x.p)); }); }
+function visibleTabs(){ return TABS.filter(function(x){ return (!x.admin||isAdmin())&&(!x.main||(ME&&ME.is_main))&&(!x.p||x.p.split('|').some(function(q){ return can(q); })); }); }
 /* اسم نوع الحركة بكشف الحساب — الحركات المستوردة بتنعرض بوصفها الحقيقي، مش «تسوية» */
 function kindLbl(r){ if(r.t==='pay') return t('k_pay'); var n=String(r.note||'').trim();
   if(r.kind==='adjust'||r.kind==='opening'){ if(/^(ايصال|إيصال|دفعات قبل)/.test(n)) return t('k_oldpay'); if(r.kind==='opening'||/^رصيد ما قبل/.test(n)) return t('k_opening'); return n2(r.debit)>0||n2(r.amount)>0?t('k_charge'):t('k_credit'); }
@@ -3051,7 +3066,7 @@ VIEWS.dash=async function(main){
       stat(t('st_billed'), money(d.billed_period),mine?'month':'report')+
       stat(t('st_unpaid'), fmtN(d.unpaid_count,0),can('collect')?'pay':'customers|debt')+
       (mine?'':stat(t('st_debt'), money(d.debt_total),'customers|debt'))+
-      (mine?'':stat(t('st_cash_box'), money(d.cash_box),'cash'))+
+      (mine?'':ME.is_main?stat(t('st_cash_box'), money(d.cash_box),'cash'):stat(t('my_box'), money(d.cash_box),'cstmt'))+
       (mine?'':stat(t('st_whish_box'), money(d.whish_box),'whish'))+
       (mine?'':stat(t('st_wa'), fmtN(d.wa_pending,0),n2(d.wa_inv)>0?'bills':'wa'))+
       (mine?'':stat(t('nav_trash'), fmtN(d.trash_count,0),'trash'))+
@@ -4445,7 +4460,10 @@ async function openStatement(cid){
       (rows.join('')||'<tr><td colspan="10" class="muted">'+esc(t('no_results'))+'</td></tr>')+'</tbody></table></div>')+
       '<div class="row" style="margin-top:10px">'+(waHere()?'<button class="btn wa sm" id="swa">'+esc(t('send_wa'))+'</button>':'')+'<span class="muted">'+esc(t('print'))+':</span>'+
         (isAdmin()?['58','80']:['58']).map(function(w){ var def=!isAdmin()||lsGet('motor_paper','58')===w; return '<button class="btn '+(def?'':'alt')+' sm" data-spw="'+w+'">'+w+' '+esc(t('mm'))+'</button>'; }).join('')+
-        (isAdmin()?'<button class="btn alt sm" id="spa4">A4</button>':'')+'</div>';
+        (isAdmin()?'<button class="btn alt sm" id="spa4">A4</button>':'')+'</div>'+
+      (adm?'<div class="row" style="margin-top:8px;gap:8px;flex-wrap:wrap"><button class="btn warn sm" id="sdisc">🏷️ '+esc(t('sd_btn'))+'</button><button class="btn danger sm" id="sbv">🗑️ '+esc(t('bv_btn'))+'</button></div>':'');
+    if($('#sdisc',m.body)) $('#sdisc',m.body).addEventListener('click',function(){ stmtDiscount(c,load); });
+    if($('#sbv',m.body)) $('#sbv',m.body).addEventListener('click',function(){ bulkVoid(c,d.rows,load); });
     if(narrow){ var sl=$('.sc-list',m.body); if(sl) sl.scrollTop=sl.scrollHeight; }
     $$('[data-prow]',m.body).forEach(function(b){ b.addEventListener('click',function(){ printStmtRow(d,b.dataset.prow); }); });
     if($('#spa4',m.body)) $('#spa4',m.body).addEventListener('click',function(){ printStatementA4(d); });
@@ -4467,6 +4485,40 @@ async function openStatement(cid){
   }
   m.body.addEventListener('click',function(e){ var im=e.target.closest('[data-big]'); if(im) lightbox(im.dataset.big); });
   load();
+}
+/* حسم بكشف حساب الزبون — السبب إجباري */
+function stmtDiscount(c,after){
+  var m=modal('🏷️ '+t('sd_btn')+' — '+c.name,'<div class="muted" style="margin-bottom:8px">'+esc(t('balance'))+': <b>'+esc(money(c.balance))+'</b></div>'+
+    '<label>'+esc(t('amount'))+' ('+esc(sym(mainCur()))+')</label><input id="sda" class="valinput" inputmode="decimal" autocomplete="off">'+
+    '<label style="margin-top:10px">'+esc(t('sd_reason'))+' *</label><input id="sdr" maxlength="200" placeholder="'+esc(t('sd_reason_ph'))+'">'+
+    '<div id="sdm" class="err msg" style="margin-top:8px"></div>',
+    '<button class="btn ghost" data-x>'+esc(t('cancel'))+'</button><button class="btn" data-s>💾 '+esc(t('save'))+'</button>');
+  m.foot.addEventListener('click',async function(e){ if(e.target.closest('[data-x]')) return m.close(); var b=e.target.closest('[data-s]'); if(!b) return;
+    var v=Number(String($('#sda',m.body).value).trim().replace(',','.')), r=$('#sdr',m.body).value.trim();
+    if(!(v>0)){ $('#sdm',m.body).textContent=t('e_bad_amount'); return; }
+    if(r.length<3){ $('#sdm',m.body).textContent=t('e_reason_required'); $('#sdr',m.body).focus(); return; }
+    if(!(await confirmBox(t('sd_confirm',{v:money(v),n:c.name,r:r})))) return;
+    busy(b,true); try{ await call('motor_discount_add',{p_customer:c.id,p_amount:v,p_reason:r}); toast(t('sd_done'),'s'); m.close(); loadCustomers(); after&&after(); }
+    catch(err){ $('#sdm',m.body).textContent=errText(err); busy(b,false); } });
+}
+/* إلغاء عدّة فواتير للزبون دفعة وحدة (مع تأكيد) */
+function bulkVoid(c,rows,after){
+  var L=rows.filter(function(r){ return r.t==='inv'&&!r.voided&&r.kind!=='opening'; }).slice().reverse();
+  var m=modal('🗑️ '+t('bv_btn')+' — '+c.name,'<p class="muted" style="margin-top:0">'+esc(t('bv_hint'))+'</p>'+
+    (L.length?'<label class="chk"><input type="checkbox" id="bva"> '+esc(t('select_all'))+'</label><div class="tw" style="margin-top:6px"><table><thead><tr><th></th><th>'+esc(t('date'))+'</th><th>#</th><th>'+esc(t('type'))+'</th><th>'+esc(t('month'))+'</th><th>'+esc(t('amount'))+'</th></tr></thead><tbody>'+
+      L.map(function(r){ return '<tr><td><input type="checkbox" data-bv="'+esc(r.id)+'" data-amt="'+esc(n2(r.debit)-n2(r.credit))+'"></td><td class="num">'+esc(dt(r.at).slice(0,10))+'</td><td class="num">'+esc(r.no)+'</td><td>'+esc(kindLbl(r))+'</td><td>'+esc(r.period?monthName(r.period,true):'')+'</td><td class="num">'+esc(money(n2(r.debit)-n2(r.credit)))+'</td></tr>'; }).join('')+
+      '</tbody></table></div><div id="bvs" class="muted" style="margin-top:8px"></div><div id="bvm" class="err msg" style="margin-top:8px"></div>':'<div class="muted">'+esc(t('no_results'))+'</div>'),
+    '<button class="btn ghost" data-x>'+esc(t('cancel'))+'</button>'+(L.length?'<button class="btn danger" data-s>🗑️ '+esc(t('bv_go'))+'</button>':''),true);
+  function sel(){ return $$('[data-bv]',m.body).filter(function(x){ return x.checked; }); }
+  function sum(){ var S=sel(), tot=S.reduce(function(a,x){ return a+n2(x.dataset.amt); },0); var el=$('#bvs',m.body); if(el) el.textContent=t('bv_sel',{n:S.length,v:money(tot)}); }
+  m.body.addEventListener('change',function(e){ if(e.target.id==='bva') $$('[data-bv]',m.body).forEach(function(x){ x.checked=e.target.checked; }); sum(); }); sum();
+  m.foot.addEventListener('click',async function(e){ if(e.target.closest('[data-x]')) return m.close(); var b=e.target.closest('[data-s]'); if(!b) return;
+    var S=sel(); if(!S.length){ $('#bvm',m.body).textContent=t('bv_none'); return; }
+    var tot=S.reduce(function(a,x){ return a+n2(x.dataset.amt); },0);
+    if(!(await confirmBox(t('bv_confirm',{n:S.length,v:money(tot),c:c.name})))) return;
+    busy(b,true); var ok=0, err='';
+    for(var i=0;i<S.length;i++){ try{ await call('motor_invoice_void',{p_id:S[i].dataset.bv}); ok++; }catch(x){ err=errText(x); } }
+    toast(t('bv_done',{n:ok})+(err?' — '+err:''),err?'e':'s'); m.close(); loadCustomers(); after&&after(); });
 }
 /* طباعة أي فاتورة أو إيصال قديم من كشف الحساب */
 function stmtInv(r){ return {no:r.no,created_at:r.at,period:r.period,kind:r.kind,fee:r.fee,prev_value:r.prev_value,cur_value:r.cur_value,kwh:r.kwh,kwh_price:r.kwh_price,
@@ -5038,10 +5090,10 @@ function staffForm(s){
    ========================================================= */
 var SF={staff:'',from:'',to:''};
 VIEWS.cstmt=async function(main){
-  var adm=isAdmin();
+  var adm=isAdmin()&&!!ME.is_main;   // المدير الأساسي بيشوف صناديق الكل؛ الباقي صندوقن بس
   if(!adm) SF.staff=ME.staff_id;
   if(!SF.from){ SF.from=TODAY.slice(0,8)+'01'; SF.to=TODAY; }
-  var cols=STAFF.filter(function(s){ return adm||s.id===ME.staff_id; });
+  var cols=STAFF.filter(function(s){ return adm?!s.is_main:s.id===ME.staff_id; });
   if(adm&&!SF.staff&&cols.length) SF.staff=(cols.filter(function(s){return s.role==='collector'})[0]||cols[0]).id;
   main.innerHTML='<div class="toolbar">'+(adm?'<select id="xs">'+cols.map(function(s){return '<option value="'+esc(s.id)+'">'+esc(s.name)+' · '+esc(roleLabel(s))+'</option>'}).join('')+'</select>':'')+
     '<label style="margin:0">'+esc(t('from'))+'</label><input type="date" id="xf" value="'+esc(SF.from)+'" style="flex:0 1 160px"><label style="margin:0">'+esc(t('to'))+'</label><input type="date" id="xt" value="'+esc(SF.to)+'" style="flex:0 1 160px">'+
