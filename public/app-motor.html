@@ -1901,6 +1901,12 @@ var D={
  rw_bad:['تاريخ البداية يجب أن يكون قبل تاريخ النهاية','Start date must be before end date','La date de début doit précéder la fin'],
  rw_overlap:['هذه التواريخ تتداخل مع فترة شهر آخر','These dates overlap another month’s period','Chevauche une autre période'],
  rw_del_q:['حذف فترة شهر {m}؟ يعود الشهر إلى القاعدة الافتراضية.','Delete the {m} period? The month returns to the default rule.','Supprimer la période de {m} ?'],
+ dr_btn:['كشف حساب جميع الديون','All debts statement','Relevé de toutes les dettes'],
+ dr_title:['كشف حساب جميع الديون','Statement of all debts','Relevé de toutes les dettes'],
+ dr_count:['عدد الزبائن المدينين','Customers in debt','Clients débiteurs'],
+ dr_total:['مجموع الديون','Total debts','Total des dettes'],
+ dr_none:['لا يوجد زبائن عليهم ديون','No customers in debt','Aucun client débiteur'],
+ dr_with_arch:['مع المؤرشفين','Include archived','Inclure archivés'],
  mp_title:['سعر الكيلو واط لكل شهر','kWh price per month','Prix du kWh par mois'],
  mp_hint:['حدّد سعر الكيلو واط لكل شهر بشهره. رسائل قيمة الفاتورة لا تُرسل قبل تحديد سعر الشهر. عند الحفظ تُعاد حسابات فواتير العداد لهذا الشهر على السعر الجديد، ثم يُرسل النظام رسائل قيمة الفاتورة تلقائياً (ضمن حد الـ250 اليومي).','Set the kWh price for each month. Invoice messages are not sent before the month price is set. On save, that month’s meter invoices are recalculated and the system sends invoice messages automatically (within the 250/day limit).','Définissez le prix du kWh pour chaque mois. Les messages de facture ne partent qu’après. À l’enregistrement, les factures du mois sont recalculées et les messages envoyés automatiquement (limite 250/jour).'],
  mp_month:['الشهر','Month','Mois'],
@@ -4670,7 +4676,7 @@ VIEWS.customers=async function(main){
     '<select id="car"><option value="">'+esc(t('area'))+': '+esc(t('all'))+'</option>'+Object.keys(areas).sort().map(function(a){return '<option>'+esc(a)+'</option>'}).join('')+'</select>'+
     '</div><div class="toolbar">'+
     (adm?'<button class="btn" id="cadd">'+esc(t('new_customer'))+'</button><button class="btn alt" id="cimp">'+esc(t('import_excel'))+'</button>':'')+
-    '<button class="btn ghost" id="cexp">'+esc(t('export_csv'))+'</button>'+(adm?'<button class="btn ghost" id="clbl">'+esc(t('labels'))+'</button><button class="btn ghost" id="cfill">'+esc(t('fill_barcodes'))+'</button>':'')+
+    '<button class="btn warn" id="cdebt">💰 '+esc(t('dr_btn'))+'</button><button class="btn ghost" id="cexp">'+esc(t('export_csv'))+'</button>'+(adm?'<button class="btn ghost" id="clbl">'+esc(t('labels'))+'</button><button class="btn ghost" id="cfill">'+esc(t('fill_barcodes'))+'</button>':'')+
     '<span class="sp"></span><span class="muted" id="ccount"></span></div><div class="tw"><table><thead><tr><th>'+esc(t('code'))+'</th><th>'+esc(t('name'))+'</th><th>'+esc(t('barcode'))+'</th><th>'+esc(t('plan'))+'</th><th>'+esc(t('box'))+'</th><th>'+esc(t('area'))+'</th><th>'+esc(t('collector'))+'</th><th>'+esc(t('status'))+'</th><th>'+esc(t('balance'))+'</th><th>'+esc(t('prev_reading'))+'</th><th>'+esc(t('cur_reading'))+' ('+esc(monthName(SITE.bill_period,true))+')</th>'+(adm?'<th></th>':'')+'</tr></thead><tbody id="ctb"></tbody></table></div><div id="cmore" style="text-align:center;margin-top:10px"></div>';
   $('#cst',main).value=CF.st; $('#cpl',main).value=CF.plan; if($('#ccol',main)) $('#ccol',main).value=CF.col; $('#car',main).value=CF.area;
   function filtered(){
@@ -4709,12 +4715,64 @@ VIEWS.customers=async function(main){
   if(adm){ $('#cadd',main).addEventListener('click',function(){ editCustomer(null); }); $('#cimp',main).addEventListener('click',importDialog);
     $('#clbl',main).addEventListener('click',function(){ printLabels(filtered().slice(0,500)); });
     $('#cfill',main).addEventListener('click',async function(){ try{ var r=await call('motor_fill_barcodes'); toast(t('fill_done',{n:r.count}),'s'); await loadCustomers(); go('customers'); }catch(e){ toast(errText(e),'e'); } }); }
+  $('#cdebt',main).addEventListener('click',function(){ debtsReport(); });
   $('#cexp',main).addEventListener('click',function(){
     var rows=[[t('code'),t('name'),t('barcode'),t('meter_no'),t('plan'),t('box'),t('area'),t('location_name'),t('collector'),t('mobile'),t('status'),t('balance'),t('prev_reading'),t('cur_reading')]];
     filtered().forEach(function(c){ rows.push([c.code,c.name,c.barcode,c.meter_no,planName(c.plan_id),c.box,c.area,c.location_name,c.collector_name,c.mobile,c.is_active?t('active'):t('inactive'),c.balance,c.read_now?c.read_now_prev:c.last_value,c.read_now?c.read_now_value:'']); });
     downloadBlob(makeXlsx([{name:t('nav_customers'),rows:rows}]),'customers-'+SLUG+'.xlsx'); });
   searchHooks.push(paint); paint();
 };
+/* كشف حساب جميع الديون: كل الزبائن يلي عليهم دين + المجموع بالأسفل */
+function debtsReport(){
+  var F={area:'',col:'',q:'',arch:true};
+  var areas={}; CUST.forEach(function(c){ if(c.area) areas[c.area]=1; });
+  var cols={}; CUST.forEach(function(c){ if(c.collector_name) cols[c.collector_name]=1; });
+  var m=modal('💰 '+t('dr_title'),
+    '<div class="toolbar" style="margin:0 0 10px"><input id="drq" type="search" placeholder="'+esc(t('search_ph'))+'" style="flex:2 1 200px">'+
+      '<select id="dra"><option value="">'+esc(t('area'))+': '+esc(t('all'))+'</option>'+Object.keys(areas).sort().map(function(a){ return '<option>'+esc(a)+'</option>'; }).join('')+'</select>'+
+      (Object.keys(cols).length?'<select id="drc"><option value="">'+esc(t('collector'))+': '+esc(t('all'))+'</option>'+Object.keys(cols).sort().map(function(a){ return '<option>'+esc(a)+'</option>'; }).join('')+'</select>':'')+
+      '<label class="chk" style="margin:0"><input type="checkbox" id="drx" checked> '+esc(t('dr_with_arch'))+'</label></div>'+
+    '<div id="drs" class="row" style="gap:10px;margin-bottom:10px"></div><div class="tw" id="drt"></div>',
+    '<button class="btn ghost" data-x>'+esc(t('close'))+'</button><button class="btn ok" data-xl>📊 '+esc(t('export_xlsx'))+'</button><button class="btn" data-pr>'+esc(t('print'))+' / PDF</button>',true);
+  function list(){
+    var q=normS(F.q);
+    return CUST.filter(function(c){ return n2(c.balance)>0.005 && (F.arch||!c.archived) && (!F.area||c.area===F.area) && (!F.col||c.collector_name===F.col) &&
+      (!q||phoneHit(c,F.q)||normS(c.name).indexOf(q)>=0||String(c.code)===F.q.trim()||normS(c.barcode).indexOf(q)>=0||normS(c.box).indexOf(q)>=0); })
+      .sort(function(a,b){ return n2(b.balance)-n2(a.balance); });
+  }
+  function paint(){
+    var L=list(), tot=L.reduce(function(a,c){ return a+n2(c.balance); },0);
+    $('#drs',m.body).innerHTML=stat(t('dr_count'),fmtN(L.length,0))+stat(t('dr_total'),money(tot));
+    $('#drt',m.body).innerHTML='<table><thead><tr><th>#</th><th>'+esc(t('code'))+'</th><th>'+esc(t('name'))+'</th><th>'+esc(t('area'))+'</th><th>'+esc(t('box'))+'</th><th>'+esc(t('mobile'))+'</th><th>'+esc(t('collector'))+'</th><th>'+esc(t('balance'))+'</th></tr></thead><tbody>'+
+      (L.map(function(c,i){ return '<tr><td class="num">'+(i+1)+'</td><td class="num">'+esc(c.code)+'</td><td><a href="#" data-dc="'+esc(c.id)+'"><b>'+esc(c.name)+'</b></a>'+(c.archived?' <span class="chip">'+esc(t('archived'))+'</span>':'')+'</td><td>'+esc(c.area||'')+'</td><td>'+esc(c.box||'')+'</td>'+
+        '<td class="num" dir="ltr">'+esc(c.mobile||'')+'</td><td style="white-space:nowrap">'+esc(c.collector_name||'')+'</td><td class="num" style="white-space:nowrap"><b style="color:var(--bad)">'+esc(money(c.balance))+'</b></td></tr>'; }).join('')||'<tr><td colspan="8" class="muted">'+esc(t('dr_none'))+'</td></tr>')+
+      '</tbody><tfoot><tr style="font-weight:800;background:var(--soft,#f1f5f9)"><td colspan="7">'+esc(t('dr_total'))+' ('+fmtN(L.length,0)+')</td><td class="num"><b style="font-size:17px">'+esc(money(tot))+'</b></td></tr></tfoot></table>';
+    return {L:L,tot:tot};
+  }
+  $('#drq',m.body).addEventListener('input',function(){ F.q=this.value; paint(); });
+  $('#dra',m.body).addEventListener('change',function(){ F.area=this.value; paint(); });
+  if($('#drc',m.body)) $('#drc',m.body).addEventListener('change',function(){ F.col=this.value; paint(); });
+  $('#drx',m.body).addEventListener('change',function(){ F.arch=this.checked; paint(); });
+  m.body.addEventListener('click',function(e){ var a=e.target.closest('[data-dc]'); if(!a) return; e.preventDefault(); openStatement(a.dataset.dc); });
+  m.foot.addEventListener('click',function(e){
+    if(e.target.closest('[data-x]')) return m.close();
+    var r=paint(), sub=[F.area?t('area')+': '+F.area:'',F.col?t('collector')+': '+F.col:''].filter(Boolean).join(' · ');
+    if(e.target.closest('[data-xl]')){
+      var rows=[['#',t('code'),t('name'),t('area'),t('box'),t('mobile'),t('collector'),t('balance')]];
+      r.L.forEach(function(c,i){ rows.push([i+1,c.code,c.name,c.area||'',c.box||'',c.mobile||'',c.collector_name||'',n2(c.balance)]); });
+      rows.push(['','',t('dr_total')+' ('+r.L.length+')','','','','',Math.round(r.tot*100)/100]);
+      downloadBlob(makeXlsx([{name:t('dr_title').slice(0,30),rows:rows}]),'debts-'+SLUG+'-'+TODAY+'.xlsx'); return; }
+    if(e.target.closest('[data-pr]')){
+      var logo=SITE.logo_url||'';
+      printA4('<style>#printArea .hd{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:8px;font-size:12px}#printArea h2{margin:0 0 2px;font-size:18px}#printArea td.w{text-align:start}#printArea tfoot td{font-weight:800;background:#eee;font-size:13px}</style>'+
+        '<div class="hd"><div style="display:flex;align-items:center;gap:12px">'+(logo?'<img src="'+esc(logo)+'" alt="" style="height:70px;max-width:180px;object-fit:contain">':'')+'<div><h2>'+esc(SITE.name||'')+'</h2><div><b>'+esc(t('dr_title'))+'</b>'+(sub?' — '+esc(sub):'')+'</div></div></div>'+
+        '<div>'+esc(t('date'))+': '+esc(TODAY)+'<br>'+esc(t('dr_count'))+': <b>'+fmtN(r.L.length,0)+'</b></div></div>'+
+        '<table><thead><tr><th>#</th><th>'+esc(t('code'))+'</th><th>'+esc(t('name'))+'</th><th>'+esc(t('area'))+'</th><th>'+esc(t('box'))+'</th><th>'+esc(t('mobile'))+'</th><th>'+esc(t('collector'))+'</th><th>'+esc(t('balance'))+'</th></tr></thead><tbody>'+
+        r.L.map(function(c,i){ return '<tr><td>'+(i+1)+'</td><td>'+esc(c.code)+'</td><td class="w">'+esc(c.name)+'</td><td>'+esc(c.area||'')+'</td><td>'+esc(c.box||'')+'</td><td dir="ltr">'+esc(c.mobile||'')+'</td><td>'+esc(c.collector_name||'')+'</td><td><b>'+esc(money(c.balance))+'</b></td></tr>'; }).join('')+
+        '</tbody><tfoot><tr><td colspan="7">'+esc(t('dr_total'))+' ('+fmtN(r.L.length,0)+')</td><td>'+esc(money(r.tot))+'</td></tr></tfoot></table>'); }
+  });
+  paint();
+}
 function downloadCsv(rows,name){
   var csv='﻿'+rows.map(function(r){ return r.map(function(v){ v=String(v==null?'':v); return /[",\n;]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; }).join(','); }).join('\r\n');
   var a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'})); a.download=name; document.body.appendChild(a); a.click(); a.remove();
