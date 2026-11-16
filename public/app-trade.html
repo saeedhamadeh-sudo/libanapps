@@ -8681,8 +8681,9 @@ async function printPosReceipt(inv, currency, totalUSD, rate, customerLabel, rec
     @media print{
       html, body{ width:80mm !important; min-width:0 !important; max-width:80mm !important; height:auto !important; min-height:0 !important; overflow:visible !important; margin:0 !important; padding:0 !important; background:#fff !important; zoom:1 !important; }
       body > *:not(#pos-receipt-print){ display:none !important; }
-      /* بالنص: الطابعة الحرارية بتطبع ~72 ملم من أصل 80 — منخلّي 6 ملم من كل جنب حتى ما ينقصّ شي */
-      #pos-receipt-print{ position:static !important; width:68mm !important; margin:0 auto !important; padding:0 !important; box-sizing:border-box !important; }
+      /* الطابعة الحرارية بتطبع ~72 ملم بس وبتبلّش بعد ~5 ملم من طرف الورقة — فالفاتورة 66 ملم ملزوقة عاليسار
+         (بالورقة بتطلع تقريباً بالنص: ~6 ملم يسار و~8 يمين) */
+      #pos-receipt-print{ position:static !important; width:66mm !important; margin:0 auto 0 1mm !important; padding:0 !important; box-sizing:border-box !important; }
     }` : '');
   document.head.appendChild(styleEl);
   const wrap = document.createElement('div');
@@ -8704,9 +8705,14 @@ async function printPosReceipt(inv, currency, totalUSD, rate, customerLabel, rec
   // منحط مقاس صالح: عرض 80 ملم وطول على قد الفاتورة
   let rcptHmm = 0;
   if(format==='thermal80'){
-    try{ const pw = wrap.style.width; wrap.style.width = '68mm'; rcptHmm = Math.ceil(wrap.scrollHeight * 25.4 / 96) + 6; wrap.style.width = pw; }catch(e){}
+    try{ const pw = wrap.style.width; wrap.style.width = '66mm'; rcptHmm = Math.ceil(wrap.scrollHeight * 25.4 / 96) + 6; wrap.style.width = pw; }catch(e){}
     if(!(rcptHmm >= 40)) rcptHmm = 200; rcptHmm = Math.min(rcptHmm, 3000);
-    styleEl.textContent += `\n    @page{ size: 80mm ${rcptHmm}mm; margin: 0 0 3mm 0; }`;
+    // البرنامج المحلي لحد 2.0.2 بيفرض ورقة 80×297 — إذا الصفحة أقصر بتنحط بنص الورقة (أبيض كبير فوق).
+    // فمنعمل الصفحة 297 والفاتورة من فوق، والطابعة بتشيل الأبيض يلي تحت. من 2.0.3 الطول على قد الفاتورة.
+    const dv = (window.libanappsDesktop && String(window.libanappsDesktop.version||'0').split('.').map(Number)) || null;
+    const oldDesk = silent && dv && ((dv[0]||0)*10000 + (dv[1]||0)*100 + (dv[2]||0)) < 20003;
+    const pageH = oldDesk ? 297 : rcptHmm; if(oldDesk) rcptHmm = 0;
+    styleEl.textContent += `\n    @page{ size: 80mm ${pageH}mm; margin: 0; }`;
   }
   if(silent){
     // تطبيق الكمبيوتر: طباعة صامتة على الطابعة المختارة بالإعدادات — بلا أي نافذة
@@ -11774,7 +11780,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-11-17 · 01:00 · v98';
+const APP_TRADE_BUILD = '2026-11-17 · 01:10 · v99';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 function settingsView(){
   const s = DB.settings;
