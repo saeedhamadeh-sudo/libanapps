@@ -4889,6 +4889,127 @@ end $$;
 grant execute on function public.motor_barcode_reprefix(text,text,boolean) to anon, authenticated;
 
 -- ============================================================
+--  20j20) فترة أخذ العداد لكل شهر (من تاريخ لتاريخ) — المدير بيحددها وبتنحفظ لكل الأشهر.
+--         الشهر يلي ما إلو فترة: القاعدة القديمة (من 26 لآخر الشهر، وبشباط من 23)
+-- ============================================================
+create table if not exists public.motor_read_windows (
+  site_id uuid not null references public.motor_sites(id) on delete cascade,
+  period  text not null check (period ~ '^\d{4}-(0[1-9]|1[0-2])$'),
+  d_from  date not null,
+  d_to    date not null,
+  set_by  text not null default '',
+  set_at  timestamptz not null default now(),
+  primary key (site_id, period),
+  check (d_from <= d_to and d_to - d_from <= 62)
+);
+alter table public.motor_read_windows enable row level security;
+revoke all on public.motor_read_windows from anon, authenticated;
+
+-- الدورة الحالية لمولّد: الفترة يلي فيها اليوم، وإلا القاعدة القديمة
+create or replace function public._motor_site_period(p_site uuid, d date)
+returns text language sql stable security definer set search_path = public as $$
+  -- بعد ما تخلص فترة شهر ما منرجع لورا: أكبر شهر بلّشت فترتو، أو القاعدة القديمة
+  select coalesce((select w.period from public.motor_read_windows w where w.site_id = p_site and d between w.d_from and w.d_to
+                    order by w.period desc limit 1),
+                  greatest(public._motor_period(d), (select max(w.period) from public.motor_read_windows w where w.site_id = p_site and w.d_from <= d)));
+$$;
+
+-- هل أخذ العداد مفتوح للجابي اليوم؟ + تواريخ الفترة
+create or replace function public._motor_window(p_site uuid, d date)
+returns jsonb language plpgsql stable security definer set search_path = public as $$
+declare w public.motor_read_windows%rowtype; k int; m date; per text; ds date; de date;
+        best_from date; best_to date; best_per text; best_custom boolean;
+begin
+  -- 1) اليوم ضمن فترة محدّدة
+  select * into w from public.motor_read_windows where site_id = p_site and d between d_from and d_to order by period desc limit 1;
+  if found then return jsonb_build_object('open', true, 'period', w.period, 'from', w.d_from, 'to', w.d_to, 'custom', true); end if;
+  -- 2) القاعدة الافتراضية لهالشهر (إذا ما إلو فترة محدّدة)
+  per := to_char(d, 'YYYY-MM');
+  ds := make_date(extract(year from d)::int, extract(month from d)::int, public._motor_read_start(d));
+  if d >= ds and not exists (select 1 from public.motor_read_windows x where x.site_id = p_site and x.period = per) then
+    return jsonb_build_object('open', true, 'period', per, 'from', ds, 'to', (date_trunc('month', d) + interval '1 month - 1 day')::date, 'custom', false);
+  end if;
+  -- 3) مسكّر: أقرب فترة جاية (محدّدة أو افتراضية) خلال الأشهر الجاية
+  for k in 0..3 loop
+    m := (date_trunc('month', d) + make_interval(months => k))::date;
+    per := to_char(m, 'YYYY-MM');
+    select * into w from public.motor_read_windows where site_id = p_site and period = per;
+    if found then
+      if w.d_from > d and (best_from is null or w.d_from < best_from) then best_from := w.d_from; best_to := w.d_to; best_per := per; best_custom := true; end if;
+    else
+      ds := make_date(extract(year from m)::int, extract(month from m)::int, public._motor_read_start(m));
+      de := (m + interval '1 month - 1 day')::date;
+      if ds > d and (best_from is null or ds < best_from) then best_from := ds; best_to := de; best_per := per; best_custom := false; end if;
+    end if;
+  end loop;
+  return jsonb_build_object('open', false, 'period', best_per, 'from', best_from, 'to', best_to, 'custom', coalesce(best_custom, false));
+end $$;
+
+create or replace function public.motor_read_windows(p_slug text, p_token text)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w jsonb; sid uuid;
+begin
+  w := public._motor_who(p_slug, p_token);
+  sid := (w->>'site_id')::uuid;
+  return jsonb_build_object('today', public._motor_today(), 'current', public._motor_window(sid, public._motor_today()),
+    'rows', coalesce((select jsonb_agg(jsonb_build_object('period', r.period, 'from', r.d_from, 'to', r.d_to, 'by', r.set_by, 'at', r.set_at) order by r.period desc)
+                        from public.motor_read_windows r where r.site_id = sid), '[]'::jsonb));
+end $$;
+grant execute on function public.motor_read_windows(text,text) to anon, authenticated;
+
+create or replace function public.motor_read_window_save(p_slug text, p_token text, p_period text, p_from date, p_to date)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w jsonb; sid uuid; x record;
+begin
+  w := public._motor_admin(p_slug, p_token);
+  sid := (w->>'site_id')::uuid;
+  if coalesce(p_period,'') !~ '^\d{4}-(0[1-9]|1[0-2])$' then perform public._motor_err('bad_period'); end if;
+  if p_from is null or p_to is null or p_from > p_to then perform public._motor_err('bad_dates'); end if;
+  if p_to - p_from > 62 then perform public._motor_err('bad_dates'); end if;
+  select * into x from public.motor_read_windows where site_id = sid and period <> p_period and daterange(d_from, d_to, '[]') && daterange(p_from, p_to, '[]') limit 1;
+  if found then perform public._motor_err('window_overlap', x.period); end if;
+  insert into public.motor_read_windows (site_id, period, d_from, d_to, set_by, set_at)
+    values (sid, p_period, p_from, p_to, coalesce(w->>'name',''), now())
+    on conflict (site_id, period) do update set d_from = excluded.d_from, d_to = excluded.d_to, set_by = excluded.set_by, set_at = now();
+  update public.motor_sites set bill_period = public._motor_site_period(sid, public._motor_today()) where id = sid;
+  return jsonb_build_object('ok', true);
+end $$;
+grant execute on function public.motor_read_window_save(text,text,text,date,date) to anon, authenticated;
+
+create or replace function public.motor_read_window_delete(p_slug text, p_token text, p_period text)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w jsonb; sid uuid;
+begin
+  w := public._motor_admin(p_slug, p_token);
+  sid := (w->>'site_id')::uuid;
+  delete from public.motor_read_windows where site_id = sid and period = p_period;
+  update public.motor_sites set bill_period = public._motor_site_period(sid, public._motor_today()) where id = sid;
+  return jsonb_build_object('ok', true);
+end $$;
+grant execute on function public.motor_read_window_delete(text,text,text) to anon, authenticated;
+
+do $m$
+declare d text;
+begin
+  d := pg_get_functiondef('public._motor_who(text,text)'::regprocedure);
+  if position('_motor_site_period' in d) = 0 then
+    d := replace(d, 'public._motor_period(public._motor_today())', 'public._motor_site_period(st.id, public._motor_today())');
+    if position('_motor_site_period' in d) = 0 then raise exception 'who patch failed'; end if;
+    execute d;
+  end if;
+  d := pg_get_functiondef('public.motor_read(text,text,uuid,numeric,text,double precision,double precision,double precision,boolean,numeric)'::regprocedure);
+  if position('_motor_window' in d) = 0 then
+    d := replace(d, '    if extract(day from today) < public._motor_read_start(today) then
+      perform public._motor_err(''out_of_window'', to_char(today, ''YYYY-MM'') || ''-'' || public._motor_read_start(today));
+    end if;', '    if not coalesce((public._motor_window(sid, today)->>''open'')::boolean, false) then
+      perform public._motor_err(''out_of_window'', (public._motor_window(sid, today)->>''from'') || '' → '' || (public._motor_window(sid, today)->>''to''));
+    end if;');
+    if position('_motor_window' in d) = 0 then raise exception 'read patch failed'; end if;
+    execute d;
+  end if;
+end $m$;
+
+-- ============================================================
 --  20k) إقفال صندوق الموظف: يسلّم كل النقد للمكتب ويطلع تقرير
 -- ============================================================
 create or replace function public.motor_staff_close(p_slug text, p_token text, p_staff uuid default null)

@@ -1889,6 +1889,18 @@ var D={
  gd_e_scope:['Google لم يعطِ البرنامج إذن الوصول إلى Drive. اضغط «فصل Google Drive» ثم اربطه من جديد، وفي شاشة Google علّم على خانة «See, edit, create, and delete only the specific Google Drive files you use with this app» قبل «Continue».','Google did not grant Drive access. Disconnect, reconnect, and tick the Drive files checkbox on Google’s screen.','Google n’a pas accordé l’accès à Drive. Déconnectez puis reconnectez en cochant la case Drive.'],
  gd_e_api:['خدمة Google Drive API غير مفعّلة في مشروع Google Cloud.','Google Drive API is not enabled in the Google Cloud project.','L’API Google Drive n’est pas activée.'],
  gd_e_full:['مساحة Google Drive ممتلئة.','Google Drive storage is full.','Espace Google Drive plein.'],
+ rw_title:['فترات أخذ العداد','Meter reading periods','Périodes de relevé'],
+ rw_manage:['تحديد الفترات','Set periods','Définir'],
+ rw_note:['فترة أخذ العداد لشهر {m}: من {f} إلى {to}','Reading period for {m}: {f} → {to}','Période de relevé {m} : {f} → {to}'],
+ rw_hint:['حدّد لكل شهر من أي تاريخ إلى أي تاريخ يستطيع الجابي أخذ العدادات. تُحفظ الفترات لكل الأشهر ويمكن تعديلها. الشهر الذي لا فترة له يتبع القاعدة الافتراضية (من 26 حتى آخر الشهر، وفي شباط من 23). المدير يستطيع أخذ العداد في أي وقت.','Set, for each month, the dates collectors can read meters. Months without a period use the default (26th to month end; Feb from 23rd). Admins can read any time.','Définissez pour chaque mois les dates de relevé. Sinon : du 26 à la fin du mois.'],
+ rw_from:['من تاريخ','From','Du'],
+ rw_to:['إلى تاريخ','To','Au'],
+ rw_days:['الأيام','Days','Jours'],
+ rw_current:['الدورة الحالية','Current cycle','Cycle actuel'],
+ rw_none:['لا توجد فترات محفوظة — تُطبّق القاعدة الافتراضية','No saved periods — default rule applies','Aucune période — règle par défaut'],
+ rw_bad:['تاريخ البداية يجب أن يكون قبل تاريخ النهاية','Start date must be before end date','La date de début doit précéder la fin'],
+ rw_overlap:['هذه التواريخ تتداخل مع فترة شهر آخر','These dates overlap another month’s period','Chevauche une autre période'],
+ rw_del_q:['حذف فترة شهر {m}؟ يعود الشهر إلى القاعدة الافتراضية.','Delete the {m} period? The month returns to the default rule.','Supprimer la période de {m} ?'],
  mp_title:['سعر الكيلو واط لكل شهر','kWh price per month','Prix du kWh par mois'],
  mp_hint:['حدّد سعر الكيلو واط لكل شهر بشهره. رسائل قيمة الفاتورة لا تُرسل قبل تحديد سعر الشهر. عند الحفظ تُعاد حسابات فواتير العداد لهذا الشهر على السعر الجديد، ثم يُرسل النظام رسائل قيمة الفاتورة تلقائياً (ضمن حد الـ250 اليومي).','Set the kWh price for each month. Invoice messages are not sent before the month price is set. On save, that month’s meter invoices are recalculated and the system sends invoice messages automatically (within the 250/day limit).','Définissez le prix du kWh pour chaque mois. Les messages de facture ne partent qu’après. À l’enregistrement, les factures du mois sont recalculées et les messages envoyés automatiquement (limite 250/jour).'],
  mp_month:['الشهر','Month','Mois'],
@@ -2658,7 +2670,7 @@ Object.assign(D,{
  e_whish_admin:['الجابي يقبض نقداً فقط — قبض Whish من المكتب','Collectors take cash only — Whish is collected at the office','Les collecteurs encaissent en espèces uniquement'],
  e_day_closed:['هذا اليوم مُقفل في اليومية — لا يمكن التعديل','This day is closed in the journal','Cette journée est clôturée'],
  e_bad_account:['اختر الصندوق أو Whish','Choose cash box or Whish','Choisissez caisse ou Whish'],
- e_out_of_window:['أخذ العدادات مسموح فقط من يوم 26 حتى آخر الشهر (في شباط من 23)','Readings are allowed only from the 26th to the end of the month (February: from the 23rd)','Relevés autorisés seulement du 26 à la fin du mois (février : dès le 23)'],
+ e_out_of_window:['أخذ العدادات مسموح فقط ضمن فترة أخذ العداد ({x})','Readings are allowed only from the 26th to the end of the month (February: from the 23rd)','Relevés autorisés seulement du 26 à la fin du mois (février : dès le 23)'],
  window_fixed:['فترة أخذ العدادات: من 26 حتى آخر يوم في الشهر (في شباط من 23)','Reading period: from the 26th to the last day of the month (February: from the 23rd)','Période de relevé : du 26 au dernier jour du mois (février : dès le 23)'],
  window_open:['الفترة مفتوحة الآن','The period is open now','La période est ouverte'],
  window_wait:['تفتح يوم {d}','Opens on {d}','Ouvre le {d}'],
@@ -2803,7 +2815,7 @@ async function tryOwner(ensure){
 async function enter(quiet){
   try{
     var d=await call('motor_me');
-    ME=d.me; SITE=d.site; PLANS=d.plans||[]; STAFF=d.staff||[]; LIC=d.license; TODAY=d.today;
+    ME=d.me; SITE=d.site; PLANS=d.plans||[]; STAFF=d.staff||[]; LIC=d.license; TODAY=d.today; await loadRWin();
     if(!lsGet('motor_lang','')) setLang(SITE.default_lang||'ar');
     $('#gate').classList.add('hidden'); $('#app').classList.remove('hidden');
     document.title=(SITE.name||SLUG)+' — Motor';
@@ -3420,17 +3432,61 @@ function pingNow(){ if(!navigator.geolocation||!TOKEN) return;
 document.addEventListener('visibilitychange',function(){ if(!document.hidden&&ME) syncNow(); });
 
 function stat(l,v,g){ return '<div class="stat"'+(g?' data-go="'+esc(g)+'"':'')+'><span>'+esc(l)+'</span><b class="num">'+esc(v)+'</b></div>'; }
+var RWIN=null;
+async function loadRWin(){ try{ RWIN=await call('motor_read_windows'); }catch(e){} return RWIN; }
+function rwD(d){ d=String(d||''); return d.slice(8,10)+'/'+d.slice(5,7)+'/'+d.slice(0,4); }
 function windowNote(){
+  var c=RWIN&&RWIN.current;
+  if(c){ return '<div class="'+(c.open?'okmsg':'lic')+'">📅 '+esc(t('rw_note',{m:monthName(c.period,true),f:rwD(c.from),to:rwD(c.to)}))+' — '+esc(c.open?t('window_open'):t('window_wait',{d:rwD(c.from)}))+
+    (isAdmin()?' <button class="btn ghost sm" data-rwm type="button">⚙️ '+esc(t('rw_manage'))+'</button>':'')+'</div>'; }
   var st=String(TODAY).slice(5,7)==='02'?23:26, open=+String(TODAY).slice(8,10)>=st;
   return '<div class="'+(open?'okmsg':'lic')+'">'+esc(t('window_fixed'))+' — '+esc(open?t('window_open'):t('window_wait',{d:String(TODAY).slice(0,8)+st}))+'</div>';
 }
+/* فترات أخذ العداد لكل شهر (المدير) */
+async function rwManager(after){
+  await loadRWin();
+  var m=modal('📅 '+t('rw_title'),'<div id="rwb"></div>',false,true);
+  function lastDay(per){ var y=+per.slice(0,4), mo=+per.slice(5,7); return per+'-'+String(new Date(y,mo,0).getDate()).padStart(2,'0'); }
+  function defFrom(per){ return per+'-'+(per.slice(5,7)==='02'?'23':'26'); }
+  function nextPer(per){ var y=+per.slice(0,4), mo=+per.slice(5,7)+1; if(mo>12){ mo=1; y++; } return y+'-'+String(mo).padStart(2,'0'); }
+  function paint(){
+    var rows=(RWIN&&RWIN.rows)||[], cur=(RWIN&&RWIN.current&&RWIN.current.period)||String(TODAY).slice(0,7);
+    var np=rows.length?nextPer(rows[0].period):cur;
+    $('#rwb',m.body).innerHTML='<p class="muted" style="margin-top:0">'+esc(t('rw_hint'))+'</p>'+
+      '<div class="card" style="margin:0 0 12px"><div class="row" style="gap:10px;align-items:flex-end;flex-wrap:wrap">'+
+        '<div><label>'+esc(t('mp_month'))+'</label><input type="month" id="rwp" value="'+esc(np)+'"></div>'+
+        '<div><label>'+esc(t('rw_from'))+'</label><input type="date" id="rwf" value="'+esc(defFrom(np))+'"></div>'+
+        '<div><label>'+esc(t('rw_to'))+'</label><input type="date" id="rwt" value="'+esc(lastDay(np))+'"></div>'+
+        '<button class="btn" id="rws" type="button">💾 '+esc(t('save'))+'</button></div><div id="rwm" class="err msg" style="margin-top:8px"></div></div>'+
+      '<div class="tw"><table><thead><tr><th>'+esc(t('mp_month'))+'</th><th>'+esc(t('rw_from'))+'</th><th>'+esc(t('rw_to'))+'</th><th>'+esc(t('rw_days'))+'</th><th>'+esc(t('by'))+'</th><th></th></tr></thead><tbody>'+
+      (rows.map(function(r){ var days=Math.round((new Date(r.to)-new Date(r.from))/864e5)+1, isCur=RWIN.current&&RWIN.current.custom&&RWIN.current.period===r.period;
+        return '<tr'+(isCur?' style="background:var(--okbg,#ecfdf5)"':'')+'><td><b>'+esc(monthName(r.period,true))+'</b>'+(isCur?' <span class="chip on">'+esc(RWIN.current.open?t('window_open'):t('rw_current'))+'</span>':'')+'</td><td class="num">'+esc(rwD(r.from))+'</td><td class="num">'+esc(rwD(r.to))+'</td><td class="num">'+days+'</td><td>'+esc(r.by||'')+'</td>'+
+          '<td style="white-space:nowrap"><button class="btn ghost sm" data-rwe="'+esc(r.period)+'" type="button">✏️</button> <button class="btn ghost sm danger" data-rwd="'+esc(r.period)+'" type="button">🗑️</button></td></tr>'; }).join('')||
+       '<tr><td colspan="6" class="muted">'+esc(t('rw_none'))+'</td></tr>')+'</tbody></table></div>';
+    var pp=$('#rwp',m.body);
+    pp.addEventListener('change',function(){ var r=rows.filter(function(x){ return x.period===pp.value; })[0]; if(!/^\d{4}-\d{2}$/.test(pp.value)) return;
+      $('#rwf',m.body).value=r?r.from:defFrom(pp.value); $('#rwt',m.body).value=r?r.to:lastDay(pp.value); });
+    $('#rws',m.body).addEventListener('click',async function(){ var b=this, per=pp.value, f=$('#rwf',m.body).value, to=$('#rwt',m.body).value;
+      if(!/^\d{4}-\d{2}$/.test(per)||!f||!to){ $('#rwm',m.body).textContent=t('mp_bad_month'); return; }
+      if(f>to){ $('#rwm',m.body).textContent=t('rw_bad'); return; }
+      busy(b,true); try{ await call('motor_read_window_save',{p_period:per,p_from:f,p_to:to}); await loadRWin(); try{ var me=await call('motor_me'); SITE=me.site; }catch(e){} toast(t('saved'),'s'); paint(); }
+      catch(e){ $('#rwm',m.body).textContent=/window_overlap/.test(String(e&&e.message))?t('rw_overlap'):errText(e); busy(b,false); } });
+    $$('[data-rwe]',m.body).forEach(function(x){ x.addEventListener('click',function(){ pp.value=x.dataset.rwe; pp.dispatchEvent(new Event('change')); pp.scrollIntoView({block:'center'}); }); });
+    $$('[data-rwd]',m.body).forEach(function(x){ x.addEventListener('click',async function(){ if(!(await confirmBox(t('rw_del_q',{m:monthName(x.dataset.rwd,true)})))) return;
+      try{ await call('motor_read_window_delete',{p_period:x.dataset.rwd}); await loadRWin(); try{ var me=await call('motor_me'); SITE=me.site; }catch(e){} paint(); }catch(e){ toast(errText(e),'e'); } }); });
+  }
+  paint();
+  m.onclose=function(){ if(after) after(); };
+}
+document.addEventListener('click',function(e){ var b=e.target.closest('[data-rwm]'); if(!b) return; e.preventDefault(); rwManager(function(){ go(TAB); }); });
 
 /* ---------- أخذ العداد / القبض / فتح-قطع: مسح أو بحث + قائمة «مين بعد» ---------- */
 var FF={area:'',lim:80};
 function finderView(main,mode){
   searchHooks=[];
   var areas={}; CUST.forEach(function(c){ if(c.area) areas[c.area]=1; });
-  main.innerHTML=licBanner()+(mode==='read'&&ME.role==='collector'?windowNote():'')+
+  if(mode==='read') loadRWin().then(function(){ var n=$('#rwn',main); if(n) n.innerHTML=windowNote(); });
+  main.innerHTML=licBanner()+(mode==='read'&&(ME.role==='collector'||isAdmin())?'<div id="rwn">'+windowNote()+'</div>':'')+
     '<div class="card">'+(isAdmin()?'':'<button class="btn lg full '+(mode==='pay'?'ok':mode==='switch'?'acc':'')+'" id="scanBtn" style="margin-bottom:12px">📷 '+esc(t(mode==='pay'?'scan_pay':'scan'))+'</button>')+
     '<div class="row"><input id="fq" type="search" placeholder="'+esc(t('search_ph'))+'" autocomplete="off" style="flex:2 1 220px">'+
     '<select id="farea" style="flex:1 1 140px"><option value="">'+esc(t('area'))+': '+esc(t('all'))+'</option>'+Object.keys(areas).sort().map(function(a){return '<option>'+esc(a)+'</option>'}).join('')+'</select></div>'+
