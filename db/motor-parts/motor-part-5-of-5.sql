@@ -2130,6 +2130,19 @@ end $$;
 grant execute on function public.motor_discount_add(text,text,uuid,numeric,text) to anon, authenticated;
 
 -- ============================================================
+--  20j22) كشف حساب الصندوق: كل إيصال بيبيّن وين راح (صندوق الموظف / الصندوق الأساسي / Whish)
+-- ============================================================
+do $m$
+declare d text;
+begin
+  d := pg_get_functiondef('public.motor_collector_statement(text,text,uuid,date,date)'::regprocedure);
+  if position('''to_main'',p.to_main' in d) = 0 then
+    d := replace(d, '''method'',p.method,', '''method'',p.method,''to_main'',p.to_main,');
+    if position('''to_main'',p.to_main' in d) = 0 then raise exception 'coll_stmt rows'; end if; execute d;
+  end if;
+end $m$;
+
+-- ============================================================
 --  20k) إقفال صندوق الموظف: يسلّم كل النقد للمكتب ويطلع تقرير
 -- ============================================================
 create or replace function public.motor_staff_close(p_slug text, p_token text, p_staff uuid default null)
