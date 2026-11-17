@@ -2704,6 +2704,21 @@ begin
 end $m$;
 
 -- ============================================================
+--  20j32) motor_customer_save بيبني السجل حقل حقل (values (c.*)) → الأعمدة الجديدة بتوصل null؛ trigger بيعبّي القيم الافتراضية
+-- ============================================================
+create or replace function public._motor_cust_defaults()
+returns trigger language plpgsql as $$
+begin
+  new.bad_debt := coalesce(new.bad_debt, false);
+  new.bad_debt_by := coalesce(new.bad_debt_by, '');
+  new.bad_debt_note := coalesce(new.bad_debt_note, '');
+  return new;
+end $$;
+drop trigger if exists motor_cust_defaults on public.motor_customers;
+create trigger motor_cust_defaults before insert or update on public.motor_customers
+  for each row execute function public._motor_cust_defaults();
+
+-- ============================================================
 --  20k) إقفال صندوق الموظف: يسلّم كل النقد للمكتب ويطلع تقرير
 -- ============================================================
 create or replace function public.motor_staff_close(p_slug text, p_token text, p_staff uuid default null)
