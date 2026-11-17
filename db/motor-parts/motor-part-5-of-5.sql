@@ -2143,6 +2143,30 @@ begin
 end $m$;
 
 -- ============================================================
+--  20j23) المدير بياخد عداد الدورة الجاية بأي وقت (p_next): القراءة بتنحسب للشهر الجاي،
+--         فلما تفتح فترة أخذ العداد الزبون بيطلع «مقروء» وما بينقرأ مرتين
+-- ============================================================
+do $m$
+declare d text;
+begin
+  if to_regprocedure('public.motor_read(text,text,uuid,numeric,text,double precision,double precision,double precision,boolean,numeric,boolean)') is null then
+    d := pg_get_functiondef('public.motor_read(text,text,uuid,numeric,text,double precision,double precision,double precision,boolean,numeric)'::regprocedure);
+    d := replace(d, 'p_price numeric DEFAULT NULL::numeric)', 'p_price numeric DEFAULT NULL::numeric, p_next boolean DEFAULT false)');
+    d := replace(d, '  if exists (select 1 from public.motor_readings where customer_id = c.id and period = st.bill_period) then',
+'  if adm and coalesce(p_next, false) then
+    r_per := to_char(to_date(st.bill_period || ''-01'', ''YYYY-MM-DD'') + interval ''1 month'', ''YYYY-MM''); i_per := r_per;
+    if exists (select 1 from public.motor_readings where customer_id = c.id and period = r_per) then
+      perform public._motor_err(''already_read'', r_per);
+    end if;
+  elsif exists (select 1 from public.motor_readings where customer_id = c.id and period = st.bill_period) then');
+    if position('p_next' in d) = 0 or position('elsif exists' in d) = 0 then raise exception 'read next patch'; end if;
+    execute d;
+    drop function public.motor_read(text,text,uuid,numeric,text,double precision,double precision,double precision,boolean,numeric);
+  end if;
+end $m$;
+grant execute on function public.motor_read(text,text,uuid,numeric,text,double precision,double precision,double precision,boolean,numeric,boolean) to anon, authenticated;
+
+-- ============================================================
 --  20k) إقفال صندوق الموظف: يسلّم كل النقد للمكتب ويطلع تقرير
 -- ============================================================
 create or replace function public.motor_staff_close(p_slug text, p_token text, p_staff uuid default null)

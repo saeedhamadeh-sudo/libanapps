@@ -1855,7 +1855,7 @@ var D={
  compact_t:['تصغير/تكبير الجداول','Compact tables','Tableaux compacts'],
  rx_price:['سعر الكيلو واط لهذه الفاتورة','kWh price for this invoice','Prix du kWh pour cette facture'],
  rx_note:['هذا المشترك أُخذ عداده في هذه الدورة. ستُسجَّل قراءة خارج الدورة (تصفية حساب) وتصدر فاتورة فورية بالاستهلاك منذ آخر قراءة وبالسعر الذي تحدّده. قراءة الدورة القادمة تبدأ من هذه القراءة.','This subscriber was already read this cycle. An out-of-cycle (settlement) reading will be saved and an invoice issued now for the consumption since the last reading, at the price you set. The next cycle starts from this reading.','Compteur déjà relevé ce cycle : un relevé hors cycle (solde) sera enregistré avec une facture immédiate au prix indiqué.'],
- take_reading_x:['أخذ عداد (تصفية حساب)','Read meter (settlement)','Relevé (solde)'],
+ take_reading_x:['أخذ عداد (الدورة القادمة أو تصفية)','Read meter (next cycle or settlement)','Relevé (cycle suivant ou solde)'],
  e_price_required:['أدخل سعر الكيلو واط لإصدار الفاتورة','Enter the kWh price to issue the invoice','Saisissez le prix du kWh'],
  k_return:['فاتورة استرجاع','Return invoice','Facture de retour'],
  rt_new:['فاتورة استرجاع','Return invoice','Facture de retour'],
@@ -1910,6 +1910,10 @@ var D={
  to_main_box:['بالصندوق الأساسي','In main box','Caisse principale'],
  select_all:['تحديد الكل','Select all','Tout sélectionner'],
  my_box:['صندوقي','My cash box','Ma caisse'],
+ rx_mode:['هذا الزبون أُخذ عداده في الدورة الحالية. ماذا تريد أن تسجّل؟','This customer was already read this cycle. What do you want to record?','Compteur déjà relevé ce cycle. Que voulez-vous enregistrer ?'],
+ rx_next:['قراءة الدورة القادمة ({m})','Next cycle reading ({m})','Relevé du prochain cycle ({m})'],
+ rx_next_h:['تُحسب للدورة القادمة، فعند فتح فترة أخذ العداد يظهر الزبون «مقروءاً» ولا يُقرأ مرتين.','Counts for the next cycle, so the customer shows as read when the period opens.','Compte pour le prochain cycle.'],
+ rx_settle:['تصفية حساب (قراءة خارج الدورة)','Settlement (out-of-cycle reading)','Solde (relevé hors cycle)'],
  sd_btn:['حسم','Discount','Remise'],
  sd_reason:['سبب الحسم','Discount reason','Motif de la remise'],
  sd_reason_ph:['مثلاً: عطل بالخط، اتفاق مع المدير…','e.g. line fault, agreement…','ex. panne, accord…'],
@@ -3456,6 +3460,7 @@ document.addEventListener('visibilitychange',function(){ if(!document.hidden&&ME
 function stat(l,v,g){ return '<div class="stat"'+(g?' data-go="'+esc(g)+'"':'')+'><span>'+esc(l)+'</span><b class="num">'+esc(v)+'</b></div>'; }
 var RWIN=null;
 async function loadRWin(){ try{ RWIN=await call('motor_read_windows'); }catch(e){} return RWIN; }
+function nextPer(per){ per=String(per||''); var y=+per.slice(0,4), mo=+per.slice(5,7)+1; if(!y) return per; if(mo>12){ mo=1; y++; } return y+'-'+String(mo).padStart(2,'0'); }
 function rwD(d){ d=String(d||''); return d.slice(8,10)+'/'+d.slice(5,7)+'/'+d.slice(0,4); }
 function windowNote(){
   var c=RWIN&&RWIN.current;
@@ -3704,7 +3709,12 @@ async function openCustomer(id,barcode,mode){
     box.innerHTML='<div class="step"><label>'+esc(t('enter_value'))+' — '+esc(t('prev_reading'))+': <b class="num">'+esc(fmtN(d.prev_value))+'</b></label>'+
       '<input id="rv" class="valinput" type="text" inputmode="decimal" autocomplete="off" placeholder="'+esc(fmtN(d.prev_value))+'">'+
       (d.baseline?'<div class="lic" style="margin-top:8px">'+esc(t('baseline_note'))+'</div>':'')+
-      (isAdmin()&&(d.plan||{}).kind!=='fixed'?(d.read_now?'<div class="lic" style="margin-top:8px">'+esc(t('rx_note'))+'</div>':'')+
+      (isAdmin()&&d.read_now?'<div class="card" style="margin:8px 0;padding:10px 12px"><b>'+esc(t('rx_mode'))+'</b>'+
+        '<label class="chk" style="margin-top:6px"><input type="radio" name="rxm" value="next" checked> '+esc(t('rx_next',{m:monthName(nextPer(d.period||SITE.bill_period),true)}))+'</label>'+
+        '<div class="muted" style="font-size:12.5px;margin:-2px 0 6px 26px">'+esc(t('rx_next_h'))+'</div>'+
+        '<label class="chk"><input type="radio" name="rxm" value="settle"> '+esc(t('rx_settle'))+'</label>'+
+        '<div class="muted" style="font-size:12.5px;margin:-2px 0 0 26px">'+esc(t('rx_note'))+'</div></div>':'')+
+      (isAdmin()&&(d.plan||{}).kind!=='fixed'?
         '<label style="margin-top:8px">⚡ '+esc(t('rx_price'))+' ('+esc(sym(mainCur()))+' / '+esc(t('kwh'))+')</label><input id="rkp" type="text" inputmode="decimal" autocomplete="off" style="max-width:220px">':'')+
       '<div id="rest" class="muted" style="margin:8px 0"></div>'+
       '<label class="chk" style="margin:6px 0"><input type="checkbox" id="rremote"> '+esc(t('remote_read'))+'</label><div id="rremn" class="muted hidden" style="font-size:13px">'+esc(t('remote_note'))+'</div>'+
@@ -3714,7 +3724,10 @@ async function openCustomer(id,barcode,mode){
       (isAdmin()?'<button class="btn ghost full" id="rnophoto" style="margin-top:8px">'+esc(t('save_no_photo'))+'</button>':'')+'</div>';
     startGeo();
     var remote=false, kpi=$('#rkp',box);
-    if(kpi){ loadMonthPrices().then(function(md){ var per=d.read_now?String(TODAY).slice(0,7):(md.current||d.period); var r=(md.rows||[]).filter(function(x){ return x.period===per; })[0]; if(r&&kpi.value==='') kpi.value=String(Number(r.price)); });
+    function rxMode(){ var r=box.querySelector('input[name=rxm]:checked'); return r?r.value:''; }
+    $$('input[name=rxm]',box).forEach(function(x){ x.addEventListener('change',function(){ if(!kpi) return; var per=rxMode()==='next'?nextPer(d.period||SITE.bill_period):String(TODAY).slice(0,7);
+      loadMonthPrices().then(function(md){ var r=(md.rows||[]).filter(function(y){ return y.period===per; })[0]; kpi.value=r?String(Number(r.price)):''; inp.dispatchEvent(new Event('input')); }); }); });
+    if(kpi){ loadMonthPrices().then(function(md){ var per=d.read_now?(rxMode()==='next'?nextPer(d.period||SITE.bill_period):String(TODAY).slice(0,7)):(md.current||d.period); var r=(md.rows||[]).filter(function(x){ return x.period===per; })[0]; if(r&&kpi.value==='') kpi.value=String(Number(r.price)); });
       kpi.addEventListener('input',function(){ kpi.value=kpi.value.replace(/[٠-٩]/g,function(x){return '٠١٢٣٤٥٦٧٨٩'.indexOf(x)}).replace(/[^0-9.]/g,''); inp.dispatchEvent(new Event('input')); }); }
     function kpOk(){ if(!kpi) return true; var v=kpi.value.trim(); if(v===''||!isFinite(Number(v))){ $('#rmsg',box).textContent=t('e_price_required'); kpi.focus(); return false; } return true; }
     $('#rremote',box).addEventListener('change',function(){ remote=this.checked; $('#rremn',box).classList.toggle('hidden',!remote);
@@ -3748,6 +3761,7 @@ async function openCustomer(id,barcode,mode){
       btn.textContent=t('saving');
       var rargs={p_customer:c.id,p_value:v,p_photo:path,p_lat:geo?geo.lat:null,p_lng:geo?geo.lng:null,p_accuracy:geo?geo.acc:null,p_remote:!!remote};
       var rk=$('#rkp',box); if(rk&&rk.value.trim()!=='') rargs.p_price=Number(rk.value);   // بس إذا في سعر (توافق مع النسخة القديمة)
+      var rxm=box.querySelector('input[name=rxm]:checked'); if(rxm&&rxm.value==='next') rargs.p_next=true;   // المدير: قراءة الدورة الجاية
       var r=await call('motor_read',rargs);
       toast(t('read_saved'),'s');
       await reload(); paint();
