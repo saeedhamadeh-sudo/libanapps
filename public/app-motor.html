@@ -1789,7 +1789,7 @@ var D={
  confirm_delete:['تأكيد الحذف؟','Confirm delete?','Confirmer la suppression ?'],
  saved:['تم الحفظ ✓','Saved ✓','Enregistré ✓'],
  all:['الكل','All','Tous'],
- f_debt:['عليهم دين','With debt','Avec dette'], sort_by:['ترتيب','Sort','Trier'], sort_on_first:['ترتيب: المفعّل أولاً','Sort: active first','Tri : actifs d’abord'], sort_off_first:['ترتيب: المقطوع أولاً','Sort: cut off first','Tri : coupés d’abord'], sort_bal:['ترتيب: الأعلى ديناً','Sort: highest balance','Tri : solde le plus élevé'],
+ f_debt:['عليهم دين','With debt','Avec dette'], f_on_debt:['مفعّل وعليه دين','Active with debt','Actif avec dette'], f_off_debt:['مقطوع وعليه دين','Cut off with debt','Coupé avec dette'], sort_by:['ترتيب','Sort','Trier'], sort_on_first:['ترتيب: المفعّل أولاً','Sort: active first','Tri : actifs d’abord'], sort_off_first:['ترتيب: المقطوع أولاً','Sort: cut off first','Tri : coupés d’abord'], sort_bal:['ترتيب: الأعلى ديناً','Sort: highest balance','Tri : solde le plus élevé'],
  take_reading:['📷 أخذ عداد','📷 Read meter','📷 Relever'],
  collect:['💵 قبض','💵 Collect','💵 Encaisser'],
  statement:['🧾 كشف حساب','🧾 Statement','🧾 Relevé de compte'],
@@ -4750,7 +4750,7 @@ VIEWS.customers=async function(main){
   var areas={}; CUST.forEach(function(c){ if(c.area) areas[c.area]=1; });
   main.innerHTML='<div class="toolbar">'+
     '<input id="cq" type="search" placeholder="'+esc(t('search_ph'))+'" value="'+esc(CF.q)+'">'+
-    '<select id="cst"><option value="">'+esc(t('all'))+'</option><option value="on">'+esc(t('active'))+'</option><option value="off">'+esc(t('inactive'))+'</option><option value="arch">'+esc(t('archived'))+'</option><option value="debt">'+esc(t('f_debt'))+'</option></select>'+
+    '<select id="cst"><option value="">'+esc(t('all'))+'</option><option value="on">'+esc(t('active'))+'</option><option value="off">'+esc(t('inactive'))+'</option><option value="arch">'+esc(t('archived'))+'</option><option value="debt">'+esc(t('f_debt'))+'</option><option value="ondebt">'+esc(t('f_on_debt'))+'</option><option value="offdebt">'+esc(t('f_off_debt'))+'</option></select>'+
     sortSel('csort')+
     '<select id="cpl"><option value="">'+esc(t('plan'))+': '+esc(t('all'))+'</option>'+PLANS.map(function(p){return '<option value="'+esc(p.id)+'">'+esc(p.name)+'</option>'}).join('')+'</select>'+
     (adm?'<select id="ccol"><option value="">'+esc(t('collector'))+': '+esc(t('all'))+'</option>'+STAFF.filter(function(s){return s.role==='collector'}).map(function(s){return '<option value="'+esc(s.id)+'">'+esc(s.name)+'</option>'}).join('')+'</select>':'')+
@@ -4764,7 +4764,7 @@ VIEWS.customers=async function(main){
     var q=normS(CF.q);
     return CUST.filter(function(c){
       if(c.bad_debt) return false;   // زبائن الديون المعدومة إلهن صفحتن
-      if(CF.st==='on'&&!(c.is_active&&!c.archived)) return false; if(CF.st==='off'&&c.is_active) return false; if(CF.st==='arch'&&!c.archived) return false; if(CF.st==='debt'&&!(n2(c.balance)>0)) return false;
+      if(CF.st==='on'&&!(c.is_active&&!c.archived)) return false; if(CF.st==='off'&&c.is_active) return false; if(CF.st==='arch'&&!c.archived) return false; if(CF.st==='debt'&&!(n2(c.balance)>0)) return false; if(CF.st==='ondebt'&&!(c.is_active&&!c.archived&&n2(c.balance)>0.005)) return false; if(CF.st==='offdebt'&&!(!c.is_active&&n2(c.balance)>0.005)) return false;
       if(CF.plan&&c.plan_id!==CF.plan) return false; if(CF.col&&c.collector_id!==CF.col) return false; if(CF.area&&c.area!==CF.area) return false;
       if(q&&!(phoneHit(c,CF.q)||normS(c.name).indexOf(q)>=0||normS(c.barcode).indexOf(q)>=0||normS(c.meter_no).indexOf(q)>=0||normS(c.box)===q||String(c.code)===q||normS(c.mobile).indexOf(q)>=0||normS(c.alt_name).indexOf(q)>=0)) return false;
       return true; }).sort(custSorter(CF.sort));
