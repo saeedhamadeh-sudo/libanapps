@@ -2248,6 +2248,54 @@ end $$;
 grant execute on function public.motor_move_edit(text,text,uuid,numeric,text,text) to anon, authenticated;
 
 -- ============================================================
+--  20j25) فاتورة المشتريات: كل بند فيه خيار «مدفوع من خارج الصندوق»
+--         البند المدفوع من برّا ما بيصير دين عالمورد وما بينقص أي صندوق (قيد: مورد ← 108 حساب المستثمر)
+-- ============================================================
+alter table public.motor_purchases add column if not exists paid_outside numeric(14,2) not null default 0;
+
+create or replace function public._motor_sup_bal(p_sup uuid)
+returns numeric language sql stable security definer set search_path = public as $$
+  select coalesce((select sum(total - paid_outside) from public.motor_purchases where supplier_id = p_sup and not voided), 0)
+       - coalesce((select sum(amount) from public.motor_moves where supplier_id = p_sup and extra->>'type' = 'supplier'), 0);
+$$;
+
+do $m$
+declare d text;
+begin
+  d := pg_get_functiondef('public.motor_purchase_add(text,text,jsonb)'::regprocedure);
+  if position('paid_outside' in d) = 0 then
+    d := replace(d, '''unit_price'', pr, ''total'', round(q*pr, 2)))', '''unit_price'', pr, ''total'', round(q*pr, 2), ''ext'', coalesce((it->>''ext'')::boolean, false)))');
+    d := replace(d, '  if coalesce(nullif(d->>''pay_amount'','''')::numeric, 0) > 0 then',
+'  update public.motor_purchases set paid_outside = coalesce((select sum((i->>''total'')::numeric) from jsonb_array_elements(motor_purchases.items) i
+                                                            where coalesce((i->>''ext'')::boolean, false)), 0) where id = pid;
+  if coalesce(nullif(d->>''pay_amount'','''')::numeric, 0) > 0 then');
+    if position('paid_outside' in d) = 0 or position('''ext''' in d) = 0 then raise exception 'purchase_add'; end if; execute d;
+  end if;
+  d := pg_get_functiondef('public.motor_suppliers(text,text)'::regprocedure);
+  if position('paid_outside' in d) = 0 then
+    d := replace(d, '''paid'', coalesce((select sum(amount) from public.motor_moves where supplier_id = s.id and extra->>''type'' = ''supplier''), 0),',
+                    '''paid'', coalesce((select sum(amount) from public.motor_moves where supplier_id = s.id and extra->>''type'' = ''supplier''), 0)
+                          + coalesce((select sum(paid_outside) from public.motor_purchases where supplier_id = s.id and not voided), 0),');
+    if position('paid_outside' in d) = 0 then raise exception 'suppliers'; end if; execute d;
+  end if;
+  d := pg_get_functiondef('public.motor_supplier_statement(text,text,uuid)'::regprocedure);
+  if position('paid_outside' in d) = 0 then
+    d := replace(d, '''to_stock'',p.to_stock,', '''to_stock'',p.to_stock,''paid_outside'',p.paid_outside,');
+    if position('paid_outside' in d) = 0 then raise exception 'sup_stmt'; end if; execute d;
+  end if;
+  d := pg_get_functiondef('public._motor_gl(uuid,date,date)'::regprocedure);
+  if position('paid_outside' in d) = 0 then
+    d := replace(d, '  union all select case when x.kind = ''in'' then ''108'' else ''4191'' end',
+'  union all select coalesce((select code from sub where ref = u.supplier_id and kind = ''supplier''), ''401''), u.paid_outside, 0, u.created_at, ''pur'', u.no::text, ''مدفوع من خارج الصندوق — '' || s.name
+    from public.motor_purchases u join public.motor_suppliers s on s.id = u.supplier_id, bz where u.site_id = sid and not u.voided and u.paid_outside > 0 and (u.created_at at time zone ''Asia/Beirut'')::date between bz.f and bz.t
+  union all select ''108'', 0, u.paid_outside, u.created_at, ''pur'', u.no::text, ''مدفوع من خارج الصندوق — '' || s.name
+    from public.motor_purchases u join public.motor_suppliers s on s.id = u.supplier_id, bz where u.site_id = sid and not u.voided and u.paid_outside > 0 and (u.created_at at time zone ''Asia/Beirut'')::date between bz.f and bz.t
+  union all select case when x.kind = ''in'' then ''108'' else ''4191'' end');
+    if position('paid_outside' in d) = 0 then raise exception 'gl'; end if; execute d;
+  end if;
+end $m$;
+
+-- ============================================================
 --  20k) إقفال صندوق الموظف: يسلّم كل النقد للمكتب ويطلع تقرير
 -- ============================================================
 create or replace function public.motor_staff_close(p_slug text, p_token text, p_staff uuid default null)
