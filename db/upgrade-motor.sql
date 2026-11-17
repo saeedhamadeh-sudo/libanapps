@@ -6014,6 +6014,55 @@ end');
 end $m$;
 
 -- ============================================================
+--  20j42) اللوحة: مجموع الديون وعدد المديونين بلا الديون المعدومة (منعرضها لحال)
+--         + تسوية الصناديق (adjust على الصندوق الأساسي/صناديق الموظفين) للمدير الأساسي بس
+-- ============================================================
+do $m$
+declare d text;
+begin
+  d := pg_get_functiondef('public.motor_dashboard(text,text)'::regprocedure);
+  if position('bad_debt_total' in d) = 0 then
+    d := replace(d, '''unpaid_count'', (select count(*) from public.motor_customers where site_id = sid and balance > 0 and not archived and deleted_at is null),',
+                    '''unpaid_count'', (select count(*) from public.motor_customers where site_id = sid and balance > 0 and not archived and deleted_at is null and not bad_debt),');
+    d := replace(d, '''debt_total'', case when mine then null else coalesce((select sum(balance) from public.motor_customers
+                     where site_id = sid and balance > 0 and deleted_at is null), 0) end,',
+                    '''debt_total'', case when mine then null else coalesce((select sum(balance) from public.motor_customers
+                     where site_id = sid and balance > 0 and deleted_at is null and not bad_debt), 0) end,
+    ''bad_debt_total'', case when mine then null else coalesce((select sum(balance) from public.motor_customers
+                     where site_id = sid and balance > 0 and deleted_at is null and bad_debt), 0) end,
+    ''bad_debt_count'', case when mine then null else (select count(*) from public.motor_customers
+                     where site_id = sid and balance > 0 and deleted_at is null and bad_debt) end,');
+    if position('bad_debt_total' in d) = 0 or position('not archived and deleted_at is null and not bad_debt' in d) = 0 then raise exception 'dash'; end if;
+    execute d;
+  end if;
+  d := pg_get_functiondef('public.motor_move_add(text,text,text,uuid,text,numeric,text)'::regprocedure);
+  if position('adj_main' in d) = 0 then
+    d := replace(d, '  if coalesce(p_amount,0) = 0 then perform public._motor_err(''bad_amount''); end if;',
+                    '  if coalesce(p_amount,0) = 0 then perform public._motor_err(''bad_amount''); end if;
+  -- adj_main: تسوية الصندوق الأساسي أو صناديق الموظفين للمدير الأساسي بس
+  if p_kind = ''adjust'' and p_account in (''cash'',''collector'') and not coalesce((w->>''is_main'')::boolean, false) then perform public._motor_err(''forbidden''); end if;');
+    if position('adj_main' in d) = 0 then raise exception 'move'; end if;
+    execute d;
+  end if;
+end $m$;
+-- تسوية صندوق موظف (collector/adjust): الموجب بينقّص الصندوق → بالدفتر دائن 531 مقابل خسارة 658، والسالب مدين 531 مقابل ربح 758
+do $m$
+declare d text;
+begin
+  d := pg_get_functiondef('public._motor_gl(uuid,date,date)'::regprocedure);
+  if position('coll_adj' in d) = 0 then
+    d := replace(d, '                  when m.account = ''collector'' and m.ty in (''staff_close'',''staff_receive'') then ''531''',
+                    '                  when m.account = ''collector'' and m.ty in (''staff_close'',''staff_receive'') then ''531''
+                  when m.account = ''collector'' and m.kind = ''adjust'' then case when m.amount > 0 then ''658'' else ''758'' end /* coll_adj */');
+    d := replace(d, '             case when m.account = ''collector'' and m.kind = ''handover'' then -abs(m.amount)',
+                    '             case when m.account = ''collector'' and m.kind = ''handover'' then -abs(m.amount)
+                  when m.account = ''collector'' and m.kind = ''adjust'' then -m.amount');
+    if position('coll_adj' in d) = 0 or position('kind = ''adjust'' then -m.amount' in d) = 0 then raise exception 'gl'; end if;
+    execute d;
+  end if;
+end $m$;
+
+-- ============================================================
 --  20k) إقفال صندوق الموظف: يسلّم كل النقد للمكتب ويطلع تقرير
 -- ============================================================
 create or replace function public.motor_staff_close(p_slug text, p_token text, p_staff uuid default null)
