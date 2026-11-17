@@ -2114,7 +2114,7 @@ var D={
  whish_coll:['مقبوض Whish (للعلم)','Whish collected (info)','Whish encaissé (info)'],
  readings_n:['عدد العدادات','Meters read','Compteurs relevés'],
  handover:['💰 استلام نقدي من الجابي','💰 Receive cash from collector','💰 Recevoir les espèces'],
- m_handover:['تسليم للمكتب','Handover','Remise'],
+ m_handover:['تسليم للمكتب','Handover','Remise'], st_recv:['استلام من موظف','Received from staff','Reçu d’un employé'], st_recv_tot:['مُستلَم من الموظفين','Received from staff','Reçu des employés'], sc_handed_to:['المُسلَّم إلى {n}','Handed to {n}','Remis à {n}'], bx_daily:['مجموع الصناديق يومياً','Daily boxes total','Total des caisses par jour'], bx_total:['المجموع','Total','Total'], bx_in:['مقبوضات اليوم','Collected today','Encaissé du jour'], bx_hint:['رصيد كل صندوق في نهاية كل يوم. اضغط على اسم الموظف لفتح كشف حسابه.','Each box balance at the end of each day. Click a staff name to open their statement.','Solde de chaque caisse en fin de journée. Cliquez sur un nom pour ouvrir son relevé.'],
  m_adjust:['تسوية','Adjustment','Ajustement'],
  m_withdraw:['سحب','Withdrawal','Retrait'],
  m_deposit:['إيداع','Deposit','Dépôt'],
@@ -4600,8 +4600,10 @@ function closeTicket(r){
   (r.rows||[]).forEach(function(p){ T.push({kv:['#'+p.no+' '+p.customer,(p.method==='whish'?'W ':'')+money(p.amount)],s:19}); });
   if((r.rows||[]).length) T.push({hr:1});
   T.push({kv:[t('sc_count'),fmtN(r.count,0)]},{kv:[t('sc_cash'),money(r.cash)]},{kv:[t('sc_whish'),money(r.whish)]},{kv:[t('readings_n'),fmtN(r.readings,0)]});
+  if(n2(r.received)) T.push({kv:[t('st_recv_tot'),money(r.received)]});
+  if(n2(r.spent)) T.push({kv:[t('box_spent'),money(r.spent)]});
   if(n2(r.handed_before)) T.push({kv:[t('sc_handed_before'),money(r.handed_before)]});
-  T.push({hr:1},{kv:[t('sc_handed'),money(r.handed)],b:1,s:26},{kv:[t('sc_after'),money(0)],b:1},{hr:1},
+  T.push({hr:1},{kv:[r.receiver?t('sc_handed_to',{n:r.receiver}):t('sc_handed'),money(r.handed)],b:1,s:26},{kv:[t('sc_after'),money(0)],b:1},{hr:1},
     {t:t('sc_sign_staff'),s:20},{t:' ',s:12},{t:t('sc_sign_office'),s:20},{t:' ',s:20});
   return T;
 }
@@ -5110,6 +5112,33 @@ function staffForm(s){
   });
 }
 
+/* مجموع كل الصناديق يوم بيوم (المدير الأساسي) */
+async function boxesDaily(openStaff){
+  var to=TODAY, fr=new Date(Date.parse(TODAY)-13*864e5).toISOString().slice(0,10);
+  var m=modal('📊 '+t('bx_daily'),'<div class="toolbar"><label style="margin:0">'+esc(t('from'))+'</label><input type="date" id="bf" value="'+fr+'" style="flex:0 1 160px"><label style="margin:0">'+esc(t('to'))+'</label><input type="date" id="bt" value="'+to+'" style="flex:0 1 160px"><span class="sp"></span><button class="btn alt sm" id="bp">'+esc(t('print'))+'</button></div><div class="muted" style="font-size:12px;margin:6px 0">'+esc(t('bx_hint'))+'</div><div id="bb"></div>','<button class="btn ghost" data-x>'+esc(t('close'))+'</button>',{wide:1});
+  m.foot.addEventListener('click',function(e){ if(e.target.closest('[data-x]')) m.close(); });
+  var D=null;
+  async function load(){ var bb=$('#bb',m.body); bb.innerHTML='<div class="muted">'+esc(t('loading'))+'</div>';
+    try{ D=await call('motor_boxes_daily',{p_from:$('#bf',m.body).value||null,p_to:$('#bt',m.body).value||null}); }catch(e){ bb.innerHTML='<div class="err">'+esc(errText(e))+'</div>'; return; }
+    var S=D.staff||[];
+    bb.innerHTML='<div class="tw"><table><thead><tr><th>'+esc(t('date'))+'</th><th>🏦 '+esc(t('nav_cash'))+'</th>'+
+      S.map(function(s){ return '<th><a href="#" data-bs="'+esc(s.id)+'" title="'+esc(t('nav_cstmt'))+'">👤 '+esc(s.name)+'</a></th>'; }).join('')+
+      '<th>'+WL+'Whish</th><th>'+esc(t('bx_total'))+'</th><th>'+esc(t('bx_in'))+'</th></tr></thead><tbody>'+
+      (D.rows||[]).map(function(r){ return '<tr><td class="num" style="white-space:nowrap">'+esc(r.day)+'</td><td class="num">'+esc(money(r.main))+'</td>'+
+        S.map(function(s){ var v=n2((r.boxes||{})[s.id]); return '<td class="num"'+(v<0?' style="color:var(--bad)"':'')+'>'+esc(money(v))+'</td>'; }).join('')+
+        '<td class="num">'+esc(money(r.whish))+'</td><td class="num"><b>'+esc(money(r.total))+'</b></td><td class="num muted">'+esc(money(r.cash_in))+'</td></tr>'; }).join('')+
+      '</tbody></table></div>';
+    $$('[data-bs]',bb).forEach(function(a){ a.addEventListener('click',function(e){ e.preventDefault(); m.close(); openStaff(a.dataset.bs); }); });
+  }
+  $('#bf',m.body).addEventListener('change',load); $('#bt',m.body).addEventListener('change',load);
+  $('#bp',m.body).addEventListener('click',function(){ if(!D) return; var S=D.staff||[]; var T=[{t:SITE.name||'',b:1,s:28,c:1},{t:t('bx_daily'),b:1,c:1},{hr:1}];
+    (D.rows||[]).forEach(function(r){ T.push({t:r.day,b:1},{kv:['🏦 '+t('nav_cash'),money(r.main)]});
+      S.forEach(function(s){ T.push({kv:[s.name,money((r.boxes||{})[s.id])]}); });
+      T.push({kv:['Whish',money(r.whish)]},{kv:[t('bx_total'),money(r.total)],b:1},{hr:1}); });
+    printDoc(T); });
+  load();
+}
+
 /* =========================================================
    كشف حساب الجابي
    ========================================================= */
@@ -5122,21 +5151,22 @@ VIEWS.cstmt=async function(main){
   if(adm&&!SF.staff&&cols.length) SF.staff=(cols.filter(function(s){return s.role==='collector'})[0]||cols[0]).id;
   main.innerHTML='<div class="toolbar">'+(adm?'<select id="xs">'+cols.map(function(s){return '<option value="'+esc(s.id)+'">'+esc(s.name)+' · '+esc(roleLabel(s))+'</option>'}).join('')+'</select>':'')+
     '<label style="margin:0">'+esc(t('from'))+'</label><input type="date" id="xf" value="'+esc(SF.from)+'" style="flex:0 1 160px"><label style="margin:0">'+esc(t('to'))+'</label><input type="date" id="xt" value="'+esc(SF.to)+'" style="flex:0 1 160px">'+
-    (adm?'<button class="btn ok" id="xh">'+esc(t('handover'))+'</button>':'')+'</div><div id="xbody"></div>';
+    (adm?'<button class="btn ok" id="xh">'+esc(t('handover'))+'</button><button class="btn alt" id="xbd">📊 '+esc(t('bx_daily'))+'</button>':'')+'</div><div id="xbody"></div>';
+  if($('#xbd',main)) $('#xbd',main).addEventListener('click',function(){ boxesDaily(function(id){ SF.staff=id; go('cstmt'); }); });
   if(!SF.staff){ $('#xbody',main).innerHTML='<div class="muted">'+esc(t('choose_staff'))+'</div>'; return; }
   if($('#xs',main)) $('#xs',main).value=SF.staff;
   async function load(){
     var box=$('#xbody',main); box.innerHTML='<div class="muted">'+esc(t('loading'))+'</div>';
     var d; try{ d=await call('motor_collector_statement',{p_staff:SF.staff,p_from:SF.from||null,p_to:SF.to||null}); }catch(e){ box.innerHTML='<div class="err">'+esc(errText(e))+'</div>'; return; }
-    var run=n2(d.opening), cash=0, hand=0, spent=0;
-    var trs=d.rows.map(function(r){ if(!r.voided){ run+=n2(r.debit)-n2(r.credit); cash+=n2(r.debit); if(r.t==='move'&&r.kind==='out') spent+=n2(r.credit); else hand+=n2(r.credit); }
-      var lab=r.t==='pay'?(t('k_pay')+' #'+r.no+' · '+r.customer):(r.kind==='out'&&r.category?'🧾 '+t('voucher')+(r.vno?' #'+r.vno:'')+' · '+r.category:t('m_'+r.kind))+(r.by?' · '+r.by:'');
+    var run=n2(d.opening), cash=0, hand=0, spent=0, recv=0;
+    var trs=d.rows.map(function(r){ if(!r.voided){ run+=n2(r.debit)-n2(r.credit); if(r.type==='staff_receive') recv+=n2(r.debit); else cash+=n2(r.debit); if(r.t==='move'&&r.kind==='out') spent+=n2(r.credit); else hand+=n2(r.credit); }
+      var lab=r.t==='pay'?(t('k_pay')+' #'+r.no+' · '+r.customer):(r.kind==='out'&&r.category?'🧾 '+t('voucher')+(r.vno?' #'+r.vno:'')+' · '+r.category:r.type==='staff_receive'?'📥 '+t('st_recv'):r.type==='staff_close'?'📤 '+t('m_handover'):t('m_'+r.kind))+(r.by?' · '+r.by:'');
       // الإيصال يلي ما بيدخل بهالصندوق (Whish أو الصندوق الأساسي) بيبيّن مبلغو بس ما بينحسب
       var side=r.t==='pay'&&!n2(r.debit)&&n2(r.amount)?(r.method==='whish'?'🟣 Whish':'🏦 '+t('to_main_box')):'';
       return '<tr class="'+(r.voided?'void':'')+'"><td class="num">'+esc(dt(r.at))+'</td><td>'+esc(lab)+(r.note?' <span class="muted">'+esc(r.note)+'</span>':'')+'</td><td class="num">'+(n2(r.debit)?esc(money(r.debit)):side?'<span class="muted" style="text-decoration:none">'+esc(money(r.amount))+'</span><br><span class="chip" style="font-size:11px">'+esc(side)+'</span>':'')+'</td><td class="num">'+(n2(r.credit)?esc(money(r.credit)):'')+'</td><td>'+balHtml(run)+'</td>'+
         '<td style="white-space:nowrap">'+(r.t==='pay'&&!r.voided?'<button class="btn ghost sm" data-xpr="'+esc(r.customer_id)+'|'+esc(r.id)+'" title="'+esc(t('print'))+'">🖨️</button> '+(isAdmin()?'<button class="btn ghost sm" data-xe="'+esc(r.id)+'|'+esc(r.paid_amount!=null?r.paid_amount:r.amount)+'">✏️</button> ':'')+'<button class="btn ghost sm" data-xv="'+esc(r.id)+'|'+esc(r.no)+'|'+esc(r.amount)+'">🗑️</button>':'')+
           (adm&&r.t==='move'?'<button class="btn ghost sm" data-dm="'+esc(r.id)+'">'+esc(t('delete'))+'</button>':'')+(r.voided?'<span class="chip off">'+esc(t('voided'))+'</span>':'')+'</td></tr>'; });
-    box.innerHTML='<div class="stats">'+stat(t('opening'),money(d.opening))+stat(t('cash_collected'),money(cash))+stat(t('handed'),money(hand))+(spent?stat(t('box_spent'),money(spent)):'')+stat(t('in_hand'),money(d.balance_now))+stat(t('whish_coll'),money(d.whish_total))+stat(t('readings_n'),fmtN(d.readings,0))+'</div>'+
+    box.innerHTML='<div class="stats">'+stat(t('opening'),money(d.opening))+stat(t('cash_collected'),money(cash))+stat(t('handed'),money(hand))+(recv?stat(t('st_recv_tot'),money(recv)):'')+(spent?stat(t('box_spent'),money(spent)):'')+stat(t('in_hand'),money(d.balance_now))+stat(t('whish_coll'),money(d.whish_total))+stat(t('readings_n'),fmtN(d.readings,0))+'</div>'+
       '<div class="tw"><table><thead><tr><th>'+esc(t('date'))+'</th><th>'+esc(t('type'))+'</th><th>'+esc(t('debit'))+'</th><th>'+esc(t('creditc'))+'</th><th>'+esc(t('running'))+'</th><th></th></tr></thead><tbody>'+
       (trs.join('')||'<tr><td colspan="6" class="muted">'+esc(t('no_results'))+'</td></tr>')+'</tbody></table></div>'+
       '<div class="row" style="margin-top:10px"><button class="btn alt sm" id="xp">'+esc(t('print'))+'</button><span class="sp"></span>'+
@@ -5157,7 +5187,7 @@ VIEWS.cstmt=async function(main){
       try{ await call('motor_payment_void',{p_id:q[0]}); toast(t('pay_voided'),'s'); load(); loadCustomers(); }catch(e){ toast(errText(e),'e'); } }); });
     $$('[data-dm]',box).forEach(function(b){ b.addEventListener('click',async function(){ if(!(await confirmBox(t('confirm_delete')))) return; try{ await call('motor_move_delete',{p_id:b.dataset.dm}); load(); }catch(e){ toast(errText(e),'e'); } }); });
     $('#xp',box).addEventListener('click',function(){ printDoc([{t:SITE.name||'',b:1,s:28,c:1},{t:t('nav_cstmt'),b:1,c:1},{t:d.staff.name,c:1},{t:SF.from+' → '+SF.to,c:1,s:19},{hr:1},
-      {kv:[t('opening'),money(d.opening)]},{kv:[t('cash_collected'),money(cash)]},{kv:[t('handed'),money(hand)]},(spent?{kv:[t('box_spent'),money(spent)]}:null),{kv:[t('whish_coll'),money(d.whish_total)]},{kv:[t('readings_n'),fmtN(d.readings,0)]},{hr:1},{kv:[t('in_hand'),money(d.balance_now)],b:1,s:26}]); });
+      {kv:[t('opening'),money(d.opening)]},{kv:[t('cash_collected'),money(cash)]},{kv:[t('handed'),money(hand)]},(recv?{kv:[t('st_recv_tot'),money(recv)]}:null),(spent?{kv:[t('box_spent'),money(spent)]}:null),{kv:[t('whish_coll'),money(d.whish_total)]},{kv:[t('readings_n'),fmtN(d.readings,0)]},{hr:1},{kv:[t('in_hand'),money(d.balance_now)],b:1,s:26}]); });
   }
   if($('#xs',main)) $('#xs',main).addEventListener('change',function(){ SF.staff=this.value; load(); });
   $('#xf',main).addEventListener('change',function(){ SF.from=this.value; load(); });

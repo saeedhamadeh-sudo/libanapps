@@ -5431,6 +5431,118 @@ begin
 end $m$;
 
 -- ============================================================
+--  20j29) إقفال صندوق الجابي بيروح لصندوق المدير (غير الأساسي)، والمدير بيسلّم للمدير الأساسي
+--         + تقرير يومي لأرصدة كل الصناديق (للمدير الأساسي)
+--  التحويل بين صندوقين = حركتين collector من نوع adjust (موجبة عند المسلِّم، سالبة عند المستلم) مربوطين بـ extra.pair
+-- ============================================================
+create or replace function public.motor_staff_close(p_slug text, p_token text, p_staff uuid default null)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w jsonb; sid uuid; sf public.motor_staff%rowtype; since timestamptz; hand numeric; rep jsonb; m public.motor_moves%rowtype;
+        nowt timestamptz := clock_timestamp(); rcv public.motor_staff%rowtype; rid uuid := gen_random_uuid(); cid uuid := gen_random_uuid();
+begin
+  w := public._motor_who(p_slug, p_token);
+  sid := (w->>'site_id')::uuid;
+  if p_staff is not null and p_staff::text is distinct from w->>'staff_id' and not coalesce((w->>'is_main')::boolean, false) then perform public._motor_err('forbidden'); end if;
+  select * into sf from public.motor_staff where id = coalesce(p_staff, (w->>'staff_id')::uuid) and site_id = sid;
+  if not found then perform public._motor_err('bad_staff'); end if;
+  perform 1 from public.motor_staff where id = sf.id for update;
+  -- مين بيستلم: صندوق الجابي → المدير (غير الأساسي)؛ المدير → الصندوق الأساسي؛ إذا المدير الأساسي عمل الإقفال → الأساسي
+  if sf.role <> 'admin' and not coalesce((w->>'is_main')::boolean, false) then
+    select * into rcv from public.motor_staff where site_id = sid and role = 'admin' and not is_main and is_active and id <> sf.id
+     order by (id::text = coalesce(w->>'staff_id','')) desc, created_at limit 1;
+  end if;
+  since := coalesce((select max(created_at) from public.motor_moves where staff_id = sf.id and account = 'collector' and extra->>'type' = 'staff_close'),
+                    '-infinity'::timestamptz);
+  hand := coalesce((select sum(amount) from public.motor_payments where staff_id = sf.id and not to_main and method = 'cash' and not voided), 0)
+        - coalesce((select sum(amount) from public.motor_moves where staff_id = sf.id and account = 'collector'), 0);
+  rep := jsonb_build_object(
+    'staff', sf.name, 'from', case when since = '-infinity'::timestamptz then null else since end, 'to', nowt, 'by', w->>'name',
+    'receiver', rcv.name,
+    'cash', coalesce((select sum(amount) from public.motor_payments where staff_id = sf.id and not to_main and method = 'cash' and not voided and created_at > since), 0),
+    'whish', coalesce((select sum(amount) from public.motor_payments where staff_id = sf.id and method = 'whish' and not voided and created_at > since), 0),
+    'count', (select count(*) from public.motor_payments where staff_id = sf.id and not voided and created_at > since),
+    'readings', (select count(*) from public.motor_readings where staff_id = sf.id and created_at > since),
+    'received', -coalesce((select sum(amount) from public.motor_moves where staff_id = sf.id and account = 'collector' and extra->>'type' = 'staff_receive' and created_at > since), 0),
+    'spent', coalesce((select sum(amount) from public.motor_moves where staff_id = sf.id and account = 'collector' and kind = 'out' and created_at > since), 0),
+    'handed_before', coalesce((select sum(amount) from public.motor_moves where staff_id = sf.id and account = 'collector' and created_at > since
+                                 and kind <> 'out' and coalesce(extra->>'type','') <> 'staff_receive'), 0),
+    'handed', hand,
+    'rows', coalesce((select jsonb_agg(jsonb_build_object('no', p.no, 'at', p.created_at, 'customer', c.name, 'code', c.code, 'method', p.method,
+               'amount', p.amount, 'paid_currency', p.paid_currency, 'paid_amount', p.paid_amount) order by p.created_at)
+             from public.motor_payments p join public.motor_customers c on c.id = p.customer_id
+            where p.staff_id = sf.id and not p.voided and p.created_at > since), '[]'::jsonb));
+  if rcv.id is null then
+    insert into public.motor_moves (id, site_id, account, staff_id, kind, amount, note, by_name, extra, created_at)
+    values (cid, sid, 'collector', sf.id, 'handover', hand, 'إقفال صندوق ' || sf.name, w->>'name', rep || jsonb_build_object('type','staff_close'), nowt)
+    returning * into m;
+  else
+    insert into public.motor_moves (id, site_id, account, staff_id, kind, amount, note, by_name, extra, created_at)
+    values (cid, sid, 'collector', sf.id, 'adjust', hand, 'إقفال صندوق ' || sf.name || ' ← ' || rcv.name, w->>'name',
+            rep || jsonb_build_object('type','staff_close','to_staff', rcv.id, 'pair', rid), nowt)
+    returning * into m;
+    insert into public.motor_moves (id, site_id, account, staff_id, kind, amount, note, by_name, extra, created_at)
+    values (rid, sid, 'collector', rcv.id, 'adjust', -hand, 'استلام من ' || sf.name, w->>'name',
+            jsonb_build_object('type','staff_receive','from_staff', sf.id, 'from_name', sf.name, 'pair', cid), nowt);
+  end if;
+  return rep || jsonb_build_object('id', m.id);
+end $$;
+
+do $m$
+declare d text;
+begin
+  -- الدفتر: التحويل بين صناديق الموظفين بيلغي بعضو (531 ↔ 531)
+  d := pg_get_functiondef('public._motor_gl(uuid,date,date)'::regprocedure);
+  if position('staff_receive' in d) = 0 then
+    d := replace(d, '                  when m.kind = ''adjust'' then case when m.amount < 0 then ''658'' else ''758'' end',
+                    '                  when m.account = ''collector'' and m.ty in (''staff_close'',''staff_receive'') then ''531''
+                  when m.kind = ''adjust'' then case when m.amount < 0 then ''658'' else ''758'' end');
+    if position('staff_receive' in d) = 0 then raise exception 'gl patch'; end if;
+    execute d;
+  end if;
+  -- حذف حركة تحويل بيحذف الحركة المربوطة فيها
+  d := pg_get_functiondef('public.motor_move_delete(text,text,uuid)'::regprocedure);
+  if position('''pair''' in d) = 0 then
+    d := replace(d, '  delete from public.motor_moves where id = p_id and site_id = (w->>''site_id'')::uuid;',
+                    '  delete from public.motor_moves where site_id = (w->>''site_id'')::uuid
+     and id = (select (extra->>''pair'')::uuid from public.motor_moves where id = p_id and extra ? ''pair'');
+  delete from public.motor_moves where id = p_id and site_id = (w->>''site_id'')::uuid;');
+    if position('''pair''' in d) = 0 then raise exception 'delete patch'; end if;
+    execute d;
+  end if;
+end $m$;
+
+-- أرصدة كل الصناديق آخر كل يوم — المدير الأساسي بس
+create or replace function public.motor_boxes_daily(p_slug text, p_token text, p_from date default null, p_to date default null)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w jsonb; sid uuid; f date; t date; st jsonb;
+begin
+  w := public._motor_main(p_slug, p_token);
+  sid := (w->>'site_id')::uuid;
+  t := least(coalesce(p_to, public._motor_today()), public._motor_today());
+  f := greatest(coalesce(p_from, t - 13), t - 92);
+  if f > t then f := t; end if;
+  st := coalesce((select jsonb_agg(jsonb_build_object('id', s.id, 'name', s.name, 'role', s.role) order by s.role, s.created_at)
+          from public.motor_staff s where s.site_id = sid and not s.is_main
+           and (s.is_active or exists (select 1 from public.motor_payments p where p.staff_id = s.id and p.method = 'cash' and not p.to_main))), '[]'::jsonb);
+  return jsonb_build_object('staff', st, 'rows', coalesce((
+    select jsonb_agg(jsonb_build_object('day', d.day, 'main', d.main, 'whish', d.whish, 'boxes', d.boxes,
+             'cash_in', d.cin, 'total', d.main + d.whish + coalesce((select sum(v::numeric) from jsonb_each_text(d.boxes) x(k, v)), 0)) order by d.day desc)
+      from (select g.day::date as day,
+                   public._motor_cash_bal(sid, ((g.day::date + 1)::timestamp at time zone 'Asia/Beirut')) as main,
+                   public._motor_whish_bal(sid, ((g.day::date + 1)::timestamp at time zone 'Asia/Beirut')) as whish,
+                   coalesce((select sum(p.amount) from public.motor_payments p where p.site_id = sid and not p.voided
+                              and (p.created_at at time zone 'Asia/Beirut')::date = g.day::date), 0) as cin,
+                   coalesce((select jsonb_object_agg(e->>'id',
+                        coalesce((select sum(p.amount) from public.motor_payments p where p.staff_id = (e->>'id')::uuid and not p.to_main and p.method = 'cash' and not p.voided
+                                   and p.created_at < ((g.day::date + 1)::timestamp at time zone 'Asia/Beirut')), 0)
+                      - coalesce((select sum(m.amount) from public.motor_moves m where m.staff_id = (e->>'id')::uuid and m.account = 'collector'
+                                   and m.created_at < ((g.day::date + 1)::timestamp at time zone 'Asia/Beirut')), 0))
+                      from jsonb_array_elements(st) e), '{}'::jsonb) as boxes
+              from generate_series(f, t, interval '1 day') g(day)) d), '[]'::jsonb));
+end $$;
+grant execute on function public.motor_boxes_daily(text,text,date,date) to anon, authenticated;
+
+-- ============================================================
 --  20k) إقفال صندوق الموظف: يسلّم كل النقد للمكتب ويطلع تقرير
 -- ============================================================
 create or replace function public.motor_staff_close(p_slug text, p_token text, p_staff uuid default null)
