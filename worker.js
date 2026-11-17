@@ -4072,6 +4072,8 @@ function pageFor(pathname) {
   if (p === '/alum')          return '/app-alum.html';
   if (p === '/trade')         return '/app-trade.html';
   if (p === '/store-info' || p === '/portal-store') return '/product-store.html';
+  if (p === '/club-info')     return '/product-club.html';
+  if (p === '/motor-info')    return '/product-motor.html';
   if (/^\/portal-store\/[^/]+\/admin\/?$/.test(p)) return '/store-admin.html';
   if (/^\/portal-store\/[^/]+\/?$/.test(p)) return '/store.html';
   // برنامج النوادي: صفحة التلاميذ / لوحة الإدارة / شاشة الباب
