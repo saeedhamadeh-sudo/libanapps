@@ -11808,7 +11808,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-11-17 · 03:20 · v102';
+const APP_TRADE_BUILD = '2026-11-17 · 03:50 · v103';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 function settingsView(){
   const s = DB.settings;
@@ -12376,7 +12376,10 @@ function printThermalHtml(html, title){
   const oldSt = document.getElementById('pos-receipt-print-style'); if(oldSt) oldSt.remove();
   const mode = posPrintMode(), silent = mode!=='dialog' && desktopCanPrint();
   const styleEl = document.createElement('style'); styleEl.id = 'pos-receipt-print-style';
-  styleEl.textContent = `@media print{
+  // الشاشة كمان بتعرض الكشف بس خلال الطباعة — أول طباعة كانت تطلع A4 صغير لأنو الطباعة الصامتة سبقت تطبيق ستايل الطباعة
+  styleEl.textContent = `html.la-th-printing body > *:not(#pos-receipt-print){ display:none !important; }
+    html.la-th-printing #pos-receipt-print{ display:block !important; position:static !important; width:66mm !important; margin:0 auto 0 1mm !important; background:#fff; }
+    @media print{
       html, body{ width:80mm !important; min-width:0 !important; max-width:80mm !important; height:auto !important; min-height:0 !important; overflow:visible !important; margin:0 !important; padding:0 !important; background:#fff !important; zoom:1 !important; }
       body > *:not(#pos-receipt-print){ display:none !important; }
       #pos-receipt-print{ display:block !important; position:static !important; width:66mm !important; margin:0 auto 0 1mm !important; padding:0 !important; box-sizing:border-box !important; }
@@ -12391,15 +12394,20 @@ function printThermalHtml(html, title){
   const oldDesk = silent && dv && ((dv[0]||0)*10000 + (dv[1]||0)*100 + (dv[2]||0)) < 20003;
   styleEl.textContent += `\n@page{ size: 80mm ${oldDesk? 297 : hMm}mm; margin: 0; }`;
   const prevTitle = document.title; document.title = title;
-  const cleanup = ()=>{ wrap.remove(); styleEl.remove(); document.title = prevTitle; };
+  const sy = window.scrollY;
+  const cleanup = ()=>{ wrap.remove(); styleEl.remove(); document.documentElement.classList.remove('la-th-printing'); document.title = prevTitle; try{ window.scrollTo(0, sy); }catch(e){} };
+  document.documentElement.classList.add('la-th-printing');
+  // منستنى الصور (اللوغو) وإطارين رسم قبل ما نطبع
+  const ready = async ()=>{ try{ await Promise.all(Array.from(wrap.querySelectorAll('img')).map(im=> im.decode? im.decode().catch(()=>{}) : null)); }catch(e){}
+    await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))); await new Promise(r=>setTimeout(r, 120)); };
   if(silent){
-    setTimeout(async ()=>{ try{ const r = await window.libanappsDesktop.silentPrint({ deviceName: localPosPrinter(), format:'thermal80', heightMm: oldDesk? 0 : hMm });
+    (async ()=>{ await ready(); try{ const r = await window.libanappsDesktop.silentPrint({ deviceName: localPosPrinter(), format:'thermal80', heightMm: oldDesk? 0 : hMm });
         if(r && r.ok===false) throw new Error(r.error || 'فشلت الطباعة');
-      }catch(e){ toast('⚠️ فشلت الطباعة على «'+(localPosPrinter()||'الطابعة الافتراضية')+'»: '+(e && e.message || '')); } cleanup(); }, 80);
+      }catch(e){ toast('⚠️ فشلت الطباعة على «'+(localPosPrinter()||'الطابعة الافتراضية')+'»: '+(e && e.message || '')); } cleanup(); })();
     return;
   }
   window.addEventListener('afterprint', cleanup, {once:true});
-  setTimeout(()=>{ window.print(); setTimeout(cleanup, 1500); }, 60);
+  (async ()=>{ await ready(); window.print(); setTimeout(cleanup, 1500); })();
 }
 // زر «🧾 80 ملم» حدّ كل زر طباعة (إذا الطابعة بالإعدادات حرارية)
 (function(){
