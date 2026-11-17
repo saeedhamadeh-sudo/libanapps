@@ -1914,6 +1914,13 @@ var D={
  rx_next:['قراءة الدورة القادمة ({m})','Next cycle reading ({m})','Relevé du prochain cycle ({m})'],
  rx_next_h:['تُحسب للدورة القادمة، فعند فتح فترة أخذ العداد يظهر الزبون «مقروءاً» ولا يُقرأ مرتين.','Counts for the next cycle, so the customer shows as read when the period opens.','Compte pour le prochain cycle.'],
  rx_settle:['تصفية حساب (قراءة خارج الدورة)','Settlement (out-of-cycle reading)','Solde (relevé hors cycle)'],
+ ed_sale:['تعديل الفاتورة #{n}','Edit invoice #{n}','Modifier la facture n°{n}'],
+ ed_sale_hint:['عدّل البنود والكميات والأسعار. تُلغى الفاتورة القديمة (ويعود المخزون) وتُسجّل الجديدة بنفس الرقم، ويتعدّل حساب الزبون تلقائياً.','Edit items, quantities and prices. The old invoice is voided (stock returned) and the new one keeps the same number.','Modifiez les articles. L’ancienne facture est annulée et la nouvelle garde le même numéro.'],
+ ed_pur:['تعديل فاتورة المشتريات #{n}','Edit purchase #{n}','Modifier l’achat n°{n}'],
+ ed_pur_hint:['عدّل البنود والكميات والأسعار. الدفعات المسجّلة للمورد تبقى كما هي، ويمكن تعديلها من كشف حساب المورد.','Edit items. Supplier payments stay as they are and can be edited from the supplier statement.','Modifiez les articles. Les paiements restent inchangés.'],
+ ed_voucher:['تعديل سند صرف','Edit voucher','Modifier le bon'],
+ ed_receipt:['تعديل إيصال قبض','Edit receipt','Modifier le reçu'],
+ ed_saved:['تم حفظ التعديل','Changes saved','Modifications enregistrées'],
  sd_btn:['حسم','Discount','Remise'],
  sd_reason:['سبب الحسم','Discount reason','Motif de la remise'],
  sd_reason_ph:['مثلاً: عطل بالخط، اتفاق مع المدير…','e.g. line fault, agreement…','ex. panne, accord…'],
@@ -5124,7 +5131,7 @@ VIEWS.cstmt=async function(main){
       // الإيصال يلي ما بيدخل بهالصندوق (Whish أو الصندوق الأساسي) بيبيّن مبلغو بس ما بينحسب
       var side=r.t==='pay'&&!n2(r.debit)&&n2(r.amount)?(r.method==='whish'?'🟣 Whish':'🏦 '+t('to_main_box')):'';
       return '<tr class="'+(r.voided?'void':'')+'"><td class="num">'+esc(dt(r.at))+'</td><td>'+esc(lab)+(r.note?' <span class="muted">'+esc(r.note)+'</span>':'')+'</td><td class="num">'+(n2(r.debit)?esc(money(r.debit)):side?'<span class="muted" style="text-decoration:none">'+esc(money(r.amount))+'</span><br><span class="chip" style="font-size:11px">'+esc(side)+'</span>':'')+'</td><td class="num">'+(n2(r.credit)?esc(money(r.credit)):'')+'</td><td>'+balHtml(run)+'</td>'+
-        '<td style="white-space:nowrap">'+(r.t==='pay'&&!r.voided?'<button class="btn ghost sm" data-xpr="'+esc(r.customer_id)+'|'+esc(r.id)+'" title="'+esc(t('print'))+'">🖨️</button> <button class="btn ghost sm" data-xv="'+esc(r.id)+'|'+esc(r.no)+'|'+esc(r.amount)+'">🗑️</button>':'')+
+        '<td style="white-space:nowrap">'+(r.t==='pay'&&!r.voided?'<button class="btn ghost sm" data-xpr="'+esc(r.customer_id)+'|'+esc(r.id)+'" title="'+esc(t('print'))+'">🖨️</button> '+(isAdmin()?'<button class="btn ghost sm" data-xe="'+esc(r.id)+'|'+esc(r.paid_amount!=null?r.paid_amount:r.amount)+'">✏️</button> ':'')+'<button class="btn ghost sm" data-xv="'+esc(r.id)+'|'+esc(r.no)+'|'+esc(r.amount)+'">🗑️</button>':'')+
           (adm&&r.t==='move'?'<button class="btn ghost sm" data-dm="'+esc(r.id)+'">'+esc(t('delete'))+'</button>':'')+(r.voided?'<span class="chip off">'+esc(t('voided'))+'</span>':'')+'</td></tr>'; });
     box.innerHTML='<div class="stats">'+stat(t('opening'),money(d.opening))+stat(t('cash_collected'),money(cash))+stat(t('handed'),money(hand))+stat(t('in_hand'),money(d.balance_now))+stat(t('whish_coll'),money(d.whish_total))+stat(t('readings_n'),fmtN(d.readings,0))+'</div>'+
       '<div class="tw"><table><thead><tr><th>'+esc(t('date'))+'</th><th>'+esc(t('type'))+'</th><th>'+esc(t('debit'))+'</th><th>'+esc(t('creditc'))+'</th><th>'+esc(t('running'))+'</th><th></th></tr></thead><tbody>'+
@@ -5136,6 +5143,12 @@ VIEWS.cstmt=async function(main){
     staffClosesList($('#xcl',box),SF.staff);
     $$('[data-xpr]',box).forEach(function(b){ b.addEventListener('click',async function(){ var q=b.dataset.xpr.split('|'); b.disabled=true;
       try{ var sd=await call('motor_statement',{p_customer:q[0]}); await printStmtRow(sd,q[1]); }catch(e){ toast(errText(e),'e'); } b.disabled=false; }); });
+    $$('[data-xe]',box).forEach(function(b){ b.addEventListener('click',function(){ var q=b.dataset.xe.split('|');
+      var mm=modal('✏️ '+t('ed_receipt'),'<label>'+esc(t('amount'))+'</label><input id="ea" class="valinput" inputmode="decimal" value="'+esc(q[1])+'"><label style="margin-top:8px">'+esc(t('note'))+'</label><input id="en"><div id="emsg" class="err msg" style="margin-top:8px"></div>',
+        '<button class="btn ghost" data-x>'+esc(t('cancel'))+'</button><button class="btn" data-s>'+esc(t('save'))+'</button>');
+      mm.foot.addEventListener('click',async function(e){ if(e.target.closest('[data-x]')) return mm.close(); var sb=e.target.closest('[data-s]'); if(!sb) return;
+        var v=Number(String($('#ea',mm.body).value).replace(',','.')); if(!(v>0)){ $('#emsg',mm.body).textContent=t('e_bad_amount'); return; }
+        busy(sb,true); try{ await call('motor_payment_edit',{p_id:q[0],p_paid:v,p_note:$('#en',mm.body).value||null}); toast(t('ed_saved'),'s'); mm.close(); load(); loadCustomers(); }catch(err){ $('#emsg',mm.body).textContent=errText(err); busy(sb,false); } }); }); });
     $$('[data-xv]',box).forEach(function(b){ b.addEventListener('click',async function(){ var q=b.dataset.xv.split('|');
       if(!(await confirmBox(t('pay_void_q',{n:q[1],v:money(q[2])})))) return;
       try{ await call('motor_payment_void',{p_id:q[0]}); toast(t('pay_voided'),'s'); load(); loadCustomers(); }catch(e){ toast(errText(e),'e'); } }); });
@@ -5681,7 +5694,7 @@ VIEWS.sales=async function(main){
         '<td><a href="#" data-cust="'+esc(r.customer.id)+'"><b>'+esc(r.customer.name)+'</b></a> <span class="muted">#'+esc(r.customer.code)+'</span></td>'+
         '<td>'+(r.items||[]).map(function(x){ return esc(fmtN(x.qty)+' × '+x.name)+' <span class="muted">('+esc(money(x.total))+')</span>'; }).join('<br>')+'</td>'+
         '<td class="num"><b>'+esc(money(r.amount))+'</b></td><td>'+esc(r.staff||'')+'</td>'+
-        '<td style="white-space:nowrap">'+(r.voided?'':'<button class="btn ghost sm" data-slp="'+esc(r.id)+'">🖨️</button> <button class="btn danger sm" data-slv="'+esc(r.id)+'">🗑️</button>')+'</td></tr>'; }).join(''))||
+        '<td style="white-space:nowrap">'+(r.voided?'':'<button class="btn ghost sm" data-slp="'+esc(r.id)+'">🖨️</button> <button class="btn ghost sm" data-sle="'+esc(r.id)+'" title="'+esc(t('edit'))+'">✏️</button> <button class="btn danger sm" data-slv="'+esc(r.id)+'">🗑️</button>')+'</td></tr>'; }).join(''))||
       '<tr><td colspan="7" class="muted">'+esc(t('sl_none'))+'</td></tr>'+'</tbody></table>'; }
   function inv(r){ return {no:r.no,created_at:r.at,kind:r.kind||'sale',items:r.items,amount:r.amount,balance_before:r.balance_before,balance_after:r.balance_after,note:r.note,period:''}; }
   $('#slq',main).addEventListener('input',function(){ q=this.value; paint(); });
@@ -5691,28 +5704,32 @@ VIEWS.sales=async function(main){
   $('#slret',main).addEventListener('click',function(){ saleForm(null,true); });
   $('#slpay',main).addEventListener('click',function(){ go('pay'); });
   $('#sltw',main).addEventListener('click',async function(e){
-    var p=e.target.closest('[data-slp]'), v=e.target.closest('[data-slv]'); var r;
+    var p=e.target.closest('[data-slp]'), v=e.target.closest('[data-slv]'), ed=e.target.closest('[data-sle]'); var r;
+    if(ed){ r=L.filter(function(x){ return x.id===ed.dataset.sle; })[0]; if(r) saleForm(null,r.kind==='return',r); return; }
     if(p){ r=L.filter(function(x){ return x.id===p.dataset.slp; })[0]; if(r) await printDoc(billTicket({c:r.customer,inv:inv(r)})); }
     if(v){ r=L.filter(function(x){ return x.id===v.dataset.slv; })[0]; if(!r||!(await confirmBox(t('sl_void_q',{n:r.no})))) return;
       try{ await call('motor_invoice_void',{p_id:r.id}); toast(t('saved'),'s'); await loadCustomers(); go('sales',true); }catch(err){ toast(errText(err),'e'); } }
   });
   paint();
 };
-async function saleForm(preCust,isRet){
+async function saleForm(preCust,isRet,edit){
   var stock=[]; try{ stock=await call('motor_stock_list'); }catch(e){}
   function blank(){ return stock.length?{src:stock[0].id,name:stock[0].name,qty:1,price:n2(stock[0].unit_price)}:{src:'',name:'',qty:1,price:0}; }
   var rows=[blank()], cust=preCust||null, sales=[], refSale=null;
-  var m=modal(isRet?'↩️ '+t('rt_new'):t('sl_new').replace(/^\+\s*/,''),
-    (isRet?'<div class="lic" style="margin-bottom:10px">'+esc(t('rt_hint'))+'</div>':'')+
+  if(edit){ isRet=edit.kind==='return'; cust=CUST.filter(function(c){ return c.id===edit.customer.id; })[0]||edit.customer;
+    rows=(edit.items||[]).map(function(it){ return {src:it.stock_id||'',name:it.name,qty:n2(it.qty),price:n2(it.price)}; }); if(!rows.length) rows=[blank()]; }
+  var m=modal(edit?'✏️ '+t('ed_sale',{n:edit.no}):isRet?'↩️ '+t('rt_new'):t('sl_new').replace(/^\+\s*/,''),
+    (edit?'<div class="lic" style="margin-bottom:10px">'+esc(t('ed_sale_hint'))+'</div>':'')+
+    (isRet&&!edit?'<div class="lic" style="margin-bottom:10px">'+esc(t('rt_hint'))+'</div>':'')+
     (!stock.length?'<div class="lic" style="margin-bottom:10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap"><span style="flex:1">📦 '+esc(t('sl_no_stock'))+'</span><button class="btn sm" id="sfgst">'+esc(t('sl_go_stock'))+'</button></div>':'')+
     '<label>'+esc(t('sl_cust'))+'</label><input id="sfc" list="sfcl" autocomplete="off" placeholder="'+esc(t('search_ph'))+'" value="'+(cust?esc('#'+cust.code+' '+cust.name):'')+'">'+
     '<datalist id="sfcl">'+CUST.map(function(c){ return '<option value="#'+c.code+' '+esc(c.name)+'">'; }).join('')+'</datalist><div id="sfcb" class="muted" style="margin:4px 0 10px"></div>'+
-    (isRet?'<label>'+esc(t('rt_from'))+'</label><select id="sfref"><option value="">'+esc(t('rt_no_ref'))+'</option></select><div style="height:10px"></div>':'')+
+    (isRet&&!edit?'<label>'+esc(t('rt_from'))+'</label><select id="sfref"><option value="">'+esc(t('rt_no_ref'))+'</option></select><div style="height:10px"></div>':'')+
     '<div class="tw"><table class="sfi"><thead><tr><th>'+esc(t('sl_src'))+'</th><th>'+esc(t('sl_item'))+'</th><th>'+esc(t('sl_qty'))+'</th><th>'+esc(t('sl_price'))+'</th><th>'+esc(t('sl_line'))+'</th><th></th></tr></thead><tbody id="sfr"></tbody></table></div>'+
     '<button class="btn ghost sm" id="sfadd" style="margin-top:6px">'+esc(t('sl_add'))+'</button>'+
     '<div style="margin-top:10px"><label>'+esc(t('note'))+'</label><input id="sfn"></div>'+
     '<div style="margin-top:12px;font-size:19px;font-weight:800">'+esc(t('sl_total'))+': <span id="sft" class="num">0</span></div>'+
-    '<div class="card'+(isRet?' hidden':'')+'" style="margin-top:8px;border:2px solid var(--ok,#16a34a)"><label class="chk" style="font-weight:800;font-size:16px"><input type="checkbox" id="sfp"'+(isRet?'':' checked')+'> '+esc(t('sl_pay_now'))+'</label>'+
+    '<div class="card'+(isRet||edit?' hidden':'')+'" style="margin-top:8px;border:2px solid var(--ok,#16a34a)"><label class="chk" style="font-weight:800;font-size:16px"><input type="checkbox" id="sfp"'+(isRet||edit?'':' checked')+'> '+esc(t('sl_pay_now'))+'</label>'+
     '<div id="sfpb" class="g2" style="margin-top:8px"><div><label>'+esc(t('sl_paid'))+'</label><input id="sfpa" type="number" step="0.01" inputmode="decimal"></div>'+
     '<div><label>'+esc(t('method'))+'</label><select id="sfpm"><option value="cash">'+esc(t('cash'))+'</option><option value="whish">Whish</option></select></div></div></div>'+
     '<div id="sfm" class="err msg"></div>',
@@ -5738,7 +5755,8 @@ async function saleForm(preCust,isRet){
     rows[i].src=el.value; if(st){ rows[i].name=st.name; if(!n2(rows[i].price)) rows[i].price=n2(st.unit_price); } paint(); });
   tb.addEventListener('click',function(e){ var d=e.target.closest('[data-del]'); if(!d||d.disabled) return; rows.splice(+d.dataset.del,1); paint(); });
   var gst=$('#sfgst',m.body); if(gst) gst.addEventListener('click',function(){ m.close(); go('stock'); });
-  if(isRet){ var refSel=$('#sfref',m.body);
+  if(edit){ $('#sfc',m.body).disabled=true; $('#sfn',m.body).value=String(edit.note||'').replace(/^استرجاع: [^—]*(— )?/,'').replace(/^من فاتورة #\d+( — )?/,'').replace(/ \(عُدّلت[^)]*\)/g,''); }
+  if(isRet&&!edit){ var refSel=$('#sfref',m.body);
     var loadedFor=null;
     async function loadSales(){ if(cust&&loadedFor===cust.id) return; loadedFor=cust?cust.id:null; refSel.innerHTML='<option value="">'+esc(t('rt_no_ref'))+'</option>'; sales=[]; refSale=null; if(!cust) return;
       try{ sales=await call('motor_customer_sales',{p_customer:cust.id}); }catch(e){ sales=[]; }
@@ -5757,14 +5775,14 @@ async function saleForm(preCust,isRet){
     if(!items.length||!(total()>0)){ msg.textContent=t('e_bad_amount'); return; }
     busy(b,true,t('saving'));
     try{
-      var r=isRet?await call('motor_sale_return',{p_customer:cust.id,p_items:items,p_note:$('#sfn',m.body).value,p_sale:refSale?refSale.id:null})
+      var r=edit?await call('motor_sale_edit',{p_id:edit.id,p_items:items,p_note:$('#sfn',m.body).value}):isRet?await call('motor_sale_return',{p_customer:cust.id,p_items:items,p_note:$('#sfn',m.body).value,p_sale:refSale?refSale.id:null})
                  :await call('motor_sale_add',{p_customer:cust.id,p_items:items,p_note:$('#sfn',m.body).value});
-      var o={c:r.customer,inv:r.invoice}, pay=!isRet&&$('#sfp',m.body).checked?n2($('#sfpa',m.body).value):0;
+      var o={c:r.customer,inv:r.invoice}, pay=!isRet&&!edit&&$('#sfp',m.body).checked?n2($('#sfpa',m.body).value):0;
       if(pay>0){ var pr=await call('motor_pay',{p_customer:cust.id,p_paid:pay,p_currency:mainCur(),p_method:$('#sfpm',m.body).value,p_note:t('k_sale')+' #'+r.invoice.no}); o.pay=pr.payment; payAutoWa(pr.payment); }
       m.close(); await loadCustomers(); if(TAB==='sales') go('sales',true);
-      var sk=isRet?'rt_saved':o.pay?'sl_saved_pay':'sl_saved';
+      var sk=edit?'ed_saved':isRet?'rt_saved':o.pay?'sl_saved_pay':'sl_saved';
       var d=modal(t(sk),'<div class="okmsg">'+esc(t(sk))+'</div><div style="margin-top:10px">'+billHtml(o)+'</div>',
-        '<button class="btn ghost" data-x>'+esc(t('close'))+'</button><button class="btn" data-pr>🖨️ '+esc(t('print'))+'</button>');
+        '<button class="btn ghost" data-x>'+esc(t('close'))+'</button><button class="btn" data-pr>'+esc(t('print'))+'</button>');
       d.foot.addEventListener('click',async function(ev){ if(ev.target.closest('[data-x]')) d.close(); if(ev.target.closest('[data-pr]')) await printDoc(billTicket(o)); });
     }catch(err){ msg.textContent=errText(err); busy(b,false); }
   });
@@ -6059,7 +6077,7 @@ VIEWS.expenses=async function(main){
       Object.keys(by).map(function(k){ return stat(k,money(by[k])); }).join('')+'</div>'+
       '<div class="tw"><table><thead><tr><th>'+esc(t('voucher_no'))+'</th><th>'+esc(t('date'))+'</th><th>'+esc(t('exp_cat'))+'</th><th>'+esc(t('amount'))+'</th><th>'+esc(t('pay_from'))+'</th><th>'+esc(t('note'))+'</th><th>'+esc(t('by'))+'</th><th></th></tr></thead><tbody>'+
       (L.map(function(v,i){ return '<tr><td class="num"><b>'+esc(v.vno)+'</b></td><td class="num">'+esc(dt(v.at))+'</td><td>'+esc(v.category)+'</td><td class="num"><b>'+esc(money(v.amount))+'</b></td><td>'+accChip(v.account)+'</td><td>'+esc(v.note)+'</td><td>'+esc(v.by)+'</td>'+
-        '<td><button class="btn ghost sm" data-pv="'+i+'">🖨️</button> <button class="btn ghost sm" data-dv="'+esc(v.id)+'">'+esc(t('delete'))+'</button></td></tr>'; }).join('')||'<tr><td colspan="8" class="muted">'+esc(t('no_results'))+'</td></tr>')+'</tbody></table></div>';
+        '<td style="white-space:nowrap"><button class="btn ghost sm" data-pv="'+i+'">🖨️</button> <button class="btn ghost sm" data-ev="'+i+'">✏️</button> <button class="btn ghost sm" data-dv="'+esc(v.id)+'">'+esc(t('delete'))+'</button></td></tr>'; }).join('')||'<tr><td colspan="8" class="muted">'+esc(t('no_results'))+'</td></tr>')+'</tbody></table></div>';
   }
   $('#xf',main).addEventListener('change',function(){ XF.from=this.value; load(); });
   $('#xt',main).addEventListener('change',function(){ XF.to=this.value; load(); });
@@ -6069,11 +6087,23 @@ VIEWS.expenses=async function(main){
     downloadBlob(makeXlsx([{name:t('nav_expenses'),rows:R}]),'expenses-'+SLUG+'-'+XF.from+'_'+XF.to+'.xlsx'); });
   $('#xbody',main).addEventListener('click',async function(e){
     var pv=e.target.closest('[data-pv]'); if(pv) return printDoc(voucherTicket(L[+pv.dataset.pv]));
+    var ev=e.target.closest('[data-ev]'); if(ev){ var v=L[+ev.dataset.ev]; return moveEdit(v.id,v.amount,v.note,v.category,load); }
     var dv=e.target.closest('[data-dv]'); if(dv){ if(!(await confirmBox(t('confirm_delete')))) return;
       try{ await call('motor_move_delete',{p_id:dv.dataset.dv}); toast(t('saved'),'s'); load(); }catch(err){ toast(errText(err),'e'); } }
   });
   load();
 };
+/* تعديل سند صرف (المبلغ، البند، الملاحظة) */
+function moveEdit(id,amount,note,category,after){
+  var m=modal('✏️ '+t('ed_voucher'),'<label>'+esc(t('amount'))+' ('+esc(sym(mainCur()))+')</label><input id="mea" class="valinput" inputmode="decimal" value="'+esc(Math.abs(n2(amount)))+'">'+
+    (category!=null?'<label style="margin-top:8px">'+esc(t('exp_cat'))+'</label><input id="mec" value="'+esc(category||'')+'">':'')+
+    '<label style="margin-top:8px">'+esc(t('note'))+'</label><input id="men" value="'+esc(note||'')+'"><div id="mem" class="err msg" style="margin-top:8px"></div>',
+    '<button class="btn ghost" data-x>'+esc(t('cancel'))+'</button><button class="btn" data-s>💾 '+esc(t('save'))+'</button>');
+  m.foot.addEventListener('click',async function(e){ if(e.target.closest('[data-x]')) return m.close(); var b=e.target.closest('[data-s]'); if(!b) return;
+    var v=Number(String($('#mea',m.body).value).replace(',','.')); if(!(v>0)){ $('#mem',m.body).textContent=t('e_bad_amount'); return; }
+    busy(b,true); try{ await call('motor_move_edit',{p_id:id,p_amount:v,p_note:$('#men',m.body).value,p_category:$('#mec',m.body)?$('#mec',m.body).value:null}); toast(t('ed_saved'),'s'); m.close(); after&&after(); }
+    catch(err){ $('#mem',m.body).textContent=errText(err); busy(b,false); } });
+}
 function expenseForm(after){
   var cats=[t('exp_fuel'),t('exp_maint'),t('exp_oil'),t('exp_other')];
   var m=modal(t('exp_new'),'<label>'+esc(t('exp_cat'))+'</label><div class="row" id="xcats">'+cats.map(function(c,i){ return '<label class="chk"><input type="radio" name="xc" value="'+esc(c)+'"'+(i?'':' checked')+'> '+esc(c)+'</label>'; }).join('')+'</div>'+
@@ -6214,9 +6244,9 @@ function supplierForm(x){ var n=!x; x=x||{};
     try{ await call('motor_supplier_save',{p_data:{id:x.id||'',name:$('#un',m.body).value.trim(),phone:$('#uph',m.body).value.trim(),notes:$('#uno',m.body).value}}); toast(t('saved'),'s'); m.close(); go('suppliers'); }
     catch(err){ $('#umsg',m.body).textContent=errText(err); busy(b,false); } });
 }
-async function purchaseForm(sups,sup){
+async function purchaseForm(sups,sup,edit,after){
   var stock=[]; try{ stock=await call('motor_stock_list'); }catch(e){}
-  var m=modal(t('pur_new'),'<div class="g2"><div><label>'+esc(t('sup_name'))+'</label><select id="psup">'+sups.map(function(x){ return '<option value="'+esc(x.id)+'">'+esc(x.name)+'</option>'; }).join('')+'</select></div>'+
+  var m=modal(edit?'✏️ '+t('ed_pur',{n:edit.no}):t('pur_new'),(edit?'<div class="lic" style="margin-bottom:10px">'+esc(t('ed_pur_hint'))+'</div>':'')+'<div class="g2"><div><label>'+esc(t('sup_name'))+'</label><select id="psup">'+sups.map(function(x){ return '<option value="'+esc(x.id)+'">'+esc(x.name)+'</option>'; }).join('')+'</select></div>'+
     '<div><label>'+esc(t('pur_ref'))+'</label><input id="pref"></div><div><label>'+esc(t('date'))+'</label><input id="pday" type="date" value="'+esc(TODAY)+'"></div></div>'+
     '<datalist id="pitems">'+stock.map(function(x){ return '<option value="'+esc(x.name)+'">'; }).join('')+'</datalist>'+
     '<div class="tw" style="margin-top:10px"><table><thead><tr><th>'+esc(t('pur_item'))+'</th><th>'+esc(t('qty'))+'</th><th>'+esc(t('unit_price'))+'</th><th>'+esc(t('total'))+'</th><th></th></tr></thead><tbody id="plines"></tbody></table></div>'+
@@ -6234,13 +6264,20 @@ async function purchaseForm(sups,sup){
   function tot(){ var s=0; lines().forEach(function(l){ var v=Math.round(l.qty*l.unit_price*100)/100; $('.pt',l.tr).textContent=v?money(v):''; s+=v; }); $('#ptot',m.body).textContent=money(s); }
   m.body.addEventListener('input',tot);
   m.body.addEventListener('click',function(e){ var r=e.target.closest('[data-rm]'); if(r){ r.closest('tr').remove(); tot(); } });
-  $('#padd',m.body).addEventListener('click',addLine); addLine(); addLine();
+  $('#padd',m.body).addEventListener('click',addLine);
+  if(edit){ (edit.items||[]).forEach(function(it){ addLine(); var tr=$$('#plines tr',m.body).pop(); $('.pi',tr).value=it.name; $('.pq',tr).value=n2(it.qty); $('.pp',tr).value=n2(it.unit_price); });
+    if(!(edit.items||[]).length) addLine(); $('#pref',m.body).value=edit.ref||''; $('#pday',m.body).value=edit.day||TODAY; $('#pnote',m.body).value=String(edit.note||'').replace(/ \(عُدّلت[^)]*\)/g,'');
+    $('#ppay',m.body).closest('.g2').classList.add('hidden'); tot();
+    var tb=m.foot.querySelector(edit.to_stock?'[data-s="0"]':'[data-s="1"]'); if(tb) tb.classList.add('hidden'); }
+  else { addLine(); addLine(); }
   m.foot.addEventListener('click',async function(e){ if(e.target.closest('[data-x]')) return m.close(); var b=e.target.closest('[data-s]'); if(!b) return;
     var ls=lines().filter(function(l){ return l.name&&l.qty>0; }).map(function(l){ return {item_id:l.item_id,name:l.name,qty:l.qty,unit_price:l.unit_price}; });
     if(!ls.length){ $('#pmsg',m.body).textContent=t('e_no_items'); return; }
     busy(b,true);
-    try{ var r=await call('motor_purchase_add',{p_data:{supplier_id:$('#psup',m.body).value,ref:$('#pref',m.body).value.trim(),day:$('#pday',m.body).value,note:$('#pnote',m.body).value,
-          to_stock:b.dataset.s==='1',items:ls,pay_amount:n2($('#ppay',m.body).value),pay_account:accVal(m.body,'pacc')}});
+    try{ var pdata={supplier_id:$('#psup',m.body).value,ref:$('#pref',m.body).value.trim(),day:$('#pday',m.body).value,note:$('#pnote',m.body).value,
+          to_stock:b.dataset.s==='1',items:ls,pay_amount:n2($('#ppay',m.body).value),pay_account:accVal(m.body,'pacc')};
+      if(edit){ var er=await call('motor_purchase_edit',{p_id:edit.id,p_data:pdata}); toast(t('ed_saved'),'s'); m.close(); if(after) after(); else go(TAB==='stock'?'stock':'suppliers'); return; }
+      var r=await call('motor_purchase_add',{p_data:pdata});
       toast(t('pur_saved',{n:r.no,v:money(r.total)})+(r.vno?' — '+t('voucher_no')+' '+r.vno:''),'s'); m.close(); go(TAB==='stock'?'stock':'suppliers'); }
     catch(err){ $('#pmsg',m.body).textContent=errText(err); busy(b,false); } });
 }
@@ -6266,8 +6303,13 @@ async function supplierStatement(x){
         return '<tr class="'+(r.voided?'void':'')+'"><td class="num">'+esc(r.t==='purchase'?r.day:dt(r.at))+'</td><td>'+esc(r.t==='purchase'?t('pur_inv')+' #'+r.no+(r.ref?' ('+r.ref+')':''):t('sup_pay')+' #'+r.vno)+(r.t==='pay'?' '+accChip(r.account):(r.to_stock?' <span class="chip on">📦</span>':''))+'</td>'+
           '<td>'+(r.items||[]).map(function(i){ return '<div class="muted" style="white-space:nowrap">'+esc(i.name)+' × '+esc(fmtN(i.qty))+' @ '+esc(money(i.unit_price))+'</div>'; }).join('')+esc(r.note||'')+'</td>'+
           '<td class="num">'+(r.t==='purchase'?esc(money(r.total)):'')+'</td><td class="num">'+(db?esc(money(db)):'')+'</td><td class="num"><b>'+esc(money(run))+'</b></td>'+
-          '<td>'+(r.t==='purchase'&&!r.voided?'<button class="btn ghost sm" data-pv="'+esc(r.id)+'">'+esc(t('void'))+'</button>':'')+'</td></tr>'; }).join('')||'<tr><td colspan="7" class="muted">'+esc(t('no_results'))+'</td></tr>')+'</tbody></table></div>'; }
-  m.body.addEventListener('click',async function(e){ var b=e.target.closest('[data-pv]'); if(!b) return; if(!(await confirmBox(t('pur_void_q')))) return;
+          '<td style="white-space:nowrap">'+(r.t==='purchase'&&!r.voided?'<button class="btn ghost sm" data-pe="'+esc(r.id)+'">✏️</button> <button class="btn ghost sm" data-pv="'+esc(r.id)+'">'+esc(t('void'))+'</button>':'')+
+          (r.t==='pay'?'<button class="btn ghost sm" data-me="'+esc(r.id)+'|'+esc(n2(r.amount))+'|'+esc(r.note||'')+'">✏️</button> <button class="btn ghost sm" data-md="'+esc(r.id)+'">🗑️</button>':'')+'</td></tr>'; }).join('')||'<tr><td colspan="7" class="muted">'+esc(t('no_results'))+'</td></tr>')+'</tbody></table></div>'; }
+  m.body.addEventListener('click',async function(e){
+    var pe=e.target.closest('[data-pe]'); if(pe){ try{ var pu=await call('motor_purchase_get',{p_id:pe.dataset.pe}); var sups=await call('motor_suppliers'); purchaseForm(sups,x,pu,paint); }catch(err){ toast(errText(err),'e'); } return; }
+    var me=e.target.closest('[data-me]'); if(me){ var q=me.dataset.me.split('|'); moveEdit(q[0],q[1],q.slice(2).join('|'),null,paint); return; }
+    var md=e.target.closest('[data-md]'); if(md){ if(!(await confirmBox(t('confirm_delete')))) return; try{ await call('motor_move_delete',{p_id:md.dataset.md}); toast(t('saved'),'s'); paint(); }catch(err){ toast(errText(err),'e'); } return; }
+    var b=e.target.closest('[data-pv]'); if(!b) return; if(!(await confirmBox(t('pur_void_q')))) return;
     try{ await call('motor_purchase_void',{p_id:b.dataset.pv}); toast(t('saved'),'s'); paint(); }catch(err){ toast(errText(err),'e'); } });
   m.onclose=function(){ if(TAB==='suppliers') go('suppliers',true); };
   paint();
@@ -6356,7 +6398,7 @@ VIEWS.journal=async function(main){
   if(!JF.from){ JF.from=TODAY; JF.to=TODAY; }
   main.innerHTML='<div class="toolbar">'+['day','week','month','custom'].map(function(k){ return '<button class="btn '+(JF.mode===k?'':'ghost')+' sm" data-jm="'+k+'">'+esc(t(k==='day'?'j_today':'j_'+k))+'</button>'; }).join('')+
     '<span id="jcus" class="row'+(JF.mode==='custom'?'':' hidden')+'" style="gap:6px"><input type="date" id="jf" value="'+esc(JF.from)+'" style="width:auto"><input type="date" id="jt" value="'+esc(JF.to)+'" style="width:auto"></span>'+
-    '<span class="sp"></span><button class="btn ghost" id="jx">'+esc(t('export_xlsx'))+'</button><button class="btn ghost" id="jp">🖨️ '+esc(t('print'))+'</button></div><div id="jbody"></div>';
+    '<span class="sp"></span><button class="btn ghost" id="jx">'+esc(t('export_xlsx'))+'</button><button class="btn ghost" id="jp">'+esc(t('print'))+'</button></div><div id="jbody"></div>';
   var D0=null;
   async function load(){
     var rg=jRange(JF.mode), box=$('#jbody',main); box.innerHTML='<div class="muted">'+esc(t('loading'))+'</div>';

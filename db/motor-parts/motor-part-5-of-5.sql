@@ -2167,6 +2167,87 @@ end $m$;
 grant execute on function public.motor_read(text,text,uuid,numeric,text,double precision,double precision,double precision,boolean,numeric,boolean) to anon, authenticated;
 
 -- ============================================================
+--  20j24) تعديل فواتير المبيعات/الاسترجاع والمشتريات وسندات الصرف (المدير والمدير الأساسي)
+--         التعديل = إلغاء القديمة (المخزون بيرجع) + فاتورة جديدة بنفس الرقم
+-- ============================================================
+create or replace function public.motor_sale_edit(p_slug text, p_token text, p_id uuid, p_items jsonb, p_note text default '')
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w jsonb; sid uuid; o public.motor_invoices%rowtype; r jsonb; nid uuid;
+begin
+  w := public._motor_admin(p_slug, p_token);
+  sid := (w->>'site_id')::uuid;
+  select * into o from public.motor_invoices where id = p_id and site_id = sid and kind in ('sale','return') and not voided for update;
+  if not found then perform public._motor_err('not_found'); end if;
+  perform public.motor_invoice_void(p_slug, p_token, o.id);
+  if o.kind = 'sale' then
+    r := public.motor_sale_add(p_slug, p_token, o.customer_id, p_items, p_note);
+  else
+    r := public.motor_sale_return(p_slug, p_token, o.customer_id, p_items, p_note,
+           (select x.id from public.motor_invoices x where x.id = o.return_of and not x.voided));
+  end if;
+  nid := (r->'invoice'->>'id')::uuid;
+  -- المرتجعات المربوطة بالفاتورة القديمة بتنربط بالجديدة
+  if o.kind = 'sale' then update public.motor_invoices set return_of = nid where return_of = o.id; end if;
+  -- نفس رقم الفاتورة، والقديمة بتنعلّم إنها انعدّلت
+  update public.motor_invoices set no = o.no, created_at = o.created_at where id = nid;
+  update public.motor_invoices set note = left(coalesce(note,'') || ' (عُدّلت بواسطة ' || (w->>'name') || ')', 500) where id = o.id;
+  return r || jsonb_build_object('invoice', (select to_jsonb(i) - 'site_id' from public.motor_invoices i where i.id = nid));
+end $$;
+grant execute on function public.motor_sale_edit(text,text,uuid,jsonb,text) to anon, authenticated;
+
+create or replace function public.motor_purchase_get(p_slug text, p_token text, p_id uuid)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w jsonb;
+begin
+  w := public._motor_admin(p_slug, p_token);
+  return (select to_jsonb(p) - 'site_id' from public.motor_purchases p where p.id = p_id and p.site_id = (w->>'site_id')::uuid);
+end $$;
+grant execute on function public.motor_purchase_get(text,text,uuid) to anon, authenticated;
+
+create or replace function public.motor_purchase_edit(p_slug text, p_token text, p_id uuid, p_data jsonb)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w jsonb; sid uuid; o public.motor_purchases%rowtype; r jsonb;
+begin
+  w := public._motor_admin(p_slug, p_token);
+  sid := (w->>'site_id')::uuid;
+  select * into o from public.motor_purchases where id = p_id and site_id = sid and not voided for update;
+  if not found then perform public._motor_err('not_found'); end if;
+  perform public.motor_purchase_void(p_slug, p_token, o.id);
+  -- الدفعة ما بتتكرّر: التعديل للبنود والمورد والتاريخ بس
+  r := public.motor_purchase_add(p_slug, p_token, (coalesce(p_data,'{}'::jsonb) - 'pay_amount') || jsonb_build_object('supplier_id', coalesce(p_data->>'supplier_id', o.supplier_id::text)));
+  update public.motor_purchases set no = o.no where site_id = sid and no = (r->>'no')::int and not voided;
+  update public.motor_purchases set note = left(coalesce(note,'') || ' (عُدّلت بواسطة ' || (w->>'name') || ')', 500) where id = o.id;
+  return r || jsonb_build_object('no', o.no);
+end $$;
+grant execute on function public.motor_purchase_edit(text,text,uuid,jsonb) to anon, authenticated;
+
+-- تعديل سند صرف / قبض بالصندوق (المبلغ، الملاحظة، البند)
+create or replace function public.motor_move_edit(p_slug text, p_token text, p_id uuid, p_amount numeric, p_note text default null, p_category text default null)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w jsonb; sid uuid; m public.motor_moves%rowtype; a numeric := round(abs(coalesce(p_amount,0)), 2);
+begin
+  w := public._motor_admin(p_slug, p_token);
+  sid := (w->>'site_id')::uuid;
+  select * into m from public.motor_moves where id = p_id and site_id = sid for update;
+  if not found then perform public._motor_err('not_found'); end if;
+  if a <= 0 then perform public._motor_err('bad_amount'); end if;
+  if m.kind = 'close' or coalesce(m.extra->>'type','') = 'staff_close' then perform public._motor_err('closed_period'); end if;
+  if (m.account = 'cash' or (m.account = 'collector' and m.kind = 'handover')) and m.created_at <= coalesce((select max(created_at)
+        from public.motor_moves where site_id = sid and account = 'cash' and kind = 'close'), '-infinity'::timestamptz) then
+    perform public._motor_err('closed_period');
+  end if;
+  if exists (select 1 from public.motor_day_closes dc where dc.site_id = sid and dc.day = (m.created_at at time zone 'Asia/Beirut')::date) then
+    perform public._motor_err('day_closed');
+  end if;
+  update public.motor_moves set amount = case when m.amount < 0 then -a else a end,
+         note = coalesce(p_note, note), category = coalesce(nullif(trim(coalesce(p_category,'')),''), category),
+         extra = coalesce(extra,'{}'::jsonb) || jsonb_build_object('edited_by', w->>'name', 'edited_at', now(), 'old_amount', m.amount)
+   where id = m.id returning * into m;
+  return jsonb_build_object('ok', true, 'move', to_jsonb(m) - 'site_id');
+end $$;
+grant execute on function public.motor_move_edit(text,text,uuid,numeric,text,text) to anon, authenticated;
+
+-- ============================================================
 --  20k) إقفال صندوق الموظف: يسلّم كل النقد للمكتب ويطلع تقرير
 -- ============================================================
 create or replace function public.motor_staff_close(p_slug text, p_token text, p_staff uuid default null)
