@@ -2402,6 +2402,38 @@ begin
 end $m$;
 
 -- ============================================================
+--  20j28) سند صرف «من الصندوق» من مدير غير أساسي: بينقص من صندوقو هو (collector) مش من الصندوق الأساسي
+-- ============================================================
+create or replace function public._motor_voucher(p_sid uuid, p_w jsonb, p_account text, p_amount numeric, p_category text, p_note text, p_type text, p_staff uuid, p_period text)
+returns public.motor_moves language plpgsql security definer set search_path = public as $$
+declare seq int; m public.motor_moves%rowtype; acc text := p_account; stf uuid;
+begin
+  if p_account not in ('cash','whish','outside') then perform public._motor_err('bad_account'); end if;
+  if coalesce(p_amount,0) <= 0 then perform public._motor_err('bad_amount'); end if;
+  -- المدير غير الأساسي: «الصندوق» = صندوقو الخاص
+  if p_account = 'cash' and not coalesce((p_w->>'is_main')::boolean, false) and coalesce(p_w->>'staff_id','') <> '' then
+    acc := 'collector'; stf := (p_w->>'staff_id')::uuid;
+  end if;
+  update public.motor_sites set voucher_seq = voucher_seq + 1 where id = p_sid returning voucher_seq into seq;
+  insert into public.motor_moves (site_id, account, staff_id, kind, amount, note, by_name, category, vno, pay_staff, period, extra)
+  values (p_sid, acc, stf, case when acc = 'whish' then 'withdraw' else 'out' end, abs(p_amount), coalesce(p_note,''),
+          p_w->>'name', coalesce(p_category,''), seq, p_staff, coalesce(p_period,''), jsonb_build_object('type', p_type))
+  returning * into m;
+  return m;
+end $$;
+
+do $m$
+declare d text;
+begin
+  d := pg_get_functiondef('public.motor_collector_statement(text,text,uuid,date,date)'::regprocedure);
+  if position('''category'',m.category' in d) = 0 then
+    d := replace(d, '''note'',m.note,''by'',m.by_name)', '''note'',m.note,''by'',m.by_name,''category'',m.category,''vno'',m.vno,''type'',m.extra->>''type'')');
+    if position('''category'',m.category' in d) = 0 then raise exception 'cstmt patch'; end if;
+    execute d;
+  end if;
+end $m$;
+
+-- ============================================================
 --  20k) إقفال صندوق الموظف: يسلّم كل النقد للمكتب ويطلع تقرير
 -- ============================================================
 create or replace function public.motor_staff_close(p_slug text, p_token text, p_staff uuid default null)

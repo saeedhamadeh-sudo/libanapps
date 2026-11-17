@@ -2711,7 +2711,7 @@ Object.assign(D,{
  window_wait:['تفتح يوم {d}','Opens on {d}','Ouvre le {d}'],
  auto_period:['تتغيّر تلقائياً يوم 26 من كل شهر','Changes automatically on the 26th of each month','Change automatiquement le 26 de chaque mois'],
  salary:['المعاش الشهري','Monthly salary','Salaire mensuel'], sal_due:['المستحق','Due','Dû'], sal_paid:['المدفوع','Paid','Payé'], sal_rem:['الباقي','Remaining','Reste'],
- sal_pay:['دفعة معاش','Salary payment','Paiement de salaire'], pay_from:['الدفع من','Pay from','Payer depuis'], acc_cash:['💰 الصندوق','💰 Cash box','💰 Caisse'], acc_whish:['🟣 Whish','🟣 Whish','🟣 Whish'],
+ sal_pay:['دفعة معاش','Salary payment','Paiement de salaire'], pay_from:['الدفع من','Pay from','Payer depuis'], acc_cash:['💰 الصندوق','💰 Cash box','💰 Caisse'], acc_mine:['💰 صندوقي','💰 My box','💰 Ma caisse'], acc_staff:['صندوق الموظف','Staff box','Caisse employé'], acc_mine_h:['دُفع من صندوق الموظف الذي أنشأ السند','Paid from the box of the staff member who issued it','Payé depuis la caisse de l’employé émetteur'], box_spent:['سندات صرف من الصندوق','Vouchers paid from the box','Bons payés depuis la caisse'], acc_whish:['🟣 Whish','🟣 Whish','🟣 Whish'],
  month:['الشهر','Month','Mois'], payments:['الدفعات','Payments','Paiements'],
  stock_new:['صنف جديد','New item','Nouvel article'], stock_cat:['الفئة','Category','Catégorie'], qty:['الكمية','Quantity','Quantité'], unit_price:['سعر الوحدة','Unit price','Prix unitaire'],
  total_value:['القيمة الإجمالية','Total value','Valeur totale'], stock_items:['الأصناف','Items','Articles'], value:['القيمة','Value','Valeur'],
@@ -4099,6 +4099,7 @@ function rawbtSend(bytes){
 }
 var PRINT_BUSY=0;
 async function printDoc(T,paper){
+  T=(T||[]).filter(Boolean);
   // ما منخلّي الطباعة تعلق: كل خطوة إلها مهلة، ومنقدر نعيد الطباعة فوراً
   if(PRINT_BUSY&&Date.now()-PRINT_BUSY<35000){ toast(t('printing'),''); return false; }
   PRINT_BUSY=Date.now();
@@ -5127,15 +5128,15 @@ VIEWS.cstmt=async function(main){
   async function load(){
     var box=$('#xbody',main); box.innerHTML='<div class="muted">'+esc(t('loading'))+'</div>';
     var d; try{ d=await call('motor_collector_statement',{p_staff:SF.staff,p_from:SF.from||null,p_to:SF.to||null}); }catch(e){ box.innerHTML='<div class="err">'+esc(errText(e))+'</div>'; return; }
-    var run=n2(d.opening), cash=0, hand=0;
-    var trs=d.rows.map(function(r){ if(!r.voided){ run+=n2(r.debit)-n2(r.credit); cash+=n2(r.debit); hand+=n2(r.credit); }
-      var lab=r.t==='pay'?(t('k_pay')+' #'+r.no+' · '+r.customer):t('m_'+r.kind)+(r.by?' · '+r.by:'');
+    var run=n2(d.opening), cash=0, hand=0, spent=0;
+    var trs=d.rows.map(function(r){ if(!r.voided){ run+=n2(r.debit)-n2(r.credit); cash+=n2(r.debit); if(r.t==='move'&&r.kind==='out') spent+=n2(r.credit); else hand+=n2(r.credit); }
+      var lab=r.t==='pay'?(t('k_pay')+' #'+r.no+' · '+r.customer):(r.kind==='out'&&r.category?'🧾 '+t('voucher')+(r.vno?' #'+r.vno:'')+' · '+r.category:t('m_'+r.kind))+(r.by?' · '+r.by:'');
       // الإيصال يلي ما بيدخل بهالصندوق (Whish أو الصندوق الأساسي) بيبيّن مبلغو بس ما بينحسب
       var side=r.t==='pay'&&!n2(r.debit)&&n2(r.amount)?(r.method==='whish'?'🟣 Whish':'🏦 '+t('to_main_box')):'';
       return '<tr class="'+(r.voided?'void':'')+'"><td class="num">'+esc(dt(r.at))+'</td><td>'+esc(lab)+(r.note?' <span class="muted">'+esc(r.note)+'</span>':'')+'</td><td class="num">'+(n2(r.debit)?esc(money(r.debit)):side?'<span class="muted" style="text-decoration:none">'+esc(money(r.amount))+'</span><br><span class="chip" style="font-size:11px">'+esc(side)+'</span>':'')+'</td><td class="num">'+(n2(r.credit)?esc(money(r.credit)):'')+'</td><td>'+balHtml(run)+'</td>'+
         '<td style="white-space:nowrap">'+(r.t==='pay'&&!r.voided?'<button class="btn ghost sm" data-xpr="'+esc(r.customer_id)+'|'+esc(r.id)+'" title="'+esc(t('print'))+'">🖨️</button> '+(isAdmin()?'<button class="btn ghost sm" data-xe="'+esc(r.id)+'|'+esc(r.paid_amount!=null?r.paid_amount:r.amount)+'">✏️</button> ':'')+'<button class="btn ghost sm" data-xv="'+esc(r.id)+'|'+esc(r.no)+'|'+esc(r.amount)+'">🗑️</button>':'')+
           (adm&&r.t==='move'?'<button class="btn ghost sm" data-dm="'+esc(r.id)+'">'+esc(t('delete'))+'</button>':'')+(r.voided?'<span class="chip off">'+esc(t('voided'))+'</span>':'')+'</td></tr>'; });
-    box.innerHTML='<div class="stats">'+stat(t('opening'),money(d.opening))+stat(t('cash_collected'),money(cash))+stat(t('handed'),money(hand))+stat(t('in_hand'),money(d.balance_now))+stat(t('whish_coll'),money(d.whish_total))+stat(t('readings_n'),fmtN(d.readings,0))+'</div>'+
+    box.innerHTML='<div class="stats">'+stat(t('opening'),money(d.opening))+stat(t('cash_collected'),money(cash))+stat(t('handed'),money(hand))+(spent?stat(t('box_spent'),money(spent)):'')+stat(t('in_hand'),money(d.balance_now))+stat(t('whish_coll'),money(d.whish_total))+stat(t('readings_n'),fmtN(d.readings,0))+'</div>'+
       '<div class="tw"><table><thead><tr><th>'+esc(t('date'))+'</th><th>'+esc(t('type'))+'</th><th>'+esc(t('debit'))+'</th><th>'+esc(t('creditc'))+'</th><th>'+esc(t('running'))+'</th><th></th></tr></thead><tbody>'+
       (trs.join('')||'<tr><td colspan="6" class="muted">'+esc(t('no_results'))+'</td></tr>')+'</tbody></table></div>'+
       '<div class="row" style="margin-top:10px"><button class="btn alt sm" id="xp">'+esc(t('print'))+'</button><span class="sp"></span>'+
@@ -5156,7 +5157,7 @@ VIEWS.cstmt=async function(main){
       try{ await call('motor_payment_void',{p_id:q[0]}); toast(t('pay_voided'),'s'); load(); loadCustomers(); }catch(e){ toast(errText(e),'e'); } }); });
     $$('[data-dm]',box).forEach(function(b){ b.addEventListener('click',async function(){ if(!(await confirmBox(t('confirm_delete')))) return; try{ await call('motor_move_delete',{p_id:b.dataset.dm}); load(); }catch(e){ toast(errText(e),'e'); } }); });
     $('#xp',box).addEventListener('click',function(){ printDoc([{t:SITE.name||'',b:1,s:28,c:1},{t:t('nav_cstmt'),b:1,c:1},{t:d.staff.name,c:1},{t:SF.from+' → '+SF.to,c:1,s:19},{hr:1},
-      {kv:[t('opening'),money(d.opening)]},{kv:[t('cash_collected'),money(cash)]},{kv:[t('handed'),money(hand)]},{kv:[t('whish_coll'),money(d.whish_total)]},{kv:[t('readings_n'),fmtN(d.readings,0)]},{hr:1},{kv:[t('in_hand'),money(d.balance_now)],b:1,s:26}]); });
+      {kv:[t('opening'),money(d.opening)]},{kv:[t('cash_collected'),money(cash)]},{kv:[t('handed'),money(hand)]},(spent?{kv:[t('box_spent'),money(spent)]}:null),{kv:[t('whish_coll'),money(d.whish_total)]},{kv:[t('readings_n'),fmtN(d.readings,0)]},{hr:1},{kv:[t('in_hand'),money(d.balance_now)],b:1,s:26}]); });
   }
   if($('#xs',main)) $('#xs',main).addEventListener('change',function(){ SF.staff=this.value; load(); });
   $('#xf',main).addEventListener('change',function(){ SF.from=this.value; load(); });
@@ -6061,9 +6062,9 @@ function voucherTicket(v){
     {t:t('by')+': '+(v.by||''),s:20},{hr:1},{t:t('v_sign'),s:22},{t:' ',s:20});
   return T.filter(Boolean);
 }
-function accPick(id){ return '<label>'+esc(t('pay_from'))+'</label><div class="row" id="'+id+'"><label class="chk"><input type="radio" name="'+id+'" value="cash" checked> '+esc(t('acc_cash'))+'</label><label class="chk"><input type="radio" name="'+id+'" value="whish"> '+WL+'Whish</label><label class="chk" title="'+esc(t('acc_out_h'))+'"><input type="radio" name="'+id+'" value="outside"> 🏠 '+esc(t('acc_out'))+'</label></div>'; }
+function accPick(id){ return '<label>'+esc(t('pay_from'))+'</label><div class="row" id="'+id+'"><label class="chk"><input type="radio" name="'+id+'" value="cash" checked> '+esc(ME&&ME.staff_id&&!ME.is_main?t('acc_mine'):t('acc_cash'))+'</label><label class="chk"><input type="radio" name="'+id+'" value="whish"> '+WL+'Whish</label><label class="chk" title="'+esc(t('acc_out_h'))+'"><input type="radio" name="'+id+'" value="outside"> 🏠 '+esc(t('acc_out'))+'</label></div>'; }
 function accVal(box,id){ var r=$('input[name='+id+']:checked',box); return r?r.value:'cash'; }
-function accChip(a){ return a==='outside'?'<span class="chip" title="'+esc(t('acc_out_h'))+'">🏠 '+esc(t('acc_out'))+'</span>':'<span class="chip '+(a==='whish'?'wish':'gray')+'">'+(a==='whish'?WL+'Whish':esc(t('cash')))+'</span>'; }
+function accChip(a){ if(a==='collector') return '<span class="chip gray" title="'+esc(t('acc_mine_h'))+'">👤 '+esc(t('acc_staff'))+'</span>'; return a==='outside'?'<span class="chip" title="'+esc(t('acc_out_h'))+'">🏠 '+esc(t('acc_out'))+'</span>':'<span class="chip '+(a==='whish'?'wish':'gray')+'">'+(a==='whish'?WL+'Whish':esc(t('cash')))+'</span>'; }
 
 /* ---------- المصاريف ---------- */
 var XF={from:'',to:''};
