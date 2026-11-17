@@ -11808,7 +11808,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-11-17 · 01:45 · v101';
+const APP_TRADE_BUILD = '2026-11-17 · 03:20 · v102';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 function settingsView(){
   const s = DB.settings;
@@ -12316,6 +12316,104 @@ function printLandscape(name){
     styleEl.remove();
   }, 1000);
 }
+
+/* ===== طباعة أي مستند (كشف حساب، فاتورة، تقرير…) على طابعة حرارية 80 ملم =====
+   الجداول العريضة بتتحوّل لبطاقات: كل سطر بلوك (عنوان + «اسم العمود: القيمة») — حتى ما يطلع الخط صغير */
+function thermalDocHtml(doc){
+  const T = el=>String(el? el.innerText||el.textContent||'' : '').replace(/\s+/g,' ').trim();
+  const s = DB.settings || {}, out = [];
+  out.push(`<div style="text-align:center;">${s.logo? `<img src="${s.logo}" style="height:70px; max-width:56mm; width:auto; object-fit:contain;">` : ''}
+    <div style="font-weight:800; font-size:15px;">${escapeHtml(s.companyName||'')}</div>
+    ${s.companyPhone? `<div style="font-size:12px;">${escapeHtml(s.companyPhone)}</div>` : ''}
+    <div style="font-weight:800; font-size:15px; margin-top:4px;">${escapeHtml(T(doc.querySelector('.doc-title')))}</div></div><div class="td-hr"></div>`);
+  const kv = (k,v,b)=> `<div class="td-kv"><span>${escapeHtml(k)}</span><b${b? ' class="td-big"' : ''}>${escapeHtml(v)}</b></div>`;
+  doc.querySelectorAll('.doc-info > *').forEach(r=>{ if(r.closest('.no-print')) return; const k = r.querySelector('span'), v = r.querySelector('b');
+    if(k && v) out.push(kv(T(k).replace(/:$/,''), T(v))); else { const t = T(r); if(t) out.push(`<div class="td-line">${escapeHtml(t)}</div>`); } });
+  doc.querySelectorAll('.stat').forEach(st=>{ if(st.closest('.no-print')) return; const k = st.querySelector('.k'), v = st.querySelector('.v'); if(k && v) out.push(kv(T(k), T(v), true)); });
+  doc.querySelectorAll('table').forEach(tb=>{
+    if(tb.closest('.no-print')) return;
+    const heads = Array.from(tb.querySelectorAll('thead tr:last-child th')).map(th=>th.classList.contains('no-print')? null : T(th));
+    out.push('<div class="td-hr"></div>');
+    const rowHtml = (tr, isTotal)=>{ const cells = Array.from(tr.children); let i = 0, parts = [];
+      cells.forEach(td=>{ const span = Number(td.getAttribute('colspan'))||1; const h = heads[i]; i += span;
+        if(td.classList.contains('no-print') || h===null) return; const v = T(td); if(!v) return;
+        parts.push({h: span>1? '' : (h||''), v}); });
+      if(!parts.length) return '';
+      // أول خانتين قصار (رقم/تاريخ) بيصيروا عنوان البلوك
+      let headLine = [];
+      while(parts.length && headLine.length<3 && parts[0].v.length<=24 && /^(#|التاريخ|تاريخ|الرقم|رقم|النوع|Date|No)/.test(parts[0].h||'#')){ headLine.push(parts.shift().v); }
+      const txt = x=> /^(التفاصيل|البيان|الوصف|تفاصيل)$/.test(x.h||'');   // النص الطويل بلا عنوان
+      return `<div class="td-row${isTotal? ' td-total' : ''}">${headLine.length? `<div class="td-rh">${headLine.map(v=>'<bdi>'+escapeHtml(v)+'</bdi>').join(' · ')}</div>` : ''}${parts.map(x=> (x.h && !txt(x))? kv(x.h, x.v) : `<div class="td-line">${escapeHtml(x.v)}</div>`).join('')}</div>`; };
+    tb.querySelectorAll('tbody tr').forEach(tr=>out.push(rowHtml(tr)));
+    tb.querySelectorAll('tfoot tr').forEach(tr=>out.push(rowHtml(tr, true)));
+  });
+  doc.querySelectorAll('.words-box, .amount-box').forEach(b=>{ const t = T(b); if(t) out.push(`<div class="td-line" style="font-weight:800; text-align:center;">${escapeHtml(t)}</div>`); });
+  out.push(`<div class="td-hr"></div><div style="text-align:center; font-size:11px;">${escapeHtml(fmtDate(todayISO()))} · ${escapeHtml(fmtTime12(Date.now()))}</div>`);
+  return `<style>
+    #pos-receipt-print{ font-family:'Cairo',system-ui,sans-serif; color:#000; font-size:13px; line-height:1.45; direction:rtl; }
+    #pos-receipt-print .td-hr{ border-top:1px dashed #000; margin:5px 0; }
+    #pos-receipt-print .td-kv{ display:flex; justify-content:space-between; gap:6px; }
+    #pos-receipt-print .td-kv span{ color:#000; font-size:12px; } #pos-receipt-print .td-kv b{ font-weight:800; text-align:left; direction:ltr; unicode-bidi:plaintext; }
+    #pos-receipt-print .td-big{ font-size:14px; }
+    #pos-receipt-print .td-row{ border-bottom:1px dashed #000; padding:3px 0; page-break-inside:avoid; }
+    #pos-receipt-print .td-rh{ font-weight:800; font-size:12.5px; }
+    #pos-receipt-print .td-total{ border-top:2px solid #000; border-bottom:2px solid #000; font-size:14px; }
+    #pos-receipt-print .td-line{ font-size:12.5px; }
+  </style>` + out.join('');
+}
+function printDocThermal(name, btn){
+  const app = document.getElementById('app') || document.body;
+  const docs = Array.from(app.querySelectorAll('.doc')).filter(d=>!d.closest('.no-print') && !(d.parentElement && d.parentElement.closest('.doc')));
+  let doc = null;
+  if(btn){ let n = btn.closest('.doc-actions, .card, .action-row'); while(n && !doc){ let sib = n.nextElementSibling; while(sib && !doc){ doc = sib.classList && sib.classList.contains('doc')? sib : (sib.querySelector && sib.querySelector('.doc')); sib = sib.nextElementSibling; } n = n.parentElement; if(n===app) break; } }
+  doc = doc || docs[docs.length-1];
+  if(!doc){ toast('ما في شي ينطبع'); return; }
+  printThermalHtml(thermalDocHtml(doc), name || 'Doc');
+}
+// نفس طريقة فاتورة نقطة البيع: صفحة 80 ملم، طول على قد المحتوى، والطباعة الصامتة ببرنامج الكمبيوتر
+function printThermalHtml(html, title){
+  const old = document.getElementById('pos-receipt-print'); if(old) old.remove();
+  const oldSt = document.getElementById('pos-receipt-print-style'); if(oldSt) oldSt.remove();
+  const mode = posPrintMode(), silent = mode!=='dialog' && desktopCanPrint();
+  const styleEl = document.createElement('style'); styleEl.id = 'pos-receipt-print-style';
+  styleEl.textContent = `@media print{
+      html, body{ width:80mm !important; min-width:0 !important; max-width:80mm !important; height:auto !important; min-height:0 !important; overflow:visible !important; margin:0 !important; padding:0 !important; background:#fff !important; zoom:1 !important; }
+      body > *:not(#pos-receipt-print){ display:none !important; }
+      #pos-receipt-print{ display:block !important; position:static !important; width:66mm !important; margin:0 auto 0 1mm !important; padding:0 !important; box-sizing:border-box !important; }
+    }`;
+  document.head.appendChild(styleEl);
+  const wrap = document.createElement('div'); wrap.id = 'pos-receipt-print'; wrap.setAttribute('data-format','thermal80');
+  wrap.innerHTML = html; wrap.style.cssText = 'position:fixed; left:-9999px; top:0; width:66mm; display:block;';
+  document.body.appendChild(wrap);
+  let hMm = Math.ceil(wrap.scrollHeight * 25.4 / 96) + 6; if(!(hMm >= 40)) hMm = 200; hMm = Math.min(hMm, 3000);
+  wrap.style.cssText = 'display:none;';
+  const dv = (window.libanappsDesktop && String(window.libanappsDesktop.version||'0').split('.').map(Number)) || null;
+  const oldDesk = silent && dv && ((dv[0]||0)*10000 + (dv[1]||0)*100 + (dv[2]||0)) < 20003;
+  styleEl.textContent += `\n@page{ size: 80mm ${oldDesk? 297 : hMm}mm; margin: 0; }`;
+  const prevTitle = document.title; document.title = title;
+  const cleanup = ()=>{ wrap.remove(); styleEl.remove(); document.title = prevTitle; };
+  if(silent){
+    setTimeout(async ()=>{ try{ const r = await window.libanappsDesktop.silentPrint({ deviceName: localPosPrinter(), format:'thermal80', heightMm: oldDesk? 0 : hMm });
+        if(r && r.ok===false) throw new Error(r.error || 'فشلت الطباعة');
+      }catch(e){ toast('⚠️ فشلت الطباعة على «'+(localPosPrinter()||'الطابعة الافتراضية')+'»: '+(e && e.message || '')); } cleanup(); }, 80);
+    return;
+  }
+  window.addEventListener('afterprint', cleanup, {once:true});
+  setTimeout(()=>{ window.print(); setTimeout(cleanup, 1500); }, 60);
+}
+// زر «🧾 80 ملم» حدّ كل زر طباعة (إذا الطابعة بالإعدادات حرارية)
+(function(){
+  let pend = false;
+  const add = ()=>{ pend = false; if(typeof posPrintFormat!=='function' || posPrintFormat()!=='thermal80') return;
+    document.querySelectorAll('button[onclick^="printWithFilename("]').forEach(b=>{
+      if(b.nextElementSibling && b.nextElementSibling.classList.contains('thermal-btn')) return;
+      const m = String(b.getAttribute('onclick')).match(/printWithFilename\('([^']*)'\)/);
+      const t = document.createElement('button'); t.type = 'button'; t.className = (b.className||'btn') .replace('btn-primary','') + ' thermal-btn'; t.textContent = '🧾 80 ملم';
+      t.title = 'طباعة على الطابعة الحرارية 80 ملم'; t.addEventListener('click', ()=>printDocThermal(m? m[1] : 'Doc', t));
+      b.insertAdjacentElement('afterend', t); }); };
+  const start = ()=>{ new MutationObserver(()=>{ if(!pend){ pend = true; requestAnimationFrame(add); } }).observe(document.body, {childList:true, subtree:true}); add(); };
+  if(document.body) start(); else document.addEventListener('DOMContentLoaded', start);
+})();
 
 /* ===== مولّد الباركود (بدون مكتبات — يشتغل بلا إنترنت): EAN-13 و Code128 ===== */
 const BC128 = '212222 222122 222221 121223 121322 131222 122213 122312 132212 221213 221312 231212 112232 122132 122231 113222 123122 123221 223211 221132 221231 213212 223112 312131 311222 321122 321221 312212 322112 322211 212123 212321 232121 111323 131123 131321 112313 132113 132311 211313 231113 231311 112133 112331 132131 113123 113321 133121 313121 211331 231131 213113 213311 213131 311123 311321 331121 312113 312311 332111 314111 221411 431111 111224 111422 121124 121421 141122 141221 112214 112412 122114 122411 142112 142211 241211 221114 413111 241112 134111 111242 121142 121241 114212 124112 124211 411212 421112 421211 212141 214121 412121 111143 111341 131141 114113 114311 411113 411311 113141 114131 311141 411131 211412 211214 211232 2331112'.split(' ');
