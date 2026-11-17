@@ -5287,12 +5287,13 @@ async function boxesDaily(openStaff){
    ========================================================= */
 var SF={staff:'',from:'',to:''};
 VIEWS.cstmt=async function(main){
-  var adm=isAdmin()&&!!ME.is_main;   // المدير الأساسي بيشوف صناديق الكل؛ الباقي صندوقن بس
-  if(!adm) SF.staff=ME.staff_id;
+  var adm=isAdmin()&&!!ME.is_main;   // المدير الأساسي بيشوف صناديق الكل
+  var sub=isAdmin()&&!ME.is_main;    // المدير: صندوقو + صناديق الجباة (هوي اللي بيستلم منن)؛ الجابي: صندوقو بس
+  var cols=STAFF.filter(function(s){ return adm?!s.is_main:(s.id===ME.staff_id||(sub&&s.role==='collector')); });
+  if(!adm&&!(sub&&cols.some(function(s){ return s.id===SF.staff; }))) SF.staff=ME.staff_id;
   if(!SF.from){ SF.from=TODAY.slice(0,8)+'01'; SF.to=TODAY; }
-  var cols=STAFF.filter(function(s){ return adm?!s.is_main:s.id===ME.staff_id; });
   if(adm&&!SF.staff&&cols.length) SF.staff=(cols.filter(function(s){return s.role==='collector'})[0]||cols[0]).id;
-  main.innerHTML='<div class="toolbar">'+(adm?'<select id="xs">'+cols.map(function(s){return '<option value="'+esc(s.id)+'">'+esc(s.name)+' · '+esc(roleLabel(s))+'</option>'}).join('')+'</select>':'')+
+  main.innerHTML='<div class="toolbar">'+(adm||(sub&&cols.length>1)?'<select id="xs">'+cols.map(function(s){return '<option value="'+esc(s.id)+'">'+esc(s.name)+' · '+esc(roleLabel(s))+'</option>'}).join('')+'</select>':'')+
     '<label style="margin:0">'+esc(t('from'))+'</label><input type="date" id="xf" value="'+esc(SF.from)+'" style="flex:0 1 160px"><label style="margin:0">'+esc(t('to'))+'</label><input type="date" id="xt" value="'+esc(SF.to)+'" style="flex:0 1 160px">'+
     (adm?'<button class="btn ok" id="xh">'+esc(t('handover'))+'</button><button class="btn alt" id="xbd">📊 '+esc(t('bx_daily'))+'</button>':'')+'</div><div id="xbody"></div>';
   if($('#xbd',main)) $('#xbd',main).addEventListener('click',function(){ boxesDaily(function(id){ SF.staff=id; go('cstmt'); }); });

@@ -2889,6 +2889,35 @@ begin
 end $m$;
 
 -- ============================================================
+--  20j37) المدير (غير الأساسي) بيشوف كشف حساب صناديق الجباة (هوي اللي بيستلم منن)، مش صناديق باقي المدراء
+-- ============================================================
+do $m$
+declare d text;
+begin
+  d := pg_get_functiondef('public.motor_collector_statement(text,text,uuid,date,date)'::regprocedure);
+  if position('adm_sees_coll' in d) = 0 then
+    d := replace(d, '  if not coalesce((w->>''is_main'')::boolean, false) and p_staff::text is distinct from w->>''staff_id'' then perform public._motor_err(''forbidden''); end if;',
+                    '  -- adm_sees_coll
+  if not coalesce((w->>''is_main'')::boolean, false) and p_staff::text is distinct from w->>''staff_id''
+     and not (coalesce((w->>''is_admin'')::boolean, false) and exists (select 1 from public.motor_staff x where x.id = p_staff and x.site_id = (w->>''site_id'')::uuid and x.role = ''collector'')) then
+    perform public._motor_err(''forbidden'');
+  end if;');
+    if position('adm_sees_coll' in d) = 0 then raise exception 'stmt'; end if;
+    execute d;
+  end if;
+  d := pg_get_functiondef('public.motor_staff_closes(text,text,uuid)'::regprocedure);
+  if position('adm_sees_coll' in d) = 0 then
+    d := replace(d, '  st := case when coalesce((w->>''is_main'')::boolean, false) then p_staff else (w->>''staff_id'')::uuid end;',
+                    '  -- adm_sees_coll
+  st := case when coalesce((w->>''is_main'')::boolean, false) then p_staff
+             when coalesce((w->>''is_admin'')::boolean, false) and exists (select 1 from public.motor_staff x where x.id = p_staff and x.site_id = sid and x.role = ''collector'') then p_staff
+             else (w->>''staff_id'')::uuid end;');
+    if position('adm_sees_coll' in d) = 0 then raise exception 'closes'; end if;
+    execute d;
+  end if;
+end $m$;
+
+-- ============================================================
 --  20k) إقفال صندوق الموظف: يسلّم كل النقد للمكتب ويطلع تقرير
 -- ============================================================
 create or replace function public.motor_staff_close(p_slug text, p_token text, p_staff uuid default null)
