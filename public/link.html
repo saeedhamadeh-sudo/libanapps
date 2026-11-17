@@ -157,6 +157,7 @@ function iconFor(it){
 function ytId(u){ var m=String(u||'').match(/(?:youtu\.be\/|v=|\/embed\/|\/shorts\/|\/live\/)([A-Za-z0-9_-]{11})/); return m?m[1]:''; }
 
 var PAGE=null, SLUG='';
+function pageUrl(){ return /^\/(l|portal-link)\//.test(location.pathname)?location.origin+'/l/'+SLUG:location.origin+'/'; }
 function hit(itemId){
   if(PREVIEW || !SLUG) return;
   try{
@@ -261,7 +262,7 @@ function vcard(){
   if(p.contact_org) lines.push('ORG:'+p.contact_org);
   if(p.contact_phone) lines.push('TEL;TYPE=CELL:'+String(p.contact_phone).replace(/[^\d+]/g,''));
   if(p.contact_email) lines.push('EMAIL:'+p.contact_email);
-  lines.push('URL:'+location.origin+'/l/'+(p.slug||''));
+  lines.push('URL:'+pageUrl());
   lines.push('END:VCARD');
   var blob=new Blob([lines.join('\r\n')],{type:'text/vcard;charset=utf-8'});
   var a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=(p.slug||'contact')+'.vcf';
@@ -278,7 +279,7 @@ document.addEventListener('click',function(e){
   if(a){ hit(a.getAttribute('data-item')); if(PREVIEW){ e.preventDefault(); } return; }
   if(e.target.closest('#vcBtn')){ e.preventDefault(); if(!PREVIEW) vcard(); return; }
   if(e.target.closest('#shareBtn')){
-    var url=location.origin+'/l/'+SLUG, title=(PAGE&&PAGE.title)||'';
+    var url=pageUrl(), title=(PAGE&&PAGE.title)||'';
     if(PREVIEW) return;
     if(navigator.share){ navigator.share({title:title,url:url}).catch(function(){}); return; }
     (navigator.clipboard?navigator.clipboard.writeText(url):Promise.reject()).then(function(){ toast(t('copied')); },function(){ prompt('',url); });

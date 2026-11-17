@@ -3153,6 +3153,8 @@ async function storeDomain(request, env) {
     if (isPlatformHost(domain, env)) return json(400, { error: 'هذا النطاق محجوز للمنصة' });
     const dup = await sbGet(env, `store_domains?domain=eq.${encodeURIComponent(domain)}&select=id&limit=1`);
     if (dup.length) return json(400, { error: 'هذا النطاق مرتبط بمتجر آخر' });
+    const dupL = await sbGet(env, `link_domains?domain=eq.${encodeURIComponent(domain)}&select=id&limit=1`).catch(() => []);
+    if (dupL.length) return json(400, { error: 'هذا النطاق مرتبط بصفحة «وصلة»' });
 
     const info = { cname_target: target };
     let cfId = null, mapped = { status: 'pending', cf_status: '', ssl_status: '' };
@@ -3218,7 +3220,8 @@ async function motorDomain(request, env) {
     if (isPlatformHost(domain, env)) return json(400, { ok: false, error: 'dom_reserved' });
     const d1 = await sbGet(env, `motor_domains?domain=eq.${encodeURIComponent(domain)}&select=id&limit=1`);
     const d2 = await sbGet(env, `store_domains?domain=eq.${encodeURIComponent(domain)}&select=id&limit=1`);
-    if (d1.length || d2.length) return json(400, { ok: false, error: 'dom_taken' });
+    const d3 = await sbGet(env, `link_domains?domain=eq.${encodeURIComponent(domain)}&select=id&limit=1`).catch(() => []);
+    if (d1.length || d2.length || d3.length) return json(400, { ok: false, error: 'dom_taken' });
     const info = { cname_target: target };
     let cfId = null, mapped = { status: 'pending', cf_status: '', ssl_status: '' };
     if (cfOn) {
@@ -4091,7 +4094,7 @@ async function linkData(env, slug, ctx, fresh) {
   ctx.waitUntil(cache.put(key, new Response(JSON.stringify(d), { headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=20' } })));
   return d;
 }
-async function serveLink(request, env, url, slug, ctx) {
+async function serveLink(request, env, url, slug, ctx, onDomain) {
   const res = await env.ASSETS.fetch(new URL('/link.html', url.origin));
   let html = await res.text();
   const headers = { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' };
@@ -4107,7 +4110,10 @@ async function serveLink(request, env, url, slug, ctx) {
   try { d = await linkData(env, slug, ctx, url.searchParams.has('fresh')); } catch (e) { console.error('link data', e); d = null; }
   if (!d) return new Response(html, { status: 200, headers });   // الصفحة بتجيب بياناتها بنفسها
   const pg = d.page || {};
-  const canon = (env.WEBSITE_URL || url.origin) + '/l/' + encodeURIComponent(slug);
+  // الرابط الأساسي: الدومين الخاص إذا مفعّل (حتى لو الزيارة عبر /l/<slug>) — غوغل بيعتبرهم صفحة وحدة
+  let canon = (env.WEBSITE_URL || url.origin) + '/l/' + encodeURIComponent(slug);
+  if (onDomain) canon = 'https://' + url.hostname + '/';
+  else { const ld = await linkDomainOf(env, slug); if (ld) canon = 'https://' + ld + '/'; }
   let head = '';
   if (d.ok) {
     const title = pg.seo_title || pg.title || slug;
@@ -4143,6 +4149,132 @@ async function serveLink(request, env, url, slug, ctx) {
              .replace('<!--LP-DATA-->', () => '<script id="lp-data" type="application/json">' + safe + '</script>');
   return new Response(html, { status: d.ok || d.reason !== 'not_found' ? 200 : 404, headers });
 }
+// ---------- «وصلة»: دومين خاص (Cloudflare for SaaS) ----------
+const linkDomCache = new Map(), linkDomOfCache = new Map();
+async function resolveLinkDomain(env, ctx, host) {
+  const c = linkDomCache.get(host);
+  if (c && c.exp > Date.now()) return c.v;
+  let row;
+  try { row = (await sbGet(env, `link_domains?domain=eq.${encodeURIComponent(host)}&select=id,page_id,status,link_pages(slug)&limit=1`))[0]; }
+  catch (e) { return c ? c.v : null; }
+  const v = row && row.link_pages && row.link_pages.slug ? { slug: row.link_pages.slug, pid: row.page_id } : null;
+  // وصلنا طلب على هالدومين = Cloudflare فعّله
+  if (row && row.status !== 'active' && ctx && ctx.waitUntil)
+    ctx.waitUntil(sbPatch(env, `link_domains?id=eq.${row.id}`, { status: 'active', verified_at: new Date().toISOString() }));
+  linkDomCache.set(host, { v, exp: Date.now() + (v ? 300000 : 60000) });
+  return v;
+}
+// الدومين المفعّل لصفحة (للـcanonical) — كاش 5 دقايق
+async function linkDomainOf(env, slug) {
+  const c = linkDomOfCache.get(slug);
+  if (c && c.exp > Date.now()) return c.v;
+  let v = null;
+  try {
+    const r = await sbGetTO(env, `link_pages?slug=eq.${encodeURIComponent(slug)}&select=link_domains(domain,status)&limit=1`, 1500);
+    const d = r[0] && r[0].link_domains; const row = Array.isArray(d) ? d[0] : d;
+    v = row && row.status === 'active' ? row.domain : null;
+  } catch (e) { return c ? c.v : null; }
+  linkDomOfCache.set(slug, { v, exp: Date.now() + 300000 });
+  return v;
+}
+async function serveLinkOnDomain(request, env, url, ld, ctx) {
+  if (url.pathname === '/__link_ping') return new Response('ok', { headers: { 'x-link-page': ld.pid, 'Cache-Control': 'no-store' } });
+  if (url.pathname === '/robots.txt') return new Response('User-agent: *\nAllow: /\n', { headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
+  if (/\.[a-z0-9]{2,5}$/i.test(url.pathname)) {
+    const asset = await env.ASSETS.fetch(request);
+    if (asset.status !== 404) return withCache(asset, url.pathname);
+    return new Response('Not found', { status: 404, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
+  }
+  if ((url.pathname.replace(/\/+$/, '') || '/') !== '/') return Response.redirect('https://' + url.hostname + '/', 301);
+  if (request.method !== 'GET' && request.method !== 'HEAD') return new Response('Method not allowed', { status: 405 });
+  return await serveLink(request, env, url, ld.slug, ctx, true);
+}
+// API لوحة التحكم: get / add / refresh / remove
+async function linkDomain(request, env) {
+  if (request.method !== 'POST') return json(405, { ok: false, error: 'method not allowed' });
+  const me = await currentUser(request, env);
+  if (!me) return json(401, { ok: false, error: 'login' });
+  let body; try { body = await request.json(); } catch { return json(400, { ok: false, error: 'bad_json' }); }
+  const pid = String(body.page_id || '');
+  if (!/^[0-9a-f-]{36}$/i.test(pid)) return json(400, { ok: false, error: 'bad_page' });
+  const page = (await sbGet(env, `link_pages?id=eq.${pid}&select=id,client_id,slug&limit=1`))[0];
+  if (!page) return json(404, { ok: false, error: 'not_found' });
+  const cl = (await sbGet(env, `clients?id=eq.${page.client_id}&select=user_id&limit=1`))[0];
+  let allowed = !!(cl && cl.user_id === me.id);
+  if (!allowed) allowed = (await adminRows(env, request)).length > 0;
+  if (!allowed) return json(403, { ok: false, error: 'forbidden' });
+
+  const cfOn = !!(env.CF_API_TOKEN && env.CF_ZONE_ID);
+  const target = env.STORE_CNAME_TARGET || 'stores.libanapps.com';
+  const existing = (await sbGet(env, `link_domains?page_id=eq.${pid}&select=*&limit=1`))[0];
+  const out = (row, extra) => json(200, { ok: true, domain: row || null, cname_target: target, cf: cfOn, ...(extra || {}) });
+  const forget = (d) => { linkDomCache.delete(d); linkDomOfCache.delete(page.slug); };
+  const action = body.action || 'get';
+  if (action === 'get') return out(existing);
+  if (action === 'add') {
+    if (existing) return json(400, { ok: false, error: 'dom_exists' });
+    const domain = normalizeDomain(body.domain);
+    if (!domain) return json(400, { ok: false, error: 'dom_bad' });
+    if (isPlatformHost(domain, env)) return json(400, { ok: false, error: 'dom_reserved' });
+    const q = `?domain=eq.${encodeURIComponent(domain)}&select=id&limit=1`;
+    const [a, b, c] = await Promise.all([sbGet(env, 'link_domains' + q), sbGet(env, 'store_domains' + q), sbGet(env, 'motor_domains' + q)]);
+    if (a.length || b.length || c.length) return json(400, { ok: false, error: 'dom_taken' });
+    const info = { cname_target: target };
+    let cfId = null, mapped = { status: 'pending', cf_status: '', ssl_status: '' };
+    if (cfOn) {
+      const j = await cfApi(env, 'POST', '/custom_hostnames', { hostname: domain, ssl: { method: 'http', type: 'dv', settings: { min_tls_version: '1.2' } } });
+      if (!j.success) return json(400, { ok: false, error: 'dom_cf', detail: cfError(j) });
+      cfId = j.result.id; mapped = mapCf(j.result);
+      const ov = j.result.ownership_verification;
+      if (ov && ov.name) { info.txt_name = ov.name; info.txt_value = ov.value; }
+    }
+    const ins = await fetch(`${env.SUPABASE_URL}/rest/v1/link_domains`, {
+      method: 'POST', headers: { ...sbHeaders(env), 'Content-Type': 'application/json', Prefer: 'return=representation' },
+      body: JSON.stringify({ page_id: pid, domain, cf_hostname_id: cfId, info, ...mapped })
+    });
+    if (!ins.ok) {
+      if (cfOn && cfId) await cfApi(env, 'DELETE', `/custom_hostnames/${cfId}`);
+      return json(500, { ok: false, error: 'dom_save', detail: (await ins.text()).slice(0, 120) });
+    }
+    forget(domain);
+    return out((await ins.json())[0]);
+  }
+  if (!existing) return json(404, { ok: false, error: 'dom_none' });
+  if (action === 'refresh') {
+    let upd = {};
+    if (cfOn && existing.cf_hostname_id) {
+      const j = await cfApi(env, 'GET', `/custom_hostnames/${existing.cf_hostname_id}`);
+      if (!j.success) return json(400, { ok: false, error: 'dom_cf', detail: cfError(j) });
+      upd = mapCf(j.result);
+      const ov = j.result.ownership_verification, info = { ...(existing.info || {}) };
+      if (ov && ov.name) { info.txt_name = ov.name; info.txt_value = ov.value; }
+      const vr = (j.result.ssl && j.result.ssl.validation_errors) || j.result.verification_errors || [];
+      info.errors = vr.map(x => (x && x.message) || String(x)).slice(0, 3);
+      upd.info = info;
+    }
+    // فحص فعلي: هل الدومين عم يوصل لعنّا؟
+    let live = false;
+    try {
+      const ac = new AbortController(), tm = setTimeout(() => ac.abort(), 6000);
+      const r = await fetch('https://' + existing.domain + '/__link_ping', { signal: ac.signal, redirect: 'manual' });
+      clearTimeout(tm);
+      live = r.headers.get('x-link-page') === pid;
+    } catch (e) {}
+    if (live) upd.status = 'active';
+    upd.verified_at = (upd.status || existing.status) === 'active' ? (existing.verified_at || new Date().toISOString()) : null;
+    await sbPatch(env, `link_domains?id=eq.${existing.id}`, upd);
+    forget(existing.domain);
+    return out({ ...existing, ...upd }, { live });
+  }
+  if (action === 'remove') {
+    if (cfOn && existing.cf_hostname_id) await cfApi(env, 'DELETE', `/custom_hostnames/${existing.cf_hostname_id}`);
+    await fetch(`${env.SUPABASE_URL}/rest/v1/link_domains?id=eq.${existing.id}`, { method: 'DELETE', headers: sbHeaders(env) });
+    forget(existing.domain);
+    return out(null);
+  }
+  return json(400, { ok: false, error: 'bad_op' });
+}
+
 // نقرة على زر بصفحة «وصلة» (sendBeacon من الصفحة)
 async function linkHit(request, env) {
   if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
@@ -4229,6 +4361,7 @@ const RL_RULES = [
   [/^\/api\/app\/img-(fetch|search)$/, 'img', 60],
   [/^\/api\/store\/import-image$/, 'imp', 60],
   [/^\/api\/link\/hit$/, 'lhit', 120],
+  [/^\/api\/link\/domain$/, 'ldom', 30],
 ];
 function securityHeaders(res, url, env, request) {
   if (!res || res.status === 101) return res;   // WebSocket
@@ -4307,6 +4440,7 @@ const LA_WORKER = {
         // النسخة المحلية (LibanApps Local) بتسأل: شو بصمة آخر نسخة من صفحات البرنامجين؟
         // «وصلة»: عدّ النقرات
         if (url.pathname === '/api/link/hit') return await linkHit(request, env);
+        if (url.pathname === '/api/link/domain') return await linkDomain(request, env);
         if (url.pathname === '/api/offline/manifest') return await offlineManifest(env, url);
         // النسخة المحلية: «فعّل الرابط» — بيعمل نفق Cloudflare + رابط subdomain للزبون بكبسة وحدة
         if (url.pathname === '/api/tunnel/provision') {
@@ -4523,6 +4657,9 @@ const LA_WORKER = {
       // دومين خاص بمولّد (motorapp) قبل المتاجر
       const md = await resolveMotorDomain(env, ctx, host);
       if (md) return await serveMotorOnDomain(env, request, url, md);
+      // دومين خاص بصفحة «وصلة»
+      const ldm = await resolveLinkDomain(env, ctx, host);
+      if (ldm) return await serveLinkOnDomain(request, env, url, ldm, ctx);
       let slug = await resolveDomain(env, ctx, host);
       if (slug === undefined) return new Response('Temporary error, try again', { status: 503, headers: { 'Retry-After': '120', 'Cache-Control': 'no-store' } });
       // www وبدون www بيشتغلوا مع بعض: لو واحد منهم بس مسجّل بنخدم التاني لنفس المتجر،

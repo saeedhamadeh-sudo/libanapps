@@ -317,6 +317,23 @@ var T={
   leave:['لديك تعديلات غير محفوظة.','You have unsaved changes.','Vous avez des modifications non enregistrées.'],
   img_only:['اختر ملف صورة','Choose an image file','Choisissez une image'],
   wa_share_msg:['تفضّل بزيارة صفحتي:','Visit my page:','Visitez ma page :'],
+  dm_h:['دومين خاص','Custom domain','Domaine personnalisé'],
+  dm_p:['اعرض صفحتك على دومينك الخاص، مثل links.mybrand.com، بدل رابط libanapps.com/l/.','Show your page on your own domain, e.g. links.mybrand.com, instead of the libanapps.com/l/ link.','Affichez votre page sur votre propre domaine, ex. links.mybrand.com, au lieu du lien libanapps.com/l/.'],
+  dm_in:['اسم الدومين','Domain name','Nom de domaine'], dm_add:['ربط الدومين','Connect domain','Connecter le domaine'],
+  dm_tip:['ننصح بدومين فرعي مثل links.mybrand.com. للدومين الرئيسي (mybrand.com) يجب أن يدعم مزوّد DNS ميزة CNAME على الجذر (مثل Cloudflare).','We recommend a subdomain like links.mybrand.com. For a root domain (mybrand.com), your DNS provider must support a CNAME at the root (e.g. Cloudflare).','Nous recommandons un sous-domaine comme links.mybrand.com. Pour un domaine racine (mybrand.com), votre fournisseur DNS doit accepter un CNAME à la racine (ex. Cloudflare).'],
+  dm_steps:['أضف هذا السجل في إعدادات DNS لدى الشركة التي اشتريت منها الدومين:','Add this record in the DNS settings at the company where you bought the domain:','Ajoutez cet enregistrement dans les réglages DNS chez votre registraire :'],
+  dm_txt:['ثم أضف سجل التحقق هذا:','Then add this verification record:','Puis ajoutez cet enregistrement de vérification :'],
+  dm_type:['النوع','Type','Type'], dm_name:['الاسم','Name','Nom'], dm_val:['القيمة','Value','Valeur'],
+  dm_wait:['قد يستغرق التفعيل من بضع دقائق حتى 24 ساعة بعد إضافة السجل.','Activation can take from a few minutes up to 24 hours after adding the record.','L’activation peut prendre de quelques minutes à 24 heures après l’ajout.'],
+  dm_pending:['بانتظار التفعيل','Pending activation','En attente d’activation'], dm_active:['مفعّل','Active','Actif'], dm_failed:['فشل التفعيل','Activation failed','Échec de l’activation'],
+  dm_check:['تحقّق الآن','Check now','Vérifier'], dm_rm:['إلغاء ربط الدومين','Disconnect domain','Déconnecter le domaine'],
+  dm_rm_q:['هل تريد إلغاء ربط هذا الدومين؟ تبقى صفحتك متاحة على libanapps.com/l/.','Disconnect this domain? Your page stays available on libanapps.com/l/.','Déconnecter ce domaine ? Votre page reste disponible sur libanapps.com/l/.'],
+  dm_live:['الدومين يعمل ✓','The domain is working ✓','Le domaine fonctionne ✓'], dm_notyet:['الدومين لم يُفعَّل بعد — تأكّد من السجل وانتظر قليلًا.','The domain is not active yet — check the record and wait a little.','Le domaine n’est pas encore actif — vérifiez l’enregistrement et patientez.'],
+  dm_manual:['سيُفعَّل الدومين من قبل فريق الدعم بعد إضافة السجل.','Our support team will activate the domain once the record is added.','Notre équipe activera le domaine une fois l’enregistrement ajouté.'],
+  e_dom_bad:['الدومين غير صالح — مثال: links.mybrand.com','Invalid domain — e.g. links.mybrand.com','Domaine invalide — ex. links.mybrand.com'],
+  e_dom_taken:['هذا الدومين مرتبط بحساب آخر','This domain is linked to another account','Ce domaine est lié à un autre compte'],
+  e_dom_reserved:['هذا الدومين محجوز للمنصة','This domain is reserved by the platform','Ce domaine est réservé à la plateforme'],
+  e_dom_exists:['لديك دومين مرتبط — ألغِ ربطه أولًا','You already have a domain — disconnect it first','Vous avez déjà un domaine — déconnectez-le d’abord'],
   tip_drag:['اسحب ⋮⋮ لتغيير الترتيب','Drag ⋮⋮ to reorder','Glissez ⋮⋮ pour réordonner']
 };
 var LANGS=['ar','en','fr'], LANG='ar';
@@ -338,7 +355,7 @@ function rnd(n){ var a='abcdefghjkmnpqrstuvwxyz23456789',s='',b=new Uint8Array(n
 function imgUrl(u,w){ u=String(u||''); var m=u.match(/\/storage\/v1\/object\/public\/(.+)$/); return m?'/img/'+m[1]+(w?'?w='+w:''):u; }
 function hex(c,d){ return /^#[0-9a-f]{6}$/i.test(String(c||''))?c:d; }
 function clone(o){ return JSON.parse(JSON.stringify(o)); }
-function pubUrl(){ return location.origin+'/l/'+PG.slug; }
+function pubUrl(){ return (DOM&&DOM.status==='active')?'https://'+DOM.domain:location.origin+'/l/'+PG.slug; }
 function isUrl(u){ return /^https?:\/\/[^\s.]+\.[^\s]+/i.test(u) || /^[a-z0-9-]+(\.[a-z0-9-]+)+(\/\S*)?$/i.test(u); }
 function ytId(u){ var m=String(u||'').match(/(?:youtu\.be\/|v=|\/embed\/|\/shorts\/|\/live\/)([A-Za-z0-9_-]{11})/); return m?m[1]:''; }
 function toLocalInput(iso){ if(!iso) return ''; var d=new Date(iso); if(isNaN(d)) return ''; d=new Date(d.getTime()-d.getTimezoneOffset()*60000); return d.toISOString().slice(0,16); }
@@ -346,7 +363,7 @@ function fromLocalInput(v){ if(!v) return null; var d=new Date(v); return isNaN(
 function nf(n){ try{ return Number(n||0).toLocaleString(LANG==='ar'?'ar-LB':LANG); }catch(e){ return String(n||0); } }
 
 /* ================= الحالة ================= */
-var PG=null, D=null, ITEMS=[], LIC={ok:false}, ADMIN=false, IMP=false, TAB='links', STAT_DAYS=30, PV_READY=false;
+var DOM=null, DOM_T='stores.libanapps.com', PG=null, D=null, ITEMS=[], LIC={ok:false}, ADMIN=false, IMP=false, TAB='links', STAT_DAYS=30, PV_READY=false;
 var EDIT=['title','bio','avatar_url','avatar_shape','theme','bg_type','bg_color','bg_color2','bg_image_url','text_color','btn_style','btn_shape','btn_color','btn_text_color','font','socials','socials_pos','default_lang','seo_title','seo_desc','og_image','show_share','show_vcard','contact_name','contact_phone','contact_email','contact_org','is_active'];
 function pick(o){ var r={}; EDIT.forEach(function(k){ r[k]=o[k]; }); return r; }
 function dirty(){ return JSON.stringify(pick(D))!==JSON.stringify(pick(PG)); }
@@ -666,6 +683,7 @@ function paintShare(){
     '<div style="display:flex;gap:8px;flex-wrap:wrap"><input class="in-t ltr" readonly value="'+esc(u)+'" style="flex:1;min-width:200px;font-weight:700">'+
     '<button class="btn" type="button" id="cp2"><i class="fa-regular fa-copy"></i>'+esc(t('copy'))+'</button>'+
     '<a class="btn g" target="_blank" rel="noopener" href="https://wa.me/?text='+encodeURIComponent(t('wa_share_msg')+' '+u)+'"><i class="fa-brands fa-whatsapp"></i>'+esc(t('sh_wa'))+'</a></div></div>';
+  h+='<div class="card" id="domCard"></div>';
   h+='<div class="card"><h3><i class="fa-solid fa-qrcode"></i>'+esc(t('sh_qr'))+'</h3><div class="qrbox"><div id="qr"></div><div><p class="muted" style="font-size:13.5px;margin-bottom:12px;max-width:300px">'+esc(t('sh_qr_h'))+'</p><button class="btn g" type="button" id="qrDl"><i class="fa-solid fa-download"></i>'+esc(t('sh_dl'))+'</button></div></div></div>';
   h+='<div class="card"><h3><i class="fa-solid fa-sliders"></i>'+esc(t('set_page'))+'</h3>'+
      '<label class="chk"><input type="checkbox" data-f="is_active"'+(D.is_active?' checked':'')+'>'+esc(t('set_active'))+'</label><p class="muted" style="font-size:12.5px;margin:-6px 0 14px 30px">'+esc(t('set_active_h'))+'</p>'+
@@ -685,6 +703,7 @@ function paintShare(){
      '<button class="btn g sm" type="button" id="ogUp"><i class="fa-solid fa-image"></i>'+esc(t('upload'))+'</button><button class="btn r sm" type="button" id="ogRm">'+esc(t('remove'))+'</button></div></div></div>';
   $('#main').innerHTML=h;
   $('#cp2').onclick=copyUrl;
+  paintDomain();
   try{ $('#qr').innerHTML=''; new QRCode($('#qr'),{text:u,width:512,height:512,colorDark:'#000000',colorLight:'#ffffff',correctLevel:QRCode.CorrectLevel.M}); }
   catch(e){ $('#qr').innerHTML='<p class="msg e">'+esc(errText(e))+'</p>'; }
   $('#qrDl').onclick=function(){ var c=$('#qr canvas'), im=$('#qr img'); var src=c?c.toDataURL('image/png'):(im?im.src:''); if(!src) return toast(t('err'),true);
@@ -696,6 +715,56 @@ function paintShare(){
   $('#ogRm').onclick=function(){ D.og_image=''; ogPv(); markDirty(); };
   var ab=$('#admBrand'); if(ab) ab.onchange=async function(){ var v=ab.checked; ab.disabled=true;
     try{ chk(await sb.rpc('admin_link_brand',{p_page:PG.id,p_hide:v})); PG.hide_brand=v; preview(); toast(t('saved')); }catch(e){ ab.checked=!v; toast(errText(e),true); } ab.disabled=false; };
+}
+
+/* ================= الدومين الخاص ================= */
+async function domApi(action,extra){
+  var s=await sb.auth.getSession(); var tok=s.data.session&&s.data.session.access_token;
+  var r=await fetch('/api/link/domain',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok},
+    body:JSON.stringify(Object.assign({action:action,page_id:PG.id},extra||{}))});
+  var j={}; try{ j=await r.json(); }catch(e){}
+  if(!r.ok||!j.ok){ var k='e_'+(j.error||''); throw new Error(T[k]?t(k):((j.detail||j.error||('HTTP '+r.status))+'')); }
+  if(j.cname_target) DOM_T=j.cname_target;
+  return j;
+}
+function dnsRow(type,name,val){ return '<tr><td>'+esc(type)+'</td><td dir="ltr" style="white-space:normal;overflow-wrap:anywhere">'+esc(name)+'</td><td dir="ltr" style="white-space:normal;overflow-wrap:anywhere"><b>'+esc(val)+'</b></td></tr>'; }
+function paintDomain(){
+  var c=$('#domCard'); if(!c) return;
+  var h='<h3><i class="fa-solid fa-globe"></i>'+esc(t('dm_h'))+'</h3><p class="muted" style="font-size:13px;margin:-6px 0 12px">'+esc(t('dm_p'))+'</p>';
+  if(!DOM){
+    h+='<div style="display:flex;gap:8px;flex-wrap:wrap"><input class="in-t ltr" id="domIn" placeholder="links.mybrand.com" style="flex:1;min-width:200px" autocomplete="off" spellcheck="false">'+
+       '<button class="btn" type="button" id="domAdd"><i class="fa-solid fa-link"></i>'+esc(t('dm_add'))+'</button></div>'+
+       '<p class="muted" style="font-size:12.5px;margin-top:8px">'+esc(t('dm_tip'))+'</p><div id="domMsg"></div>';
+  } else {
+    var st=DOM.status==='active'?'dm_active':DOM.status==='failed'?'dm_failed':'dm_pending';
+    var col=DOM.status==='active'?'#16a34a':DOM.status==='failed'?'#dc2626':'#d97706';
+    h+='<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px"><b dir="ltr" style="font-size:16px">'+esc(DOM.domain)+'</b>'+
+       '<span class="tag" style="background:'+col+'1a;color:'+col+'">'+esc(t(st))+'</span><span class="sp1"></span>'+
+       (DOM.status==='active'?'<a class="btn g sm" target="_blank" rel="noopener" href="https://'+esc(DOM.domain)+'"><i class="fa-solid fa-arrow-up-right-from-square"></i></a>':'')+
+       '<button class="btn g sm" type="button" id="domChk"><i class="fa-solid fa-rotate"></i>'+esc(t('dm_check'))+'</button></div>';
+    if(DOM.status!=='active'){
+      var info=DOM.info||{}, host=DOM.domain.split('.').length>2?DOM.domain.split('.')[0]:'@';
+      h+='<p style="font-weight:700;margin-bottom:8px">'+esc(t('dm_steps'))+'</p><table class="tb" style="table-layout:auto;margin-bottom:10px"><thead><tr><th>'+esc(t('dm_type'))+'</th><th>'+esc(t('dm_name'))+'</th><th>'+esc(t('dm_val'))+'</th></tr></thead><tbody>'+
+         dnsRow('CNAME',host,info.cname_target||DOM_T)+'</tbody></table>';
+      if(info.txt_name) h+='<p style="font-weight:700;margin-bottom:8px">'+esc(t('dm_txt'))+'</p><table class="tb" style="table-layout:auto;margin-bottom:10px"><tbody>'+dnsRow('TXT',info.txt_name,info.txt_value)+'</tbody></table>';
+      h+='<p class="muted" style="font-size:12.5px">'+esc(t(DOM.cf_hostname_id?'dm_wait':'dm_manual'))+'</p>';
+      if(info.errors&&info.errors.length) h+='<div class="msg e" style="margin-top:8px" dir="ltr">'+esc(info.errors.join(' · '))+'</div>';
+    }
+    h+='<div id="domMsg"></div><button class="btn r sm" type="button" id="domRm" style="margin-top:12px"><i class="fa-solid fa-link-slash"></i>'+esc(t('dm_rm'))+'</button>';
+  }
+  c.innerHTML=h;
+  function msg(m,ok){ $('#domMsg').innerHTML=m?'<div class="msg '+(ok?'o':'e')+'" style="margin-top:10px">'+esc(m)+'</div>':''; }
+  var add=$('#domAdd'); if(add) add.onclick=async function(){
+    var v=$('#domIn').value.trim().toLowerCase().replace(/^https?:\/\//,'').replace(/\/.*$/,'');
+    if(!/^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,24}$/.test(v)) return msg(t('e_dom_bad'));
+    add.disabled=true; msg('');
+    try{ var j=await domApi('add',{domain:v}); DOM=j.domain; paintDomain(); }catch(e){ msg(e.message); add.disabled=false; }
+  };
+  var ck=$('#domChk'); if(ck) ck.onclick=async function(){ ck.disabled=true;
+    try{ var j=await domApi('refresh'); DOM=j.domain; var was=DOM.status; paintDomain(); paintShell(); msg(t(was==='active'?'dm_live':'dm_notyet'),was==='active'); }
+    catch(e){ msg(e.message); ck.disabled=false; } };
+  var rm=$('#domRm'); if(rm) rm.onclick=async function(){ if(!(await confirmBox(t('dm_rm_q')))) return; rm.disabled=true;
+    try{ await domApi('remove'); DOM=null; paintDomain(); paintShell(); }catch(e){ msg(e.message); rm.disabled=false; } };
 }
 
 /* ================= الحفظ ================= */
@@ -780,6 +849,7 @@ async function boot(){
     ADMIN=!!adm.data; IMP=!!(adm.data&&cid.data!==PG.client_id);
     LIC=chk(await sb.rpc('link_license',{pid:PG.id}))||{ok:false};
     await loadItems();
+    try{ var dq=await sb.from('link_domains').select('*').eq('page_id',PG.id).maybeSingle(); DOM=dq.data||null; }catch(e){ DOM=null; }
     D=clone(pick(PG)); D.socials=Array.isArray(D.socials)?D.socials:[];
     $('#gate').classList.add('hidden'); $('#app').classList.remove('hidden');
     paintShell(); go('links');
