@@ -2586,7 +2586,7 @@ Object.assign(D,{
  rm_col:['التذكير','Reminder','Rappel'], rm_sent:['✅ تم إرسال التذكير','✅ Reminder sent','✅ Rappel envoyé'],
  rm_again:['يظهر من جديد للإرسال في {d}','Shows again for sending on {d}','Réapparaît le {d}'],
  rm_show:['إظهار الذين تم تذكيرهم هذا الشهر ({n})','Show customers reminded this month ({n})','Afficher les clients déjà rappelés ce mois ({n})'],
- rm_small:['لا يظهر من رصيده {v} أو أقل','Balances of {v} or less are hidden','Soldes de {v} ou moins masqués'],
+ rm_small:['لا يُرسَل تذكير لمن رصيده {v} أو أقل','No reminder for balances of {v} or less','Pas de rappel pour les soldes de {v} ou moins'],
  rm_none_left:['تم إرسال التذكير لكل الزبائن هذا الشهر. تظهر الأسماء من جديد في {d}','All customers were reminded this month. They show again on {d}','Tous les clients ont été rappelés ce mois. Ils réapparaissent le {d}'],
  rm_stat:['تم تذكيرهم هذا الشهر','Reminded this month','Rappelés ce mois'],
  rm_wait:['تم إرسال تذكير لهذا الزبون بتاريخ {a}. يظهر من جديد للإرسال في {d}.','This customer was reminded on {a}. They show again on {d}.','Rappel envoyé le {a}. Réapparaît le {d}.'],
@@ -3227,8 +3227,8 @@ VIEWS.unpaid=async function(main){
   var RM_MIN=mainCur()==='USD'?4.5:0, nowD=new Date(), cyc=new Date(nowD.getFullYear(),nowD.getMonth()-(nowD.getDate()<10?1:0),10), nxt=new Date(cyc.getFullYear(),cyc.getMonth()+1,10);
   function recent(r){ return !!r.reminded_at&&new Date(r.reminded_at)>=cyc; }
   function again(){ return nxt.getFullYear()+'-'+String(nxt.getMonth()+1).padStart(2,'0')+'-10'; }
-  var allRows=d.rows.filter(function(r){ return n2(r.balance)>RM_MIN+0.004; }), showDone=!!RF.upShowDone;
-  var rows=allRows.filter(function(r){ return showDone||!recent(r); });
+  // كل زبون عليه دين بيبيّن؛ التذكير بس للي رصيدو أكبر من الحد وما انبعتلو بهالدورة
+  var allRows=d.rows, rows=allRows; function small(r){ return n2(r.balance)<=RM_MIN+0.004; }
   var tot=0; rows.forEach(function(r){ tot+=n2(r.due); });
   main.innerHTML='<div class="card"><p class="muted" style="margin:0">'+esc(t('up_hint'))+'</p></div>'+
     '<div class="toolbar"><label>'+esc(t('up_cycle'))+'</label><input type="month" id="upp" value="'+esc(d.period)+'" style="flex:0 1 170px">'+
@@ -3243,7 +3243,7 @@ VIEWS.unpaid=async function(main){
       '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap"><button class="btn" id="upts">💾 '+esc(t('save'))+'</button><button class="btn ghost" id="uptr">'+esc(t('up_tpl_reset'))+'</button></div>'+
       '<div class="muted" style="margin-top:10px">'+esc(t('up_tpl_prev'))+'</div><pre id="uptp" style="white-space:pre-wrap;font-family:inherit;background:var(--bg2,#f6f6f6);padding:10px;border-radius:10px;margin:4px 0 0"></pre></details>':'')+
     '<div class="stats">'+stat(t('up_count'),fmtN(rows.length,0))+stat(t('up_total'),money(tot))+'<span id="uprm"></span></div>'+
-    (isAdmin()?'<div class="row" style="gap:14px;flex-wrap:wrap;margin:-4px 0 8px"><label class="chk"><input type="checkbox" id="upsd"'+(showDone?' checked':'')+'> '+esc(t('rm_show',{n:fmtN(allRows.filter(recent).length,0)}))+'</label>'+
+    (isAdmin()?'<div class="row" style="gap:14px;flex-wrap:wrap;margin:-4px 0 8px">'+
       (RM_MIN?'<span class="muted">'+esc(t('rm_small',{v:money(RM_MIN)}))+'</span>':'')+'</div>':'')+'<div class="tw" id="uptw"></div>';
   function months(r){ var m=(r.months||[]).map(function(p){ return monthName(p,false); }); if(r.older) m.unshift(t('due_older')); return m.join('، '); }
   function marked(r){ return call('motor_remind_mark',{p_customer:r.id}).then(function(x){ r.reminded_at=(x&&x.reminded_at)||new Date().toISOString(); }).catch(function(){ r.reminded_at=new Date().toISOString(); }); }
@@ -3259,20 +3259,19 @@ VIEWS.unpaid=async function(main){
     $('#uprm',main).innerHTML=isAdmin()?stat(t('rm_stat'),fmtN(allRows.filter(recent).length,0)):'';
     $('#uptw',main).innerHTML='<table><thead><tr>'+H().map(function(h){ return '<th>'+esc(h)+'</th>'; }).join('')+(isAdmin()?'<th>'+esc(t('rm_col'))+'</th>':'')+'</tr></thead><tbody>'+
       (L.map(function(r){ var i=rows.indexOf(r);
-        return '<tr><td class="num">'+esc(r.code)+'</td><td><a href="#" data-cust="'+esc(r.id)+'"><b>'+esc(r.name)+'</b></a></td>'+
+        return '<tr><td class="num">'+esc(r.code)+'</td><td><a href="#" data-cust="'+esc(r.id)+'"><b>'+esc(r.name)+'</b></a>'+(r.active===false?' <span class="chip off">'+esc(t('inactive'))+'</span>':'')+'</td>'+
           '<td class="num">'+(r.mobile?esc('+'+r.mobile_cc+' '+r.mobile):'<span class="chip off">'+esc(t('no_mobile_short'))+'</span>')+'</td><td>'+esc(r.area||'')+'</td><td>'+esc(r.box||'')+'</td><td>'+esc(r.collector||'')+'</td>'+
           '<td>'+esc(months(r))+'</td><td class="num"><b>'+esc(r.n+(r.older?1:0))+'</b></td><td class="num"><b>'+esc(money(r.due))+'</b></td><td>'+balHtml(r.balance)+'</td>'+
           '<td class="num">'+(r.last_pay?esc(dt(r.last_pay).slice(0,10)):'<span class="muted">'+esc(t('up_no_pay'))+'</span>')+'</td>'+
           (isAdmin()?'<td style="white-space:nowrap">'+(recent(r)?'<div class="chip on">'+esc(t('rm_sent'))+'</div><div class="muted" style="font-size:11px">'+esc(dt(r.reminded_at))+'</div>'+
              '<div class="muted" style="font-size:11px">'+esc(t('rm_again',{d:again()}))+'</div>':
-             '<button class="btn wa sm" data-uw="'+i+'" '+(r.mobile?'':'disabled')+'>'+esc(t('wa_send'))+'</button>')+'</td>':'')+'</tr>'; }).join(''))||
+             small(r)?'<span class="muted" title="'+esc(t('rm_small',{v:money(RM_MIN)}))+'">—</span>':'<button class="btn wa sm" data-uw="'+i+'" '+(r.mobile?'':'disabled')+'>'+esc(t('wa_send'))+'</button>')+'</td>':'')+'</tr>'; }).join(''))||
       '<tr><td colspan="12"><div class="okmsg">'+esc(t('up_none'))+'</div></td></tr>'+'</tbody></table>'; }
   function refilter(){ go('unpaid'); }   // منعيد التحميل: يلّي انبعتلهن بيختفوا
   function data(){ return [H()].concat(list().map(function(r){ return [r.code,r.name,r.mobile?'+'+r.mobile_cc+' '+r.mobile:'',r.area||'',r.box||'',r.collector||'',months(r),r.n+(r.older?1:0),n2(r.due),n2(r.balance),r.last_pay?dt(r.last_pay).slice(0,10):'']; })); }
   $('#upp',main).addEventListener('change',function(){ if(/^\d{4}-\d{2}$/.test(this.value)){ RF.upPer=this.value; go('unpaid'); } });
   $('#upm',main).addEventListener('change',function(){ RF.upMin=+this.value; go('unpaid'); });
   $('#upq',main).addEventListener('input',function(){ q=this.value; paint(); });
-  if($('#upsd',main)) $('#upsd',main).addEventListener('change',function(){ RF.upShowDone=showDone=this.checked; refilter(); });
   $('#upx',main).addEventListener('click',function(){ downloadBlob(makeXlsx([{name:monthName(d.period,true),rows:data()}]),'unpaid-'+SLUG+'-'+d.period+'.xlsx'); });
   $('#uppdf',main).addEventListener('click',function(){ var R=data();
     printA4('<style>#printArea table{border-collapse:collapse;width:100%;font-size:10px}#printArea th,#printArea td{border:1px solid #999;padding:2px 4px}#printArea th{background:#eee}</style>'+
@@ -3280,7 +3279,7 @@ VIEWS.unpaid=async function(main){
       '<table><thead><tr>'+R[0].map(function(h){ return '<th>'+esc(h)+'</th>'; }).join('')+'</tr></thead><tbody>'+R.slice(1).map(function(r){ return '<tr>'+r.map(function(v,i){ return '<td'+(i>=7&&i<=9?' class="num"':'')+'>'+esc(typeof v==='number'&&i>=8?money(v):v)+'</td>'; }).join('')+'</tr>'; }).join('')+'</tbody></table>'+
       '<p style="font-size:11px"><b>'+esc(t('up_count'))+': '+esc(R.length-1)+' · '+esc(t('up_total'))+': '+esc(money(R.slice(1).reduce(function(a,r){ return a+n2(r[8]); },0)))+'</b></p>'); });
   if(isAdmin()){
-    $('#upwa',main).addEventListener('click',function(){ var todo=list().filter(function(r){ return r.mobile&&!recent(r); });
+    $('#upwa',main).addEventListener('click',function(){ var todo=list().filter(function(r){ return r.mobile&&!recent(r)&&!small(r); });
       if(!todo.length){ toast(t('rm_none_left',{d:again()}),'e'); return; }
       waBatch($('#upbar',main),todo,async function(r){
       try{ msg(r); await wcSend(r.mobile_cc,r.mobile,'payment_reminder',r._wc); await marked(r); return true; }catch(e){ return {name:r.name,err:waErr(e)}; } },function(){ refilter(); }); });

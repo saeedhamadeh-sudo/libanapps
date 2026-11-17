@@ -2546,6 +2546,23 @@ end $$;
 grant execute on function public.motor_boxes_daily(text,text,date,date) to anon, authenticated;
 
 -- ============================================================
+--  20j30) «الزبائن الذين لم يدفعوا»: بخيار «شهر واحد أو أكثر» بيبيّن كل زبون عليه دين (حتى الموقوف/المؤرشف ودين أي شهر)
+-- ============================================================
+do $m$
+declare d text;
+begin
+  d := pg_get_functiondef('public.motor_unpaid(text,text,text,integer)'::regprocedure);
+  if position('all_debts' in d) = 0 then
+    d := replace(d, 'where cu.site_id = sid and cu.is_active and not cu.archived and cu.deleted_at is null and cu.balance > 0.005',
+                    'where cu.site_id = sid and cu.deleted_at is null and cu.balance > 0.005 /* all_debts */');
+    d := replace(d, '      if r.period <= per then', '      if r.period <= per or coalesce(p_min, 1) <= 1 then');
+    d := replace(d, '''collector'', c.coll, ''balance'', c.balance,', '''collector'', c.coll, ''balance'', c.balance, ''active'', c.is_active and not c.archived,');
+    if position('all_debts' in d) = 0 or position('coalesce(p_min, 1) <= 1 then' in d) = 0 or position('''active''' in d) = 0 then raise exception 'unpaid patch'; end if;
+    execute d;
+  end if;
+end $m$;
+
+-- ============================================================
 --  20k) إقفال صندوق الموظف: يسلّم كل النقد للمكتب ويطلع تقرير
 -- ============================================================
 create or replace function public.motor_staff_close(p_slug text, p_token text, p_staff uuid default null)
