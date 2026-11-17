@@ -1789,7 +1789,7 @@ var D={
  confirm_delete:['تأكيد الحذف؟','Confirm delete?','Confirmer la suppression ?'],
  saved:['تم الحفظ ✓','Saved ✓','Enregistré ✓'],
  all:['الكل','All','Tous'],
- f_debt:['عليهم دين','With debt','Avec dette'], dc_type:['نوع الحسم','Discount type','Type de remise'], dc_t_amt:['مبلغ ثابت','Fixed amount','Montant fixe'], dc_t_pct:['نسبة مئوية %','Percentage %','Pourcentage %'], dc_pct:['نسبة الحسم %','Discount %','Remise %'], dc_pct_hint:['تُحسم النسبة من قيمة كل فاتورة (الاشتراك + الاستهلاك)، وتتعدّل تلقائياً إذا تغيّر سعر الكيلو.','The percentage is taken off each invoice (fee + consumption) and follows kWh price changes.','Le pourcentage s’applique à chaque facture (abonnement + consommation).'], f_on_debt:['مفعّل وعليه دين','Active with debt','Actif avec dette'], f_off_debt:['مقطوع وعليه دين','Cut off with debt','Coupé avec dette'], dr_excl_bd:['لا تشمل زبائن الديون المعدومة ({n} · {v})','Excludes bad-debt customers ({n} · {v})','Hors créances douteuses ({n} · {v})'], sort_by:['ترتيب','Sort','Trier'], sort_on_first:['ترتيب: المفعّل أولاً','Sort: active first','Tri : actifs d’abord'], sort_off_first:['ترتيب: المقطوع أولاً','Sort: cut off first','Tri : coupés d’abord'], sort_bal:['ترتيب: الأعلى ديناً','Sort: highest balance','Tri : solde le plus élevé'],
+ f_debt:['عليهم دين','With debt','Avec dette'], dc_type:['نوع الحسم','Discount type','Type de remise'], dc_t_amt:['مبلغ ثابت','Fixed amount','Montant fixe'], dc_t_pct:['نسبة مئوية %','Percentage %','Pourcentage %'], dc_pct:['نسبة الحسم %','Discount %','Remise %'], dc_pct_hint:['تُحسم النسبة من قيمة كل فاتورة (الاشتراك + الاستهلاك)، وتتعدّل تلقائياً إذا تغيّر سعر الكيلو.','The percentage is taken off each invoice (fee + consumption) and follows kWh price changes.','Le pourcentage s’applique à chaque facture (abonnement + consommation).'], f_on_debt:['مفعّل وعليه دين','Active with debt','Actif avec dette'], f_off_debt:['مقطوع وعليه دين','Cut off with debt','Coupé avec dette'], dr_excl_bd:['لا تشمل زبائن الديون المعدومة ({n} · {v})','Excludes bad-debt customers ({n} · {v})','Hors créances douteuses ({n} · {v})'], disc_applied:['مطبَّق عليه حسم دائم','Permanent discount applied','Remise permanente appliquée'], sort_by:['ترتيب','Sort','Trier'], sort_on_first:['ترتيب: المفعّل أولاً','Sort: active first','Tri : actifs d’abord'], sort_off_first:['ترتيب: المقطوع أولاً','Sort: cut off first','Tri : coupés d’abord'], sort_bal:['ترتيب: الأعلى ديناً','Sort: highest balance','Tri : solde le plus élevé'],
  take_reading:['📷 أخذ عداد','📷 Read meter','📷 Relever'],
  collect:['💵 قبض','💵 Collect','💵 Encaisser'],
  statement:['🧾 كشف حساب','🧾 Statement','🧾 Relevé de compte'],
@@ -2985,6 +2985,8 @@ function licBanner(){
 var custLoading=null;
 function loadCustomers(){ custLoading=call('motor_customers').then(function(d){ CUST=d||[]; custLoading=null; refreshSearchLists(); return CUST; })
   .catch(function(e){ custLoading=null; toast(errText(e),'e'); return CUST; }); return custLoading; }
+/* شارة الحسم حد اسم الزبون */
+function discChip(c){ var p=n2(c&&c.disc_pct), a=n2(c&&c.disc); if(!p&&!a) return ''; return ' <span class="chip" style="background:#fce7f3;color:#9d174d" title="'+esc(t('disc_applied'))+'">🏷️ '+esc(p?fmtN(p,p%1?2:0)+'%':money(a))+'</span>'; }
 function patchCust(id,obj){ var c=CUST.filter(function(x){return x.id===id})[0]; if(c) Object.assign(c,obj); }
 function normS(s){ return String(s||'').toLowerCase().replace(/[أإآ]/g,'ا').replace(/ة/g,'ه').replace(/ى/g,'ي').replace(/\s+/g,' ').trim(); }
 /* البحث برقم التلفون: أرقام بس، بغض النظر عن المسافات و- و0 بالأول و961/+961 */
@@ -3007,7 +3009,7 @@ function searchCust(q,lim){
 }
 function custItem(c,mode){
   var right= mode==='switch' ? '<span class="chip '+(c.is_active?'on':'off')+'">'+esc(c.is_active?t('active'):t('inactive'))+'</span>' : mode==='read' ? (c.read_now?'<span class="chip on">✓ '+esc(t('read_done'))+'</span>':'<span class="chip gray">'+esc(t('not_read'))+'</span>') : balHtml(c.balance);
-  return '<div class="litem" data-cust="'+esc(c.id)+'" data-mode="'+mode+'"><div style="flex:1;min-width:0"><div class="nm">'+esc(c.name)+(c.is_active?'':' <span class="chip off">'+esc(t('inactive'))+'</span>')+(c.bad_debt?' <span class="chip off">📉 '+esc(t('bd_chip'))+'</span>':'')+'</div>'+
+  return '<div class="litem" data-cust="'+esc(c.id)+'" data-mode="'+mode+'"><div style="flex:1;min-width:0"><div class="nm">'+esc(c.name)+(c.is_active?'':' <span class="chip off">'+esc(t('inactive'))+'</span>')+(c.bad_debt?' <span class="chip off">📉 '+esc(t('bd_chip'))+'</span>':'')+discChip(c)+'</div>'+
     '<div class="sub">#'+esc(c.code)+' · '+esc(c.barcode||'—')+(c.box?' · '+esc(t('box'))+' '+esc(c.box):'')+(c.area?' · '+esc(c.area):'')+'</div>'+
     (c.last_note?'<div class="sub" style="color:var(--warn)">📝 '+esc(c.last_note)+(c.last_note_by?' — '+esc(c.last_note_by):'')+'</div>':'')+'</div>'+right+'</div>';
 }
@@ -3230,11 +3232,13 @@ VIEWS.unpaid=async function(main){
   function recent(r){ return !!r.reminded_at&&new Date(r.reminded_at)>=cyc; }
   function again(){ return nxt.getFullYear()+'-'+String(nxt.getMonth()+1).padStart(2,'0')+'-10'; }
   // كل زبون عليه دين بيبيّن؛ التذكير بس للي رصيدو أكبر من الحد وما انبعتلو بهالدورة
-  var allRows=d.rows, rows=allRows; function small(r){ return n2(r.balance)<=RM_MIN+0.004; }
+  var areasU={}; d.rows.forEach(function(r){ if(r.area) areasU[r.area]=1; }); if(RF.upArea&&!areasU[RF.upArea]) RF.upArea='';
+  var allRows=d.rows.filter(function(r){ return !RF.upArea||r.area===RF.upArea; }), rows=allRows; function small(r){ return n2(r.balance)<=RM_MIN+0.004; }
   var tot=0; rows.forEach(function(r){ tot+=n2(r.due); });
   main.innerHTML='<div class="card"><p class="muted" style="margin:0">'+esc(t('up_hint'))+'</p></div>'+
     '<div class="toolbar"><label>'+esc(t('up_cycle'))+'</label><input type="month" id="upp" value="'+esc(d.period)+'" style="flex:0 1 170px">'+
     '<label>'+esc(t('up_min'))+'</label><select id="upm" style="flex:0 1 130px">'+[1,2,3,4,6].map(function(n){ return '<option value="'+n+'"'+(RF.upMin==n?' selected':'')+'>'+esc(t('up_min_opt',{n:n}))+'</option>'; }).join('')+'</select>'+
+    '<select id="upar" style="flex:0 1 170px"><option value="">'+esc(t('area'))+': '+esc(t('all'))+'</option>'+Object.keys(areasU).sort().map(function(a){ return '<option'+(RF.upArea===a?' selected':'')+'>'+esc(a)+'</option>'; }).join('')+'</select>'+
     '<input type="search" id="upq" placeholder="'+esc(t('search_ph'))+'"><span class="sp"></span>'+
     (isAdmin()?'<span data-wachip>'+waChip()+'</span><button class="btn wa" id="upwa" data-waon>📤 '+esc(t('wa_batch50'))+'</button>':'')+
     '<button class="btn ok" id="upx">📊 '+esc(t('export_xlsx'))+'</button><button class="btn alt" id="uppdf">📄 PDF</button></div>'+(isAdmin()?waBatchBar('upbar'):'')+
@@ -3273,11 +3277,12 @@ VIEWS.unpaid=async function(main){
   function data(){ return [H()].concat(list().map(function(r){ return [r.code,r.name,r.mobile?'+'+r.mobile_cc+' '+r.mobile:'',r.area||'',r.box||'',r.collector||'',months(r),r.n+(r.older?1:0),n2(r.due),n2(r.balance),r.last_pay?dt(r.last_pay).slice(0,10):'']; })); }
   $('#upp',main).addEventListener('change',function(){ if(/^\d{4}-\d{2}$/.test(this.value)){ RF.upPer=this.value; go('unpaid'); } });
   $('#upm',main).addEventListener('change',function(){ RF.upMin=+this.value; go('unpaid'); });
+  $('#upar',main).addEventListener('change',function(){ RF.upArea=this.value; go('unpaid'); });
   $('#upq',main).addEventListener('input',function(){ q=this.value; paint(); });
   $('#upx',main).addEventListener('click',function(){ downloadBlob(makeXlsx([{name:monthName(d.period,true),rows:data()}]),'unpaid-'+SLUG+'-'+d.period+'.xlsx'); });
   $('#uppdf',main).addEventListener('click',function(){ var R=data();
     printA4('<style>#printArea table{border-collapse:collapse;width:100%;font-size:10px}#printArea th,#printArea td{border:1px solid #999;padding:2px 4px}#printArea th{background:#eee}</style>'+
-      '<h3 style="margin:0 0 6px">'+esc(SITE.name||'')+' — '+esc(t('nav_unpaid'))+' — '+esc(monthName(d.period,true))+' ('+esc(t('up_min_opt',{n:RF.upMin}))+')</h3>'+
+      '<h3 style="margin:0 0 6px">'+esc(SITE.name||'')+' — '+esc(t('nav_unpaid'))+' — '+esc(monthName(d.period,true))+' ('+esc(t('up_min_opt',{n:RF.upMin}))+')'+(RF.upArea?' — '+esc(t('area'))+': '+esc(RF.upArea):'')+'</h3>'+
       '<table><thead><tr>'+R[0].map(function(h){ return '<th>'+esc(h)+'</th>'; }).join('')+'</tr></thead><tbody>'+R.slice(1).map(function(r){ return '<tr>'+r.map(function(v,i){ return '<td'+(i>=7&&i<=9?' class="num"':'')+'>'+esc(typeof v==='number'&&i>=8?money(v):v)+'</td>'; }).join('')+'</tr>'; }).join('')+'</tbody></table>'+
       '<p style="font-size:11px"><b>'+esc(t('up_count'))+': '+esc(R.length-1)+' · '+esc(t('up_total'))+': '+esc(money(R.slice(1).reduce(function(a,r){ return a+n2(r[8]); },0)))+'</b></p>'); });
   if(isAdmin()){
@@ -4773,7 +4778,7 @@ VIEWS.customers=async function(main){
     var list=filtered(), tot=list.reduce(function(s,c){return s+n2(c.balance)},0);
     $('#ccount',main).innerHTML=esc(fmtN(list.length,0))+' · '+esc(t('total'))+': '+balHtml(tot);
     $('#ctb',main).innerHTML=list.slice(0,CF.lim).map(function(c){
-      return '<tr data-cust="'+esc(c.id)+'" style="cursor:pointer"><td class="num">'+esc(c.code)+'</td><td><b>'+esc(c.name)+'</b></td><td class="num">'+esc(c.barcode)+'</td><td>'+esc(planName(c.plan_id))+'</td><td>'+esc(c.box)+'</td><td>'+esc(c.area)+'</td><td>'+esc(c.collector_name||'')+'</td>'+
+      return '<tr data-cust="'+esc(c.id)+'" style="cursor:pointer"><td class="num">'+esc(c.code)+'</td><td><b>'+esc(c.name)+'</b>'+discChip(c)+'</td><td class="num">'+esc(c.barcode)+'</td><td>'+esc(planName(c.plan_id))+'</td><td>'+esc(c.box)+'</td><td>'+esc(c.area)+'</td><td>'+esc(c.collector_name||'')+'</td>'+
         '<td><span class="chip '+(c.is_active?'on':'off')+'">'+esc(c.is_active?t('active'):t('inactive'))+'</span>'+(c.archived?' <span class="chip gray">'+esc(t('archived'))+'</span>':'')+'</td><td>'+balHtml(c.balance)+'</td><td class="num">'+(isAdmin()?'<button class="btn ghost sm" data-prev="'+esc(c.id)+'" title="'+esc(t('edit'))+'">✏️ '+esc(fmtN(c.read_now?c.read_now_prev:c.last_value))+'</button>':esc(fmtN(c.read_now?c.read_now_prev:c.last_value)))+'</td><td class="num">'+(c.read_now?'<b>'+esc(fmtN(c.read_now_value))+'</b>':'<span class="muted">—</span>')+'</td>'+(adm?'<td><button class="btn danger sm" data-ccx="'+esc(c.id)+'" title="'+esc(t('cc_btn'))+'">🗑️</button></td>':'')+'</tr>'; }).join('')||'<tr><td colspan="12" class="muted">'+esc(custLoading?t('loading'):t('no_results'))+'</td></tr>';
     $('#cmore',main).innerHTML=list.length>CF.lim?'<button class="btn ghost" id="cmb">'+esc(t('more'))+' ('+esc(list.length-CF.lim)+')</button>':'';
     var mb=$('#cmb',main); if(mb) mb.addEventListener('click',function(){ CF.lim+=300; paint(); });
@@ -4837,7 +4842,7 @@ function debtsReport(){
     '<button class="btn ghost" data-x>'+esc(t('close'))+'</button><button class="btn ok" data-xl>📊 '+esc(t('export_xlsx'))+'</button><button class="btn" data-pr>'+esc(t('print'))+' / PDF</button>',true);
   function list(){
     var q=normS(F.q);
-    return CUST.filter(function(c){ return n2(c.balance)>0.005 && !c.bad_debt && (F.arch||!c.archived) && (!F.area||c.area===F.area) && (!F.col||c.collector_name===F.col) &&
+    return CUST.filter(function(c){ return n2(c.balance)>0.005 && !c.bad_debt && n2(c.disc_pct)<100 && (F.arch||!c.archived) && (!F.area||c.area===F.area) && (!F.col||c.collector_name===F.col) &&
       (!F.st||(F.st==='on'?c.is_active:!c.is_active)) &&
       (!q||phoneHit(c,F.q)||normS(c.name).indexOf(q)>=0||String(c.code)===F.q.trim()||normS(c.barcode).indexOf(q)>=0||normS(c.box).indexOf(q)>=0); })
       .sort(custSorter(F.sort));
@@ -4847,7 +4852,7 @@ function debtsReport(){
     var bd=CUST.filter(function(c){ return c.bad_debt&&!c.deleted&&n2(c.balance)>0.005; }), bdt=bd.reduce(function(a,c){ return a+n2(c.balance); },0);
     $('#drs',m.body).innerHTML=stat(t('dr_count'),fmtN(L.length,0))+stat(t('dr_total'),money(tot))+(bd.length?'<div class="muted" style="font-size:12px;align-self:center">📉 '+esc(t('dr_excl_bd',{n:fmtN(bd.length,0),v:money(bdt)}))+'</div>':'');
     $('#drt',m.body).innerHTML='<table><thead><tr><th>#</th><th>'+esc(t('code'))+'</th><th>'+esc(t('name'))+'</th><th>'+esc(t('area'))+'</th><th>'+esc(t('box'))+'</th><th>'+esc(t('mobile'))+'</th><th>'+esc(t('collector'))+'</th><th>'+esc(t('balance'))+'</th></tr></thead><tbody>'+
-      (L.map(function(c,i){ return '<tr><td class="num">'+(i+1)+'</td><td class="num">'+esc(c.code)+'</td><td><a href="#" data-dc="'+esc(c.id)+'"><b>'+esc(c.name)+'</b></a>'+(c.archived?' <span class="chip">'+esc(t('archived'))+'</span>':'')+(c.is_active?'':' <span class="chip off">'+esc(t('inactive'))+'</span>')+'</td><td>'+esc(c.area||'')+'</td><td>'+esc(c.box||'')+'</td>'+
+      (L.map(function(c,i){ return '<tr><td class="num">'+(i+1)+'</td><td class="num">'+esc(c.code)+'</td><td><a href="#" data-dc="'+esc(c.id)+'"><b>'+esc(c.name)+'</b></a>'+(c.archived?' <span class="chip">'+esc(t('archived'))+'</span>':'')+(c.is_active?'':' <span class="chip off">'+esc(t('inactive'))+'</span>')+discChip(c)+'</td><td>'+esc(c.area||'')+'</td><td>'+esc(c.box||'')+'</td>'+
         '<td class="num" dir="ltr">'+esc(c.mobile||'')+'</td><td style="white-space:nowrap">'+esc(c.collector_name||'')+'</td><td class="num" style="white-space:nowrap"><b style="color:var(--bad)">'+esc(money(c.balance))+'</b></td></tr>'; }).join('')||'<tr><td colspan="8" class="muted">'+esc(t('dr_none'))+'</td></tr>')+
       '</tbody><tfoot><tr style="font-weight:800;background:var(--soft,#f1f5f9)"><td colspan="7">'+esc(t('dr_total'))+' ('+fmtN(L.length,0)+')</td><td class="num"><b style="font-size:17px">'+esc(money(tot))+'</b></td></tr></tfoot></table>';
     return {L:L,tot:tot};

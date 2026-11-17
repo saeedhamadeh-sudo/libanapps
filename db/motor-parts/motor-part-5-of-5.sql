@@ -2936,6 +2936,40 @@ begin
 end $m$;
 
 -- ============================================================
+--  20j39) شارة الحسم بلائحة الزبائن (المبلغ/النسبة) + حسم 100%: بيصفّر رصيد الزبون (حسم رسمي) وما بيطلع بلوائح الديون
+-- ============================================================
+do $m$
+declare d text;
+begin
+  d := pg_get_functiondef('public._motor_cust_rows(uuid,uuid,timestamp with time zone)'::regprocedure);
+  if position('disc_pct' in d) = 0 then
+    d := replace(d, '''bad_debt'', c.bad_debt,', '''bad_debt'', c.bad_debt, ''disc'', c.charge_discount, ''disc_pct'', c.charge_discount_pct,');
+    if position('disc_pct' in d) = 0 then raise exception 'rows'; end if;
+    execute d;
+  end if;
+  d := pg_get_functiondef('public.motor_disc_set(text,text,uuid,numeric,text,numeric)'::regprocedure);
+  if position('full_disc' in d) = 0 then
+    d := replace(d, '  if not found then perform public._motor_err(''customer_not_found''); end if;
+  return jsonb_build_object(''ok'', true);',
+'  if not found then perform public._motor_err(''customer_not_found''); end if;
+  -- full_disc: حسم 100% → الرصيد المستحق بيتصفّر بحسم رسمي
+  if coalesce(p_pct,0) >= 100 and coalesce((select balance from public.motor_customers where id = p_customer), 0) > 0.005 then
+    perform public.motor_discount_add(p_slug, p_token, p_customer, (select balance from public.motor_customers where id = p_customer),
+      ''حسم 100%'' || case when coalesce(trim(p_desc),'''') <> '''' then '': '' || trim(p_desc) else '''' end);
+  end if;
+  return jsonb_build_object(''ok'', true);');
+    if position('full_disc' in d) = 0 then raise exception 'set'; end if;
+    execute d;
+  end if;
+  d := pg_get_functiondef('public.motor_unpaid(text,text,text,integer)'::regprocedure);
+  if position('charge_discount_pct' in d) = 0 then
+    d := replace(d, 'cu.deleted_at is null and not cu.bad_debt and cu.balance > 0.005', 'cu.deleted_at is null and not cu.bad_debt and cu.charge_discount_pct < 100 and cu.balance > 0.005');
+    if position('charge_discount_pct' in d) = 0 then raise exception 'unpaid'; end if;
+    execute d;
+  end if;
+end $m$;
+
+-- ============================================================
 --  20k) إقفال صندوق الموظف: يسلّم كل النقد للمكتب ويطلع تقرير
 -- ============================================================
 create or replace function public.motor_staff_close(p_slug text, p_token text, p_staff uuid default null)
