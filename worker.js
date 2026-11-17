@@ -4055,6 +4055,106 @@ async function metaAdsPlatformDelete(request, env, isDeletion) {
 }
 // META-ADS-END
 
+// ============================================================
+//  «وصلة» (Wasla) — صفحة روابط لكل زبون:  /l/<slug>
+//  · الصفحة بتنبنى بالـworker مع بياناتها (سريعة + معاينة واتساب/فيسبوك صحيحة)
+//  · الزيارات والنقرات بتنعدّ هون بمفتاح الخدمة (link_track مش مفتوحة للعموم)
+// ============================================================
+const LINK_SLUG_RE = /^[a-z0-9][a-z0-9-]{1,30}$/;
+const LINK_BOT_RE = /bot|crawl|spider|slurp|facebookexternalhit|whatsapp|telegram|discord|preview|headless|lighthouse|pingdom|curl|wget|python|go-http/i;
+function linkDevice(ua) { return /ipad|tablet/i.test(ua) ? 't' : (/mobi|android|iphone/i.test(ua) ? 'm' : 'd'); }
+async function linkTrack(env, args) {
+  if (!env.SUPABASE_SERVICE_KEY) return;
+  await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/link_track`, {
+    method: 'POST', headers: { ...sbHeaders(env), 'Content-Type': 'application/json' }, body: JSON.stringify(args)
+  }).catch(() => {});
+}
+// بيانات الصفحة: كاش Cloudflare 20 ثانية — التعديل من اللوحة بيبين خلال ثواني
+async function linkData(env, slug, ctx, fresh) {
+  const key = new Request('https://link-cache.libanapps.internal/v1/' + encodeURIComponent(slug));
+  const cache = caches.default;
+  if (!fresh) { const hit = await cache.match(key); if (hit) return hit.json(); }
+  const ac = new AbortController(), to = setTimeout(() => ac.abort(), 4000);
+  let d;
+  try {
+    const r = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/link_public`, {
+      method: 'POST', headers: { ...sbHeaders(env), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ p_slug: slug }), signal: ac.signal
+    });
+    if (!r.ok) throw new Error('link_public ' + r.status);
+    d = await r.json();
+  } finally { clearTimeout(to); }
+  ctx.waitUntil(cache.put(key, new Response(JSON.stringify(d), { headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=20' } })));
+  return d;
+}
+async function serveLink(request, env, url, slug, ctx) {
+  const res = await env.ASSETS.fetch(new URL('/link.html', url.origin));
+  let html = await res.text();
+  const headers = { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' };
+  // معاينة لوحة التحكم: الصفحة فاضية وبتستقبل البيانات من اللوحة — ما منعدّ زيارة
+  if (url.searchParams.get('preview') === '1') {
+    return new Response(html.replace('<!--LP-HEAD-->', '<meta name="robots" content="noindex">'), { status: 200, headers });
+  }
+  if (!LINK_SLUG_RE.test(slug)) {
+    return new Response(html.replace('<!--LP-HEAD-->', '<meta name="robots" content="noindex">')
+      .replace('<!--LP-DATA-->', () => '<script id="lp-data" type="application/json">{"ok":false,"reason":"not_found"}</script>'), { status: 404, headers });
+  }
+  let d = null;
+  try { d = await linkData(env, slug, ctx, url.searchParams.has('fresh')); } catch (e) { console.error('link data', e); d = null; }
+  if (!d) return new Response(html, { status: 200, headers });   // الصفحة بتجيب بياناتها بنفسها
+  const pg = d.page || {};
+  const canon = (env.WEBSITE_URL || url.origin) + '/l/' + encodeURIComponent(slug);
+  let head = '';
+  if (d.ok) {
+    const title = pg.seo_title || pg.title || slug;
+    const desc = pg.seo_desc || pg.bio || title;
+    const img = pg.og_image || pg.avatar_url || '';
+    head = [
+      `<meta name="description" content="${attrEsc(plainText(desc, 160))}">`,
+      `<link rel="canonical" href="${attrEsc(canon)}">`,
+      `<meta property="og:type" content="profile">`,
+      `<meta property="og:title" content="${attrEsc(title)}">`,
+      `<meta property="og:description" content="${attrEsc(plainText(desc, 200))}">`,
+      `<meta property="og:url" content="${attrEsc(canon)}">`,
+      img ? `<meta property="og:image" content="${attrEsc(url.origin + imgPath(img))}">` : '',
+      `<meta name="twitter:card" content="${pg.og_image ? 'summary_large_image' : 'summary'}">`,
+      img ? `<link rel="icon" href="${attrEsc(imgPath(img) + (imgPath(img).startsWith('/img/') ? '?w=160' : ''))}">` : ''
+    ].filter(Boolean).join('\n');
+    html = html.replace('<title>Wasla — LibanApps</title>', () => `<title>${xmlEsc(title)}</title>`);
+    if (pg.bg_color) html = html.replace('<meta name="theme-color" content="#f4f4f5">', () => `<meta name="theme-color" content="${attrEsc(pg.bg_color)}">`);
+    const lang = ['ar', 'en', 'fr'].includes(pg.default_lang) ? pg.default_lang : 'ar';
+    html = html.replace('<html lang="ar" dir="rtl">', `<html lang="${lang}" dir="${lang === 'ar' ? 'rtl' : 'ltr'}">`);
+    // عدّ الزيارة (مش للبوتات ولا معاينات الروابط)
+    const ua = request.headers.get('User-Agent') || '';
+    if (request.method === 'GET' && ua && !LINK_BOT_RE.test(ua)) {
+      let src = '';
+      try { const rf = new URL(request.headers.get('Referer') || ''); if (rf.hostname !== url.hostname) src = rf.hostname; } catch (e) {}
+      ctx.waitUntil(linkTrack(env, { p_slug: slug, p_item: null, p_country: (request.cf && request.cf.country) || '', p_device: linkDevice(ua), p_src: src }));
+    }
+  } else {
+    head = '<meta name="robots" content="noindex">';
+  }
+  const safe = JSON.stringify(d).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
+  html = html.replace('<!--LP-HEAD-->', () => head)
+             .replace('<!--LP-DATA-->', () => '<script id="lp-data" type="application/json">' + safe + '</script>');
+  return new Response(html, { status: d.ok || d.reason !== 'not_found' ? 200 : 404, headers });
+}
+// نقرة على زر بصفحة «وصلة» (sendBeacon من الصفحة)
+async function linkHit(request, env) {
+  if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
+  let b = null;
+  try { b = await request.json(); } catch (e) { return json(400, { error: 'bad body' }); }
+  const slug = String((b && b.s) || '').toLowerCase(), item = b && b.i ? String(b.i) : null;
+  if (!LINK_SLUG_RE.test(slug)) return json(400, { error: 'bad slug' });
+  if (item && !/^[0-9a-f-]{36}$/i.test(item)) return json(400, { error: 'bad item' });
+  const ua = request.headers.get('User-Agent') || '';
+  if (LINK_BOT_RE.test(ua)) return new Response(null, { status: 204 });
+  let src = '';
+  if (!item) { try { const rf = new URL(request.headers.get('Referer') || ''); if (rf.hostname !== new URL(request.url).hostname) src = rf.hostname; } catch (e) {} }
+  await linkTrack(env, { p_slug: slug, p_item: item, p_country: (request.cf && request.cf.country) || '', p_device: linkDevice(ua), p_src: src });
+  return new Response(null, { status: 204, headers: { 'Cache-Control': 'no-store' } });
+}
+
 // ---------- أي صفحة نعرض لأي مسار ----------
 function pageFor(pathname) {
   var p = pathname.replace(/\/+$/, '') || '/';
@@ -4076,6 +4176,10 @@ function pageFor(pathname) {
   if (p === '/motor-info')    return '/product-motor.html';
   if (/^\/portal-store\/[^/]+\/admin\/?$/.test(p)) return '/store-admin.html';
   if (/^\/portal-store\/[^/]+\/?$/.test(p)) return '/store.html';
+  // «وصلة»: صفحة التعريف / لوحة التحكم (الصفحة العامة /l/<slug> بتنخدم من serveLink)
+  if (p === '/link-info') return '/product-link.html';
+  if (p === '/portal-link') return '/link-admin.html';
+  if (/^\/portal-link\/[^/]+\/admin\/?$/.test(p)) return '/link-admin.html';
   // برنامج النوادي: صفحة التلاميذ / لوحة الإدارة / شاشة الباب
   if (p === '/portal-club') return '/club-admin.html';
   if (/^\/portal-club\/[^/]+\/admin\/?$/.test(p)) return '/club-admin.html';
@@ -4120,6 +4224,7 @@ const RL_RULES = [
   [/^\/api\/portal-token$/, 'portal', 30],
   [/^\/api\/app\/img-(fetch|search)$/, 'img', 60],
   [/^\/api\/store\/import-image$/, 'imp', 60],
+  [/^\/api\/link\/hit$/, 'lhit', 120],
 ];
 function securityHeaders(res, url, env, request) {
   if (!res || res.status === 101) return res;   // WebSocket
@@ -4196,6 +4301,8 @@ const LA_WORKER = {
     if (url.pathname.startsWith('/api/')) {
       try {
         // النسخة المحلية (LibanApps Local) بتسأل: شو بصمة آخر نسخة من صفحات البرنامجين؟
+        // «وصلة»: عدّ النقرات
+        if (url.pathname === '/api/link/hit') return await linkHit(request, env);
         if (url.pathname === '/api/offline/manifest') return await offlineManifest(env, url);
         // النسخة المحلية: «فعّل الرابط» — بيعمل نفق Cloudflare + رابط subdomain للزبون بكبسة وحدة
         if (url.pathname === '/api/tunnel/provision') {
@@ -4455,6 +4562,12 @@ const LA_WORKER = {
       }
       return await serveStore(env, url, slug, primary, ctx);
     }
+
+    // 1.6) «وصلة»: /l/<slug> (والرابط القديم /portal-link/<slug> بيتحوّل عليه)
+    const lkm = url.pathname.match(/^\/l\/([^/]+)\/?$/);
+    if (lkm && (request.method === 'GET' || request.method === 'HEAD')) return await serveLink(request, env, url, decodeURIComponent(lkm[1]).toLowerCase(), ctx);
+    const lkp = url.pathname.match(/^\/portal-link\/([^/]+)\/?$/);
+    if (lkp) return Response.redirect(url.origin + '/l/' + lkp[1] + url.search, 301);
 
     // 1.7) خريطة الموقع لمتجر على دومين المنصة: /portal-store/<slug>/sitemap.xml
     const smm = url.pathname.match(/^\/portal-store\/([^/]+)\/sitemap\.xml$/);

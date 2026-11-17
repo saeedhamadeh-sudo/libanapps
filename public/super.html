@@ -402,6 +402,18 @@ td .btn{margin:2px 0}
       <div class="acts"><button class="btn" id="cpSave">حفظ إعدادات النوادي</button></div>
       <div class="msg" id="cpMsg"></div>
     </div>
+    <div class="panel hidden" id="linkProdPanel">
+      <h3>وصلة (صفحة روابط) — إعدادات التفعيل</h3>
+      <p class="muted">السعر أول سنة، سعر التجديد السنوي، ومدة التجربة المجانية. لإصدار ترخيص يدوي: تبويب «إصدار ترخيص جديد» واختر «وصلة — صفحة روابط». إخفاء شعار LibanApps من صفحة زبون: افتح لوحة صفحته ← «المشاركة والإعدادات».</p>
+      <div class="g3">
+        <div><label>السعر أول سنة ($)</label><input type="number" id="lpPrice" step="1" min="0"></div>
+        <div><label>سعر التجديد السنوي ($)</label><input type="number" id="lpRenew" step="1" min="0"></div>
+        <div><label>التجربة المجانية (أيام — 0 = بدون تجربة)</label><input type="number" id="lpTrial" step="1" min="0" max="60"></div>
+      </div>
+      <div class="sw"><input type="checkbox" id="lpActive" checked><label for="lpActive" style="margin:0">البرنامج ظاهر للشراء في الموقع</label></div>
+      <div class="acts"><button class="btn" id="lpSave">حفظ إعدادات وصلة</button></div>
+      <div class="msg" id="lpMsg"></div>
+    </div>
     <div class="panel" id="motorProdPanel">
       <h3>برنامج اشتراكات المولّدات (motorapp) — إعدادات التفعيل</h3>
       <p class="muted">السعر أول سنة، سعر التجديد السنوي، ومدة التجربة المجانية. الباقة مخفية حتى تحدد السعر وتفعّل «ظاهر للشراء». لإصدار ترخيص يدوي: تبويب «إصدار ترخيص جديد» واختر «اشتراكات المولّدات».</p>
@@ -942,6 +954,11 @@ function paintSubs(){
           (s.product_code==='club' && s.ref_slug
             ? '<a class="btn alt sm" style="text-decoration:none" target="_blank" '+
               'href="/portal-club/'+encodeURIComponent(s.ref_slug)+'/admin">لوحة النادي</a> ' : '')+
+          (s.product_code==='link' && s.ref_slug
+            ? '<a class="btn alt sm" style="text-decoration:none" target="_blank" '+
+              'href="/portal-link/'+encodeURIComponent(s.ref_slug)+'/admin">لوحة الصفحة</a> '+
+              '<a class="btn alt sm" style="text-decoration:none" target="_blank" '+
+              'href="/l/'+encodeURIComponent(s.ref_slug)+'">عرض الصفحة</a> ' : '')+
           (s.product_code==='motor' && s.ref_slug
             ? '<a class="btn alt sm" style="text-decoration:none" target="_blank" '+
               'href="/portal-motor/'+encodeURIComponent(s.ref_slug)+'">افتح البرنامج</a> ' : '')+
@@ -1175,7 +1192,28 @@ async function loadPlans(){
   }).join(''):'<p class="muted">لا توجد باقات</p>';
   loadClubProd();
   loadMotorProd();
+  loadLinkProd();
 }
+async function loadLinkProd(){
+  var pl=PLANS.filter(function(x){return x.product_code==='link'})[0];
+  var pr=await sb.from('products').select('trial_days').eq('code','link').maybeSingle();
+  if(!pl && !(pr && pr.data)){ $('#linkProdPanel').classList.add('hidden'); return; }
+  $('#linkProdPanel').classList.remove('hidden');
+  $('#lpPrice').value=pl?pl.price_usd:25;
+  $('#lpRenew').value=pl&&pl.renew_price_usd!=null?pl.renew_price_usd:25;
+  $('#lpTrial').value=(pr&&pr.data&&pr.data.trial_days!=null)?pr.data.trial_days:7;
+  $('#lpActive').checked=pl?pl.is_active:true;
+}
+$('#lpSave').addEventListener('click',async function(){
+  var m=$('#lpMsg'); m.className='msg'; m.textContent='جارٍ الحفظ…'; this.disabled=true;
+  function num(id){ var v=$(id).value.trim(); return v===''?null:Number(v); }
+  if(num('#lpPrice')===null||num('#lpRenew')===null){ this.disabled=false; m.className='msg e'; m.textContent='اكتب السعر وسعر التجديد'; return; }
+  var r=await sb.rpc('admin_link_product',{p_price:num('#lpPrice'),p_renew:num('#lpRenew'),
+    p_trial:num('#lpTrial'),p_active:$('#lpActive').checked});
+  this.disabled=false;
+  if(r.error){ m.className='msg e'; m.textContent='لم يُحفظ: '+r.error.message; return; }
+  m.className='msg s'; m.textContent='تم الحفظ'; await loadPlans();
+});
 async function loadMotorProd(){
   var pl=PLANS.filter(function(x){return x.product_code==='motor'})[0];
   var pr=await sb.from('products').select('trial_days').eq('code','motor').maybeSingle();
@@ -1907,12 +1945,12 @@ $('#oCreate').addEventListener('click',async function(){
 function toggleMenuBox(){
   $('#menuBox').classList.toggle('hidden', $('#nProd').value!=='menu');
   var pv=$('#nProd').value;
-  $('#alumBox').classList.toggle('hidden', pv!=='alum' && pv!=='store' && pv!=='club' && pv!=='motor');
+  $('#alumBox').classList.toggle('hidden', pv!=='alum' && pv!=='store' && pv!=='club' && pv!=='motor' && pv!=='link');
   aSlugPreview();
 }
 function aSlugPreview(){
   var pv=$('#nProd').value, v=$('#aSlug').value;
-  var pre= pv==='club' ? 'libanapps.com/portal-club/' : pv==='motor' ? 'libanapps.com/portal-motor/' : (pv==='store' ? 'libanapps.com/portal-store/' : 'libanapps.com/portal/');
+  var pre= pv==='link' ? 'libanapps.com/l/' : pv==='club' ? 'libanapps.com/portal-club/' : pv==='motor' ? 'libanapps.com/portal-motor/' : (pv==='store' ? 'libanapps.com/portal-store/' : 'libanapps.com/portal/');
   $('#aSlugPrev').textContent=pre+(v||'…');
 }
 $('#nProd').addEventListener('change',toggleMenuBox);
@@ -1958,6 +1996,13 @@ $('#genBtn').addEventListener('click',async function(){
         p_days:days,p_price:Number($('#nPrice').value)||0});
       if(cr.error) throw cr.error;
       show(cr.data.key,'https://libanapps.com/portal-club/'+cr.data.slug+'/admin',cr.data.expires_at);
+    }else if(prod==='link'){
+      var lkSlug=$('#aSlug').value.trim();
+      if(!lkSlug) throw new Error('اكتب اسم الصفحة (بالإنكليزية)');
+      var lr=await sb.rpc('admin_new_link',{p_client:client,p_slug:lkSlug,p_biz:$('#aBiz').value.trim(),
+        p_days:days,p_price:Number($('#nPrice').value)||0});
+      if(lr.error) throw lr.error;
+      show(lr.data.key,'https://libanapps.com/portal-link/'+lr.data.slug+'/admin',lr.data.expires_at);
     }else if(prod==='motor'){
       var moSlug=$('#aSlug').value.trim();
       if(!moSlug) throw new Error('اكتب رابط المولّد (بالإنكليزية)');
