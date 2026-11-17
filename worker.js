@@ -897,16 +897,20 @@ const WA_EMAIL_DOMAIN = 'wa.libanapps.com';
 
 // نفس منطق public.norm_phone() بقاعدة البيانات
 function normPhone(p) {
-  let d = String(p || '').replace(/\D/g, '');
+  const raw = String(p || '').trim();
+  let d = raw.replace(/\D/g, '');
   if (!d) return '';
-  if (d.startsWith('00')) d = d.slice(2);
+  // رقم دولي كامل (+… أو 00…) من قائمة الدول — منتركو متل ما هو
+  if (raw.startsWith('+')) return d;
+  if (d.startsWith('00')) return d.slice(2);
   if (d.startsWith('961')) return d;
   if (d.startsWith('0')) d = d.slice(1);
   if (d.length >= 7 && d.length <= 8) return '961' + d;
   return d;
 }
 function validPhone(d) {
-  if (!/^\d{9,15}$/.test(d)) return false;
+  if (!/^\d{8,15}$/.test(d)) return false;
+  if (d.startsWith('972')) return false;          // إسرائيل غير مسموحة
   if (d.startsWith('961')) return /^961(3\d{6}|7\d{7}|8[01]\d{6}|[1-9]\d{6})$/.test(d);
   return true;
 }

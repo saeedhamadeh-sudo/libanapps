@@ -851,7 +851,8 @@ html[data-theme="horizon"] .hz-aside-foot::before{content:'';width:8px;height:8p
 .wa-phone{position:relative;display:flex;align-items:stretch;direction:ltr}
 .wa-phone .cc{display:flex;align-items:center;gap:6px;padding:0 12px;border:1px solid var(--line);border-inline-end:0;
   border-radius:11px 0 0 11px;background:rgba(14,36,56,.04);font-weight:700;font-size:15px;color:var(--ink);white-space:nowrap}
-.wa-phone input{border-radius:0 11px 11px 0!important;direction:ltr;text-align:left;font-size:17px!important;letter-spacing:.5px}
+select.cc{appearance:none;-webkit-appearance:none;font-family:inherit;outline:none;padding:0 26px 0 10px!important;text-overflow:ellipsis;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236A7C8C' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")!important;background-repeat:no-repeat!important;background-position:right 8px center!important;background-size:12px!important}
+.wa-phone input{min-width:0;flex:1;border-radius:0 11px 11px 0!important;direction:ltr;text-align:left;font-size:17px!important;letter-spacing:.5px}
 #waCode{text-align:center;direction:ltr;font-size:26px!important;letter-spacing:10px;font-weight:700;padding:12px!important}
 .wa-sentto{font-size:14px;color:var(--muted);margin:0 0 4px;text-align:center}
 .wa-sentto b{color:var(--ink);direction:ltr;unicode-bidi:isolate}
@@ -1175,8 +1176,8 @@ if(sb) sb.auth.getSession().then(function(r){
 
   async function send(btn){
     if(busy) return;
-    var raw=$('#waPhone').value.trim();
-    if(raw.replace(/\D/g,'').length<7) return msg('أدخل رقم واتساب',false);
+    var raw=(window.__waCC?__waCC.full():$('#waPhone').value.trim());
+    if($('#waPhone').value.replace(/\D/g,'').length<6) return msg('أدخل رقم واتساب',false);
     busy=true; if(btn) btn.disabled=true; msg('جارٍ إرسال الرمز…');
     var j; try{ j=await api('/api/otp/send',{phone:raw}); }catch(e){ j={error:String(e.message||e)}; }
     busy=false; if(btn) btn.disabled=false;
@@ -1229,6 +1230,8 @@ if(sb) sb.auth.getSession().then(function(r){
   $('#waBiz').addEventListener('keydown',function(e){ if(e.key==='Enter') $('#waCreate').click(); });
 })();
 /* ===== WA-AUTH JS END ===== */</script>
+<script src="/assets/phone-cc.js"></script>
+<script>window.__waCC=window.LAPhoneCC?LAPhoneCC.attach(document.getElementById('waPhone')):null;</script>
 <script src="/assets/lang-engine.js"></script>
 <script src="/assets/site-i18n.js"></script>
 </body>

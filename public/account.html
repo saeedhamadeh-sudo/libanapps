@@ -852,6 +852,8 @@ window.dbMsg=function(m){ var M={
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',ready); else ready();
 })();
 /* ===== HORIZON JS END ===== */</script>
+<script src="/assets/phone-cc.js"></script>
+<script>function waCCx(el,st){ el=el||document.getElementById('waPhone'); return (window.LAPhoneCC&&el)?LAPhoneCC.attach(el,{style:st||'padding:10px 8px;border:1px solid var(--line);border-radius:10px;background:#fff;color:inherit'}):null; }</script>
 </head>
 <body>
 
@@ -1176,7 +1178,7 @@ if(sb) sb.auth.getSession().then(function(r){
     await sb.rpc('autolink_my_client');
     var c=await sb.from('clients').select('name,phone,business')
             .eq('user_id',ses.data.session.user.id).maybeSingle();
-    if(c.data&&c.data.phone && $('#waPhone')) $('#waPhone').value=c.data.phone;
+    if(c.data&&c.data.phone && $('#waPhone')){ var _cc=waCCx(); if(_cc) _cc.set(c.data.phone); else $('#waPhone').value=c.data.phone; }
     if(c.data&&c.data.name){ $('#hi').textContent='أهلاً '+c.data.name; }
     else { $('#profileBox').classList.remove('hidden'); }
 
@@ -1273,12 +1275,13 @@ function laWaForce(sb, opts){
     document.body.appendChild(d);
     var $q = function(id){ return d.querySelector(id); };
     var msg = function(t, bad){ var m = $q('#lwf_msg'); m.textContent = t||''; m.style.color = bad ? '#c0392b' : '#1e8449'; };
-    if(opts.prefill) $q('#lwf_ph').value = opts.prefill;
+    var lcc = window.waCCx ? waCCx($q('#lwf_ph'),'padding:10px 6px;border:1px solid #d8dee6;border-radius:10px;background:#fff;font-size:15px;max-width:110px') : null;
+    if(opts.prefill){ if(lcc) lcc.set(opts.prefill); else $q('#lwf_ph').value = opts.prefill; }
     var sentTo = '', timer = null;
     $q('#lwf_skip').onclick = function(){ clearInterval(timer); d.remove(); try{ localStorage.setItem('la_wa_skip', String(Date.now())); }catch(e){} };
     $q('#lwf_send').onclick = async function(){
-      var ph = $q('#lwf_ph').value.trim(), b = this;
-      if(ph.replace(/\D/g,'').length < 7){ msg('رقم الهاتف غير صحيح', true); return; }
+      var ph = lcc ? lcc.full() : $q('#lwf_ph').value.trim(), b = this;
+      if($q('#lwf_ph').value.replace(/\D/g,'').length < 6){ msg('رقم الهاتف غير صحيح', true); return; }
       b.disabled = true; msg('جارٍ الإرسال…');
       var j = await api('/api/phone/send', {phone:ph});
       if(j.error){ b.disabled = false; msg(j.error, true); if(j.__status===0 || j.__status>=500) $q('#lwf_skip').style.display=''; return; }
@@ -1330,17 +1333,17 @@ function laWaForce(sb, opts){
     waShow(false);
     $('#waSub').innerHTML='<b style="color:var(--bad)">مطلوب:</b> أضف رقم واتساب لحسابك ليعمل تسجيل الدخول عبر واتساب — يصلك رمز للتأكيد.';
     // اقتراح رقم الهاتف المحفوظ بالبيانات
-    if($('#pfPhone') && $('#pfPhone').value) $('#waPhone').value=$('#pfPhone').value;
+    if($('#pfPhone') && $('#pfPhone').value){ var _cc2=waCCx(); if(_cc2) _cc2.set($('#pfPhone').value); else $('#waPhone').value=$('#pfPhone').value; }
     // إجباري: نافذة لا تُغلق إلا بربط الرقم (أو خروج) — إلا إذا خدمة الواتساب متوقفة
-    if(!st.is_admin) laWaForce(sb, {prefill: $('#waPhone').value, onLinked:function(ph){
+    if(!st.is_admin) laWaForce(sb, {prefill: (waCCx()?waCCx().full():$('#waPhone').value), onLinked:function(ph){
       $('#waLinkedNum').textContent=ph; waShow(true);
       $('#waSub').textContent='يمكنك الآن تسجيل الدخول برمز يصلك على هذا الرقم عبر واتساب.';
     }});
   }
   $('#waChange').addEventListener('click',function(){ waShow(false); $('#waPhone').value=''; $('#waPhone').focus(); });
   $('#waSend').addEventListener('click',async function(){
-    var ph=$('#waPhone').value.trim();
-    if(ph.replace(/\D/g,'').length<7){ setMsg('#waMsg','رقم الهاتف غير صحيح',false); return; }
+    var _c=waCCx(), ph=_c?_c.full():$('#waPhone').value.trim();
+    if($('#waPhone').value.replace(/\D/g,'').length<6){ setMsg('#waMsg','رقم الهاتف غير صحيح',false); return; }
     var b=this; b.disabled=true; setMsg('#waMsg','جارٍ إرسال الرمز…');
     var j=await authApi('/api/phone/send',{phone:ph});
     if(j.error){ b.disabled=false; setMsg('#waMsg',j.error,false); return; }
