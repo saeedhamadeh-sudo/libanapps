@@ -5781,6 +5781,21 @@ begin
 end $m$;
 
 -- ============================================================
+--  20j35) تصحيح أول قراءة كعداد أولي بس إذا خيار «أول قراءة = عداد أولي» مفعّل بالإعدادات
+--         (عين وزين: الخيار مطفى — أول قراءة بتنحسب استهلاك من العداد السابق)
+-- ============================================================
+do $m$
+declare d text;
+begin
+  d := pg_get_functiondef('public.motor_reading_edit(text,text,uuid,numeric,text)'::regprocedure);
+  if position('st.first_read_baseline and r.prev_value = r.value' in d) = 0 then
+    d := replace(d, '  if p_value is not null and r.prev_value = r.value', '  if p_value is not null and st.first_read_baseline and r.prev_value = r.value');
+    if position('st.first_read_baseline and r.prev_value = r.value' in d) = 0 then raise exception 'patch'; end if;
+    execute d;
+  end if;
+end $m$;
+
+-- ============================================================
 --  20k) إقفال صندوق الموظف: يسلّم كل النقد للمكتب ويطلع تقرير
 -- ============================================================
 create or replace function public.motor_staff_close(p_slug text, p_token text, p_staff uuid default null)
