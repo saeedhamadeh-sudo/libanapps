@@ -5716,6 +5716,71 @@ create trigger motor_cust_defaults before insert or update on public.motor_custo
   for each row execute function public._motor_cust_defaults();
 
 -- ============================================================
+--  20j33) إلغاء الزبون بيحرّر الباركود تبعو (بيرجع إذا انسترجع من سلة المحذوفات وكان بعدو فاضي)
+--         + تعديل أول قراءة (عداد أولي): العداد السابق بيلحق القيمة الجديدة، فما في استهلاك
+-- ============================================================
+do $m$
+declare d text;
+begin
+  d := pg_get_functiondef('public.motor_customer_delete(text,text,uuid)'::regprocedure);
+  if position('barcode = ''''' in d) = 0 then
+    d := replace(d, 'update public.motor_customers set deleted_at = now(), updated_at = now() where id = c.id;',
+                    'update public.motor_customers set deleted_at = now(), barcode = '''', updated_at = now() where id = c.id;');
+    if position('barcode = ''''' in d) = 0 then raise exception 'delete patch'; end if;
+    execute d;
+  end if;
+  d := pg_get_functiondef('public.motor_trash_restore(text,text,uuid)'::regprocedure);
+  if position('tr.data->>''barcode''' in d) = 0 then
+    d := replace(d, '    update public.motor_customers set deleted_at = null, updated_at = now() where id = tr.ref_id and site_id = sid;',
+                    '    update public.motor_customers set deleted_at = null, updated_at = now(),
+           barcode = case when barcode = '''' and coalesce(tr.data->>''barcode'','''') <> ''''
+                           and not exists (select 1 from public.motor_customers x where x.site_id = sid and x.id <> tr.ref_id and lower(x.barcode) = lower(tr.data->>''barcode''))
+                          then tr.data->>''barcode'' else barcode end
+     where id = tr.ref_id and site_id = sid;');
+    if position('tr.data->>''barcode''' in d) = 0 then raise exception 'restore patch'; end if;
+    execute d;
+  end if;
+  d := pg_get_functiondef('public.motor_reading_edit(text,text,uuid,numeric,text)'::regprocedure);
+  if position('first_base' in d) = 0 then
+    d := replace(d, '  if p_value is null or p_value < r.prev_value then',
+                    '  -- first_base: أول قراءة اعتُمدت عداداً أولياً (السابق = الحالي) → السابق بيصير القيمة الجديدة
+  if p_value is not null and r.prev_value = r.value
+     and not exists (select 1 from public.motor_readings x where x.customer_id = r.customer_id and x.created_at < r.created_at)
+     and coalesce((select initial_reading from public.motor_customers where id = r.customer_id), 0) = 0 then
+    update public.motor_readings set prev_value = p_value where id = r.id;
+    update public.motor_invoices set prev_value = p_value where reading_id = r.id and not voided;
+    r.prev_value := p_value;
+  end if;
+  if p_value is null or p_value < r.prev_value then');
+    if position('first_base' in d) = 0 then raise exception 'edit patch'; end if;
+    execute d;
+  end if;
+end $m$;
+-- الزبائن الملغيين من قبل: حرّر الباركود (محفوظ بسلة المحذوفات)
+update public.motor_customers set barcode = '', updated_at = now() where deleted_at is not null and barcode <> '';
+
+-- ============================================================
+--  20j34) زبون جديد: إذا الباركود التلقائي (البادئة-رقم الزبون) محجوز، منكمّل للرقم الفاضي اللي بعدو
+-- ============================================================
+do $m$
+declare d text;
+begin
+  d := pg_get_functiondef('public.motor_customer_save(text,text,jsonb)'::regprocedure);
+  if position('free_bc' in d) = 0 then
+    d := replace(d, '  if newc and c.barcode = '''' then c.barcode := pre || ''-'' || lpad(seq::text, 5, ''0''); end if;',
+'  if newc and c.barcode = '''' then
+    -- free_bc: إذا الرقم محجوز لزبون تاني منكمّل للرقم الفاضي اللي بعدو
+    c.barcode := pre || ''-'' || lpad(seq::text, 5, ''0'');
+    while exists (select 1 from public.motor_customers x where x.site_id = sid and lower(x.barcode) = lower(c.barcode)) loop
+      seq := seq + 1; c.barcode := pre || ''-'' || lpad(seq::text, 5, ''0'');
+    end loop;
+  end if;');
+    if position('free_bc' in d) = 0 then raise exception 'save patch'; end if;
+    execute d;
+  end if;
+end $m$;
+
+-- ============================================================
 --  20k) إقفال صندوق الموظف: يسلّم كل النقد للمكتب ويطلع تقرير
 -- ============================================================
 create or replace function public.motor_staff_close(p_slug text, p_token text, p_staff uuid default null)
