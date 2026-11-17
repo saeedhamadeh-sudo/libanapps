@@ -3089,8 +3089,8 @@ VIEWS.dash=async function(main){
       stat(t('st_unpaid'), fmtN(d.unpaid_count,0),can('collect')?'pay':'customers|debt')+
       (mine?'':stat(t('st_debt'), money(d.debt_total),'customers|debt'))+
       (mine||!n2(d.bad_debt_total)?'':stat('📉 '+t('nav_baddebt')+' ('+fmtN(d.bad_debt_count,0)+')', money(d.bad_debt_total),'baddebt'))+
-      (mine?'':ME.is_main?stat(t('st_cash_box'), money(d.cash_box),'cash'):stat(t('my_box'), money(d.cash_box),'cstmt'))+
-      (mine?'':stat(t('st_whish_box'), money(d.whish_box),'whish'))+
+      (mine?'':ME.is_main?edStat(stat(t('st_cash_box'), money(d.cash_box),'cash'),'cash'):stat(t('my_box'), money(d.cash_box),'cstmt'))+
+      (mine?'':ME.is_main?edStat(stat(t('st_whish_box'), money(d.whish_box),'whish'),'whish'):stat(t('st_whish_box'), money(d.whish_box),'whish'))+
       (mine?'':stat(t('st_wa'), fmtN(d.wa_pending,0),n2(d.wa_inv)>0?'bills':'wa'))+
       (mine?'':stat(t('nav_trash'), fmtN(d.trash_count,0),'trash'))+
       stat(t('st_cash_today'), money(d.cash_today),mine?'cstmt':'cash')+
@@ -3099,6 +3099,8 @@ VIEWS.dash=async function(main){
       (d.my_cash_in_hand!=null?stat(t('st_hand'), money(d.my_cash_in_hand)):'')+
     '</div>'+(ME.role==='collector'&&can('read')?windowNote():'');
   if($('#dwa',main)){ waBind($('#dwa',main)); if(waKey()){ waRefresh(); waStartPoll(); } }
+  $$('[data-sbe]',main).forEach(function(b){ b.addEventListener('click',function(e){ e.stopPropagation(); var k=b.dataset.sbe;
+    setBalance(k,null,k==='cash'?t('st_cash_box'):'Whish',k==='cash'?n2(d.cash_box):n2(d.whish_box),function(){ go('dash'); }); }); });
   $$('[data-go]',main).forEach(function(b){ b.addEventListener('click',function(){ var p=b.dataset.go.split('|'); if(p[0]==='customers'){ CF.st=p[1]||''; CF.q=''; CF.lim=200; } go(p[0]); }); });
   var rs=$('#drs',main); if(rs) rs.addEventListener('click',async function(){ var v=$('#drate',main).value.trim(); if(!(n2(v)>0)) return toast(t('e_bad_amount'),'e');
     busy(rs,true); try{ SITE=await call('motor_settings_save',{p_data:{lbp_rate:v}}); toast(t('rate_saved'),'s'); }catch(e){ toast(errText(e),'e'); } busy(rs,false); });
@@ -3478,6 +3480,8 @@ function pingNow(){ if(!navigator.geolocation||!TOKEN) return;
   navigator.geolocation.getCurrentPosition(function(p){ call('motor_ping',{p_lat:p.coords.latitude,p_lng:p.coords.longitude,p_acc:Math.round(p.coords.accuracy||0)}).catch(function(){}); },function(){},{enableHighAccuracy:true,timeout:20000,maximumAge:60000}); }
 document.addEventListener('visibilitychange',function(){ if(!document.hidden&&ME) syncNow(); });
 
+/* زر ✏️ صغير جوّا مربّع اللوحة (المدير الأساسي: تعديل رصيد الصندوق/Whish) */
+function edStat(html,k){ return html.replace('<span>','<span><button class="btn ghost sm" data-sbe="'+k+'" title="'+esc(t('sb_btn'))+'" style="padding:0 6px;margin-inline-end:4px">✏️</button>'); }
 function stat(l,v,g){ return '<div class="stat"'+(g?' data-go="'+esc(g)+'"':'')+'><span>'+esc(l)+'</span><b class="num">'+esc(v)+'</b></div>'; }
 var RWIN=null;
 async function loadRWin(){ try{ RWIN=await call('motor_read_windows'); }catch(e){} return RWIN; }
