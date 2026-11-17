@@ -5292,6 +5292,45 @@ begin
 end $m$;
 
 -- ============================================================
+--  20j26) سند الصرف: «الدفع من» = الصندوق / Whish / مدفوع من خارج الصندوق (outside)
+--         outside ما بينقص أي صندوق؛ محاسبياً على حساب المستثمر 108
+-- ============================================================
+alter table public.motor_moves drop constraint if exists motor_moves_account_check;
+alter table public.motor_moves add constraint motor_moves_account_check check (account in ('collector','whish','cash','outside'));
+
+create or replace function public._motor_voucher(p_sid uuid, p_w jsonb, p_account text, p_amount numeric, p_category text, p_note text, p_type text, p_staff uuid, p_period text)
+returns public.motor_moves language plpgsql security definer set search_path = public as $$
+declare seq int; m public.motor_moves%rowtype;
+begin
+  if p_account not in ('cash','whish','outside') then perform public._motor_err('bad_account'); end if;
+  if coalesce(p_amount,0) <= 0 then perform public._motor_err('bad_amount'); end if;
+  update public.motor_sites set voucher_seq = voucher_seq + 1 where id = p_sid returning voucher_seq into seq;
+  insert into public.motor_moves (site_id, account, kind, amount, note, by_name, category, vno, pay_staff, period, extra)
+  values (p_sid, p_account, case when p_account = 'whish' then 'withdraw' else 'out' end, abs(p_amount), coalesce(p_note,''),
+          p_w->>'name', coalesce(p_category,''), seq, p_staff, coalesce(p_period,''), jsonb_build_object('type', p_type))
+  returning * into m;
+  return m;
+end $$;
+
+do $m$
+declare d text; f text;
+begin
+  for f in select p.oid::regprocedure::text from pg_proc p where p.pronamespace = 'public'::regnamespace
+            and p.proname in ('motor_expense_add','motor_purchase_add','motor_salary_pay','motor_supplier_pay','motor_ins_add') loop
+    d := pg_get_functiondef(f::regprocedure);
+    if position('''outside''' in d) = 0 and position('in (''cash'',''whish'')' in d) > 0 then
+      execute replace(d, 'in (''cash'',''whish'')', 'in (''cash'',''whish'',''outside'')');
+    end if;
+  end loop;
+  d := pg_get_functiondef('public._motor_gl(uuid,date,date)'::regprocedure);
+  if position('''outside''' in d) = 0 then
+    d := replace(d, 'case m.account when ''whish'' then ''5120'' when ''collector'' then ''531'' else ''530'' end bacct',
+                    'case m.account when ''whish'' then ''5120'' when ''collector'' then ''531'' when ''outside'' then ''108'' else ''530'' end bacct');
+    if position('''outside''' in d) = 0 then raise exception 'gl'; end if; execute d;
+  end if;
+end $m$;
+
+-- ============================================================
 --  20k) إقفال صندوق الموظف: يسلّم كل النقد للمكتب ويطلع تقرير
 -- ============================================================
 create or replace function public.motor_staff_close(p_slug text, p_token text, p_staff uuid default null)
