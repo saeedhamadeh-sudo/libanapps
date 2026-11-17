@@ -1789,7 +1789,7 @@ var D={
  confirm_delete:['تأكيد الحذف؟','Confirm delete?','Confirmer la suppression ?'],
  saved:['تم الحفظ ✓','Saved ✓','Enregistré ✓'],
  all:['الكل','All','Tous'],
- f_debt:['عليهم دين','With debt','Avec dette'], dc_type:['نوع الحسم','Discount type','Type de remise'], dc_t_amt:['مبلغ ثابت','Fixed amount','Montant fixe'], dc_t_pct:['نسبة مئوية %','Percentage %','Pourcentage %'], dc_pct:['نسبة الحسم %','Discount %','Remise %'], dc_pct_hint:['تُحسم النسبة من قيمة كل فاتورة (الاشتراك + الاستهلاك)، وتتعدّل تلقائياً إذا تغيّر سعر الكيلو.','The percentage is taken off each invoice (fee + consumption) and follows kWh price changes.','Le pourcentage s’applique à chaque facture (abonnement + consommation).'], f_on_debt:['مفعّل وعليه دين','Active with debt','Actif avec dette'], f_off_debt:['مقطوع وعليه دين','Cut off with debt','Coupé avec dette'], dr_excl_bd:['لا تشمل زبائن الديون المعدومة ({n} · {v})','Excludes bad-debt customers ({n} · {v})','Hors créances douteuses ({n} · {v})'], disc_applied:['مطبَّق عليه حسم دائم','Permanent discount applied','Remise permanente appliquée'], sort_by:['ترتيب','Sort','Trier'], sort_on_first:['ترتيب: المفعّل أولاً','Sort: active first','Tri : actifs d’abord'], sort_off_first:['ترتيب: المقطوع أولاً','Sort: cut off first','Tri : coupés d’abord'], sort_bal:['ترتيب: الأعلى ديناً','Sort: highest balance','Tri : solde le plus élevé'],
+ f_debt:['عليهم دين','With debt','Avec dette'], dc_type:['نوع الحسم','Discount type','Type de remise'], dc_t_amt:['مبلغ ثابت','Fixed amount','Montant fixe'], dc_t_pct:['نسبة مئوية %','Percentage %','Pourcentage %'], dc_pct:['نسبة الحسم %','Discount %','Remise %'], dc_pct_hint:['تُحسم النسبة من قيمة كل فاتورة (الاشتراك + الاستهلاك)، وتتعدّل تلقائياً إذا تغيّر سعر الكيلو.','The percentage is taken off each invoice (fee + consumption) and follows kWh price changes.','Le pourcentage s’applique à chaque facture (abonnement + consommation).'], f_on_debt:['مفعّل وعليه دين','Active with debt','Actif avec dette'], f_off_debt:['مقطوع وعليه دين','Cut off with debt','Coupé avec dette'], dr_excl_bd:['لا تشمل زبائن الديون المعدومة ({n} · {v})','Excludes bad-debt customers ({n} · {v})','Hors créances douteuses ({n} · {v})'], disc_applied:['مطبَّق عليه حسم دائم','Permanent discount applied','Remise permanente appliquée'], no_collect:['بلا صلاحية قبض','no collecting','sans encaissement'], sort_by:['ترتيب','Sort','Trier'], sort_on_first:['ترتيب: المفعّل أولاً','Sort: active first','Tri : actifs d’abord'], sort_off_first:['ترتيب: المقطوع أولاً','Sort: cut off first','Tri : coupés d’abord'], sort_bal:['ترتيب: الأعلى ديناً','Sort: highest balance','Tri : solde le plus élevé'],
  take_reading:['📷 أخذ عداد','📷 Read meter','📷 Relever'],
  collect:['💵 قبض','💵 Collect','💵 Encaisser'],
  statement:['🧾 كشف حساب','🧾 Statement','🧾 Relevé de compte'],
@@ -5298,8 +5298,13 @@ VIEWS.cstmt=async function(main){
   var cols=STAFF.filter(function(s){ return adm?!s.is_main:(s.id===ME.staff_id||(sub&&s.role==='collector')); });
   if(!adm&&!(sub&&cols.some(function(s){ return s.id===SF.staff; }))) SF.staff=ME.staff_id;
   if(!SF.from){ SF.from=TODAY.slice(0,8)+'01'; SF.to=TODAY; }
-  if(adm&&!SF.staff&&cols.length) SF.staff=(cols.filter(function(s){return s.role==='collector'})[0]||cols[0]).id;
-  main.innerHTML='<div class="toolbar">'+(adm||(sub&&cols.length>1)?'<select id="xs">'+cols.map(function(s){return '<option value="'+esc(s.id)+'">'+esc(s.name)+' · '+esc(roleLabel(s))+'</option>'}).join('')+'</select>':'')+
+  // الترتيب: الجباة اللي بيقبضوا أول، بعدين المدراء، والموقوفين/اللي ما بيقبضوا آخر شي
+  function rk(s){ return (s.role==='collector'?0:2)+(s.can_collect&&s.is_active!==false?0:1); }
+  cols=cols.slice().sort(function(a,b){ return rk(a)-rk(b); });
+  if(adm&&(!SF.staff||!cols.some(function(s){ return s.id===SF.staff; }))&&cols.length) SF.staff=cols[0].id;
+  var seen={}; cols.forEach(function(s){ seen[s.name]=(seen[s.name]||0)+1; }); var k2={};
+  function lbl(s){ var n=s.name; if(seen[n]>1){ k2[n]=(k2[n]||0)+1; n+=' ('+k2[n]+')'; } return n+' · '+roleLabel(s)+(s.can_collect?'':' · '+t('no_collect')); }
+  main.innerHTML='<div class="toolbar">'+(adm||(sub&&cols.length>1)?'<select id="xs">'+cols.map(function(s){return '<option value="'+esc(s.id)+'">'+esc(lbl(s))+'</option>'}).join('')+'</select>':'')+
     '<label style="margin:0">'+esc(t('from'))+'</label><input type="date" id="xf" value="'+esc(SF.from)+'" style="flex:0 1 160px"><label style="margin:0">'+esc(t('to'))+'</label><input type="date" id="xt" value="'+esc(SF.to)+'" style="flex:0 1 160px">'+
     (adm?'<button class="btn ok" id="xh">'+esc(t('handover'))+'</button><button class="btn alt" id="xbd">📊 '+esc(t('bx_daily'))+'</button>':'')+'</div><div id="xbody"></div>';
   if($('#xbd',main)) $('#xbd',main).addEventListener('click',function(){ boxesDaily(function(id){ SF.staff=id; go('cstmt'); }); });
