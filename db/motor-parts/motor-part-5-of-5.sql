@@ -2918,6 +2918,24 @@ begin
 end $m$;
 
 -- ============================================================
+--  20j38) صفحة الحسومات للمدير كمان (مش بس المدير الأساسي)
+-- ============================================================
+do $m$
+declare d text; f text;
+begin
+  foreach f in array array['motor_disc_list(text,text)','motor_disc_set(text,text,uuid,numeric,text,numeric)','motor_disc_invoices(text,text,uuid)','motor_invoice_discount(text,text,uuid,numeric,text)'] loop
+    d := pg_get_functiondef(('public.' || f)::regprocedure);
+    if position('w := public._motor_main(p_slug, p_token);' in d) > 0 then
+      execute replace(d, 'w := public._motor_main(p_slug, p_token);', 'w := public._motor_admin(p_slug, p_token);');
+    end if;
+  end loop;
+  d := pg_get_functiondef('public.motor_customer_save(text,text,jsonb)'::regprocedure);
+  if position('if not coalesce((w->>''is_main'')::boolean, false) then d := d - ''charge_discount''' in d) > 0 then
+    execute replace(d, 'if not coalesce((w->>''is_main'')::boolean, false) then d := d - ''charge_discount''', 'if not coalesce((w->>''is_admin'')::boolean, false) then d := d - ''charge_discount''');
+  end if;
+end $m$;
+
+-- ============================================================
 --  20k) إقفال صندوق الموظف: يسلّم كل النقد للمكتب ويطلع تقرير
 -- ============================================================
 create or replace function public.motor_staff_close(p_slug text, p_token text, p_staff uuid default null)
