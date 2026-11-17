@@ -2970,6 +2970,25 @@ begin
 end $m$;
 
 -- ============================================================
+--  20j40) المدير (غير الأساسي) بيقدر يستلم من الجابي: بيقفل صندوق الجابي والمبلغ بيروح لصندوقو هو
+-- ============================================================
+do $m$
+declare d text;
+begin
+  d := pg_get_functiondef('public.motor_staff_close(text,text,uuid)'::regprocedure);
+  if position('adm_recv_coll' in d) = 0 then
+    d := replace(d, '  if p_staff is not null and p_staff::text is distinct from w->>''staff_id'' and not coalesce((w->>''is_main'')::boolean, false) then perform public._motor_err(''forbidden''); end if;',
+                    '  -- adm_recv_coll: المدير بيستلم من الجابي
+  if p_staff is not null and p_staff::text is distinct from w->>''staff_id'' and not coalesce((w->>''is_main'')::boolean, false)
+     and not (coalesce((w->>''is_admin'')::boolean, false) and exists (select 1 from public.motor_staff x where x.id = p_staff and x.site_id = sid and x.role = ''collector'')) then
+    perform public._motor_err(''forbidden'');
+  end if;');
+    if position('adm_recv_coll' in d) = 0 then raise exception 'close'; end if;
+    execute d;
+  end if;
+end $m$;
+
+-- ============================================================
 --  20k) إقفال صندوق الموظف: يسلّم كل النقد للمكتب ويطلع تقرير
 -- ============================================================
 create or replace function public.motor_staff_close(p_slug text, p_token text, p_staff uuid default null)
