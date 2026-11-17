@@ -2656,7 +2656,7 @@ Object.assign(D,{
  due_older:['رصيد سابق','Previous balance','Solde antérieur'], due_and:[' و',' and ',' et '],
  due_msg:['💡 {s} 💡\n\nعزيزي المشترك: {n}\nعدد الفواتير المتراكمة: {k}\nالقيمة: {v} ✔️\nعن شهر: {m}','💡 {s} 💡\n\nDear subscriber: {n}\nUnpaid bills: {k}\nAmount: {v} ✔️\nFor: {m}','💡 {s} 💡\n\nCher abonné : {n}\nFactures impayées : {k}\nMontant : {v} ✔️\nPour : {m}'],
  nav_suppliers:['الموردون','Suppliers','Fournisseurs'],
- sup_new:['مورد جديد','New supplier','Nouveau fournisseur'], sup_name:['المورد','Supplier','Fournisseur'], sup_none:['أضف مورداً أولاً','Add a supplier first','Ajoutez d’abord un fournisseur'],
+ sup_new:['مورد جديد','New supplier','Nouveau fournisseur'], sup_priv:['خاص — للمدير الأساسي فقط','Private — main admin only','Privé — admin principal uniquement'], sup_priv_h:['هذا المورد وفواتيره ودفعاته وسندات صرفه لا تظهر إلا للمدير الأساسي','This supplier, its invoices, payments and vouchers are visible to the main admin only','Ce fournisseur, ses factures, paiements et bons ne sont visibles que par l’admin principal'], sup_name:['المورد','Supplier','Fournisseur'], sup_none:['أضف مورداً أولاً','Add a supplier first','Ajoutez d’abord un fournisseur'],
  sup_purchases:['المشتريات','Purchases','Achats'], sup_balance:['الرصيد المستحق للمورد','Owed to supplier','Dû au fournisseur'], sup_balance_all:['مجموع المستحق للموردين','Total owed to suppliers','Total dû aux fournisseurs'],
  sup_pay:['دفعة للمورد','Supplier payment','Paiement fournisseur'], k_supplier:['دفعات الموردين','Supplier payments','Paiements fournisseurs'],
  pur_new:['فاتورة مشتريات','Purchase invoice','Facture d’achat'], pur_inv:['فاتورة مشتريات','Purchase invoice','Facture d’achat'], pur_ref:['رقم فاتورة المورد','Supplier invoice no.','N° facture fournisseur'],
@@ -6223,7 +6223,7 @@ VIEWS.suppliers=async function(main){
   main.innerHTML='<div class="toolbar"><button class="btn" id="uadd">➕ '+esc(t('sup_new'))+'</button><button class="btn alt" id="upur">🧾 '+esc(t('pur_new'))+'</button><span class="sp"></span></div>'+
     '<div class="stats">'+stat(t('sup_purchases'),money(tp))+stat(t('sup_balance_all'),money(tb))+'</div>'+
     '<div class="tw"><table><thead><tr><th>'+esc(t('sup_name'))+'</th><th>'+esc(t('phone'))+'</th><th>'+esc(t('sup_purchases'))+'</th><th>'+esc(t('sal_paid'))+'</th><th>'+esc(t('sup_balance'))+'</th><th></th></tr></thead><tbody>'+
-    (L.map(function(x,i){ return '<tr><td><b>'+esc(x.name)+'</b>'+(x.notes?'<div class="muted">'+esc(x.notes)+'</div>':'')+'</td><td class="num">'+esc(x.phone)+'</td><td class="num">'+esc(money(x.purchases))+' <span class="muted">('+esc(x.count)+')</span></td><td class="num">'+esc(money(x.paid))+'</td>'+
+    (L.map(function(x,i){ return '<tr><td><b>'+esc(x.name)+'</b>'+(x.main_only?' <span class="chip" title="'+esc(t('sup_priv_h'))+'">🔒 '+esc(t('sup_priv'))+'</span>':'')+(x.notes?'<div class="muted">'+esc(x.notes)+'</div>':'')+'</td><td class="num">'+esc(x.phone)+'</td><td class="num">'+esc(money(x.purchases))+' <span class="muted">('+esc(x.count)+')</span></td><td class="num">'+esc(money(x.paid))+'</td>'+
       '<td class="num"><b style="color:'+(n2(x.balance)>0?'var(--bad)':'var(--ok)')+'">'+esc(money(x.balance))+'</b></td>'+
       '<td style="white-space:nowrap"><button class="btn alt sm" data-pu="'+i+'">🧾 '+esc(t('pur_new'))+'</button> <button class="btn ok sm" data-up="'+i+'">💸 '+esc(t('sup_pay'))+'</button> <button class="btn ghost sm" data-us="'+i+'">'+esc(t('statement'))+'</button> <button class="btn ghost sm" data-ue="'+i+'">✏️</button></td></tr>'; }).join('')||
      '<tr><td colspan="6" class="muted">'+esc(t('no_results'))+'</td></tr>')+'</tbody></table></div>';
@@ -6237,13 +6237,13 @@ VIEWS.suppliers=async function(main){
 };
 function supplierForm(x){ var n=!x; x=x||{};
   var m=modal(n?t('sup_new'):x.name,'<div class="g2"><div><label>'+esc(t('sup_name'))+'</label><input id="un" value="'+esc(x.name||'')+'"></div><div><label>'+esc(t('phone'))+'</label><input id="uph" type="tel" value="'+esc(x.phone||'')+'"></div>'+
-    '<div style="grid-column:1/-1"><label>'+esc(t('note'))+'</label><input id="uno" value="'+esc(x.notes||'')+'"></div></div><div id="umsg" class="err msg" style="margin-top:8px"></div>',
+    '<div style="grid-column:1/-1"><label>'+esc(t('note'))+'</label><input id="uno" value="'+esc(x.notes||'')+'"></div>'+(ME.is_main?'<div style="grid-column:1/-1"><label class="chk" title="'+esc(t('sup_priv_h'))+'"><input type="checkbox" id="upv"'+(x.main_only?' checked':'')+'> 🔒 '+esc(t('sup_priv'))+'</label><div class="muted" style="font-size:12px">'+esc(t('sup_priv_h'))+'</div></div>':'')+'</div><div id="umsg" class="err msg" style="margin-top:8px"></div>',
     '<button class="btn ghost" data-x>'+esc(t('cancel'))+'</button>'+(n?'':'<button class="btn danger" data-del>'+esc(t('delete'))+'</button>')+'<button class="btn" data-s>'+esc(t('save'))+'</button>');
   m.foot.addEventListener('click',async function(e){ if(e.target.closest('[data-x]')) return m.close();
     if(e.target.closest('[data-del]')){ if(!(await confirmBox(t('confirm_delete')))) return;
       try{ await call('motor_supplier_delete',{p_id:x.id}); toast(t('saved'),'s'); m.close(); go('suppliers'); }catch(err){ $('#umsg',m.body).textContent=errText(err); } return; }
     var b=e.target.closest('[data-s]'); if(!b) return; busy(b,true);
-    try{ await call('motor_supplier_save',{p_data:{id:x.id||'',name:$('#un',m.body).value.trim(),phone:$('#uph',m.body).value.trim(),notes:$('#uno',m.body).value}}); toast(t('saved'),'s'); m.close(); go('suppliers'); }
+    try{ await call('motor_supplier_save',{p_data:Object.assign({id:x.id||'',name:$('#un',m.body).value.trim(),phone:$('#uph',m.body).value.trim(),notes:$('#uno',m.body).value},(ME.is_main?{main_only:$('#upv',m.body).checked}:{}))}); toast(t('saved'),'s'); m.close(); go('suppliers'); }
     catch(err){ $('#umsg',m.body).textContent=errText(err); busy(b,false); } });
 }
 async function purchaseForm(sups,sup,edit,after){

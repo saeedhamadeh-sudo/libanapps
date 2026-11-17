@@ -2334,6 +2334,74 @@ begin
 end $m$;
 
 -- ============================================================
+--  20j27) مورد «خاص»: ما بيبيّن إلا للمدير الأساسي (لائحة الموردين، كشف الحساب، الفواتير، الدفعات، سندات الصرف، حركات المخزون)
+-- ============================================================
+alter table public.motor_suppliers add column if not exists main_only boolean not null default false;
+
+create or replace function public._motor_sup_hidden(p_sup uuid, w jsonb)
+returns boolean language sql stable security definer set search_path = public as $$
+  select p_sup is not null and not coalesce((w->>'is_main')::boolean, false)
+     and exists (select 1 from public.motor_suppliers s where s.id = p_sup and s.main_only);
+$$;
+revoke all on function public._motor_sup_hidden(uuid,jsonb) from public, anon, authenticated;
+
+do $m$
+declare d text; f text; g text; a text := 'w := public._motor_admin(p_slug, p_token);';
+begin
+  for f, g in values
+    ('motor_supplier_statement(text,text,uuid)', 'p_supplier'),
+    ('motor_supplier_pay(text,text,uuid,numeric,text,text)', 'p_supplier'),
+    ('motor_supplier_delete(text,text,uuid)', 'p_id'),
+    ('motor_purchase_add(text,text,jsonb)', 'nullif(d->>''supplier_id'','''')::uuid'),
+    ('motor_purchase_get(text,text,uuid)', '(select supplier_id from public.motor_purchases where id = p_id)'),
+    ('motor_purchase_void(text,text,uuid)', '(select supplier_id from public.motor_purchases where id = p_id)'),
+    ('motor_purchase_edit(text,text,uuid,jsonb)', '(select supplier_id from public.motor_purchases where id = p_id)'),
+    ('motor_supplier_save(text,text,jsonb)', 'nullif(d->>''id'','''')::uuid')
+  loop
+    d := pg_get_functiondef(('public.' || f)::regprocedure);
+    if position('_motor_sup_hidden' in d) = 0 then
+      if position(a in d) = 0 then raise exception 'no admin line: %', f; end if;
+      d := replace(d, a, a || ' if public._motor_sup_hidden(' || g || ', w) then perform public._motor_err(''not_found''); end if;');
+      if f like 'motor_purchase_edit%' then
+        d := replace(d, 'perform public.motor_purchase_void(', 'if public._motor_sup_hidden(nullif(p_data->>''supplier_id'','''')::uuid, w) then perform public._motor_err(''not_found''); end if;
+  perform public.motor_purchase_void(');
+      end if;
+      if f like 'motor_supplier_save%' then
+        d := replace(d, '  return to_jsonb(x) - ''site_id'';',
+          '  if coalesce((w->>''is_main'')::boolean, false) and d ? ''main_only'' then
+    update public.motor_suppliers set main_only = coalesce((d->>''main_only'')::boolean, false) where id = x.id returning * into x;
+  end if;
+  return to_jsonb(x) - ''site_id'';');
+        if position('main_only' in d) = 0 then raise exception 'save patch'; end if;
+      end if;
+      execute d;
+    end if;
+  end loop;
+
+  d := pg_get_functiondef('public.motor_suppliers(text,text)'::regprocedure);
+  if position('_motor_sup_hidden' in d) = 0 then
+    d := replace(d, 'from public.motor_suppliers s where s.site_id = sid)', 'from public.motor_suppliers s where s.site_id = sid and not public._motor_sup_hidden(s.id, w))');
+    d := replace(d, '''notes'', s.notes,', '''notes'', s.notes, ''main_only'', s.main_only,');
+    if position('_motor_sup_hidden' in d) = 0 or position('''main_only''' in d) = 0 then raise exception 'suppliers patch'; end if;
+    execute d;
+  end if;
+
+  d := pg_get_functiondef('public.motor_vouchers(text,text,text,date,date)'::regprocedure);
+  if position('_motor_sup_hidden' in d) = 0 then
+    d := replace(d, 'where m.site_id = sid and m.extra->>''type'' = p_type', 'where m.site_id = sid and m.extra->>''type'' = p_type and not public._motor_sup_hidden(m.supplier_id, w)');
+    if position('_motor_sup_hidden' in d) = 0 then raise exception 'vouchers patch'; end if;
+    execute d;
+  end if;
+
+  d := pg_get_functiondef('public.motor_stock_moves_list(text,text,uuid,date,date)'::regprocedure);
+  if position('_motor_sup_hidden' in d) = 0 then
+    d := replace(d, 'from public.motor_stock_moves m where m.site_id = sid', 'from public.motor_stock_moves m where m.site_id = sid and not public._motor_sup_hidden((select p.supplier_id from public.motor_purchases p where p.id = m.purchase_id), w)');
+    if position('_motor_sup_hidden' in d) = 0 then raise exception 'stock patch'; end if;
+    execute d;
+  end if;
+end $m$;
+
+-- ============================================================
 --  20k) إقفال صندوق الموظف: يسلّم كل النقد للمكتب ويطلع تقرير
 -- ============================================================
 create or replace function public.motor_staff_close(p_slug text, p_token text, p_staff uuid default null)
