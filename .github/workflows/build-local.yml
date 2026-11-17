@@ -1,0 +1,34 @@
+name: Build LibanApps Local (Windows installer)
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['local-v*']
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install
+        working-directory: offline
+        run: npm install
+      - name: Build installer
+        working-directory: offline
+        run: npm run build
+      - name: Publish release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          V=$(node -p "require('./offline/package.json').version")
+          F="offline/dist/LibanApps-Local-Setup-$V.exe"
+          ls -la offline/dist
+          gh release view "local-v$V" >/dev/null 2>&1 || gh release create "local-v$V" --title "LibanApps Local $V" --notes "Built by GitHub Actions"
+          gh release upload "local-v$V" "$F" --clobber
