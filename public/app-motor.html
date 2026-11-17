@@ -1754,7 +1754,7 @@ var D={
  sub_date:['تاريخ الاشتراك','Subscription date','Date d’abonnement'],
  is_active:['مفعّل','Active','Actif'],
  credit_limit:['الحد الائتماني','Credit limit','Plafond de crédit'],
- charge_discount:['الخصم عند الفوترة','Discount per invoice','Remise par facture'],
+ charge_discount:['الخصم عند الفوترة','Discount per invoice','Remise par facture'], charge_discount_pct:['نسبة الخصم % (100% = مجاني ويصفّر الرصيد)','Discount % (100% = free, clears balance)','Remise % (100% = gratuit)'],
  discount_desc:['وصف الخصم','Discount note','Motif de remise'],
  charge_addition:['الإضافة عند الفوترة','Addition per invoice','Supplément par facture'],
  addition_desc:['وصف الإضافة','Addition note','Motif du supplément'],
@@ -3719,7 +3719,7 @@ async function openCustomer(id,barcode,mode){
   function estimate(v){
     var p=d.plan||{}, prev=d.baseline?n2(v):n2(d.prev_value), k=Math.max(0,n2(v)-prev);
     var kp=m.body.querySelector('#rkp'), price=p.kind==='fixed'?0:(kp&&kp.value.trim()!==''?n2(kp.value):(p.kwh_price!=null&&p.kwh_price!==''?n2(p.kwh_price):n2(SITE.kwh_price)));
-    return {kwh:k,price:price,amt:n2(p.fee)+k*price-n2(c.charge_discount)+n2(c.charge_addition)};
+    var gross=n2(p.fee)+k*price; return {kwh:k,price:price,amt:gross-n2(c.charge_discount)-Math.round(gross*n2(c.charge_discount_pct))/100+n2(c.charge_addition)};
   }
   function readForm(){
     var box=$('#cstep',m.body); photoBlob=null;
@@ -4888,13 +4888,13 @@ var CFIELDS=[
   ['sec_basic',[['name','text',1],['alt_name'],['mobile_cc','cc'],['mobile','tel'],['mobile2','tel'],['phone','tel'],['email','email'],['nationality'],['address','text',1],['notes','area',1]]],
   ['sec_sub',[['plan_id','plan'],['collector_id','staff'],['sub_date','date'],['collect_day','number'],['credit_limit','number'],['initial_reading','number'],['opening_balance','number'],['is_active','bool'],['archived','bool']]],
   ['sec_meter',[['barcode'],['meter_no'],['box'],['generator'],['breaker_no'],['building'],['floor'],['side'],['location_name'],['location_code'],['area'],['area_code'],['zone'],['category'],['category2'],['lat','number'],['lng','number']]],
-  ['sec_disc',[['charge_discount','number'],['discount_desc'],['charge_addition','number'],['addition_desc']]]
+  ['sec_disc',[['charge_discount','number'],['charge_discount_pct','number'],['discount_desc'],['charge_addition','number'],['addition_desc']]]
 ];
 async function editCustomer(id){
   var c={is_active:true,mobile_cc:'961'}, newc=!id;
   var m=modal(newc?t('new_customer'):t('edit_customer'),'<div class="muted">'+esc(t('loading'))+'</div>','<button class="btn ghost" data-x>'+esc(t('cancel'))+'</button>'+(newc?'':'<button class="btn danger" data-del>🗑️ '+esc(t('cc_btn'))+'</button>')+'<button class="btn" data-save>'+esc(t('save'))+'</button>',true);
   if(!newc){ try{ c=(await call('motor_customer_get',{p_id:id})).customer; }catch(e){ m.body.innerHTML='<div class="err">'+esc(errText(e))+'</div>'; return; } }
-  m.body.innerHTML=CFIELDS.filter(function(sec){ return sec[0]!=='sec_disc'||ME.is_main; }).map(function(sec){
+  m.body.innerHTML=CFIELDS.filter(function(sec){ return sec[0]!=='sec_disc'||isAdmin(); }).map(function(sec){
     return '<div class="sec-t">'+esc(t(sec[0]))+'</div><div class="g3">'+sec[1].filter(function(f){ return !(f[0]==='opening_balance'&&!newc); }).map(function(f){
       var k=f[0], ty=f[1]||'text', v=c[k]==null?'':c[k], st=f[2]?' style="grid-column:1/-1"':'';
       if(ty==='bool') return '<div><label class="chk"><input type="checkbox" data-f="'+k+'" '+(v?'checked':'')+'> '+esc(t(k==='archived'?'archived':'is_active'))+'</label></div>';

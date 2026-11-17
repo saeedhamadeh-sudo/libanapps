@@ -5986,6 +5986,34 @@ begin
 end $m$;
 
 -- ============================================================
+--  20j41) نموذج الزبون: خانة «نسبة الحسم %» + حسم 100% بيصفّر الرصيد (حسم رسمي)
+-- ============================================================
+do $m$
+declare d text;
+begin
+  d := pg_get_functiondef('public.motor_customer_save(text,text,jsonb)'::regprocedure);
+  if position('charge_discount_pct' in d) = 0 then
+    d := replace(d, 'then d := d - ''charge_discount'' - ''discount_desc''; end if;', 'then d := d - ''charge_discount'' - ''discount_desc'' - ''charge_discount_pct''; end if;');
+    d := replace(d, '  c.discount_desc   := coalesce(d->>''discount_desc'', c.discount_desc, '''');',
+                    '  c.charge_discount_pct := least(greatest(coalesce(nullif(d->>''charge_discount_pct'','''')::numeric, case when d ? ''charge_discount_pct'' then 0 end, c.charge_discount_pct, 0), 0), 100);
+  c.discount_desc   := coalesce(d->>''discount_desc'', c.discount_desc, '''');');
+    d := replace(d, 'charge_discount = c.charge_discount, discount_desc = c.discount_desc,', 'charge_discount = c.charge_discount, charge_discount_pct = c.charge_discount_pct, discount_desc = c.discount_desc,');
+    d := replace(d, '  return to_jsonb(c) - ''site_id'';
+end',
+'  -- حسم 100%: الرصيد المستحق بيتصفّر بحسم رسمي
+  if coalesce(c.charge_discount_pct,0) >= 100 and coalesce((select balance from public.motor_customers where id = c.id), 0) > 0.005 then
+    perform public.motor_discount_add(p_slug, p_token, c.id, (select balance from public.motor_customers where id = c.id),
+      ''حسم 100%'' || case when coalesce(trim(c.discount_desc),'''') <> '''' then '': '' || trim(c.discount_desc) else '''' end);
+    select * into c from public.motor_customers where id = c.id;
+  end if;
+  return to_jsonb(c) - ''site_id'';
+end');
+    if position('charge_discount_pct = c.charge_discount_pct' in d) = 0 or position('c.charge_discount_pct := least' in d) = 0 or position('حسم 100%' in d) = 0 then raise exception 'save'; end if;
+    execute d;
+  end if;
+end $m$;
+
+-- ============================================================
 --  20k) إقفال صندوق الموظف: يسلّم كل النقد للمكتب ويطلع تقرير
 -- ============================================================
 create or replace function public.motor_staff_close(p_slug text, p_token text, p_staff uuid default null)
