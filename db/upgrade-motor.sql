@@ -5560,6 +5560,147 @@ begin
 end $m$;
 
 -- ============================================================
+--  20j31) زبائن الديون المعدومة + التقسيط (تسوية مع حسم اختياري) — المدير والمدير الأساسي
+--  الدفعات بتنقبض بإيصالات عادية؛ المدفوع من القسط = مجموع إيصالات الزبون بعد إنشاء الخطة، موزّع على الأقساط بالترتيب
+-- ============================================================
+alter table public.motor_customers add column if not exists bad_debt boolean not null default false;
+alter table public.motor_customers add column if not exists bad_debt_at timestamptz;
+alter table public.motor_customers add column if not exists bad_debt_by text not null default '';
+alter table public.motor_customers add column if not exists bad_debt_note text not null default '';
+
+create table if not exists public.motor_inst_plans (
+  id          uuid primary key default gen_random_uuid(),
+  site_id     uuid not null references public.motor_sites(id) on delete cascade,
+  customer_id uuid not null references public.motor_customers(id) on delete cascade,
+  total       numeric(14,2) not null check (total > 0),
+  discount    numeric(14,2) not null default 0,
+  items       jsonb not null,               -- [{due:'YYYY-MM-DD', amount:n}]
+  note        text not null default '',
+  status      text not null default 'active' check (status in ('active','cancelled')),
+  by_name     text not null default '',
+  created_at  timestamptz not null default now()
+);
+create index if not exists motor_inst_plans_cust on public.motor_inst_plans(customer_id, created_at desc);
+alter table public.motor_inst_plans enable row level security;
+revoke all on public.motor_inst_plans from anon, authenticated;
+
+-- الخطة الحالية مع المدفوع والمتأخر
+create or replace function public._motor_inst_view(p_plan uuid)
+returns jsonb language plpgsql stable security definer set search_path = public as $$
+declare pl public.motor_inst_plans%rowtype; paid numeric; left_ numeric; it jsonb; out jsonb := '[]'::jsonb; a numeric; p numeric;
+        today date := public._motor_today(); overdue numeric := 0; nxt jsonb;
+begin
+  select * into pl from public.motor_inst_plans where id = p_plan;
+  if not found then return null; end if;
+  paid := coalesce((select sum(amount) from public.motor_payments where customer_id = pl.customer_id and not voided and created_at >= pl.created_at), 0);
+  left_ := paid;
+  for it in select * from jsonb_array_elements(pl.items) loop
+    a := (it->>'amount')::numeric; p := least(a, greatest(left_, 0)); left_ := left_ - p;
+    out := out || jsonb_build_array(it || jsonb_build_object('paid', round(p,2), 'rest', round(a - p,2)));
+    if a - p > 0.005 and (it->>'due')::date < today then overdue := overdue + (a - p); end if;
+    if nxt is null and a - p > 0.005 then nxt := it || jsonb_build_object('rest', round(a - p,2)); end if;
+  end loop;
+  return jsonb_build_object('id', pl.id, 'total', pl.total, 'discount', pl.discount, 'note', pl.note, 'by', pl.by_name, 'at', pl.created_at,
+    'status', pl.status, 'paid', round(least(paid, pl.total),2), 'rest', round(greatest(pl.total - paid, 0),2), 'overdue', round(overdue,2),
+    'next', nxt, 'items', out);
+end $$;
+revoke all on function public._motor_inst_view(uuid) from public, anon, authenticated;
+
+create or replace function public.motor_bad_debts(p_slug text, p_token text)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w jsonb; sid uuid; mine uuid;
+begin
+  w := public._motor_who(p_slug, p_token);
+  sid := (w->>'site_id')::uuid;
+  -- المدير والمدير الأساسي: الكل؛ الجابي: زبائنو (إلا إذا بيشوف الكل)
+  if not ((w->>'is_admin')::boolean or (w->>'can_collect')::boolean) then perform public._motor_err('forbidden'); end if;
+  if not (w->>'is_admin')::boolean and not (select collector_sees_all from public.motor_sites where id = sid) then mine := (w->>'staff_id')::uuid; end if;
+  return coalesce((select jsonb_agg(jsonb_build_object('id', c.id, 'code', c.code, 'name', c.name, 'mobile', c.mobile, 'mobile_cc', c.mobile_cc,
+           'area', c.area, 'box', c.box, 'balance', c.balance, 'is_active', c.is_active, 'at', c.bad_debt_at, 'by', c.bad_debt_by, 'note', c.bad_debt_note,
+           'plan', (select public._motor_inst_view(p.id) from public.motor_inst_plans p where p.customer_id = c.id and p.status = 'active' order by p.created_at desc limit 1))
+           order by c.bad_debt_at desc)
+         from public.motor_customers c where c.site_id = sid and c.bad_debt and c.deleted_at is null and (mine is null or c.collector_id = mine)), '[]'::jsonb);
+end $$;
+grant execute on function public.motor_bad_debts(text,text) to anon, authenticated;
+
+create or replace function public.motor_bad_debt_set(p_slug text, p_token text, p_customer uuid, p_on boolean, p_note text default '')
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w jsonb; sid uuid;
+begin
+  w := public._motor_admin(p_slug, p_token);
+  sid := (w->>'site_id')::uuid;
+  update public.motor_customers set bad_debt = coalesce(p_on, false),
+         bad_debt_at = case when p_on then now() else null end, bad_debt_by = case when p_on then coalesce(w->>'name','') else '' end,
+         bad_debt_note = case when p_on then left(coalesce(p_note,''),300) else '' end, updated_at = now()
+   where id = p_customer and site_id = sid and deleted_at is null;
+  if not found then perform public._motor_err('customer_not_found'); end if;
+  if not coalesce(p_on, false) then
+    update public.motor_inst_plans set status = 'cancelled' where customer_id = p_customer and status = 'active';
+  end if;
+  return jsonb_build_object('ok', true);
+end $$;
+grant execute on function public.motor_bad_debt_set(text,text,uuid,boolean,text) to anon, authenticated;
+
+-- خطة تقسيط: حسم اختياري (بسبب إلزامي) ثم تقسيم الرصيد على أقساط
+create or replace function public.motor_inst_save(p_slug text, p_token text, p_customer uuid, p_items jsonb,
+  p_discount numeric default 0, p_reason text default '', p_note text default '')
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w jsonb; sid uuid; c public.motor_customers%rowtype; tot numeric := 0; it jsonb; clean jsonb := '[]'::jsonb; pid uuid;
+begin
+  w := public._motor_admin(p_slug, p_token);
+  sid := (w->>'site_id')::uuid;
+  select * into c from public.motor_customers where id = p_customer and site_id = sid and deleted_at is null;
+  if not found then perform public._motor_err('customer_not_found'); end if;
+  if coalesce(p_discount,0) < 0 then perform public._motor_err('bad_amount'); end if;
+  if coalesce(p_discount,0) > 0 then
+    if coalesce(trim(p_reason),'') = '' then perform public._motor_err('reason_required'); end if;
+    perform public.motor_discount_add(p_slug, p_token, p_customer, p_discount, 'تسوية تقسيط: ' || trim(p_reason));
+    select * into c from public.motor_customers where id = p_customer;
+  end if;
+  if jsonb_typeof(p_items) <> 'array' or jsonb_array_length(p_items) = 0 or jsonb_array_length(p_items) > 120 then perform public._motor_err('no_items'); end if;
+  for it in select * from jsonb_array_elements(p_items) loop
+    if coalesce(it->>'due','') !~ '^\d{4}-\d{2}-\d{2}$' or coalesce(nullif(it->>'amount','')::numeric, 0) <= 0 then perform public._motor_err('bad_amount'); end if;
+    clean := clean || jsonb_build_array(jsonb_build_object('due', it->>'due', 'amount', round((it->>'amount')::numeric, 2)));
+    tot := tot + round((it->>'amount')::numeric, 2);
+  end loop;
+  if abs(tot - c.balance) > 0.01 then perform public._motor_err('inst_total', c.balance::text); end if;
+  update public.motor_inst_plans set status = 'cancelled' where customer_id = c.id and status = 'active';
+  insert into public.motor_inst_plans (site_id, customer_id, total, discount, items, note, by_name)
+  values (sid, c.id, tot, coalesce(p_discount,0), clean, left(coalesce(p_note,''),300), coalesce(w->>'name',''))
+  returning id into pid;
+  update public.motor_customers set bad_debt = true, bad_debt_at = coalesce(bad_debt_at, now()), bad_debt_by = case when bad_debt then bad_debt_by else coalesce(w->>'name','') end, updated_at = now() where id = c.id;
+  return jsonb_build_object('ok', true, 'plan', public._motor_inst_view(pid), 'balance', c.balance);
+end $$;
+grant execute on function public.motor_inst_save(text,text,uuid,jsonb,numeric,text,text) to anon, authenticated;
+
+create or replace function public.motor_inst_cancel(p_slug text, p_token text, p_plan uuid)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w jsonb;
+begin
+  w := public._motor_admin(p_slug, p_token);
+  update public.motor_inst_plans set status = 'cancelled' where id = p_plan and site_id = (w->>'site_id')::uuid;
+  return jsonb_build_object('ok', found);
+end $$;
+grant execute on function public.motor_inst_cancel(text,text,uuid) to anon, authenticated;
+
+do $m$
+declare d text;
+begin
+  d := pg_get_functiondef('public._motor_cust_rows(uuid,uuid,timestamp with time zone)'::regprocedure);
+  if position('bad_debt' in d) = 0 then
+    d := replace(d, '''is_active'', c.is_active, ''archived'', c.archived,', '''is_active'', c.is_active, ''archived'', c.archived, ''bad_debt'', c.bad_debt,');
+    if position('bad_debt' in d) = 0 then raise exception 'cust rows'; end if;
+    execute d;
+  end if;
+  d := pg_get_functiondef('public.motor_unpaid(text,text,text,integer)'::regprocedure);
+  if position('not cu.bad_debt' in d) = 0 then
+    d := replace(d, 'cu.deleted_at is null and cu.balance > 0.005', 'cu.deleted_at is null and not cu.bad_debt and cu.balance > 0.005');
+    if position('not cu.bad_debt' in d) = 0 then raise exception 'unpaid'; end if;
+    execute d;
+  end if;
+end $m$;
+
+-- ============================================================
 --  20k) إقفال صندوق الموظف: يسلّم كل النقد للمكتب ويطلع تقرير
 -- ============================================================
 create or replace function public.motor_staff_close(p_slug text, p_token text, p_staff uuid default null)
