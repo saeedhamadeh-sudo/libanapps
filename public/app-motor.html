@@ -2059,7 +2059,7 @@ var D={
  ac_total:['المجموع','Total','Total'], ac_jv_list:['القيود اليدوية','Journal entries','Écritures'], ac_line:['+ سطر','+ Line','+ Ligne'], ac_diff:['الفرق','Difference','Écart'],
  ac_unbal:['القيد غير متوازن: المدين يجب أن يساوي الدائن','Entry is not balanced: debit must equal credit','Écriture déséquilibrée'], ac_desc:['البيان','Description','Libellé'],
  ac_more:['يظهر أول 3000 حركة من {n}. ضيّق التاريخ.','Showing first 3000 of {n} lines. Narrow the dates.','3000 premières lignes sur {n}.'],
- bs_assets:['الموجودات','Assets','Actif'], bs_liab:['المطلوبات وحقوق الملكية','Liabilities & equity','Passif'], bs_fixed:['الأصول الثابتة','Fixed assets','Immobilisations'],
+ bs_assets:['الموجودات','Assets','Actif'], bs_edit:['تصحيح الرقم','Correct this figure','Corriger ce montant'], bs_cur:['القيمة الحالية','Current value','Valeur actuelle'], bs_new:['القيمة الصحيحة','Correct value','Valeur correcte'], bs_diff:['الفرق','Difference','Écart'], bs_off:['الحساب المقابل للتصحيح','Offset account','Compte de contrepartie'], bs_off_adj:['تسوية (ربح/خسارة استثنائية)','Adjustment (exceptional gain/loss)','Ajustement (profit/perte exceptionnel)'], bs_reason:['سبب التصحيح','Reason','Motif'], bs_reason_req:['اكتب سبب التصحيح','Enter the reason','Saisissez le motif'], bs_fix:['تصحيح الميزانية','Balance sheet correction','Correction du bilan'], bs_mv_hint:['يُسجَّل الفرق كتسوية على الصندوق نفسه، فيتعدّل رصيد الصندوق وكشف حسابه أيضاً.','The difference is recorded as an adjustment on the box itself, so its balance and statement change too.','L’écart est enregistré comme ajustement de la caisse elle-même.'], bs_e_cust:['أرصدة الزبائن تُصحَّح من كشف حساب كل زبون (حسم أو إلغاء فاتورة أو إيصال) حتى يبقى كشفه مطابقاً للميزانية.','Customer balances are corrected from each customer statement so it stays in line with the balance sheet.','Les soldes clients se corrigent depuis le relevé de chaque client.'], bs_e_sup:['أرصدة الموردين تُصحَّح من كشف حساب المورد (تعديل أو إلغاء فاتورة أو دفعة).','Supplier balances are corrected from the supplier statement.','Les soldes fournisseurs se corrigent depuis le relevé du fournisseur.'], bs_e_emp:['أرصدة الموظفين تُصحَّح من صفحة الرواتب.','Staff balances are corrected from the salaries page.','Les soldes du personnel se corrigent depuis la page des salaires.'], bs_e_coll:['صناديق الموظفين تُصحَّح من «كشف حساب الصندوق» لكل موظف.','Staff boxes are corrected from each staff box statement.','Les caisses du personnel se corrigent depuis le relevé de chaque employé.'], bs_liab:['المطلوبات وحقوق الملكية','Liabilities & equity','Passif'], bs_fixed:['الأصول الثابتة','Fixed assets','Immobilisations'],
  bs_stock:['المخزون','Inventory','Stocks'], bs_recv:['الحسابات المدينة','Receivables','Créances'], bs_cash:['الأموال الجاهزة','Cash','Disponibilités'],
  bs_equity:['الأموال الخاصة','Equity','Capitaux propres'], bs_debts:['الديون','Liabilities','Dettes'], bs_result:['نتيجة الدورة','Result of the period','Résultat'],
  bs_total_a:['مجموع الموجودات','Total assets','Total actif'], bs_total_l:['مجموع المطلوبات','Total liabilities & equity','Total passif'], bs_ok:['الميزانية متوازنة ✅','Balanced ✅','Équilibré ✅'], bs_bad:['فرق بالميزانية: {v}','Out of balance: {v}','Écart : {v}'],
@@ -5631,6 +5631,32 @@ async function acStatement(A,code){
     d.rows.forEach(function(r){ run+=n2(r.dr)-n2(r.cr); R.push([dt(r.at),r.acct,r.descr||'',r.ref||'',n2(r.dr),n2(r.cr),run]); }); downloadBlob(makeXlsx([{name:code,rows:R}]),'account-'+code+'.xlsx'); });
   load();
 }
+/* تصحيح رقم بالميزانية (المدير الأساسي): قيد يومية بالفرق مقابل حساب يختارو، أو تسوية للصندوق/Whish */
+function bsEdit(r,A){ var e=r.e;
+  if(e.h){ var mh=modal('✏️ '+r.l,'<div class="lic">'+esc(t(e.h))+'</div>','<button class="btn" data-x>'+esc(t('close'))+'</button>'); mh.foot.addEventListener('click',function(ev){ if(ev.target.closest('[data-x]')) mh.close(); }); return; }
+  var offs=[['108',acName(A,'108')],['758',t('bs_off_adj')],['101',acName(A,'101')]];
+  var m=modal('✏️ '+t('bs_edit')+' — '+r.l,'<div class="muted">'+esc(t('bs_cur'))+': <b class="num">'+esc(money(r.v))+'</b></div>'+
+    '<label style="margin-top:8px">'+esc(t('bs_new'))+'</label><input id="bev" class="valinput" inputmode="decimal" value="'+esc(n2(r.v).toFixed(2))+'">'+
+    '<div id="bed" class="muted" style="margin-top:4px"></div>'+
+    (e.mv?'<div class="lic" style="margin-top:8px">'+esc(t('bs_mv_hint'))+'</div>':'<label style="margin-top:8px">'+esc(t('bs_off'))+'</label><select id="beo">'+offs.filter(function(o){ return o[0]!==e.c; }).map(function(o){ return '<option value="'+o[0]+'">'+esc(o[0]+' — '+o[1])+'</option>'; }).join('')+'</select>')+
+    '<label style="margin-top:8px">'+esc(t('bs_reason'))+'</label><input id="ben"><div id="bem" class="err msg" style="margin-top:8px"></div>',
+    '<button class="btn ghost" data-x>'+esc(t('cancel'))+'</button><button class="btn" data-s>'+esc(t('save'))+'</button>');
+  function diff(){ return Math.round((n2($('#bev',m.body).value)-n2(r.v))*100)/100; }
+  function show(){ var d=diff(); $('#bed',m.body).textContent=t('bs_diff')+': '+(d>0?'+':'')+money(d); }
+  $('#bev',m.body).addEventListener('input',show); show();
+  m.foot.addEventListener('click',async function(ev){ if(ev.target.closest('[data-x]')) return m.close();
+    var b=ev.target.closest('[data-s]'); if(!b) return; var d=diff(), note=$('#ben',m.body).value.trim();
+    if(!d) return m.close(); if(!note){ $('#bem',m.body).textContent=t('bs_reason_req'); return; }
+    busy(b,true);
+    try{
+      if(e.mv){ await call('motor_move_add',{p_account:e.mv,p_staff:null,p_kind:'adjust',p_amount:d,p_note:t('bs_fix')+': '+note}); }
+      else{ var a=Math.abs(d), up=(d*e.s)>0, off=$('#beo',m.body).value, off2=off==='758'?(up?'758':'658'):off;
+        // الحساب المصحَّح: مدين إذا (طبيعتو مدينة وزاد) أو (طبيعتو دائنة ونقص)
+        var L=up?[{acct:e.c,dr:a,cr:0,note:note},{acct:off2,dr:0,cr:a,note:note}]:[{acct:e.c,dr:0,cr:a,note:note},{acct:off2,dr:a,cr:0,note:note}];
+        await call('motor_journal_save',{p_day:AC.to||null,p_descr:t('bs_fix')+' — '+r.l+': '+note,p_lines:L}); }
+      m.close(); toast(t('saved'),'s'); go('bsheet');
+    }catch(err){ $('#bem',m.body).textContent=errText(err); busy(b,false); } });
+}
 VIEWS.bsheet=async function(main){
   var A=await acLoad(), sv=n2(A.d.stock_value);
   // الأرصدة التفصيلية: كل حساب نهائي (أطول رقم) بحسب إشارة رصيده
@@ -5644,13 +5670,16 @@ VIEWS.bsheet=async function(main){
     for(var i=0;i<KEYS.length;i++){ if(k.indexOf(KEYS[i][0])===0){ key=KEYS[i][1]; break; } }
     var v=leaf[k]; if(v>0) AS[key]=(AS[key]||0)+v; else if(v<0) LI[key]=(LI[key]||0)-v; });
   var LBL={cust:acName(A,'411'),ins:acName(A,'4191'),emp:acName(A,'421'),sup:acName(A,'401'),whish:acName(A,'5120'),bank:acName(A,'51'),cash:acName(A,'530'),coll:acName(A,'531'),oth4:acName(A,'46'),oth5:acName(A,'5')};
-  function pick(o,keys,lbl){ return keys.map(function(k){ return [lbl&&lbl[k]||LBL[k],o[k]||0]; }); }
-  var A1=[[t('bs_fixed'),bal('2')],[t('bs_stock'),bal('3')+sv]].concat(pick(AS,['cust','emp','sup','ins','oth4'],{emp:t('bs_emp_dr')}), pick(AS,['cash','coll','whish','bank','oth5']));
+  // طريقة التصحيح لكل بند: قيد يومية على حساب (c) أو تسوية صندوق (mv) أو تنبيه يروح عالكشف (h)
+  var ED={cust:{h:'bs_e_cust'},emp:{h:'bs_e_emp'},sup:{h:'bs_e_sup'},coll:{h:'bs_e_coll'},ins:{c:'4191'},oth4:{c:'46'},cash:{mv:'cash'},whish:{mv:'whish'},bank:{c:'51'},oth5:null};
+  function pick(o,keys,lbl,sg){ return keys.map(function(k){ var e=ED[k]; return [lbl&&lbl[k]||LBL[k],o[k]||0,e?Object.assign({s:sg},e):null]; }); }
+  var A1=[[t('bs_fixed'),bal('2'),{c:'2',s:1}],[t('bs_stock'),bal('3')+sv,{c:'3',s:1}]].concat(pick(AS,['cust','emp','sup','ins','oth4'],{emp:t('bs_emp_dr')},1), pick(AS,['cash','coll','whish','bank','oth5'],null,1));
   var b1=bal('1'), known=bal('101')+bal('108')+bal('11')+bal('12')+bal('16');
-  var L1=[[acName(A,'101'),-bal('101')],[acName(A,'108'),-bal('108')],[acName(A,'11'),-bal('11')],[acName(A,'120'),-bal('12')],[acName(A,'1'),-(b1-known)],[t('bs_result')+' ('+(result>=0?t('bs_profit'):t('bs_loss'))+')',result]];
-  var L2=[[acName(A,'16'),-bal('16')]].concat(pick(LI,['sup','emp','ins','cust','oth4','cash','coll','whish','bank','oth5'],{cust:t('bs_cust_cr')}));
+  var L1=[[acName(A,'101'),-bal('101'),{c:'101',s:-1}],[acName(A,'108'),-bal('108'),{c:'108',s:-1}],[acName(A,'11'),-bal('11'),{c:'11',s:-1}],[acName(A,'120'),-bal('12'),{c:'120',s:-1}],[acName(A,'1'),-(b1-known)],[t('bs_result')+' ('+(result>=0?t('bs_profit'):t('bs_loss'))+')',result]];
+  var L2=[[acName(A,'16'),-bal('16'),{c:'16',s:-1}]].concat(pick(LI,['sup','emp','ins','cust','oth4','cash','coll','whish','bank','oth5'],{cust:t('bs_cust_cr')},-1));
   var ta=0, tl=0; A1.forEach(function(x){ ta+=x[1]; }); L1.concat(L2).forEach(function(x){ tl+=x[1]; });
-  function sec(title,rows){ return '<tr class="ac-l0"><td colspan="2"><b>'+esc(title)+'</b></td></tr>'+rows.filter(function(x){ return Math.abs(x[1])>0.004; }).map(function(x){ return '<tr><td style="padding-inline-start:22px">'+esc(x[0])+'</td><td class="num">'+esc(money(x[1]))+'</td></tr>'; }).join(''); }
+  var EDR=[]; function eb(lbl,v,e){ if(!e) return ''; EDR.push({l:lbl,v:v,e:e}); return ' <button class="btn ghost sm noprint" data-bse="'+(EDR.length-1)+'" title="'+esc(t('bs_edit'))+'">✏️</button>'; }
+  function sec(title,rows){ return '<tr class="ac-l0"><td colspan="2"><b>'+esc(title)+'</b></td></tr>'+rows.filter(function(x){ return Math.abs(x[1])>0.004||(x[2]&&x[2].c); }).map(function(x){ return '<tr><td style="padding-inline-start:22px">'+esc(x[0])+'</td><td class="num" style="white-space:nowrap">'+esc(money(x[1]))+eb(x[0],x[1],x[2])+'</td></tr>'; }).join(''); }
   var diff=ta-tl;
   var html='<div class="g2" style="align-items:start">'+
     '<div class="card"><h3>📗 '+esc(t('bs_assets'))+'</h3><table>'+sec(t('bs_fixed'),[A1[0]])+sec(t('bs_stock'),[A1[1]])+sec(t('bs_recv'),A1.slice(2,7))+sec(t('bs_cash'),A1.slice(7))+
@@ -5659,14 +5688,15 @@ VIEWS.bsheet=async function(main){
       '<tr class="ac-l0"><td><b>'+esc(t('bs_total_l'))+'</b></td><td class="num"><b>'+esc(money(tl))+'</b></td></tr></table></div></div>'+
     '<div class="'+(Math.abs(diff)<0.01?'okmsg':'err msg')+'" style="display:block;margin:6px 0 14px">'+esc(Math.abs(diff)<0.01?t('bs_ok'):t('bs_bad',{v:money(diff)}))+'</div>'+
     '<div class="card"><h3>📈 '+esc(t('bs_income'))+'</h3><table>'+
-      '<tr class="ac-l0"><td colspan="2"><b>'+esc(t('bs_rev'))+'</b></td></tr>'+['701','706','709','75','76'].map(function(c){ var v=-bal(c); return Math.abs(v)>0.004?'<tr><td style="padding-inline-start:22px">'+esc(c+' '+acName(A,c))+'</td><td class="num">'+esc(money(v))+'</td></tr>':''; }).join('')+
-      '<tr class="ac-l0"><td colspan="2"><b>'+esc(t('bs_exp'))+'</b></td></tr>'+['601','602','606','613','615','624','626','63','641','658','66','681'].map(function(c){ var v=bal(c); return Math.abs(v)>0.004?'<tr><td style="padding-inline-start:22px">'+esc(c+' '+acName(A,c))+'</td><td class="num">'+esc(money(v))+'</td></tr>':''; }).join('')+
+      '<tr class="ac-l0"><td colspan="2"><b>'+esc(t('bs_rev'))+'</b></td></tr>'+['701','706','709','75','76'].map(function(c){ var v=-bal(c); return Math.abs(v)>0.004?'<tr><td style="padding-inline-start:22px">'+esc(c+' '+acName(A,c))+'</td><td class="num" style="white-space:nowrap">'+esc(money(v))+eb(c+' '+acName(A,c),v,{c:c,s:-1})+'</td></tr>':''; }).join('')+
+      '<tr class="ac-l0"><td colspan="2"><b>'+esc(t('bs_exp'))+'</b></td></tr>'+['601','602','606','613','615','624','626','63','641','658','66','681'].map(function(c){ var v=bal(c); return Math.abs(v)>0.004?'<tr><td style="padding-inline-start:22px">'+esc(c+' '+acName(A,c))+'</td><td class="num" style="white-space:nowrap">'+esc(money(v))+eb(c+' '+acName(A,c),v,{c:c,s:1})+'</td></tr>':''; }).join('')+
       (sv?'<tr><td style="padding-inline-start:22px">'+esc('603 '+t('bs_stock_chg'))+'</td><td class="num">−'+esc(money(sv))+'</td></tr>':'')+
       '<tr class="ac-l0"><td><b>'+esc(t('bs_result'))+' — '+esc(result>=0?t('bs_profit'):t('bs_loss'))+'</b></td><td class="num"><b style="color:'+(result>=0?'var(--ok)':'var(--bad)')+'">'+esc(money(result))+'</b></td></tr></table></div>';
   main.innerHTML='<div class="toolbar"><label style="margin:0">'+esc(t('ac_to'))+'</label><input type="date" id="bst" value="'+esc(AC.to)+'" style="flex:0 1 170px"><span class="sp"></span>'+
     '<button class="btn ghost" id="bsx">⬇️ Excel</button><button class="btn" id="bsp">🖨️ PDF</button></div><div id="bsb">'+html+'</div>';
   $('#bst',main).addEventListener('change',function(){ AC.to=this.value; go('bsheet'); });
-  $('#bsp',main).addEventListener('click',function(){ printA4('<h2 style="text-align:center">'+esc(SITE.name||'')+' — '+esc(t('nav_bsheet'))+'</h2><div style="text-align:center">'+esc(t('ac_to'))+': '+esc(AC.to||TODAY)+'</div>'+$('#bsb',main).innerHTML); });
+  $('#bsb',main).addEventListener('click',function(e){ var b=e.target.closest('[data-bse]'); if(b) bsEdit(EDR[+b.dataset.bse],A); });
+  $('#bsp',main).addEventListener('click',function(){ printA4('<style>#printArea .noprint{display:none}</style>'+'<h2 style="text-align:center">'+esc(SITE.name||'')+' — '+esc(t('nav_bsheet'))+'</h2><div style="text-align:center">'+esc(t('ac_to'))+': '+esc(AC.to||TODAY)+'</div>'+$('#bsb',main).innerHTML); });
   $('#bsx',main).addEventListener('click',function(){ var R=[[t('bs_assets'),''],...A1.map(function(x){return [x[0],x[1]];}),[t('bs_total_a'),ta],['',''],[t('bs_liab'),''],...L1.concat(L2).map(function(x){return [x[0],x[1]];}),[t('bs_total_l'),tl]];
     downloadBlob(makeXlsx([{name:t('nav_bsheet'),rows:R}]),'balance-sheet-'+SLUG+'.xlsx'); });
 };
