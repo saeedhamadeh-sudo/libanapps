@@ -1789,7 +1789,7 @@ var D={
  confirm_delete:['تأكيد الحذف؟','Confirm delete?','Confirmer la suppression ?'],
  saved:['تم الحفظ ✓','Saved ✓','Enregistré ✓'],
  all:['الكل','All','Tous'],
- f_debt:['عليهم دين','With debt','Avec dette'],
+ f_debt:['عليهم دين','With debt','Avec dette'], sort_by:['ترتيب','Sort','Trier'], sort_on_first:['ترتيب: المفعّل أولاً','Sort: active first','Tri : actifs d’abord'], sort_off_first:['ترتيب: المقطوع أولاً','Sort: cut off first','Tri : coupés d’abord'], sort_bal:['ترتيب: الأعلى ديناً','Sort: highest balance','Tri : solde le plus élevé'],
  take_reading:['📷 أخذ عداد','📷 Read meter','📷 Relever'],
  collect:['💵 قبض','💵 Collect','💵 Encaisser'],
  statement:['🧾 كشف حساب','🧾 Statement','🧾 Relevé de compte'],
@@ -4742,7 +4742,7 @@ function lightbox(src){ modal(t('photo'),'<img class="lb-img" src="'+esc(src)+'"
 /* =========================================================
    الزبائن (إدارة)
    ========================================================= */
-var CF={q:'',st:'',plan:'',col:'',area:'',lim:200};
+var CF={q:'',st:'',plan:'',col:'',area:'',lim:200,sort:''};
 VIEWS.customers=async function(main){
   searchHooks=[];
   var adm=isAdmin();
@@ -4751,14 +4751,15 @@ VIEWS.customers=async function(main){
   main.innerHTML='<div class="toolbar">'+
     '<input id="cq" type="search" placeholder="'+esc(t('search_ph'))+'" value="'+esc(CF.q)+'">'+
     '<select id="cst"><option value="">'+esc(t('all'))+'</option><option value="on">'+esc(t('active'))+'</option><option value="off">'+esc(t('inactive'))+'</option><option value="arch">'+esc(t('archived'))+'</option><option value="debt">'+esc(t('f_debt'))+'</option></select>'+
+    sortSel('csort')+
     '<select id="cpl"><option value="">'+esc(t('plan'))+': '+esc(t('all'))+'</option>'+PLANS.map(function(p){return '<option value="'+esc(p.id)+'">'+esc(p.name)+'</option>'}).join('')+'</select>'+
     (adm?'<select id="ccol"><option value="">'+esc(t('collector'))+': '+esc(t('all'))+'</option>'+STAFF.filter(function(s){return s.role==='collector'}).map(function(s){return '<option value="'+esc(s.id)+'">'+esc(s.name)+'</option>'}).join('')+'</select>':'')+
     '<select id="car"><option value="">'+esc(t('area'))+': '+esc(t('all'))+'</option>'+Object.keys(areas).sort().map(function(a){return '<option>'+esc(a)+'</option>'}).join('')+'</select>'+
     '</div><div class="toolbar">'+
     (adm?'<button class="btn" id="cadd">'+esc(t('new_customer'))+'</button><button class="btn alt" id="cimp">'+esc(t('import_excel'))+'</button>':'')+
-    '<button class="btn warn" id="cdebt">💰 '+esc(t('dr_btn'))+'</button><button class="btn ghost" id="cexp">'+esc(t('export_csv'))+'</button>'+(adm?'<button class="btn ghost" id="clbl">'+esc(t('labels'))+'</button><button class="btn ghost" id="cfill">'+esc(t('fill_barcodes'))+'</button>':'')+
+    '<button class="btn warn" id="cdebt">💰 '+esc(t('dr_btn'))+'</button><button class="btn alt" id="cprt">'+esc(t('print'))+' / PDF</button><button class="btn ghost" id="cexp">'+esc(t('export_csv'))+'</button>'+(adm?'<button class="btn ghost" id="clbl">'+esc(t('labels'))+'</button><button class="btn ghost" id="cfill">'+esc(t('fill_barcodes'))+'</button>':'')+
     '<span class="sp"></span><span class="muted" id="ccount"></span></div><div class="tw"><table><thead><tr><th>'+esc(t('code'))+'</th><th>'+esc(t('name'))+'</th><th>'+esc(t('barcode'))+'</th><th>'+esc(t('plan'))+'</th><th>'+esc(t('box'))+'</th><th>'+esc(t('area'))+'</th><th>'+esc(t('collector'))+'</th><th>'+esc(t('status'))+'</th><th>'+esc(t('balance'))+'</th><th>'+esc(t('prev_reading'))+'</th><th>'+esc(t('cur_reading'))+' ('+esc(monthName(SITE.bill_period,true))+')</th>'+(adm?'<th></th>':'')+'</tr></thead><tbody id="ctb"></tbody></table></div><div id="cmore" style="text-align:center;margin-top:10px"></div>';
-  $('#cst',main).value=CF.st; $('#cpl',main).value=CF.plan; if($('#ccol',main)) $('#ccol',main).value=CF.col; $('#car',main).value=CF.area;
+  $('#cst',main).value=CF.st; $('#csort',main).value=CF.sort; $('#cpl',main).value=CF.plan; if($('#ccol',main)) $('#ccol',main).value=CF.col; $('#car',main).value=CF.area;
   function filtered(){
     var q=normS(CF.q);
     return CUST.filter(function(c){
@@ -4766,7 +4767,7 @@ VIEWS.customers=async function(main){
       if(CF.st==='on'&&!(c.is_active&&!c.archived)) return false; if(CF.st==='off'&&c.is_active) return false; if(CF.st==='arch'&&!c.archived) return false; if(CF.st==='debt'&&!(n2(c.balance)>0)) return false;
       if(CF.plan&&c.plan_id!==CF.plan) return false; if(CF.col&&c.collector_id!==CF.col) return false; if(CF.area&&c.area!==CF.area) return false;
       if(q&&!(phoneHit(c,CF.q)||normS(c.name).indexOf(q)>=0||normS(c.barcode).indexOf(q)>=0||normS(c.meter_no).indexOf(q)>=0||normS(c.box)===q||String(c.code)===q||normS(c.mobile).indexOf(q)>=0||normS(c.alt_name).indexOf(q)>=0)) return false;
-      return true; });
+      return true; }).sort(custSorter(CF.sort));
   }
   function paint(){
     var list=filtered(), tot=list.reduce(function(s,c){return s+n2(c.balance)},0);
@@ -4792,7 +4793,9 @@ VIEWS.customers=async function(main){
       busy(sb2,true); try{ var r=await call('motor_set_prev',{p_customer:c.id,p_value:Number(v)}); toast(r.mode==='current'?t('prev_saved_now'):t('prev_saved_next'),'s'); m.close(); await loadCustomers(); }
       catch(err){ $('#pvm',m.body).textContent=errText(err); busy(sb2,false); } });
   },true);
-  ['cst','cpl','ccol','car'].forEach(function(id){ var el=$('#'+id,main); if(el) el.addEventListener('change',function(){ CF[{cst:'st',cpl:'plan',ccol:'col',car:'area'}[id]]=this.value; CF.lim=200; paint(); }); });
+  ['cst','cpl','ccol','car','csort'].forEach(function(id){ var el=$('#'+id,main); if(el) el.addEventListener('change',function(){ CF[{cst:'st',cpl:'plan',ccol:'col',car:'area',csort:'sort'}[id]]=this.value; CF.lim=200; paint(); }); });
+  $('#cprt',main).addEventListener('click',function(){ var L=filtered(), sub=[CF.st?$('#cst',main).selectedOptions[0].text:'',CF.plan?planName(CF.plan):'',CF.area?t('area')+': '+CF.area:'',CF.col&&$('#ccol',main)?$('#ccol',main).selectedOptions[0].text:''].filter(Boolean).join(' · ');
+    printCustList(t('nav_customers'),sub,L,false); });
   if(adm){ $('#cadd',main).addEventListener('click',function(){ editCustomer(null); }); $('#cimp',main).addEventListener('click',importDialog);
     $('#clbl',main).addEventListener('click',function(){ printLabels(filtered().slice(0,500)); });
     $('#cfill',main).addEventListener('click',async function(){ try{ var r=await call('motor_fill_barcodes'); toast(t('fill_done',{n:r.count}),'s'); await loadCustomers(); go('customers'); }catch(e){ toast(errText(e),'e'); } }); }
@@ -4803,29 +4806,47 @@ VIEWS.customers=async function(main){
     downloadBlob(makeXlsx([{name:t('nav_customers'),rows:rows}]),'customers-'+SLUG+'.xlsx'); });
   searchHooks.push(paint); paint();
 };
+/* ترتيب لائحة الزبائن (الرقم، الاسم، المفعّل أولاً، المقطوع أولاً، الرصيد) */
+function sortSel(id){ return '<select id="'+id+'" title="'+esc(t('sort_by'))+'"><option value="">'+esc(t('sort_by'))+': '+esc(t('code'))+'</option><option value="name">'+esc(t('sort_by'))+': '+esc(t('name'))+'</option><option value="on">'+esc(t('sort_on_first'))+'</option><option value="off">'+esc(t('sort_off_first'))+'</option><option value="bal">'+esc(t('sort_bal'))+'</option></select>'; }
+function custSorter(k){ var byCode=function(a,b){ return (Number(a.code)||0)-(Number(b.code)||0); };
+  if(k==='name') return function(a,b){ return String(a.name).localeCompare(String(b.name),'ar'); };
+  if(k==='on'||k==='off') return function(a,b){ var x=(a.is_active?0:1)-(b.is_active?0:1); if(k==='off') x=-x; return x||byCode(a,b); };
+  if(k==='bal') return function(a,b){ return n2(b.balance)-n2(a.balance)||byCode(a,b); };
+  return byCode; }
+/* طباعة لائحة زبائن (مع الحالة والرصيد والمجموع) */
+function printCustList(title,sub,L,debts){ var logo=SITE.logo_url||'', tot=L.reduce(function(a,c){ return a+n2(c.balance); },0), on=L.filter(function(c){ return c.is_active; }).length;
+  printA4('<style>#printArea .hd{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:8px;font-size:12px}#printArea h2{margin:0 0 2px;font-size:18px}#printArea td.w{text-align:start}#printArea tfoot td{font-weight:800;background:#eee;font-size:13px}#printArea .off{color:#b91c1c;font-weight:700}</style>'+
+    '<div class="hd"><div style="display:flex;align-items:center;gap:12px">'+(logo?'<img src="'+esc(logo)+'" alt="" style="height:70px;max-width:180px;object-fit:contain">':'')+'<div><h2>'+esc(SITE.name||'')+'</h2><div><b>'+esc(title)+'</b>'+(sub?' — '+esc(sub):'')+'</div></div></div>'+
+    '<div>'+esc(t('date'))+': '+esc(TODAY)+'<br>'+esc(t('dr_count'))+': <b>'+fmtN(L.length,0)+'</b> ('+esc(t('active'))+' '+fmtN(on,0)+' · '+esc(t('inactive'))+' '+fmtN(L.length-on,0)+')</div></div>'+
+    '<table><thead><tr><th>#</th><th>'+esc(t('code'))+'</th><th>'+esc(t('name'))+'</th><th>'+esc(t('area'))+'</th><th>'+esc(t('box'))+'</th><th>'+esc(t('mobile'))+'</th><th>'+esc(t('collector'))+'</th><th>'+esc(t('status'))+'</th><th>'+esc(t('balance'))+'</th></tr></thead><tbody>'+
+    L.map(function(c,i){ return '<tr><td>'+(i+1)+'</td><td>'+esc(c.code)+'</td><td class="w">'+esc(c.name)+'</td><td>'+esc(c.area||'')+'</td><td>'+esc(c.box||'')+'</td><td dir="ltr">'+esc(c.mobile||'')+'</td><td>'+esc(c.collector_name||'')+'</td><td'+(c.is_active?'':' class="off"')+'>'+esc(c.is_active?t('active'):t('inactive'))+'</td><td>'+(debts?'<b>':'')+esc(money(c.balance))+(debts?'</b>':'')+'</td></tr>'; }).join('')+
+    '</tbody><tfoot><tr><td colspan="8">'+esc(t('total'))+' ('+fmtN(L.length,0)+')</td><td>'+esc(money(tot))+'</td></tr></tfoot></table>'); }
+
 /* كشف حساب جميع الديون: كل الزبائن يلي عليهم دين + المجموع بالأسفل */
 function debtsReport(){
-  var F={area:'',col:'',q:'',arch:true};
+  var F={area:'',col:'',q:'',arch:true,st:'',sort:'bal'};
   var areas={}; CUST.forEach(function(c){ if(c.area) areas[c.area]=1; });
   var cols={}; CUST.forEach(function(c){ if(c.collector_name) cols[c.collector_name]=1; });
   var m=modal('💰 '+t('dr_title'),
     '<div class="toolbar" style="margin:0 0 10px"><input id="drq" type="search" placeholder="'+esc(t('search_ph'))+'" style="flex:2 1 200px">'+
       '<select id="dra"><option value="">'+esc(t('area'))+': '+esc(t('all'))+'</option>'+Object.keys(areas).sort().map(function(a){ return '<option>'+esc(a)+'</option>'; }).join('')+'</select>'+
       (Object.keys(cols).length?'<select id="drc"><option value="">'+esc(t('collector'))+': '+esc(t('all'))+'</option>'+Object.keys(cols).sort().map(function(a){ return '<option>'+esc(a)+'</option>'; }).join('')+'</select>':'')+
+      '<select id="drst"><option value="">'+esc(t('status'))+': '+esc(t('all'))+'</option><option value="on">'+esc(t('active'))+'</option><option value="off">'+esc(t('inactive'))+'</option></select>'+sortSel('drso')+
       '<label class="chk" style="margin:0"><input type="checkbox" id="drx" checked> '+esc(t('dr_with_arch'))+'</label></div>'+
     '<div id="drs" class="row" style="gap:10px;margin-bottom:10px"></div><div class="tw" id="drt"></div>',
     '<button class="btn ghost" data-x>'+esc(t('close'))+'</button><button class="btn ok" data-xl>📊 '+esc(t('export_xlsx'))+'</button><button class="btn" data-pr>'+esc(t('print'))+' / PDF</button>',true);
   function list(){
     var q=normS(F.q);
     return CUST.filter(function(c){ return n2(c.balance)>0.005 && !c.bad_debt && (F.arch||!c.archived) && (!F.area||c.area===F.area) && (!F.col||c.collector_name===F.col) &&
+      (!F.st||(F.st==='on'?c.is_active:!c.is_active)) &&
       (!q||phoneHit(c,F.q)||normS(c.name).indexOf(q)>=0||String(c.code)===F.q.trim()||normS(c.barcode).indexOf(q)>=0||normS(c.box).indexOf(q)>=0); })
-      .sort(function(a,b){ return n2(b.balance)-n2(a.balance); });
+      .sort(custSorter(F.sort));
   }
   function paint(){
     var L=list(), tot=L.reduce(function(a,c){ return a+n2(c.balance); },0);
     $('#drs',m.body).innerHTML=stat(t('dr_count'),fmtN(L.length,0))+stat(t('dr_total'),money(tot));
     $('#drt',m.body).innerHTML='<table><thead><tr><th>#</th><th>'+esc(t('code'))+'</th><th>'+esc(t('name'))+'</th><th>'+esc(t('area'))+'</th><th>'+esc(t('box'))+'</th><th>'+esc(t('mobile'))+'</th><th>'+esc(t('collector'))+'</th><th>'+esc(t('balance'))+'</th></tr></thead><tbody>'+
-      (L.map(function(c,i){ return '<tr><td class="num">'+(i+1)+'</td><td class="num">'+esc(c.code)+'</td><td><a href="#" data-dc="'+esc(c.id)+'"><b>'+esc(c.name)+'</b></a>'+(c.archived?' <span class="chip">'+esc(t('archived'))+'</span>':'')+'</td><td>'+esc(c.area||'')+'</td><td>'+esc(c.box||'')+'</td>'+
+      (L.map(function(c,i){ return '<tr><td class="num">'+(i+1)+'</td><td class="num">'+esc(c.code)+'</td><td><a href="#" data-dc="'+esc(c.id)+'"><b>'+esc(c.name)+'</b></a>'+(c.archived?' <span class="chip">'+esc(t('archived'))+'</span>':'')+(c.is_active?'':' <span class="chip off">'+esc(t('inactive'))+'</span>')+'</td><td>'+esc(c.area||'')+'</td><td>'+esc(c.box||'')+'</td>'+
         '<td class="num" dir="ltr">'+esc(c.mobile||'')+'</td><td style="white-space:nowrap">'+esc(c.collector_name||'')+'</td><td class="num" style="white-space:nowrap"><b style="color:var(--bad)">'+esc(money(c.balance))+'</b></td></tr>'; }).join('')||'<tr><td colspan="8" class="muted">'+esc(t('dr_none'))+'</td></tr>')+
       '</tbody><tfoot><tr style="font-weight:800;background:var(--soft,#f1f5f9)"><td colspan="7">'+esc(t('dr_total'))+' ('+fmtN(L.length,0)+')</td><td class="num"><b style="font-size:17px">'+esc(money(tot))+'</b></td></tr></tfoot></table>';
     return {L:L,tot:tot};
@@ -4834,23 +4855,19 @@ function debtsReport(){
   $('#dra',m.body).addEventListener('change',function(){ F.area=this.value; paint(); });
   if($('#drc',m.body)) $('#drc',m.body).addEventListener('change',function(){ F.col=this.value; paint(); });
   $('#drx',m.body).addEventListener('change',function(){ F.arch=this.checked; paint(); });
+  $('#drso',m.body).value=F.sort;
+  $('#drst',m.body).addEventListener('change',function(){ F.st=this.value; paint(); });
+  $('#drso',m.body).addEventListener('change',function(){ F.sort=this.value; paint(); });
   m.body.addEventListener('click',function(e){ var a=e.target.closest('[data-dc]'); if(!a) return; e.preventDefault(); openStatement(a.dataset.dc); });
   m.foot.addEventListener('click',function(e){
     if(e.target.closest('[data-x]')) return m.close();
-    var r=paint(), sub=[F.area?t('area')+': '+F.area:'',F.col?t('collector')+': '+F.col:''].filter(Boolean).join(' · ');
+    var r=paint(), sub=[F.st?(F.st==='on'?t('active'):t('inactive')):'',F.area?t('area')+': '+F.area:'',F.col?t('collector')+': '+F.col:''].filter(Boolean).join(' · ');
     if(e.target.closest('[data-xl]')){
-      var rows=[['#',t('code'),t('name'),t('area'),t('box'),t('mobile'),t('collector'),t('balance')]];
-      r.L.forEach(function(c,i){ rows.push([i+1,c.code,c.name,c.area||'',c.box||'',c.mobile||'',c.collector_name||'',n2(c.balance)]); });
-      rows.push(['','',t('dr_total')+' ('+r.L.length+')','','','','',Math.round(r.tot*100)/100]);
+      var rows=[['#',t('code'),t('name'),t('area'),t('box'),t('mobile'),t('collector'),t('status'),t('balance')]];
+      r.L.forEach(function(c,i){ rows.push([i+1,c.code,c.name,c.area||'',c.box||'',c.mobile||'',c.collector_name||'',c.is_active?t('active'):t('inactive'),n2(c.balance)]); });
+      rows.push(['','',t('dr_total')+' ('+r.L.length+')','','','','','',Math.round(r.tot*100)/100]);
       downloadBlob(makeXlsx([{name:t('dr_title').slice(0,30),rows:rows}]),'debts-'+SLUG+'-'+TODAY+'.xlsx'); return; }
-    if(e.target.closest('[data-pr]')){
-      var logo=SITE.logo_url||'';
-      printA4('<style>#printArea .hd{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:8px;font-size:12px}#printArea h2{margin:0 0 2px;font-size:18px}#printArea td.w{text-align:start}#printArea tfoot td{font-weight:800;background:#eee;font-size:13px}</style>'+
-        '<div class="hd"><div style="display:flex;align-items:center;gap:12px">'+(logo?'<img src="'+esc(logo)+'" alt="" style="height:70px;max-width:180px;object-fit:contain">':'')+'<div><h2>'+esc(SITE.name||'')+'</h2><div><b>'+esc(t('dr_title'))+'</b>'+(sub?' — '+esc(sub):'')+'</div></div></div>'+
-        '<div>'+esc(t('date'))+': '+esc(TODAY)+'<br>'+esc(t('dr_count'))+': <b>'+fmtN(r.L.length,0)+'</b></div></div>'+
-        '<table><thead><tr><th>#</th><th>'+esc(t('code'))+'</th><th>'+esc(t('name'))+'</th><th>'+esc(t('area'))+'</th><th>'+esc(t('box'))+'</th><th>'+esc(t('mobile'))+'</th><th>'+esc(t('collector'))+'</th><th>'+esc(t('balance'))+'</th></tr></thead><tbody>'+
-        r.L.map(function(c,i){ return '<tr><td>'+(i+1)+'</td><td>'+esc(c.code)+'</td><td class="w">'+esc(c.name)+'</td><td>'+esc(c.area||'')+'</td><td>'+esc(c.box||'')+'</td><td dir="ltr">'+esc(c.mobile||'')+'</td><td>'+esc(c.collector_name||'')+'</td><td><b>'+esc(money(c.balance))+'</b></td></tr>'; }).join('')+
-        '</tbody><tfoot><tr><td colspan="7">'+esc(t('dr_total'))+' ('+fmtN(r.L.length,0)+')</td><td>'+esc(money(r.tot))+'</td></tr></tfoot></table>'); }
+    if(e.target.closest('[data-pr]')){ printCustList(t('dr_title'),sub,r.L,true); }
   });
   paint();
 }
