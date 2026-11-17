@@ -5796,6 +5796,96 @@ begin
 end $m$;
 
 -- ============================================================
+--  20j36) حسم دائم بالنسبة المئوية (% من قيمة الفاتورة: الاشتراك + الاستهلاك)
+--         motor_invoices.disc_pct بيحفظ النسبة لتنعاد الحسبة إذا تغيّر سعر الكيلو أو تعدّلت القراءة
+-- ============================================================
+alter table public.motor_customers add column if not exists charge_discount_pct numeric(5,2) not null default 0;
+alter table public.motor_invoices add column if not exists disc_pct numeric(5,2) not null default 0;
+
+create or replace function public._motor_cust_defaults()
+returns trigger language plpgsql as $$
+begin
+  new.bad_debt := coalesce(new.bad_debt, false);
+  new.bad_debt_by := coalesce(new.bad_debt_by, '');
+  new.bad_debt_note := coalesce(new.bad_debt_note, '');
+  new.charge_discount_pct := coalesce(new.charge_discount_pct, 0);
+  return new;
+end $$;
+
+drop function if exists public.motor_disc_set(text,text,uuid,numeric,text);
+create or replace function public.motor_disc_set(p_slug text, p_token text, p_customer uuid, p_amount numeric, p_desc text, p_pct numeric default 0)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare w jsonb; sid uuid;
+begin
+  w := public._motor_main(p_slug, p_token);
+  sid := (w->>'site_id')::uuid;
+  if p_amount is null or p_amount < 0 then perform public._motor_err('bad_amount'); end if;
+  if coalesce(p_pct,0) < 0 or coalesce(p_pct,0) > 100 then perform public._motor_err('bad_amount'); end if;
+  update public.motor_customers set charge_discount = round(p_amount, 2), charge_discount_pct = round(coalesce(p_pct,0), 2),
+         discount_desc = left(coalesce(p_desc, ''), 200), updated_at = now()
+   where id = p_customer and site_id = sid;
+  if not found then perform public._motor_err('customer_not_found'); end if;
+  return jsonb_build_object('ok', true);
+end $$;
+grant execute on function public.motor_disc_set(text,text,uuid,numeric,text,numeric) to anon, authenticated;
+
+do $m$
+declare d text;
+begin
+  d := pg_get_functiondef('public.motor_disc_list(text,text)'::regprocedure);
+  if position('charge_discount_pct' in d) = 0 then
+    d := replace(d, '''amount'', c.charge_discount, ''desc'', c.discount_desc)', '''amount'', c.charge_discount, ''pct'', c.charge_discount_pct, ''desc'', c.discount_desc)');
+    d := replace(d, 'c.deleted_at is null and c.charge_discount <> 0)', 'c.deleted_at is null and (c.charge_discount <> 0 or c.charge_discount_pct <> 0))');
+    if position('(c.charge_discount <> 0 or' in d) = 0 then raise exception 'list'; end if;
+    execute d;
+  end if;
+
+  d := pg_get_functiondef('public.motor_read(text,text,uuid,numeric,text,double precision,double precision,double precision,boolean,numeric,boolean)'::regprocedure);
+  if position('charge_discount_pct' in d) = 0 then
+    d := replace(d, 'coalesce(c.charge_discount,0)', '(coalesce(c.charge_discount,0) + round((fee + energy) * coalesce(c.charge_discount_pct,0) / 100, 2))');
+    d := replace(d, '  if coalesce(pl.kind,''meter'') = ''meter'' then
+    if expl then', '  if coalesce(c.charge_discount_pct,0) <> 0 then update public.motor_invoices set disc_pct = c.charge_discount_pct where id = inv.id; inv.disc_pct := c.charge_discount_pct; end if;
+  if coalesce(pl.kind,''meter'') = ''meter'' then
+    if expl then');
+    if position('disc_pct = c.charge_discount_pct' in d) = 0 then raise exception 'read'; end if;
+    execute d;
+  end if;
+
+  d := pg_get_functiondef('public.motor_bill_fixed(text,text)'::regprocedure);
+  if position('charge_discount_pct' in d) = 0 then
+    d := replace(d, 'coalesce(c.charge_discount,0)', '(coalesce(c.charge_discount,0) + round(c.pfee * coalesce(c.charge_discount_pct,0) / 100, 2))');
+    d := replace(d, '    update public.motor_customers set balance = balance + amt, updated_at = now() where id = c.id;',
+                    '    if coalesce(c.charge_discount_pct,0) <> 0 then update public.motor_invoices set disc_pct = c.charge_discount_pct where site_id = sid and no = seq; end if;
+    update public.motor_customers set balance = balance + amt, updated_at = now() where id = c.id;');
+    if position('disc_pct = c.charge_discount_pct' in d) = 0 then raise exception 'fixed'; end if;
+    execute d;
+  end if;
+
+  -- تغيير سعر الكيلو: جزء الحسم بالنسبة بيتعدّل مع قيمة الاستهلاك
+  d := pg_get_functiondef('public.motor_month_price_set(text,text,text,numeric)'::regprocedure);
+  if position('disc_pct' in d) = 0 then
+    d := replace(d, 'declare w jsonb; sid uuid; i record; amt numeric; en numeric;', 'declare w jsonb; sid uuid; i record; amt numeric; en numeric; nd numeric;');
+    d := replace(d, '    amt := public._motor_round(sid, coalesce(i.fee,0) + en - coalesce(i.discount,0) + coalesce(i.addition,0));',
+                    '    nd := coalesce(i.discount,0) - round((coalesce(i.fee,0) + coalesce(i.energy,0)) * i.disc_pct / 100, 2) + round((coalesce(i.fee,0) + en) * i.disc_pct / 100, 2);
+    amt := public._motor_round(sid, coalesce(i.fee,0) + en - nd + coalesce(i.addition,0));');
+    d := replace(d, 'set kwh_price = p_price, energy = en, amount = amt,', 'set kwh_price = p_price, energy = en, discount = nd, amount = amt,');
+    if position('discount = nd' in d) = 0 or position('nd := ' in d) = 0 then raise exception 'price'; end if;
+    execute d;
+  end if;
+
+  d := pg_get_functiondef('public.motor_reading_edit(text,text,uuid,numeric,text)'::regprocedure);
+  if position('disc_pct' in d) = 0 then
+    d := replace(d, 'v_kwh numeric; v_energy numeric; amt numeric; delta numeric;', 'v_kwh numeric; v_energy numeric; amt numeric; delta numeric; nd numeric;');
+    d := replace(d, '    amt := public._motor_round(sid, i.fee + v_energy - i.discount + i.addition);',
+                    '    nd := i.discount - round((i.fee + i.energy) * i.disc_pct / 100, 2) + round((i.fee + v_energy) * i.disc_pct / 100, 2);
+    amt := public._motor_round(sid, i.fee + v_energy - nd + i.addition);');
+    d := replace(d, 'set cur_value = p_value, kwh = v_kwh, energy = v_energy, amount = amt,', 'set cur_value = p_value, kwh = v_kwh, energy = v_energy, discount = nd, amount = amt,');
+    if position('discount = nd' in d) = 0 or position('nd := ' in d) = 0 then raise exception 'edit'; end if;
+    execute d;
+  end if;
+end $m$;
+
+-- ============================================================
 --  20k) إقفال صندوق الموظف: يسلّم كل النقد للمكتب ويطلع تقرير
 -- ============================================================
 create or replace function public.motor_staff_close(p_slug text, p_token text, p_staff uuid default null)

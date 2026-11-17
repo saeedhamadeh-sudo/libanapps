@@ -1789,7 +1789,7 @@ var D={
  confirm_delete:['تأكيد الحذف؟','Confirm delete?','Confirmer la suppression ?'],
  saved:['تم الحفظ ✓','Saved ✓','Enregistré ✓'],
  all:['الكل','All','Tous'],
- f_debt:['عليهم دين','With debt','Avec dette'], f_on_debt:['مفعّل وعليه دين','Active with debt','Actif avec dette'], f_off_debt:['مقطوع وعليه دين','Cut off with debt','Coupé avec dette'], sort_by:['ترتيب','Sort','Trier'], sort_on_first:['ترتيب: المفعّل أولاً','Sort: active first','Tri : actifs d’abord'], sort_off_first:['ترتيب: المقطوع أولاً','Sort: cut off first','Tri : coupés d’abord'], sort_bal:['ترتيب: الأعلى ديناً','Sort: highest balance','Tri : solde le plus élevé'],
+ f_debt:['عليهم دين','With debt','Avec dette'], dc_type:['نوع الحسم','Discount type','Type de remise'], dc_t_amt:['مبلغ ثابت','Fixed amount','Montant fixe'], dc_t_pct:['نسبة مئوية %','Percentage %','Pourcentage %'], dc_pct:['نسبة الحسم %','Discount %','Remise %'], dc_pct_hint:['تُحسم النسبة من قيمة كل فاتورة (الاشتراك + الاستهلاك)، وتتعدّل تلقائياً إذا تغيّر سعر الكيلو.','The percentage is taken off each invoice (fee + consumption) and follows kWh price changes.','Le pourcentage s’applique à chaque facture (abonnement + consommation).'], f_on_debt:['مفعّل وعليه دين','Active with debt','Actif avec dette'], f_off_debt:['مقطوع وعليه دين','Cut off with debt','Coupé avec dette'], sort_by:['ترتيب','Sort','Trier'], sort_on_first:['ترتيب: المفعّل أولاً','Sort: active first','Tri : actifs d’abord'], sort_off_first:['ترتيب: المقطوع أولاً','Sort: cut off first','Tri : coupés d’abord'], sort_bal:['ترتيب: الأعلى ديناً','Sort: highest balance','Tri : solde le plus élevé'],
  take_reading:['📷 أخذ عداد','📷 Read meter','📷 Relever'],
  collect:['💵 قبض','💵 Collect','💵 Encaisser'],
  statement:['🧾 كشف حساب','🧾 Statement','🧾 Relevé de compte'],
@@ -5853,31 +5853,40 @@ VIEWS.disc=async function(main){
   main.innerHTML='<div class="g2" style="align-items:start">'+
     '<div class="card"><h3>♾️ '+esc(t('dc_perm'))+'</h3><p class="muted" style="margin-top:0">'+esc(t('dc_perm_hint'))+'</p>'+
       '<label>'+esc(t('customer'))+'</label>'+custInput('dpc')+'<div id="dpcb" class="muted" style="margin:4px 0 8px"></div>'+
-      '<div class="g2"><div><label>'+esc(t('dc_amount'))+'</label><input id="dpa" type="number" step="0.01" min="0" inputmode="decimal"></div><div><label>'+esc(t('dc_desc'))+'</label><input id="dpd"></div></div>'+
+      '<div class="g2"><div><label>'+esc(t('dc_type'))+'</label><select id="dpt"><option value="amt">'+esc(t('dc_t_amt'))+'</option><option value="pct">'+esc(t('dc_t_pct'))+'</option></select></div>'+
+      '<div><label id="dpal">'+esc(t('dc_amount'))+'</label><input id="dpa" type="number" step="0.01" min="0" inputmode="decimal"></div><div style="grid-column:1/-1"><label>'+esc(t('dc_desc'))+'</label><input id="dpd"></div></div>'+
+      '<div class="muted" id="dpph" style="font-size:12px;margin-top:4px;display:none">'+esc(t('dc_pct_hint'))+'</div>'+
       '<button class="btn" id="dps" style="margin-top:10px">💾 '+esc(t('dc_save'))+'</button></div>'+
     '<div class="card"><h3>🧾 '+esc(t('dc_once'))+'</h3><p class="muted" style="margin-top:0">'+esc(t('dc_once_hint'))+'</p>'+
       '<label>'+esc(t('customer'))+'</label>'+custInput('doc')+'<label style="margin-top:8px">'+esc(t('dc_pick_inv'))+'</label><select id="doi" disabled></select>'+
-      '<div class="g2" style="margin-top:8px"><div><label>'+esc(t('dc_amount'))+'</label><input id="doa" type="number" step="0.01" min="0" inputmode="decimal"></div><div><label>'+esc(t('dc_desc'))+'</label><input id="dod"></div></div>'+
+      '<div class="g2" style="margin-top:8px"><div><label>'+esc(t('dc_pct'))+'</label><input id="dop" type="number" step="0.01" min="0" max="100" inputmode="decimal" placeholder="%"></div><div><label>'+esc(t('dc_amount'))+'</label><input id="doa" type="number" step="0.01" min="0" inputmode="decimal"></div><div style="grid-column:1/-1"><label>'+esc(t('dc_desc'))+'</label><input id="dod"></div></div>'+
       '<button class="btn ok" id="dos" style="margin-top:10px">✅ '+esc(t('dc_apply'))+'</button></div></div>'+
     '<div class="card"><h3>'+esc(t('dc_perm_list'))+'</h3><div class="tw"><table><thead><tr><th>'+esc(t('code'))+'</th><th>'+esc(t('name'))+'</th><th>'+esc(t('box'))+'</th><th>'+esc(t('dc_amount'))+'</th><th>'+esc(t('dc_desc'))+'</th><th></th></tr></thead><tbody>'+
-      (d.permanent.map(function(r,i){ return '<tr><td class="num">'+esc(r.code)+'</td><td><b>'+esc(r.name)+'</b></td><td>'+esc(r.box||'')+'</td><td class="num"><b>'+esc(money(r.amount))+'</b></td><td>'+esc(r.desc||'')+'</td>'+
+      (d.permanent.map(function(r,i){ return '<tr><td class="num">'+esc(r.code)+'</td><td><b>'+esc(r.name)+'</b></td><td>'+esc(r.box||'')+'</td><td class="num"><b>'+(n2(r.pct)?esc(fmtN(r.pct,2))+'%':esc(money(r.amount)))+'</b></td><td>'+esc(r.desc||'')+'</td>'+
         '<td style="white-space:nowrap"><button class="btn ghost sm" data-pe="'+i+'">✏️</button> <button class="btn danger sm" data-pr="'+i+'">'+esc(t('dc_remove'))+'</button></td></tr>'; }).join('')||'<tr><td colspan="6" class="muted">'+esc(t('dc_none'))+'</td></tr>')+'</tbody></table></div></div>'+
     '<div class="card"><h3>'+esc(t('dc_once_list'))+'</h3><div class="tw"><table><thead><tr><th>'+esc(t('date'))+'</th><th>#</th><th>'+esc(t('name'))+'</th><th>'+esc(t('month'))+'</th><th>'+esc(t('dc_amount'))+'</th><th>'+esc(t('amount'))+'</th><th>'+esc(t('dc_desc'))+'</th></tr></thead><tbody>'+
       (d.once.map(function(r){ return '<tr><td class="num">'+esc(dt(r.at))+'</td><td class="num">'+esc(r.no)+'</td><td><b>'+esc(r.customer.name)+'</b> <span class="muted">#'+esc(r.customer.code)+'</span></td><td>'+esc(r.period?monthName(r.period,true):'')+'</td>'+
         '<td class="num"><b>−'+esc(money(r.discount))+'</b></td><td class="num">'+esc(money(r.amount))+'</td><td>'+esc(r.note||'')+'</td></tr>'; }).join('')||'<tr><td colspan="7" class="muted">'+esc(t('dc_none'))+'</td></tr>')+'</tbody></table></div></div>';
-  function setP(c){ pc=c; $('#dpcb',main).innerHTML=c?esc(t('dc_amount'))+': <b>'+esc(money(c.charge_discount||0))+'</b>':'';
-    var r=c?d.permanent.filter(function(x){ return x.id===c.id; })[0]:null; $('#dpa',main).value=r?n2(r.amount):''; $('#dpd',main).value=r?r.desc||'':''; }
-  $('#dpc',main).addEventListener('change',function(){ setP(pick(this.value)); });
+  function pmode(){ var pc2=$('#dpt',main).value==='pct'; $('#dpal',main).textContent=pc2?t('dc_pct'):t('dc_amount'); $('#dpa',main).max=pc2?'100':''; $('#dpph',main).style.display=pc2?'':'none'; }
+  $('#dpt',main).addEventListener('change',pmode);
+  function setP(c){ pc=c; var r=c?d.permanent.filter(function(x){ return x.id===c.id; })[0]:null;
+    $('#dpcb',main).innerHTML=r?esc(t('dc_amount'))+': <b>'+(n2(r.pct)?esc(fmtN(r.pct,2))+'%':esc(money(r.amount)))+'</b>':'';
+    $('#dpt',main).value=r&&n2(r.pct)?'pct':'amt'; pmode(); $('#dpa',main).value=r?(n2(r.pct)?n2(r.pct):n2(r.amount)):''; $('#dpd',main).value=r?r.desc||'':''; }
+  $('#dpc',main).addEventListener('change',function(){ var c=pick(this.value); if(c&&pc&&c.id===pc.id) return; setP(c); });
   $('#dps',main).addEventListener('click',async function(){ if(!pc){ toast(t('sl_pick_cust'),'e'); return; } var b=this; busy(b,true);
-    try{ await call('motor_disc_set',{p_customer:pc.id,p_amount:n2($('#dpa',main).value),p_desc:$('#dpd',main).value.trim()}); toast(t('dc_ok'),'s'); await loadCustomers(); go('disc'); }catch(e){ toast(errText(e),'e'); busy(b,false); } });
+    var isP=$('#dpt',main).value==='pct', v=n2($('#dpa',main).value); if(v<0||(isP&&v>100)){ toast(t('e_bad_amount'),'e'); busy(b,false); return; }
+    try{ await call('motor_disc_set',{p_customer:pc.id,p_amount:isP?0:v,p_pct:isP?v:0,p_desc:$('#dpd',main).value.trim()}); toast(t('dc_ok'),'s'); await loadCustomers(); go('disc'); }catch(e){ toast(errText(e),'e'); busy(b,false); } });
   main.addEventListener('click',async function(e){ var ed=e.target.closest('[data-pe]'), rm=e.target.closest('[data-pr]');
     if(ed){ var r=d.permanent[+ed.dataset.pe]; $('#dpc',main).value='#'+r.code+' '+r.name; setP(pick($('#dpc',main).value)); $('#dpa',main).focus(); window.scrollTo({top:0,behavior:'smooth'}); }
     if(rm){ var r2=d.permanent[+rm.dataset.pr]; if(!(await confirmBox(t('dc_rm_q',{c:r2.name})))) return;
-      try{ await call('motor_disc_set',{p_customer:r2.id,p_amount:0,p_desc:''}); toast(t('dc_ok'),'s'); await loadCustomers(); go('disc'); }catch(err){ toast(errText(err),'e'); } } });
-  $('#doc',main).addEventListener('change',async function(){ oc=pick(this.value); var sel=$('#doi',main); sel.innerHTML=''; sel.disabled=true; invs=[]; if(!oc) return;
+      try{ await call('motor_disc_set',{p_customer:r2.id,p_amount:0,p_pct:0,p_desc:''}); toast(t('dc_ok'),'s'); await loadCustomers(); go('disc'); }catch(err){ toast(errText(err),'e'); } } });
+  $('#doc',main).addEventListener('change',async function(){ var c0=pick(this.value); if(c0&&oc&&c0.id===oc.id) return; oc=c0; var sel=$('#doi',main); sel.innerHTML=''; sel.disabled=true; invs=[]; if(!oc) return;
     try{ invs=await call('motor_disc_invoices',{p_customer:oc.id}); }catch(e){ toast(errText(e),'e'); return; }
     sel.innerHTML=invs.length?invs.map(function(x,i){ return '<option value="'+i+'">#'+esc(x.no)+' · '+esc(x.kind==='sale'?t('k_sale'):monthName(x.period,true))+' · '+esc(money(x.amount))+(n2(x.discount)?' ('+esc(t('discount'))+' '+esc(money(x.discount))+')':'')+'</option>'; }).join(''):'<option>'+esc(t('dc_no_inv'))+'</option>';
     sel.disabled=!invs.length; });
+  function pctFill(){ var x=invs[+$('#doi',main).value], p=n2($('#dop',main).value); if(x&&p>0) $('#doa',main).value=(Math.round(n2(x.amount)*Math.min(p,100))/100).toFixed(2); }
+  $('#dop',main).addEventListener('input',pctFill); $('#doi',main).addEventListener('change',pctFill);
+  $('#doa',main).addEventListener('input',function(){ $('#dop',main).value=''; });
   $('#dos',main).addEventListener('click',async function(){ if(!oc){ toast(t('sl_pick_cust'),'e'); return; } var x=invs[+$('#doi',main).value]; if(!x) return;
     var v=n2($('#doa',main).value); if(!(v>0)||v>n2(x.amount)){ toast(t('e_bad_amount'),'e'); return; }
     if(!(await confirmBox(t('dc_once_q',{v:money(v),n:x.no,c:oc.name})))) return; var b=this; busy(b,true);
