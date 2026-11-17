@@ -7,7 +7,7 @@
 --  لوحة التحكم:            libanapps.com/portal-link/<slug>/admin
 --
 --  بيضيف:
---   • منتج جديد link (بادئة المفتاح LINK) + باقة سنوية + تجربة 7 أيام
+--   • منتج جديد link (بادئة المفتاح LINK) + باقة سنوية 36$ + تجربة 5 أيام
 --   • جداول: link_pages (الصفحة)، link_items (الأزرار)، link_daily (الإحصاءات اليومية)
 --   • دوال: التجربة، الإصدار اليدوي من /super، الصفحة العامة، الإحصاءات، التتبّع
 --   • مخزن صور جديد: link   (المسار: link-<page_id>/...)
@@ -27,13 +27,13 @@ insert into public.products (code, name_ar, name_en, prefix) values
 on conflict (code) do nothing;
 
 alter table public.products add column if not exists trial_days integer;
-update public.products set trial_days = 7 where code = 'link' and trial_days is null;
+update public.products set trial_days = 5 where code = 'link' and trial_days is null;
 
 alter table public.plans add column if not exists renew_price_usd numeric(10,2);
 
--- الباقة: 25$ سنويًا (السعر والتجديد ومدة التجربة بتتغيّر من /super)
+-- الباقة: 36$ سنويًا (السعر والتجديد ومدة التجربة بتتغيّر من /super)
 insert into public.plans (product_code, name_ar, name_en, days, price_usd, renew_price_usd, badge_ar, features_ar, features_en, sort)
-select 'link', 'وصلة — سنة', 'Wasla — 1 year', 365, 25, 25, 'جديد',
+select 'link', 'وصلة — سنة', 'Wasla — 1 year', 365, 36, 36, 'جديد',
   array['صفحة روابط باسمك: libanapps.com/l/اسمك',
         'روابط غير محدودة: واتساب، اتصال، موقع، يوتيوب، أي رابط',
         'أيقونات حسابات التواصل الاجتماعي',
@@ -56,7 +56,7 @@ create or replace function public.admin_link_product(
 ) returns jsonb language plpgsql security definer set search_path = public as $$
 begin
   if not public.is_admin() then raise exception 'not allowed'; end if;
-  update public.products set trial_days = greatest(0, least(60, coalesce(p_trial, 7))) where code = 'link';
+  update public.products set trial_days = greatest(0, least(60, coalesce(p_trial, 5))) where code = 'link';
   update public.plans set price_usd = greatest(0, coalesce(p_price, price_usd)),
                           renew_price_usd = greatest(0, coalesce(p_renew, renew_price_usd)),
                           is_active = coalesce(p_active, is_active)
@@ -299,7 +299,7 @@ begin
   return jsonb_build_object('ok', true, 'key', s.key, 'expires_at', s.expires_at, 'slug', v_slug);
 end $$;
 
--- تجربة مجانية (7 أيام افتراضيًا — تتغيّر من /super)
+-- تجربة مجانية (5 أيام افتراضيًا — تتغيّر من /super)
 create or replace function public.start_link_trial(p_slug text, p_biz text default '')
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare cid uuid; v_slug text; d integer; s public.subscriptions; pg public.link_pages;
@@ -317,7 +317,7 @@ begin
   if not public.link_slug_available(v_slug) then
     return jsonb_build_object('ok', false, 'reason', 'هذا الرابط محجوز — اختر رابطًا آخر');
   end if;
-  select coalesce(trial_days, 7) into d from public.products where code = 'link';
+  select coalesce(trial_days, 5) into d from public.products where code = 'link';
   if coalesce(d,0) <= 0 then
     return jsonb_build_object('ok', false, 'reason', 'التجربة المجانية غير متاحة حاليًا لهذا البرنامج');
   end if;
