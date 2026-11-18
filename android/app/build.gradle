@@ -1,0 +1,33 @@
+plugins { id 'com.android.application' }
+
+android {
+    namespace 'com.libanapps.chat'
+    compileSdk 34
+    defaultConfig {
+        applicationId 'com.libanapps.chat'
+        minSdk 24
+        targetSdk 34
+        versionCode Integer.parseInt(System.getenv('APK_CODE') ?: '1')
+        versionName System.getenv('APK_NAME') ?: '1.0'
+    }
+    // مفتاح توقيع ثابت حتى تنزل التحديثات فوق النسخة القديمة
+    signingConfigs {
+        chat {
+            storeFile file('chat.keystore')
+            storePassword 'libanappschat'
+            keyAlias 'chat'
+            keyPassword 'libanappschat'
+        }
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.chat
+        }
+        debug { signingConfig signingConfigs.chat }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}

@@ -2090,6 +2090,12 @@ async function motorWaHook(request, env, ctx, slugRaw) {
   if (!(await wcVerify(site.wc_hook_secret, id, ts, body, request.headers.get('webhook-signature') || '')))
     return json(401, { ok: false, error: 'bad_signature' });
   let ev; try { ev = JSON.parse(body); } catch { return json(200, { ok: true }); }
+  // صندوق «LibanApps Chat» مربوط بهالمولّد؟ منحفظ فيه كل الرسائل (واردة وصادرة)
+  const fan = (async () => {
+    const ib = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/wa_inbox_for_motor`, { method: 'POST', headers: SH, body: JSON.stringify({ p_site: site.id }) }).then((r) => r.ok ? r.json() : null).catch(() => null);
+    if (ib) await waIngest(env, ib, waParseEvent(ev));
+  })().catch(() => {});
+  if (ctx && ctx.waitUntil) ctx.waitUntil(fan); else await fan;
   // نقرأ الحقول من أكثر من مكان احتياطاً لشكل الـpayload
   const d = (ev && ev.data) || {};
   const msg = d.message || ev.message || null;
@@ -2110,9 +2116,16 @@ async function motorWaHook(request, env, ctx, slugRaw) {
     const text = r && motorBotText(r);
     if (!text) return;
     const H = { Authorization: `Bearer ${site.wc_api_key}`, 'Content-Type': 'application/json' };
-    await fetch('https://api.whatchimp.com/v1/messages', { method: 'POST',
+    const br = await fetch('https://api.whatchimp.com/v1/messages', { method: 'POST',
       headers: Object.assign({ 'Idempotency-Key': 'bot-' + String(id).slice(0, 100) }, H),
       body: JSON.stringify({ to: '+' + String(phone).replace(/\D/g, ''), text }) });
+    // ردّ الـbot بينحفظ بالمحادثات كمان (إذا في صندوق مربوط)
+    if (br.ok) {
+      const bj = await br.json().catch(() => ({})); const bm = bj.data || bj.message || bj;
+      const ib = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/wa_inbox_for_motor`, { method: 'POST', headers: SH, body: JSON.stringify({ p_site: site.id }) }).then((x) => x.ok ? x.json() : null).catch(() => null);
+      if (ib) await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/wa_ingest`, { method: 'POST', headers: SH, body: JSON.stringify({
+        p_inbox: ib, p_dir: 'out', p_phone: String(phone), p_name: '', p_type: 'text', p_text: text, p_ext: String((bm && (bm.id || bm.message_id)) || ''), p_by: '🤖 Bot', p_status: 'sent' }) });
+    }
     if (r.status === 'maint_ok') {   // إشعار لكل موظفي الصيانة المختارين
       const list = (Array.isArray(r.staffs) && r.staffs.length) ? r.staffs : (r.staff_phone ? [{ phone: r.staff_phone, name: r.staff_name }] : []);
       for (let k = 0; k < Math.min(list.length, 10); k++) await motorMaintNotify(Object.assign({}, r, { staff_phone: list[k].phone, staff_name: list[k].name }), H, String(id).slice(0, 90) + '-' + k);
@@ -2120,6 +2133,93 @@ async function motorWaHook(request, env, ctx, slugRaw) {
   })().catch(() => {});
   if (ctx && ctx.waitUntil) ctx.waitUntil(work); else await work;
   return json(200, { ok: true });
+}
+
+// ============================================================
+//  LibanApps Chat — محادثات واتساب عبر WhatChimp
+//  الـwebhook: /api/wachat-hook/<inbox-id>  (واردة + صادرة + حالات الرسائل)
+//  الإرسال:    POST /api/wachat  {op:'send', token, phone, text}
+// ============================================================
+// بنقرأ حقول الحدث من أكتر من مكان لأن شكل الـpayload بيختلف
+function waParseEvent(ev) {
+  const d = (ev && ev.data) || {};
+  const msg = d.message || ev.message || null;
+  const contact = ev.contact || d.contact || (msg && msg.contact) || {};
+  const actor = ev.actor || d.actor || {};
+  const etype = String(ev.type || ev.event || d.type || '').toLowerCase();
+  const status = String((d.status || (msg && msg.status) || '')).toLowerCase();
+  let dir = '';
+  if (/incoming|inbound|received/.test(etype) || (msg && msg.direction === 'inbound')) dir = 'in';
+  else if (/outgoing|outbound|sent/.test(etype) || (msg && msg.direction === 'outbound')) dir = 'out';
+  const phone = String(contact.phone || contact.wa_id || (msg && (dir === 'out' ? (msg.to || msg.recipient) : msg.from)) || d.phone || d.to || '').replace(/\D/g, '');
+  const name = String(contact.name || [contact.first_name, contact.last_name].filter(Boolean).join(' ') || '').slice(0, 80);
+  let text = '', type = 'text', media = '';
+  if (msg) {
+    type = String(msg.type || 'text');
+    text = typeof msg.text === 'string' ? msg.text : (msg.text && msg.text.body) || msg.body || msg.caption || '';
+    const m = msg.media || msg.image || msg.video || msg.audio || msg.document || msg.sticker || null;
+    if (m) { media = String(m.url || m.link || m.media_url || ''); if (!text) text = m.caption || ''; }
+    if (!media) media = String(msg.media_url || msg.url || '');
+    if (msg.template && !text) text = '📄 ' + (msg.template.name || 'template');
+    if (msg.interactive && !text) text = (msg.interactive.button_reply && msg.interactive.button_reply.title) || (msg.interactive.list_reply && msg.interactive.list_reply.title) || '';
+    if (msg.button && !text) text = msg.button.text || msg.button.payload || '';
+    if (msg.location && !text) text = '📍 ' + [msg.location.latitude, msg.location.longitude].join(',');
+  }
+  const ext = String((msg && (msg.id || msg.wamid || msg.message_id)) || d.message_id || d.id || '');
+  const by = actor.type === 'customer' ? '' : String(actor.name || actor.type || '');
+  return { etype, dir, phone, name, text: String(text || ''), type, media, ext, status, by, msg, test: !!(ev.test || d.test) };
+}
+async function waIngest(env, inbox, e) {
+  if (!inbox) return;
+  if (e.status && !e.dir && e.ext) {   // تحديث حالة رسالة (delivered / read / failed)
+    await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/wa_status`, { method: 'POST', headers: svcH(env), body: JSON.stringify({ p_inbox: inbox, p_ext: e.ext, p_status: e.status }) });
+    return;
+  }
+  if (!e.dir || !e.phone || e.test || !e.msg || ['reaction', 'system', 'ephemeral', 'revoked'].includes(e.type)) return;
+  await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/wa_ingest`, { method: 'POST', headers: svcH(env), body: JSON.stringify({
+    p_inbox: inbox, p_dir: e.dir, p_phone: e.phone, p_name: e.name, p_type: e.type, p_text: e.text.slice(0, 4000),
+    p_media: e.media, p_ext: e.ext, p_by: e.by, p_status: e.status }) });
+}
+async function waHook(request, env, ctx, idRaw) {
+  const iid = String(idRaw || '').trim().toLowerCase();
+  if (!/^[0-9a-f-]{36}$/.test(iid)) return json(404, { ok: false });
+  const body = await request.text();
+  if (body.length > 200000) return json(413, { ok: false });
+  const hc = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/wa_hook_ctx`, { method: 'POST', headers: svcH(env), body: JSON.stringify({ p_inbox: iid }) }).then((r) => r.json()).catch(() => null);
+  if (!hc || !hc.id || !hc.active) return json(404, { ok: false });
+  const id = request.headers.get('webhook-id'), ts = request.headers.get('webhook-timestamp');
+  if (!hc.secret || !(await wcVerify(hc.secret, id, ts, body, request.headers.get('webhook-signature') || '')))
+    return json(401, { ok: false, error: 'bad_signature' });
+  let ev; try { ev = JSON.parse(body); } catch { return json(200, { ok: true }); }
+  const work = waIngest(env, iid, waParseEvent(ev)).catch(() => {});
+  if (ctx && ctx.waitUntil) ctx.waitUntil(work); else await work;
+  return json(200, { ok: true });
+}
+async function waApi(request, env) {
+  let b; try { b = await request.json(); } catch { return json(400, { ok: false, error: 'bad_json' }); }
+  const op = String(b.op || '');
+  if (op !== 'send') return json(400, { ok: false, error: 'bad_op' });
+  const phone = String(b.phone || '').replace(/\D/g, ''), text = String(b.text || '').trim();
+  if (phone.length < 8 || !text || text.length > 4000) return json(400, { ok: false, error: 'bad_fields' });
+  const cr = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/wa_send_ctx`, { method: 'POST', headers: svcH(env), body: JSON.stringify({ p_token: String(b.token || '') }) });
+  if (!cr.ok) return json(401, { ok: false, error: 'auth' });
+  const c = await cr.json();
+  if (!c.key) return json(409, { ok: false, error: 'no_key' });
+  const r = await fetch('https://api.whatchimp.com/v1/messages', { method: 'POST',
+    headers: { Authorization: `Bearer ${c.key}`, 'Content-Type': 'application/json', 'Idempotency-Key': crypto.randomUUID() },
+    body: JSON.stringify({ to: '+' + phone, text }) });
+  const t = await r.text(); let j = {}; try { j = JSON.parse(t) || {}; } catch {}
+  if (!r.ok) {
+    const em = String((j.error && (j.error.message || j.error.code)) || j.message || j.error || t || r.status).slice(0, 300);
+    // برّا نافذة الـ24 ساعة واتساب ما بيقبل نص حر
+    const win = /24|window|re-?engage|template|131047|outside/i.test(em);
+    return json(r.status === 401 ? 409 : 502, { ok: false, error: win ? 'window' : 'wc_error', detail: em });
+  }
+  const m = j.data || j.message || j;
+  const ext = String((m && (m.id || m.message_id || m.wamid)) || '');
+  await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/wa_ingest`, { method: 'POST', headers: svcH(env), body: JSON.stringify({
+    p_inbox: c.inbox_id, p_dir: 'out', p_phone: phone, p_name: '', p_type: 'text', p_text: text, p_ext: ext, p_by: c.name || '', p_status: 'sent' }) });
+  return json(200, { ok: true, id: ext });
 }
 
 // ---------- motorapp: نسخ احتياطي على Google Drive ----------
@@ -4474,6 +4574,7 @@ function pageFor(pathname) {
   // رابط برنامج تجارة مخصص لزبون معيّن: /portal-trade/اسم-محله
   if (/^\/portal-trade\/[^/]+\/?$/.test(p)) return '/app-trade.html';
   // برنامج اشتراكات المولّدات (motorapp): /portal-motor/اسم-المولّد
+  if (p === '/chat' || p === '/chat/') return '/chat.html';   // LibanApps Chat (محادثات واتساب)
   if (p === '/motor' || p === '/portal-motor') return '/app-motor.html';
   if (/^\/portal-motor\/[^/]+\/?$/.test(p)) return '/app-motor.html';
   if (p.startsWith('/admin')) return '/admin.html';
@@ -4756,6 +4857,14 @@ const LA_WORKER = {
         if (url.pathname === '/api/motor-gdrive') {
           if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
           return await motorGd(request, env);
+        }
+        if (url.pathname.startsWith('/api/wachat-hook/')) {
+          if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
+          return await waHook(request, env, ctx, url.pathname.slice('/api/wachat-hook/'.length));
+        }
+        if (url.pathname === '/api/wachat') {
+          if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
+          return await waApi(request, env);
         }
         if (url.pathname.startsWith('/api/motor-wa-hook/')) {
           if (request.method !== 'POST') return json(405, { error: 'method not allowed' });

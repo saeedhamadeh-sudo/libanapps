@@ -1,0 +1,362 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,interactive-widget=resizes-content">
+<meta name="theme-color" content="#075e54">
+<title>LibanApps Chat</title>
+<link rel="manifest" href="/chat.webmanifest">
+<link rel="icon" href="/assets/chat-icon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{--g:#075e54;--g2:#128c7e;--ac:#25d366;--bg:#efeae2;--side:#fff;--line:#e9edef;--txt:#111b21;--mut:#667781;--in:#fff;--out:#d9fdd3;--bad:#dc2626;--hd:#f0f2f5}
+*{box-sizing:border-box}html,body,#root{height:100%;margin:0}
+body{font-family:Tajawal,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:var(--txt);background:#d1d7db;-webkit-tap-highlight-color:transparent}
+button{font:inherit;cursor:pointer}input,textarea,select{font:inherit;color:inherit}
+.hide{display:none!important}
+/* دخول */
+.auth{min-height:100%;display:flex;align-items:center;justify-content:center;padding:16px;background:linear-gradient(160deg,var(--g) 0 220px,#d1d7db 220px)}
+.card{background:#fff;border-radius:14px;box-shadow:0 10px 30px rgba(0,0,0,.12);padding:24px;width:100%;max-width:380px}
+.brand{display:flex;align-items:center;gap:10px;margin-bottom:16px}.brand img{width:44px;height:44px}.brand b{font-size:20px}
+label{display:block;font-size:13px;color:var(--mut);margin:10px 0 4px}
+.in{width:100%;padding:11px 12px;border:1px solid #d1d7db;border-radius:9px;background:#fff;outline:none}.in:focus{border-color:var(--g2)}
+.btn{border:0;border-radius:9px;padding:11px 16px;background:var(--g2);color:#fff;font-weight:700}.btn:disabled{opacity:.6}
+.btn.full{width:100%;margin-top:16px}.btn.ghost{background:transparent;color:var(--g2);border:1px solid var(--line)}.btn.sm{padding:6px 10px;font-size:13px}.btn.red{background:var(--bad)}
+.err{color:var(--bad);font-size:13px;min-height:18px;margin-top:8px}.muted{color:var(--mut)}.link{color:var(--g2);background:none;border:0;padding:0;margin-top:14px;font-size:14px}
+.langs{display:flex;gap:6px;justify-content:center;margin-top:14px}.langs button{border:1px solid var(--line);background:#fff;border-radius:20px;padding:3px 10px;font-size:12px}
+/* التطبيق */
+.app{height:100%;display:flex;max-width:1600px;margin:0 auto;background:var(--side);box-shadow:0 0 20px rgba(0,0,0,.08)}
+.side{width:380px;max-width:100%;display:flex;flex-direction:column;border-inline-end:1px solid var(--line);background:var(--side)}
+.top{height:60px;flex:0 0 60px;display:flex;align-items:center;gap:10px;padding:0 14px;background:var(--hd);border-bottom:1px solid var(--line)}
+.top .ttl{flex:1;min-width:0;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ib{border:0;background:transparent;width:38px;height:38px;border-radius:50%;font-size:19px;color:#54656f;display:inline-flex;align-items:center;justify-content:center}.ib:hover{background:rgba(0,0,0,.06)}
+.srch{padding:8px 12px;border-bottom:1px solid var(--line)}.srch input{width:100%;border:0;background:var(--hd);border-radius:8px;padding:9px 12px;outline:none}
+.list{flex:1;overflow-y:auto}
+.ci{display:flex;gap:12px;align-items:center;padding:10px 14px;cursor:pointer;border-bottom:1px solid #f2f2f2}.ci:hover{background:#f5f6f6}.ci.on{background:#f0f2f5}
+.av{width:46px;height:46px;flex:0 0 46px;border-radius:50%;background:#dfe5e7;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:18px}
+.cm{flex:1;min-width:0}.cr{display:flex;align-items:center;gap:8px}.cn{flex:1;min-width:0;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ct{font-size:12px;color:var(--mut);white-space:nowrap}.ct.new{color:var(--ac);font-weight:700}
+.cl{flex:1;min-width:0;font-size:14px;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bd{background:var(--ac);color:#fff;border-radius:12px;min-width:20px;height:20px;padding:0 6px;font-size:12px;font-weight:700;display:inline-flex;align-items:center;justify-content:center}
+.empty{padding:30px 20px;text-align:center;color:var(--mut)}
+.main{flex:1;display:flex;flex-direction:column;min-width:0;background:var(--bg);background-image:radial-gradient(rgba(0,0,0,.035) 1px,transparent 1px);background-size:18px 18px}
+.welcome{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:30px;color:var(--mut);background:#f8f9fa}
+.welcome img{width:90px;opacity:.9;margin-bottom:14px}
+.msgs{flex:1;overflow-y:auto;padding:14px 6% 10px;display:flex;flex-direction:column;gap:3px}
+.day{align-self:center;background:#fff;color:var(--mut);font-size:12px;padding:4px 12px;border-radius:8px;margin:10px 0;box-shadow:0 1px .5px rgba(0,0,0,.13)}
+.b{width:fit-content;max-width:min(78%,560px);padding:6px 9px 4px;border-radius:8px;box-shadow:0 1px .5px rgba(0,0,0,.13);font-size:15px;line-height:1.45;white-space:pre-wrap;word-wrap:break-word;overflow-wrap:anywhere;position:relative}
+.b.in{background:var(--in);align-self:flex-start}.b.out{background:var(--out);align-self:flex-end}
+[dir=rtl] .b.in{border-top-right-radius:0}[dir=rtl] .b.out{border-top-left-radius:0}[dir=ltr] .b.in{border-top-left-radius:0}[dir=ltr] .b.out{border-top-right-radius:0}
+.b .by{font-size:12px;font-weight:700;color:var(--g2);margin-bottom:2px}
+.b .mt{font-size:11px;color:var(--mut);text-align:end;margin-top:2px;white-space:nowrap}.b .mt .tk{color:#53bdeb}
+.b img,.b video{max-width:100%;max-height:320px;border-radius:6px;display:block;margin-bottom:4px}.b audio{max-width:100%;display:block}
+.b .fail{color:var(--bad)}
+.win{margin:0 6% 6px;background:#fff8e1;color:#7a5b00;border-radius:8px;padding:8px 12px;font-size:13px;text-align:center}
+.comp{flex:0 0 auto;display:flex;align-items:flex-end;gap:8px;padding:8px 12px;background:var(--hd)}
+.comp textarea{flex:1;resize:none;border:0;border-radius:10px;padding:10px 14px;max-height:140px;min-height:44px;outline:none;line-height:1.4;background:#fff}
+.send{width:46px;height:46px;flex:0 0 46px;border-radius:50%;border:0;background:var(--g2);color:#fff;font-size:20px;display:flex;align-items:center;justify-content:center}.send:disabled{opacity:.5}
+[dir=rtl] .send svg{transform:scaleX(-1)}
+.more{align-self:center;margin:6px 0}
+.toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:#111b21;color:#fff;padding:10px 16px;border-radius:9px;font-size:14px;z-index:99;max-width:90%;text-align:center}
+.modal{position:fixed;inset:0;background:rgba(11,20,26,.45);display:flex;align-items:center;justify-content:center;z-index:50;padding:14px}
+.mbox{background:#fff;border-radius:12px;width:100%;max-width:520px;max-height:90vh;overflow:auto;padding:18px}
+.mbox h3{margin:0 0 10px}.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.code{direction:ltr;font-family:ui-monospace,Consolas,monospace;font-size:12px;background:var(--hd);padding:8px 10px;border-radius:8px;word-break:break-all;flex:1}
+.ut{width:100%;border-collapse:collapse;font-size:14px;margin-top:6px}.ut td{padding:7px 4px;border-bottom:1px solid var(--line)}
+.chip{font-size:11px;background:#e7f8ef;color:#0b7a4b;border-radius:10px;padding:1px 8px}.chip.off{background:#fde8e8;color:#b91c1c}
+.sec{border-top:1px solid var(--line);margin-top:14px;padding-top:10px}
+@media (max-width:820px){.side{width:100%}.app.chatting .side{display:none}.app:not(.chatting) .main{display:none}.msgs{padding:12px 10px 8px}.win{margin:0 10px 6px}}
+@media (min-width:821px){.back{display:none!important}}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+'use strict';
+var CFG={URL:'https://moriwmhlgugmjzddwfgv.supabase.co',KEY:'sb_publishable_ypfm_aulpcqBpeFpyD_7iw_mA4DNlR5'};
+var L={
+ app:['LibanApps Chat','LibanApps Chat','LibanApps Chat'],
+ login:['تسجيل الدخول','Sign in','Connexion'], user:['اسم المستخدم','Username','Nom d’utilisateur'], pass:['كلمة السر','Password','Mot de passe'],
+ enter:['دخول','Sign in','Se connecter'], first:['أول مرة؟ عندي رمز إعداد','First time? I have a setup code','Première fois ? J’ai un code'],
+ back_login:['رجوع لتسجيل الدخول','Back to sign in','Retour à la connexion'], code:['رمز الإعداد','Setup code','Code de configuration'],
+ name:['الاسم','Name','Nom'], create:['إنشاء الحساب والدخول','Create account and sign in','Créer et se connecter'],
+ setup_t:['إعداد حساب المدير الأساسي','Main manager setup','Configuration du gérant principal'],
+ search:['بحث بالاسم أو الرقم','Search name or number','Rechercher nom ou numéro'], no_chats:['لا توجد محادثات بعد. ستظهر هنا الرسائل التي تصل إلى رقمك بعد ربط الـWebhook.','No chats yet. Messages to your number appear here once the webhook is connected.','Aucune conversation pour l’instant.'],
+ welcome:['اختر محادثة لعرضها والرد عليها','Pick a chat to view and reply','Choisissez une conversation'],
+ type_msg:['اكتب رسالة','Type a message','Écrire un message'], today:['اليوم','Today','Aujourd’hui'], yesterday:['أمس','Yesterday','Hier'],
+ win_closed:['مرّ أكثر من 24 ساعة على آخر رسالة من الزبون — واتساب لا يقبل رسالة نصية حرّة الآن، فقط القوالب المعتمدة. ستصل رسالتك عندما يراسلك الزبون من جديد.','Over 24h since the customer’s last message — WhatsApp only accepts approved templates now.','Plus de 24 h depuis le dernier message du client — seuls les modèles approuvés sont acceptés.'],
+ win_none:['لم يراسلك هذا الزبون بعد — واتساب يقبل فقط القوالب المعتمدة لبدء المحادثة.','This customer hasn’t messaged you yet — only templates can start a chat.','Ce client ne vous a pas encore écrit.'],
+ e_window:['لم تُرسل: خارج نافذة الـ24 ساعة (يلزم قالب معتمد)','Not sent: outside the 24h window (template required)','Non envoyé : hors fenêtre de 24 h'],
+ e_no_key:['لم يُربط مفتاح WhatChimp بعد — من الإعدادات','No WhatChimp key yet — see Settings','Pas de clé WhatChimp'],
+ e_auth:['انتهت الجلسة، سجّل الدخول من جديد','Session expired, sign in again','Session expirée'], e_bad_login:['اسم المستخدم أو كلمة السر غير صحيحة','Wrong username or password','Identifiants incorrects'],
+ e_locked:['تم إيقاف الدخول مؤقتاً، حاول بعد {n} دقيقة','Locked, try again in {n} min','Bloqué, réessayez dans {n} min'],
+ e_bad_code:['رمز الإعداد غير صحيح أو منتهي','Invalid or expired setup code','Code invalide ou expiré'], e_bad_username:['اسم المستخدم: 3 أحرف على الأقل، إنكليزي وأرقام فقط','Username: 3+ latin letters/digits','Nom : 3+ lettres/chiffres'],
+ e_weak_password:['كلمة السر 6 أحرف على الأقل','Password must be 6+ characters','Mot de passe : 6+ caractères'], e_username_taken:['اسم المستخدم مستعمل','Username taken','Nom déjà pris'],
+ e_forbidden:['غير مسموح','Not allowed','Non autorisé'], e_last_main:['لا يمكن إزالة آخر مدير أساسي','Can’t remove the last main manager','Impossible de retirer le dernier gérant'],
+ e_self:['لا يمكنك حذف حسابك','You can’t delete yourself','Impossible de vous supprimer'], e_net:['تعذّر الاتصال، تحقّق من الإنترنت','Connection failed','Échec de connexion'],
+ e_wc:['رفضت WhatChimp الرسالة','WhatChimp rejected the message','WhatChimp a refusé le message'],
+ settings:['الإعدادات','Settings','Paramètres'], logout:['خروج','Sign out','Déconnexion'], save:['حفظ','Save','Enregistrer'], close:['إغلاق','Close','Fermer'], cancel:['إلغاء','Cancel','Annuler'],
+ inbox_name:['اسم الصندوق','Inbox name','Nom de la boîte'], wc_key:['مفتاح WhatChimp API','WhatChimp API key','Clé API WhatChimp'],
+ wc_key_ph:['ألصق المفتاح الجديد هنا (يبقى السابق إذا تركته فارغاً)','Paste a new key (leave empty to keep)','Collez une nouvelle clé'],
+ key_ok:['✓ مربوط','✓ Connected','✓ Connecté'], key_no:['غير مربوط','Not connected','Non connecté'],
+ hook:['رابط الـWebhook — ألصقه في WhatChimp (Developers › Webhooks) وفعّل الرسائل الواردة والصادرة','Webhook URL — paste it in WhatChimp (Developers › Webhooks), enable incoming + outgoing','URL du webhook à coller dans WhatChimp'],
+ hook_secret:['سرّ التوقيع (Signing secret) من WhatChimp','Signing secret from WhatChimp','Secret de signature'], copy:['نسخ','Copy','Copier'], copied:['تم النسخ','Copied','Copié'],
+ motor_link:['مربوط ببرنامج المولّد «{n}» — الرسائل تصل تلقائياً عبر Webhook البرنامج، ولا حاجة لرابط جديد.','Linked to generator app “{n}” — messages arrive through its webhook.','Lié à « {n} ».'],
+ users:['المستخدمون','Users','Utilisateurs'], add_user:['إضافة مستخدم','Add user','Ajouter'], role:['الصلاحية','Role','Rôle'],
+ r_main:['مدير أساسي','Main manager','Gérant principal'], r_admin:['مدير','Manager','Gérant'], active:['فعّال','Active','Actif'], stopped:['موقوف','Stopped','Suspendu'],
+ new_pass:['كلمة سر جديدة (اتركها فارغة لعدم التغيير)','New password (leave empty to keep)','Nouveau mot de passe'], del:['حذف','Delete','Supprimer'], del_q:['حذف المستخدم «{n}»؟','Delete user “{n}”?','Supprimer « {n} » ?'],
+ saved:['تم الحفظ','Saved','Enregistré'], edit:['تعديل','Edit','Modifier'], older:['رسائل أقدم','Older messages','Messages plus anciens'],
+ notif:['تفعيل الإشعارات','Enable notifications','Activer les notifications'], new_msg:['رسالة جديدة','New message','Nouveau message'],
+ sending:['جارٍ الإرسال…','Sending…','Envoi…'], failed:['لم تُرسل','Not sent','Non envoyé'], retry:['إعادة','Retry','Réessayer'],
+ image:['📷 صورة','📷 Photo','📷 Photo'], audio:['🎤 رسالة صوتية','🎤 Voice message','🎤 Vocal'], video:['🎬 فيديو','🎬 Video','🎬 Vidéo'], document:['📎 ملف','📎 File','📎 Fichier'], sticker:['🙂 ملصق','🙂 Sticker','🙂 Sticker'],
+ open_wa:['فتح في واتساب','Open in WhatsApp','Ouvrir dans WhatsApp'], apk:['تحميل تطبيق الأندرويد','Download Android app','Télécharger l’app Android']
+};
+var LANG='ar'; try{ LANG=localStorage.getItem('wachat_lang')||'ar'; }catch(e){}
+function t(k,o){ var a=L[k]; var s=a?(a[{ar:0,en:1,fr:2}[LANG]]||a[0]):k; if(o) Object.keys(o).forEach(function(x){ s=s.split('{'+x+'}').join(o[x]); }); return s; }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+function $(s,r){ return (r||document).querySelector(s); } function $$(s,r){ return Array.prototype.slice.call((r||document).querySelectorAll(s)); }
+function setDir(){ document.documentElement.lang=LANG; document.documentElement.dir=LANG==='ar'?'rtl':'ltr'; }
+setDir();
+var TOK=''; try{ TOK=localStorage.getItem('wachat_tok')||''; }catch(e){}
+function saveTok(v){ TOK=v||''; try{ if(v) localStorage.setItem('wachat_tok',v); else localStorage.removeItem('wachat_tok'); }catch(e){} }
+var BRIDGE=window.LibanAppsChat||null;   // جسر تطبيق الأندرويد (إشعارات أصلية)
+
+async function rpc(fn,args){
+  var r; try{ r=await fetch(CFG.URL+'/rest/v1/rpc/'+fn,{method:'POST',headers:{apikey:CFG.KEY,Authorization:'Bearer '+CFG.KEY,'Content-Type':'application/json'},body:JSON.stringify(args||{})}); }
+  catch(e){ throw {code:'net'}; }
+  var tx=await r.text(), j=null; try{ j=JSON.parse(tx); }catch(e){}
+  if(!r.ok){ var m=(j&&j.message||tx||'').match(/WACHAT:([a-z_]+)/); var c=m?m[1]:'net'; if(c==='auth'){ saveTok(''); setTimeout(boot,0); } throw {code:c}; }
+  return j;
+}
+async function api(body){
+  var r; try{ r=await fetch('/api/wachat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(Object.assign({token:TOK},body))}); }catch(e){ throw {code:'net'}; }
+  var j={}; try{ j=await r.json(); }catch(e){}
+  if(!r.ok||!j.ok){ if(j.error==='auth'){ saveTok(''); setTimeout(boot,0); } throw {code:j.error||'net',detail:j.detail}; }
+  return j;
+}
+function errText(e){ var c=e&&e.code||'net'; var k={window:'e_window',no_key:'e_no_key',wc_error:'e_wc'}[c]||('e_'+c); return L[k]?t(k,{n:e.minutes||15}):c; }
+var toastT; function toast(m){ var d=$('.toast'); if(!d){ d=document.createElement('div'); d.className='toast'; document.body.appendChild(d); } d.textContent=m; d.classList.remove('hide'); clearTimeout(toastT); toastT=setTimeout(function(){ d.classList.add('hide'); },2600); }
+function langBar(){ return '<div class="langs">'+[['ar','العربية'],['en','English'],['fr','Français']].map(function(x){ return '<button data-lang="'+x[0]+'"'+(LANG===x[0]?' style="border-color:var(--g2);color:var(--g2)"':'')+'>'+x[1]+'</button>'; }).join('')+'</div>'; }
+function bindLang(root){ $$('[data-lang]',root).forEach(function(b){ b.onclick=function(){ LANG=b.dataset.lang; try{ localStorage.setItem('wachat_lang',LANG); }catch(e){} setDir(); boot(); }; }); }
+
+/* ---------- الدخول ---------- */
+function loginView(setup){
+  stopPoll();
+  var R=$('#root');
+  R.innerHTML='<div class="auth"><div class="card"><div class="brand"><img src="/assets/chat-icon.svg" alt=""><b>'+esc(t('app'))+'</b></div>'+
+    (setup?'<div style="font-weight:700">'+esc(t('setup_t'))+'</div><label>'+esc(t('code'))+'</label><input class="in" id="fc" autocomplete="off" style="text-transform:uppercase;direction:ltr"><label>'+esc(t('name'))+'</label><input class="in" id="fn">':
+      '<div style="font-weight:700">'+esc(t('login'))+'</div>')+
+    '<label>'+esc(t('user'))+'</label><input class="in" id="fu" autocomplete="username" style="direction:ltr" autocapitalize="off">'+
+    '<label>'+esc(t('pass'))+'</label><input class="in" id="fp" type="password" autocomplete="'+(setup?'new-password':'current-password')+'" style="direction:ltr">'+
+    '<div class="err" id="fe"></div><button class="btn full" id="fgo">'+esc(t(setup?'create':'enter'))+'</button>'+
+    '<button class="link" id="fsw">'+esc(t(setup?'back_login':'first'))+'</button>'+langBar()+'</div></div>';
+  bindLang(R);
+  $('#fsw').onclick=function(){ loginView(!setup); };
+  function go(){ var b=$('#fgo'); b.disabled=true; $('#fe').textContent='';
+    var p=setup?rpc('wa_setup',{p_code:$('#fc').value.trim(),p_name:$('#fn').value.trim(),p_username:$('#fu').value.trim(),p_password:$('#fp').value})
+              :rpc('wa_login',{p_username:$('#fu').value.trim(),p_password:$('#fp').value});
+    p.then(function(r){ if(!r||!r.ok){ throw {code:r&&r.reason||'bad_login',minutes:r&&r.minutes}; } saveTok(r.token); boot(); })
+     .catch(function(e){ $('#fe').textContent=errText(e); b.disabled=false; }); }
+  $('#fgo').onclick=go; $$('input',R).forEach(function(i){ i.onkeydown=function(e){ if(e.key==='Enter') go(); }; });
+  setTimeout(function(){ var f=$(setup?'#fc':'#fu'); if(f) f.focus(); },50);
+}
+
+/* ---------- التطبيق ---------- */
+var ME=null, INBOX=null, USERS=null, CHATS=[], CUR=null, MSGS=[], SINCE=null, Q='', pollA=null, pollB=null, LASTIN={}, PENDING=[];
+function stopPoll(){ clearInterval(pollA); clearInterval(pollB); pollA=pollB=null; }
+async function boot(){
+  stopPoll();
+  if(!TOK) return loginView(false);
+  try{ var d=await rpc('wa_me',{p_token:TOK}); ME=d.me; INBOX=d.inbox; USERS=d.users; }catch(e){ if(!TOK) return; $('#root').innerHTML='<div class="auth"><div class="card"><div class="err">'+esc(errText(e))+'</div><button class="btn full" onclick="boot()">'+esc(t('retry'))+'</button></div></div>'; return; }
+  CHATS=[]; SINCE=null; CUR=null; MSGS=[];
+  layout(); await loadChats(true);
+  pollA=setInterval(function(){ loadChats(false); },5000);
+  pollB=setInterval(function(){ if(CUR) loadNew(); },3000);
+  if(!INBOX.has_key&&ME.role==='main') setTimeout(settings,300);
+}
+function initials(n){ n=String(n||'').trim(); if(!n) return '#'; var p=n.split(/\s+/); return (p[0][0]+(p[1]?p[1][0]:'')).toUpperCase(); }
+function avColor(s){ var h=0; s=String(s); for(var i=0;i<s.length;i++) h=(h*31+s.charCodeAt(i))%360; return 'hsl('+h+',45%,55%)'; }
+function fmtPhone(p){ return '+'+p; }
+function hm(d){ return new Date(d).toLocaleTimeString(LANG==='ar'?'ar-LB':LANG,{hour:'2-digit',minute:'2-digit'}); }
+function dayKey(d){ var x=new Date(d); return x.getFullYear()+'-'+(x.getMonth()+1)+'-'+x.getDate(); }
+function dayLabel(d){ var x=new Date(d), n=new Date(), y=new Date(Date.now()-864e5);
+  if(dayKey(x)===dayKey(n)) return t('today'); if(dayKey(x)===dayKey(y)) return t('yesterday');
+  return x.toLocaleDateString(LANG==='ar'?'ar-LB':LANG,{day:'numeric',month:'long',year:'numeric'}); }
+function listTime(d){ var x=new Date(d); return dayKey(x)===dayKey(new Date())?hm(d):(dayKey(x)===dayKey(new Date(Date.now()-864e5))?t('yesterday'):x.toLocaleDateString(LANG==='ar'?'ar-LB':LANG,{day:'numeric',month:'numeric'})); }
+function inWindow(c){ return c&&c.last_in_at&&(Date.now()-new Date(c.last_in_at).getTime())<24*3600e3; }
+function sendIcon(){ return '<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M2 21l21-9L2 3v7l15 2-15 2z"/></svg>'; }
+
+function layout(){
+  var R=$('#root');
+  R.innerHTML='<div class="app" id="app"><div class="side"><div class="top"><img src="/assets/chat-icon.svg" alt="" style="width:34px;height:34px"><div class="ttl">'+esc(INBOX.name||t('app'))+'<div class="muted" style="font-size:12px;font-weight:400">'+esc(ME.name)+'</div></div>'+
+    ('Notification' in window&&!BRIDGE&&Notification.permission==='default'?'<button class="ib" id="bnot" title="'+esc(t('notif'))+'">🔔</button>':'')+
+    (ME.role==='main'?'<button class="ib" id="bset" title="'+esc(t('settings'))+'">⚙️</button>':'')+
+    '<button class="ib" id="bout" title="'+esc(t('logout'))+'">🚪</button></div>'+
+    '<div class="srch"><input id="sq" type="search" placeholder="'+esc(t('search'))+'"></div><div class="list" id="list"></div></div>'+
+    '<div class="main" id="main"><div class="welcome"><img src="/assets/chat-icon.svg" alt=""><div style="font-size:20px;color:var(--txt);margin-bottom:6px">'+esc(t('app'))+'</div><div>'+esc(t('welcome'))+'</div>'+
+    (!BRIDGE?'<a class="btn ghost sm" style="margin-top:16px;text-decoration:none" href="https://github.com/saeedhamadeh-sudo/libanapps/releases/download/chat-apk/LibanApps-Chat.apk">🤖 '+esc(t('apk'))+'</a>':'')+'</div></div></div>';
+  $('#sq').oninput=function(){ Q=this.value; paintList(); };
+  if($('#bset')) $('#bset').onclick=settings;
+  if($('#bnot')) $('#bnot').onclick=function(){ Notification.requestPermission().then(function(){ var b=$('#bnot'); if(b) b.remove(); }); };
+  $('#bout').onclick=function(){ rpc('wa_logout',{p_token:TOK}).catch(function(){}); saveTok(''); boot(); };
+  window.onpopstate=function(){ if(CUR){ CUR=null; $('#app').classList.remove('chatting'); paintList(); } };
+}
+async function loadChats(first){
+  try{ var r=await rpc('wa_chats',{p_token:TOK,p_since:SINCE}); }catch(e){ return; }
+  var news=[];
+  (r.rows||[]).forEach(function(c){ var i=CHATS.findIndex(function(x){ return x.phone===c.phone; });
+    if(!first&&c.last_dir==='in'&&c.unread>0&&(i<0||CHATS[i].unread<c.unread||CHATS[i].last_at!==c.last_at)&&!(CUR&&CUR.phone===c.phone&&!document.hidden)) news.push(c);
+    if(i>=0) CHATS.splice(i,1); CHATS.unshift(c); });
+  CHATS.sort(function(a,b){ return new Date(b.last_at)-new Date(a.last_at); });
+  SINCE=r.now; paintList(); badge();
+  news.forEach(notify);
+  if(CUR){ var cc=CHATS.find(function(x){ return x.phone===CUR.phone; }); if(cc){ CUR.last_in_at=cc.last_in_at; CUR.name=cc.name||CUR.name; paintWin(); } }
+}
+function badge(){ var n=CHATS.reduce(function(a,c){ return a+(c.unread||0); },0); document.title=(n?'('+n+') ':'')+'LibanApps Chat'; if(BRIDGE&&BRIDGE.setBadge) try{ BRIDGE.setBadge(n); }catch(e){} }
+var AUD=null;
+function notify(c){
+  var title=c.name||fmtPhone(c.phone), body=c.last_text||t('new_msg');
+  if(BRIDGE&&BRIDGE.notify){ try{ BRIDGE.notify(title,body,c.phone); }catch(e){} return; }
+  try{ if(!AUD){ AUD=new Audio('data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA='); } }catch(e){}
+  if('Notification' in window&&Notification.permission==='granted'&&document.hidden){ try{ var n=new Notification(title,{body:body,icon:'/assets/chat-icon.svg',tag:c.phone}); n.onclick=function(){ window.focus(); openChat(c.phone); }; }catch(e){} }
+  if(navigator.vibrate) try{ navigator.vibrate(120); }catch(e){}
+}
+function preview(c){ var s=c.last_text||''; var mm=s.match(/^\[([a-z_]+)\]$/); if(mm) s=L[mm[1]]?t(mm[1]):'📎'; return (c.last_dir==='out'?'✓ ':'')+s; }
+function paintList(){
+  var el=$('#list'); if(!el) return; var q=Q.trim().toLowerCase(), qd=q.replace(/\D/g,'');
+  var R=CHATS.filter(function(c){ return !q||String(c.name).toLowerCase().indexOf(q)>=0||(qd&&c.phone.indexOf(qd)>=0); });
+  el.innerHTML=R.length?R.map(function(c){ var nm=c.name||fmtPhone(c.phone);
+    return '<div class="ci'+(CUR&&CUR.phone===c.phone?' on':'')+'" data-ph="'+esc(c.phone)+'"><div class="av" style="background:'+avColor(c.phone)+'">'+esc(initials(c.name||c.phone.slice(-2)))+'</div>'+
+      '<div class="cm"><div class="cr"><div class="cn" dir="auto">'+esc(nm)+'</div><div class="ct'+(c.unread?' new':'')+'">'+esc(listTime(c.last_at))+'</div></div>'+
+      '<div class="cr"><div class="cl" dir="auto">'+esc(preview(c))+'</div>'+(c.unread?'<span class="bd">'+c.unread+'</span>':'')+'</div></div></div>'; }).join('')
+    :'<div class="empty">'+esc(t('no_chats'))+'</div>';
+  $$('.ci',el).forEach(function(d){ d.onclick=function(){ openChat(d.dataset.ph); }; });
+}
+async function openChat(phone){
+  var c=CHATS.find(function(x){ return x.phone===phone; })||{phone:phone,name:''};
+  if(!CUR&&window.innerWidth<=820) try{ history.pushState({chat:1},''); }catch(e){}
+  CUR={phone:phone,name:c.name,last_in_at:c.last_in_at}; MSGS=[]; PENDING=[];
+  c.unread=0; paintList(); badge();
+  $('#app').classList.add('chatting');
+  var M=$('#main');
+  M.innerHTML='<div class="top"><button class="ib back" id="bback">'+(LANG==='ar'?'→':'←')+'</button><div class="av" style="width:40px;height:40px;flex-basis:40px;font-size:15px;background:'+avColor(phone)+'">'+esc(initials(c.name||phone.slice(-2)))+'</div>'+
+    '<div class="ttl"><span id="hn">'+esc(c.name||fmtPhone(phone))+'</span><div class="muted" style="font-size:12px;font-weight:400;direction:ltr;text-align:start">'+esc(fmtPhone(phone))+'</div></div>'+
+    '<a class="ib" href="https://wa.me/'+esc(phone)+'" target="_blank" rel="noopener" title="'+esc(t('open_wa'))+'">↗</a></div>'+
+    '<div class="msgs" id="msgs"></div><div id="win"></div>'+
+    '<div class="comp"><textarea id="tx" rows="1" placeholder="'+esc(t('type_msg'))+'"></textarea><button class="send" id="bs" title="Send">'+sendIcon()+'</button></div>';
+  $('#bback').onclick=function(){ if(history.state&&history.state.chat) history.back(); else { CUR=null; $('#app').classList.remove('chatting'); paintList(); } };
+  var tx=$('#tx');
+  tx.oninput=function(){ tx.style.height='auto'; tx.style.height=Math.min(tx.scrollHeight,140)+'px'; };
+  tx.onkeydown=function(e){ if(e.key==='Enter'&&!e.shiftKey&&window.innerWidth>820){ e.preventDefault(); send(); } };
+  $('#bs').onclick=send;
+  paintWin();
+  try{ var r=await rpc('wa_messages',{p_token:TOK,p_phone:phone}); }catch(e){ toast(errText(e)); return; }
+  if(!CUR||CUR.phone!==phone) return;
+  if(r.chat){ CUR.name=r.chat.name; CUR.last_in_at=r.chat.last_in_at; }
+  MSGS=r.rows||[]; CUR.hasMore=MSGS.length>=80; paintMsgs(true); paintWin();
+  if(window.innerWidth>820) tx.focus();
+}
+async function loadNew(){
+  if(!CUR) return; var ph=CUR.phone, last=MSGS.length?MSGS[MSGS.length-1].id:null;
+  try{ var r=await rpc('wa_messages',{p_token:TOK,p_phone:ph,p_after:last}); }catch(e){ return; }
+  if(!CUR||CUR.phone!==ph||!(r.rows||[]).length) return;
+  var ids={}; MSGS.forEach(function(m){ ids[m.id]=1; });
+  var add=r.rows.filter(function(m){ return !ids[m.id]; }); if(!add.length) return;
+  MSGS=MSGS.concat(add);
+  // الرسائل اللي بعتناها وصارت بالسجل ما عاد لازم تبين كـ«جاري الإرسال»
+  PENDING=PENDING.filter(function(p){ return p.failed||!add.some(function(m){ return m.dir==='out'&&m.text===p.text; }); });
+  if(r.chat){ CUR.last_in_at=r.chat.last_in_at; }
+  var box=$('#msgs'), atEnd=box&&(box.scrollHeight-box.scrollTop-box.clientHeight<120);
+  paintMsgs(atEnd); paintWin();
+}
+async function older(){
+  if(!CUR||!MSGS.length) return; var ph=CUR.phone;
+  try{ var r=await rpc('wa_messages',{p_token:TOK,p_phone:ph,p_before:MSGS[0].id}); }catch(e){ return; }
+  if(!CUR||CUR.phone!==ph) return;
+  var box=$('#msgs'), h=box.scrollHeight;
+  MSGS=(r.rows||[]).concat(MSGS); CUR.hasMore=(r.rows||[]).length>=80; paintMsgs(false);
+  box.scrollTop=box.scrollHeight-h;
+}
+function mediaHtml(m){
+  var u=m.media_url, ty=m.type;
+  if(u&&/^https:\/\//.test(u)){
+    if(ty==='image'||ty==='sticker') return '<a href="'+esc(u)+'" target="_blank" rel="noopener"><img src="'+esc(u)+'" alt="" loading="lazy"></a>';
+    if(ty==='audio'||ty==='voice') return '<audio controls preload="none" src="'+esc(u)+'"></audio>';
+    if(ty==='video') return '<video controls preload="none" src="'+esc(u)+'"></video>';
+    return '<a href="'+esc(u)+'" target="_blank" rel="noopener">'+esc(t('document'))+'</a><br>';
+  }
+  if(ty&&ty!=='text'&&L[ty]&&!m.text) return '<span class="muted">'+esc(t(ty))+'</span>';
+  return '';
+}
+function linkify(s){ return esc(s).replace(/(https?:\/\/[^\s<]+)/g,'<a href="$1" target="_blank" rel="noopener">$1</a>'); }
+function tick(m){ var s=m.status; if(m.dir!=='out') return ''; if(s==='read') return ' <span class="tk">✓✓</span>'; if(s==='delivered') return ' ✓✓'; if(s==='failed') return ' <span class="fail">⚠</span>'; return ' ✓'; }
+function paintMsgs(scroll){
+  var box=$('#msgs'); if(!box) return; var h='', lastDay='';
+  if(CUR.hasMore) h+='<button class="btn ghost sm more" id="bold">'+esc(t('older'))+'</button>';
+  MSGS.concat(PENDING).forEach(function(m){ var at=m.at||new Date().toISOString(), dk=dayKey(at);
+    if(dk!==lastDay){ h+='<div class="day">'+esc(dayLabel(at))+'</div>'; lastDay=dk; }
+    h+='<div class="b '+(m.dir==='in'?'in':'out')+'" dir="auto">'+(m.dir==='out'&&m.by?'<div class="by">'+esc(m.by)+'</div>':'')+mediaHtml(m)+(m.text?linkify(m.text):'')+
+      '<div class="mt">'+(m.pending?(m.failed?'<span class="fail">'+esc(m.err||t('failed'))+'</span> <button class="btn ghost sm" data-rt="'+m.pid+'">'+esc(t('retry'))+'</button>':esc(t('sending'))):esc(hm(at))+tick(m))+'</div></div>'; });
+  box.innerHTML=h;
+  if($('#bold')) $('#bold').onclick=older;
+  $$('[data-rt]',box).forEach(function(b){ b.onclick=function(){ var p=PENDING.find(function(x){ return String(x.pid)===b.dataset.rt; }); if(p){ PENDING.splice(PENDING.indexOf(p),1); doSend(p.text); } }; });
+  if(scroll) box.scrollTop=box.scrollHeight;
+}
+function paintWin(){ var w=$('#win'); if(!w||!CUR) return; w.innerHTML=inWindow(CUR)?'':'<div class="win">'+esc(t(CUR.last_in_at?'win_closed':'win_none'))+'</div>'; }
+var PID=0;
+function send(){ var tx=$('#tx'); var v=tx.value.trim(); if(!v) return; tx.value=''; tx.style.height='auto'; doSend(v); tx.focus(); }
+async function doSend(v){
+  if(!CUR) return; var ph=CUR.phone, p={pid:++PID,pending:true,dir:'out',text:v,by:ME.name,at:new Date().toISOString()};
+  PENDING.push(p); paintMsgs(true);
+  try{ await api({op:'send',phone:ph,text:v}); await loadNew(); PENDING=PENDING.filter(function(x){ return x!==p; }); paintMsgs(true); loadChats(false); }
+  catch(e){ p.failed=true; p.err=errText(e); paintMsgs(true); }
+}
+
+/* ---------- الإعدادات ---------- */
+function modal(html){ var m=document.createElement('div'); m.className='modal'; m.innerHTML='<div class="mbox">'+html+'</div>'; document.body.appendChild(m); return m; }
+function settings(){
+  var hook=location.origin+'/api/wachat-hook/'+INBOX.id;
+  var m=modal('<h3>⚙️ '+esc(t('settings'))+'</h3>'+
+    '<label>'+esc(t('inbox_name'))+'</label><input class="in" id="sn" value="'+esc(INBOX.name)+'">'+
+    '<label>'+esc(t('wc_key'))+' — '+(INBOX.has_key?'<span class="chip">'+esc(t('key_ok'))+'</span>':'<span class="chip off">'+esc(t('key_no'))+'</span>')+'</label><input class="in" id="sk" type="password" autocomplete="off" placeholder="'+esc(t('wc_key_ph'))+'" style="direction:ltr">'+
+    (INBOX.motor?'<div class="muted" style="font-size:13px;margin-top:8px">🔗 '+esc(t('motor_link',{n:INBOX.motor_name||''}))+'</div>':
+      '<label>'+esc(t('hook'))+'</label><div class="row"><div class="code" id="hk">'+esc(hook)+'</div><button class="btn sm" id="hc">'+esc(t('copy'))+'</button></div>'+
+      '<label>'+esc(t('hook_secret'))+' — '+(INBOX.has_secret?'<span class="chip">'+esc(t('key_ok'))+'</span>':'<span class="chip off">'+esc(t('key_no'))+'</span>')+'</label><input class="in" id="ss" type="password" autocomplete="off" placeholder="whsec_…" style="direction:ltr">')+
+    '<div class="row" style="margin-top:12px"><button class="btn" id="sv">'+esc(t('save'))+'</button><span class="err" id="se"></span></div>'+
+    '<div class="sec"><div class="row" style="justify-content:space-between"><b>👥 '+esc(t('users'))+'</b><button class="btn sm" id="ua">+ '+esc(t('add_user'))+'</button></div><table class="ut" id="ut"></table></div>'+
+    '<div class="row" style="margin-top:14px;justify-content:flex-end"><button class="btn ghost" id="sx">'+esc(t('close'))+'</button></div>');
+  function paintUsers(){ $('#ut',m).innerHTML=(USERS||[]).map(function(u,i){ return '<tr><td><b>'+esc(u.name)+'</b><div class="muted" style="font-size:12px;direction:ltr;text-align:start">'+esc(u.username)+'</div></td><td>'+esc(t(u.role==='main'?'r_main':'r_admin'))+'</td><td>'+(u.is_active?'<span class="chip">'+esc(t('active'))+'</span>':'<span class="chip off">'+esc(t('stopped'))+'</span>')+'</td><td style="text-align:end"><button class="btn ghost sm" data-ue="'+i+'">'+esc(t('edit'))+'</button></td></tr>'; }).join('');
+    $$('[data-ue]',m).forEach(function(b){ b.onclick=function(){ userForm(USERS[+b.dataset.ue]); }; }); }
+  paintUsers();
+  $('#sx',m).onclick=function(){ m.remove(); };
+  if($('#hc',m)) $('#hc',m).onclick=function(){ try{ navigator.clipboard.writeText(hook); toast(t('copied')); }catch(e){} };
+  $('#ua',m).onclick=function(){ userForm(null); };
+  $('#sv',m).onclick=async function(){ var b=this; b.disabled=true; $('#se',m).textContent='';
+    try{ INBOX=await rpc('wa_settings_save',{p_token:TOK,p_data:{name:$('#sn',m).value.trim(),wc_api_key:$('#sk',m).value.trim(),wc_hook_secret:$('#ss',m)?$('#ss',m).value.trim():''}}); toast(t('saved')); m.remove(); var tt=$('.top .ttl'); if(tt&&tt.firstChild) tt.firstChild.textContent=INBOX.name||t('app'); }
+    catch(e){ $('#se',m).textContent=errText(e); b.disabled=false; } };
+  function userForm(u){
+    var f=modal('<h3>'+esc(u?t('edit'):t('add_user'))+'</h3><label>'+esc(t('name'))+'</label><input class="in" id="un" value="'+esc(u?u.name:'')+'">'+
+      '<label>'+esc(t('user'))+'</label><input class="in" id="uu" value="'+esc(u?u.username:'')+'" style="direction:ltr" autocapitalize="off">'+
+      '<label>'+esc(u?t('new_pass'):t('pass'))+'</label><input class="in" id="up" type="password" autocomplete="new-password" style="direction:ltr">'+
+      '<label>'+esc(t('role'))+'</label><select class="in" id="ur"><option value="admin">'+esc(t('r_admin'))+'</option><option value="main"'+(u&&u.role==='main'?' selected':'')+'>'+esc(t('r_main'))+'</option></select>'+
+      (u?'<label style="display:flex;gap:8px;align-items:center;color:var(--txt)"><input type="checkbox" id="ua2"'+(u.is_active?' checked':'')+'> '+esc(t('active'))+'</label>':'')+
+      '<div class="err" id="ue"></div><div class="row" style="justify-content:space-between;margin-top:10px">'+(u&&u.id!==ME.user_id?'<button class="btn red sm" id="ud">'+esc(t('del'))+'</button>':'<span></span>')+
+      '<div class="row"><button class="btn ghost" id="uc">'+esc(t('cancel'))+'</button><button class="btn" id="us">'+esc(t('save'))+'</button></div></div>');
+    $('#uc',f).onclick=function(){ f.remove(); };
+    $('#us',f).onclick=async function(){ var b=this; b.disabled=true;
+      try{ await rpc('wa_user_save',{p_token:TOK,p_data:{id:u?u.id:'',name:$('#un',f).value.trim(),username:$('#uu',f).value.trim(),password:$('#up',f).value,role:$('#ur',f).value,is_active:u?$('#ua2',f).checked:true}});
+        var d=await rpc('wa_me',{p_token:TOK}); USERS=d.users; paintUsers(); f.remove(); toast(t('saved')); }
+      catch(e){ $('#ue',f).textContent=errText(e); b.disabled=false; } };
+    if($('#ud',f)) $('#ud',f).onclick=async function(){ if(!confirm(t('del_q',{n:u.name}))) return;
+      try{ await rpc('wa_user_delete',{p_token:TOK,p_id:u.id}); var d=await rpc('wa_me',{p_token:TOK}); USERS=d.users; paintUsers(); f.remove(); }catch(e){ $('#ue',f).textContent=errText(e); } };
+  }
+}
+// فتح محادثة من إشعار تطبيق الأندرويد
+window.wachatOpen=function(ph){ if(ME) openChat(String(ph||'').replace(/\D/g,'')); };
+document.addEventListener('visibilitychange',function(){ if(!document.hidden&&ME){ loadChats(false); if(CUR) loadNew(); } });
+if('serviceWorker' in navigator&&!BRIDGE){ try{ navigator.serviceWorker.register('/chat-sw.js',{scope:'/chat'}); }catch(e){} }
+boot();
+</script>
+</body>
+</html>
