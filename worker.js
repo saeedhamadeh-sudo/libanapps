@@ -2248,7 +2248,9 @@ async function waApi(request, env) {
   if (op === 'probe') {
     if (c.role !== 'main' || !c.key) return json(200, { ok: true });
     const H = { Authorization: `Bearer ${c.key}`, Accept: 'application/json' };
-    for (const u of ['https://api.whatchimp.com/v1/openapi.json', 'https://api.whatchimp.com/openapi.json', 'https://api.whatchimp.com/v1/docs', 'https://api.whatchimp.com/docs/openapi.json', 'https://api.whatchimp.com/v1/messages?limit=3']) {
+    const B = 'https://api.whatchimp.com';
+    for (const u of [B + '/v1/openapi.json', B + '/openapi.json', B + '/v1/openapi.yaml', B + '/v1/docs', B + '/docs', B + '/docs/openapi.json', B + '/v1',
+                     B + '/v1/conversations?limit=3', B + '/v1/chats?limit=3', B + '/v1/messages?limit=3', B + '/v1/inbox?limit=3', B + '/v1/contacts?limit=2']) {
       try { const r = await fetch(u, { headers: H }); await waDebug(env, c.inbox_id, 'probe', u + ' ' + r.status + '\n' + (await r.text()).slice(0, 19000)); } catch (e) { await waDebug(env, c.inbox_id, 'probe', u + ' ERR ' + e); }
     }
     return json(200, { ok: true });
