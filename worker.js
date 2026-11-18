@@ -2093,7 +2093,7 @@ async function motorWaHook(request, env, ctx, slugRaw) {
   // صندوق «LibanApps Chat» مربوط بهالمولّد؟ منحفظ فيه كل الرسائل (واردة وصادرة)
   const fan = (async () => {
     const ib = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/wa_inbox_for_motor`, { method: 'POST', headers: SH, body: JSON.stringify({ p_site: site.id }) }).then((r) => r.ok ? r.json() : null).catch(() => null);
-    if (ib) await waIngest(env, ib, waParseEvent(ev));
+    if (ib) await Promise.all([waDebug(env, ib, 'hook', body), waIngest(env, ib, waParseEvent(ev))]);
   })().catch(() => {});
   if (ctx && ctx.waitUntil) ctx.waitUntil(fan); else await fan;
   // نقرأ الحقول من أكثر من مكان احتياطاً لشكل الـpayload
@@ -2191,35 +2191,114 @@ async function waHook(request, env, ctx, idRaw) {
   if (!hc.secret || !(await wcVerify(hc.secret, id, ts, body, request.headers.get('webhook-signature') || '')))
     return json(401, { ok: false, error: 'bad_signature' });
   let ev; try { ev = JSON.parse(body); } catch { return json(200, { ok: true }); }
-  const work = waIngest(env, iid, waParseEvent(ev)).catch(() => {});
+  const work = Promise.all([waDebug(env, iid, 'hook', body), waIngest(env, iid, waParseEvent(ev))]).catch(() => {});
   if (ctx && ctx.waitUntil) ctx.waitUntil(work); else await work;
   return json(200, { ok: true });
+}
+async function waDebug(env, inbox, kind, body) {
+  await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/wa_debug_log`, { method: 'POST', headers: svcH(env),
+    body: JSON.stringify({ p_inbox: inbox || null, p_kind: kind, p_body: String(body || '').slice(0, 20000) }) }).catch(() => {});
+}
+async function waCtx(env, token) {
+  const cr = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/wa_send_ctx`, { method: 'POST', headers: svcH(env), body: JSON.stringify({ p_token: String(token || '') }) });
+  return cr.ok ? await cr.json() : null;
+}
+const WA_MEDIA = { image: ['image/jpeg', 'image/png', 'image/webp'], video: ['video/mp4', 'video/3gpp'],
+  audio: ['audio/mpeg', 'audio/ogg', 'audio/mp4', 'audio/aac', 'audio/amr'], document: ['application/pdf'] };
+const WA_EXT = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'video/mp4': 'mp4', 'video/3gpp': '3gp', 'audio/mpeg': 'mp3', 'audio/ogg': 'ogg',
+  'audio/mp4': 'm4a', 'audio/aac': 'aac', 'audio/amr': 'amr', 'application/pdf': 'pdf' };
+// رفع ملف (صورة/فيديو/صوت/ملف) — الجسم هو الملف نفسو
+async function waUpload(request, env, url) {
+  const c = await waCtx(env, url.searchParams.get('token'));
+  if (!c) return json(401, { ok: false, error: 'auth' });
+  const ct = String(request.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+  const kind = Object.keys(WA_MEDIA).find((k) => WA_MEDIA[k].includes(ct)) || (ct.startsWith('application/') || ct.startsWith('text/') ? 'document' : '');
+  if (!kind) return json(415, { ok: false, error: 'bad_type' });
+  const buf = await request.arrayBuffer();
+  const max = kind === 'image' ? 5 : 16;
+  if (!buf.byteLength) return json(400, { ok: false, error: 'empty' });
+  if (buf.byteLength > max * 1048576) return json(413, { ok: false, error: 'too_big', max });
+  const ext = WA_EXT[ct] || (String(url.searchParams.get('name') || '').match(/\.([a-z0-9]{1,6})$/i) || [, 'bin'])[1].toLowerCase();
+  const path = `${c.inbox_id}/${new Date().toISOString().slice(0, 7)}/${crypto.randomUUID()}.${ext}`;
+  const up = await fetch(`${env.SUPABASE_URL}/storage/v1/object/wachat/${path}`, { method: 'POST', body: buf,
+    headers: { apikey: env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`, 'Content-Type': ct || 'application/octet-stream', 'x-upsert': 'false' } });
+  if (!up.ok) return json(502, { ok: false, error: 'upload_failed', detail: (await up.text()).slice(0, 200) });
+  return json(200, { ok: true, kind, url: `${env.SUPABASE_URL}/storage/v1/object/public/wachat/${path}`, mime: ct, size: buf.byteLength });
+}
+// شكل طلب الوسائط عند WhatChimp مش موثّق عنا: منجرّب كذا شكل بالترتيب، وبنحفظ الشكل اللي زبط
+let WA_SHAPE = -1;
+function waMediaBodies(to, m) {
+  const t = m.type, cap = m.caption || undefined, fn = m.filename || undefined;
+  const meta = Object.assign({ link: m.url }, cap && t !== 'audio' ? { caption: cap } : {}, fn && t === 'document' ? { filename: fn } : {});
+  const metaU = Object.assign({ url: m.url }, cap && t !== 'audio' ? { caption: cap } : {}, fn && t === 'document' ? { filename: fn } : {});
+  return [
+    { to, type: t, [t]: metaU },
+    { to, type: t, [t]: meta },
+    { to, media: Object.assign({ type: t }, metaU), text: cap },
+    { to, media_url: m.url, media_type: t, text: cap, caption: cap, filename: fn },
+    { to, attachment: { type: t, url: m.url, filename: fn }, text: cap }
+  ];
 }
 async function waApi(request, env) {
   let b; try { b = await request.json(); } catch { return json(400, { ok: false, error: 'bad_json' }); }
   const op = String(b.op || '');
+  const c = await waCtx(env, b.token);
+  if (!c) return json(401, { ok: false, error: 'auth' });
+  // تشخيص (المدير الأساسي): منحاول نجيب توثيق الـAPI من WhatChimp ومنحفظو بالسجل
+  if (op === 'probe') {
+    if (c.role !== 'main' || !c.key) return json(200, { ok: true });
+    const H = { Authorization: `Bearer ${c.key}`, Accept: 'application/json' };
+    for (const u of ['https://api.whatchimp.com/v1/openapi.json', 'https://api.whatchimp.com/openapi.json', 'https://api.whatchimp.com/v1/docs', 'https://api.whatchimp.com/docs/openapi.json', 'https://api.whatchimp.com/v1/messages?limit=3']) {
+      try { const r = await fetch(u, { headers: H }); await waDebug(env, c.inbox_id, 'probe', u + ' ' + r.status + '\n' + (await r.text()).slice(0, 19000)); } catch (e) { await waDebug(env, c.inbox_id, 'probe', u + ' ERR ' + e); }
+    }
+    return json(200, { ok: true });
+  }
   if (op !== 'send') return json(400, { ok: false, error: 'bad_op' });
   const phone = String(b.phone || '').replace(/\D/g, ''), text = String(b.text || '').trim();
-  if (phone.length < 8 || !text || text.length > 4000) return json(400, { ok: false, error: 'bad_fields' });
-  const cr = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/wa_send_ctx`, { method: 'POST', headers: svcH(env), body: JSON.stringify({ p_token: String(b.token || '') }) });
-  if (!cr.ok) return json(401, { ok: false, error: 'auth' });
-  const c = await cr.json();
+  const media = b.media && typeof b.media === 'object' ? { type: String(b.media.type || ''), url: String(b.media.url || ''), filename: String(b.media.filename || '').slice(0, 120), caption: text } : null;
+  if (phone.length < 8 || text.length > 4000 || (!text && !media)) return json(400, { ok: false, error: 'bad_fields' });
+  if (media && (!WA_MEDIA[media.type] || !media.url.startsWith(`${env.SUPABASE_URL}/storage/v1/object/public/wachat/${c.inbox_id}/`))) return json(400, { ok: false, error: 'bad_media' });
   if (!c.key) return json(409, { ok: false, error: 'no_key' });
-  const r = await fetch('https://api.whatchimp.com/v1/messages', { method: 'POST',
-    headers: { Authorization: `Bearer ${c.key}`, 'Content-Type': 'application/json', 'Idempotency-Key': crypto.randomUUID() },
-    body: JSON.stringify({ to: '+' + phone, text }) });
-  const t = await r.text(); let j = {}; try { j = JSON.parse(t) || {}; } catch {}
+  const H = { Authorization: `Bearer ${c.key}`, 'Content-Type': 'application/json' };
+  const to = '+' + phone;
+  let r, t, j = {};
+  if (!media) {
+    r = await fetch('https://api.whatchimp.com/v1/messages', { method: 'POST', headers: Object.assign({ 'Idempotency-Key': crypto.randomUUID() }, H), body: JSON.stringify({ to, text }) });
+    t = await r.text(); try { j = JSON.parse(t) || {}; } catch {}
+  } else {
+    const bodies = waMediaBodies(to, media);
+    const order = WA_SHAPE >= 0 ? [WA_SHAPE].concat(bodies.map((_, i) => i).filter((i) => i !== WA_SHAPE)) : bodies.map((_, i) => i);
+    for (const i of order) {
+      r = await fetch('https://api.whatchimp.com/v1/messages', { method: 'POST', headers: Object.assign({ 'Idempotency-Key': crypto.randomUUID() }, H), body: JSON.stringify(bodies[i]) });
+      t = await r.text(); j = {}; try { j = JSON.parse(t) || {}; } catch {}
+      await waDebug(env, c.inbox_id, 'send_media', 'shape ' + i + ' -> ' + r.status + '\n' + JSON.stringify(bodies[i]) + '\n' + t.slice(0, 3000));
+      if (r.ok) { WA_SHAPE = i; break; }
+      if (![400, 422].includes(r.status)) break;   // غلط مش من شكل الطلب (مفتاح، نافذة 24 ساعة...)
+      const em0 = String(t);
+      if (/24|window|re-?engage|131047|outside/i.test(em0) && !/invalid|required|unknown|schema|must/i.test(em0)) break;
+    }
+  }
   if (!r.ok) {
     const em = String((j.error && (j.error.message || j.error.code)) || j.message || j.error || t || r.status).slice(0, 300);
-    // برّا نافذة الـ24 ساعة واتساب ما بيقبل نص حر
-    const win = /24|window|re-?engage|template|131047|outside/i.test(em);
+    const win = /24.?h|window|re-?engage|131047|outside/i.test(em);
     return json(r.status === 401 ? 409 : 502, { ok: false, error: win ? 'window' : 'wc_error', detail: em });
   }
   const m = j.data || j.message || j;
   const ext = String((m && (m.id || m.message_id || m.wamid)) || '');
   await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/wa_ingest`, { method: 'POST', headers: svcH(env), body: JSON.stringify({
-    p_inbox: c.inbox_id, p_dir: 'out', p_phone: phone, p_name: '', p_type: 'text', p_text: text, p_ext: ext, p_by: c.name || '', p_status: 'sent' }) });
+    p_inbox: c.inbox_id, p_dir: 'out', p_phone: phone, p_name: '', p_type: media ? media.type : 'text', p_text: text,
+    p_media: media ? media.url : '', p_ext: ext, p_by: c.name || '', p_status: 'sent' }) });
   return json(200, { ok: true, id: ext });
+}
+// عرض وسائط واردة: إذا رابط WhatChimp بدو توثيق منمرّقو عبر الـworker بالمفتاح
+async function waMedia(request, env, url) {
+  const c = await waCtx(env, url.searchParams.get('token'));
+  if (!c) return json(401, { ok: false, error: 'auth' });
+  let u; try { u = new URL(String(url.searchParams.get('u') || '')); } catch { return json(400, { ok: false }); }
+  if (u.protocol !== 'https:' || !/(^|\.)whatchimp\.com$/i.test(u.hostname)) return json(400, { ok: false, error: 'host' });
+  const r = await fetch(u.toString(), { headers: { Authorization: `Bearer ${c.key}` } });
+  const h = new Headers(); h.set('Content-Type', r.headers.get('content-type') || 'application/octet-stream'); h.set('Cache-Control', 'private, max-age=86400');
+  return new Response(r.body, { status: r.status, headers: h });
 }
 
 // ---------- motorapp: نسخ احتياطي على Google Drive ----------
@@ -4862,6 +4941,11 @@ const LA_WORKER = {
           if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
           return await waHook(request, env, ctx, url.pathname.slice('/api/wachat-hook/'.length));
         }
+        if (url.pathname === '/api/wachat-upload') {
+          if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
+          return await waUpload(request, env, url);
+        }
+        if (url.pathname === '/api/wachat-media') return await waMedia(request, env, url);
         if (url.pathname === '/api/wachat') {
           if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
           return await waApi(request, env);

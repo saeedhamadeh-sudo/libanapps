@@ -55,6 +55,11 @@ label{display:block;font-size:13px;color:var(--mut);margin:10px 0 4px}
 .win{margin:0 6% 6px;background:#fff8e1;color:#7a5b00;border-radius:8px;padding:8px 12px;font-size:13px;text-align:center}
 .comp{flex:0 0 auto;display:flex;align-items:flex-end;gap:8px;padding:8px 12px;background:var(--hd)}
 .comp textarea{flex:1;resize:none;border:0;border-radius:10px;padding:10px 14px;max-height:140px;min-height:44px;outline:none;line-height:1.4;background:#fff}
+.att{width:42px;height:46px;flex:0 0 42px;border:0;background:transparent;font-size:22px;color:#54656f}
+.rec{flex:1;display:flex;align-items:center;gap:10px;background:#fff;border-radius:10px;padding:0 14px;height:44px;font-weight:700}
+.rec .dot{width:10px;height:10px;border-radius:50%;background:var(--bad);animation:blink 1s infinite}@keyframes blink{50%{opacity:.2}}
+.rec .x{margin-inline-start:auto;border:0;background:transparent;color:var(--bad);font-size:20px}
+.send.mic{background:var(--g2)}.send.recon{background:var(--bad)}
 .send{width:46px;height:46px;flex:0 0 46px;border-radius:50%;border:0;background:var(--g2);color:#fff;font-size:20px;display:flex;align-items:center;justify-content:center}.send:disabled{opacity:.5}
 [dir=rtl] .send svg{transform:scaleX(-1)}
 .more{align-self:center;margin:6px 0}
@@ -95,6 +100,10 @@ var L={
  e_weak_password:['كلمة السر 6 أحرف على الأقل','Password must be 6+ characters','Mot de passe : 6+ caractères'], e_username_taken:['اسم المستخدم مستعمل','Username taken','Nom déjà pris'],
  e_forbidden:['غير مسموح','Not allowed','Non autorisé'], e_last_main:['لا يمكن إزالة آخر مدير أساسي','Can’t remove the last main manager','Impossible de retirer le dernier gérant'],
  e_self:['لا يمكنك حذف حسابك','You can’t delete yourself','Impossible de vous supprimer'], e_net:['تعذّر الاتصال، تحقّق من الإنترنت','Connection failed','Échec de connexion'],
+ attach:['إرفاق صورة أو فيديو أو ملف','Attach photo, video or file','Joindre'], e_video_fmt:['الفيديو لازم يكون MP4','Video must be MP4','La vidéo doit être en MP4'],
+ e_audio_fmt:['صيغة الصوت غير مدعومة (MP3 / OGG / M4A)','Unsupported audio format','Format audio non pris en charge'], e_too_big:['الملف أكبر من {n}MB','File is larger than {n}MB','Fichier > {n} Mo'],
+ e_mic:['تعذّر تشغيل الميكروفون — اسمح للتطبيق باستعماله','Microphone unavailable — allow access','Micro indisponible'], e_upload:['تعذّر رفع الملف','Upload failed','Échec du téléversement'],
+ e_bad_type:['نوع الملف غير مدعوم','Unsupported file type','Type non pris en charge'], e_bad_media:['الملف غير صالح','Invalid file','Fichier invalide'], voice:['🎤 رسالة صوتية','🎤 Voice message','🎤 Vocal'],
  e_wc:['رفضت WhatChimp الرسالة','WhatChimp rejected the message','WhatChimp a refusé le message'],
  settings:['الإعدادات','Settings','Paramètres'], logout:['خروج','Sign out','Déconnexion'], save:['حفظ','Save','Enregistrer'], close:['إغلاق','Close','Fermer'], cancel:['إلغاء','Cancel','Annuler'],
  inbox_name:['اسم الصندوق','Inbox name','Nom de la boîte'], wc_key:['مفتاح WhatChimp API','WhatChimp API key','Clé API WhatChimp'],
@@ -135,7 +144,7 @@ async function api(body){
   if(!r.ok||!j.ok){ if(j.error==='auth'){ saveTok(''); setTimeout(boot,0); } throw {code:j.error||'net',detail:j.detail}; }
   return j;
 }
-function errText(e){ var c=e&&e.code||'net'; var k={window:'e_window',no_key:'e_no_key',wc_error:'e_wc'}[c]||('e_'+c); return L[k]?t(k,{n:e.minutes||15}):c; }
+function errText(e){ var c=e&&e.code||'net'; var k={window:'e_window',no_key:'e_no_key',wc_error:'e_wc'}[c]||('e_'+c); return L[k]?t(k,{n:e.minutes||e.max||15}):c; }
 var toastT; function toast(m){ var d=$('.toast'); if(!d){ d=document.createElement('div'); d.className='toast'; document.body.appendChild(d); } d.textContent=m; d.classList.remove('hide'); clearTimeout(toastT); toastT=setTimeout(function(){ d.classList.add('hide'); },2600); }
 function langBar(){ return '<div class="langs">'+[['ar','العربية'],['en','English'],['fr','Français']].map(function(x){ return '<button data-lang="'+x[0]+'"'+(LANG===x[0]?' style="border-color:var(--g2);color:var(--g2)"':'')+'>'+x[1]+'</button>'; }).join('')+'</div>'; }
 function bindLang(root){ $$('[data-lang]',root).forEach(function(b){ b.onclick=function(){ LANG=b.dataset.lang; try{ localStorage.setItem('wachat_lang',LANG); }catch(e){} setDir(); boot(); }; }); }
@@ -174,6 +183,7 @@ async function boot(){
   pollA=setInterval(function(){ loadChats(false); },5000);
   pollB=setInterval(function(){ if(CUR) loadNew(); },3000);
   if(!INBOX.has_key&&ME.role==='main') setTimeout(settings,300);
+  try{ if(ME.role==='main'&&INBOX.has_key&&!localStorage.getItem('wachat_probe1')){ localStorage.setItem('wachat_probe1','1'); api({op:'probe'}).catch(function(){}); } }catch(e){}
 }
 function initials(n){ n=String(n||'').trim(); if(!n) return '#'; var p=n.split(/\s+/); return (p[0][0]+(p[1]?p[1][0]:'')).toUpperCase(); }
 function avColor(s){ var h=0; s=String(s); for(var i=0;i<s.length;i++) h=(h*31+s.charCodeAt(i))%360; return 'hsl('+h+',45%,55%)'; }
@@ -244,12 +254,18 @@ async function openChat(phone){
     '<div class="ttl"><span id="hn">'+esc(c.name||fmtPhone(phone))+'</span><div class="muted" style="font-size:12px;font-weight:400;direction:ltr;text-align:start">'+esc(fmtPhone(phone))+'</div></div>'+
     '<a class="ib" href="https://wa.me/'+esc(phone)+'" target="_blank" rel="noopener" title="'+esc(t('open_wa'))+'">↗</a></div>'+
     '<div class="msgs" id="msgs"></div><div id="win"></div>'+
-    '<div class="comp"><textarea id="tx" rows="1" placeholder="'+esc(t('type_msg'))+'"></textarea><button class="send" id="bs" title="Send">'+sendIcon()+'</button></div>';
+    '<div class="comp" id="comp"><button class="att" id="batt" title="'+esc(t('attach'))+'">📎</button><input type="file" id="fatt" class="hide" accept="image/*,video/mp4,video/3gpp,audio/*,application/pdf">'+
+    '<textarea id="tx" rows="1" placeholder="'+esc(t('type_msg'))+'"></textarea><div class="rec hide" id="rec"><span class="dot"></span><span id="rect">0:00</span><button class="x" id="recx" title="'+esc(t('cancel'))+'">🗑</button></div>'+
+    '<button class="send mic" id="bs" title="Send">🎤</button></div>';
   $('#bback').onclick=function(){ if(history.state&&history.state.chat) history.back(); else { CUR=null; $('#app').classList.remove('chatting'); paintList(); } };
   var tx=$('#tx');
-  tx.oninput=function(){ tx.style.height='auto'; tx.style.height=Math.min(tx.scrollHeight,140)+'px'; };
+  function sbtn(){ var b=$('#bs'); if(REC){ b.className='send recon'; b.innerHTML=sendIcon(); return; } var has=!!tx.value.trim(); b.className='send'+(has?'':' mic'); b.innerHTML=has?sendIcon():'🎤'; }
+  tx.oninput=function(){ tx.style.height='auto'; tx.style.height=Math.min(tx.scrollHeight,140)+'px'; sbtn(); };
   tx.onkeydown=function(e){ if(e.key==='Enter'&&!e.shiftKey&&window.innerWidth>820){ e.preventDefault(); send(); } };
-  $('#bs').onclick=send;
+  $('#bs').onclick=function(){ if(REC) return stopRec(true).then(sbtn); if(tx.value.trim()) { send(); sbtn(); } else startRec().then(sbtn); };
+  $('#recx').onclick=function(){ stopRec(false).then(sbtn); };
+  $('#batt').onclick=function(){ $('#fatt').click(); };
+  $('#fatt').onchange=function(){ var f=this.files&&this.files[0]; this.value=''; if(f) sendFile(f); };
   paintWin();
   try{ var r=await rpc('wa_messages',{p_token:TOK,p_phone:phone}); }catch(e){ toast(errText(e)); return; }
   if(!CUR||CUR.phone!==phone) return;
@@ -265,7 +281,7 @@ async function loadNew(){
   var add=r.rows.filter(function(m){ return !ids[m.id]; }); if(!add.length) return;
   MSGS=MSGS.concat(add);
   // الرسائل اللي بعتناها وصارت بالسجل ما عاد لازم تبين كـ«جاري الإرسال»
-  PENDING=PENDING.filter(function(p){ return p.failed||!add.some(function(m){ return m.dir==='out'&&m.text===p.text; }); });
+  PENDING=PENDING.filter(function(p){ return p.failed||!add.some(function(m){ return m.dir==='out'&&(p.url?m.media_url===p.url:(m.text===p.text&&!m.media_url)); }); });
   if(r.chat){ CUR.last_in_at=r.chat.last_in_at; }
   var box=$('#msgs'), atEnd=box&&(box.scrollHeight-box.scrollTop-box.clientHeight<120);
   paintMsgs(atEnd); paintWin();
@@ -278,13 +294,14 @@ async function older(){
   MSGS=(r.rows||[]).concat(MSGS); CUR.hasMore=(r.rows||[]).length>=80; paintMsgs(false);
   box.scrollTop=box.scrollHeight-h;
 }
+function mediaUrl(u){ try{ var x=new URL(u); if(/(^|\.)whatchimp\.com$/i.test(x.hostname)) return '/api/wachat-media?token='+encodeURIComponent(TOK)+'&u='+encodeURIComponent(u); }catch(e){} return u; }
 function mediaHtml(m){
-  var u=m.media_url, ty=m.type;
-  if(u&&/^https:\/\//.test(u)){
+  var u=m.local||mediaUrl(m.media_url||''), ty=m.type; if(ty==='ptt') ty='voice';
+  if(u&&/^(https:\/\/|\/api\/|blob:)/.test(u)){
     if(ty==='image'||ty==='sticker') return '<a href="'+esc(u)+'" target="_blank" rel="noopener"><img src="'+esc(u)+'" alt="" loading="lazy"></a>';
     if(ty==='audio'||ty==='voice') return '<audio controls preload="none" src="'+esc(u)+'"></audio>';
     if(ty==='video') return '<video controls preload="none" src="'+esc(u)+'"></video>';
-    return '<a href="'+esc(u)+'" target="_blank" rel="noopener">'+esc(t('document'))+'</a><br>';
+    return '<a href="'+esc(u)+'" target="_blank" rel="noopener">'+esc(t('document'))+(m.filename?' — '+esc(m.filename):'')+'</a><br>';
   }
   if(ty&&ty!=='text'&&L[ty]&&!m.text) return '<span class="muted">'+esc(t(ty))+'</span>';
   return '';
@@ -300,17 +317,74 @@ function paintMsgs(scroll){
       '<div class="mt">'+(m.pending?(m.failed?'<span class="fail">'+esc(m.err||t('failed'))+'</span> <button class="btn ghost sm" data-rt="'+m.pid+'">'+esc(t('retry'))+'</button>':esc(t('sending'))):esc(hm(at))+tick(m))+'</div></div>'; });
   box.innerHTML=h;
   if($('#bold')) $('#bold').onclick=older;
-  $$('[data-rt]',box).forEach(function(b){ b.onclick=function(){ var p=PENDING.find(function(x){ return String(x.pid)===b.dataset.rt; }); if(p){ PENDING.splice(PENDING.indexOf(p),1); doSend(p.text); } }; });
+  $$('[data-rt]',box).forEach(function(b){ b.onclick=function(){ var p=PENDING.find(function(x){ return String(x.pid)===b.dataset.rt; }); if(p){ PENDING.splice(PENDING.indexOf(p),1); doSend(p.text,p.file); } }; });
   if(scroll) box.scrollTop=box.scrollHeight;
 }
 function paintWin(){ var w=$('#win'); if(!w||!CUR) return; w.innerHTML=inWindow(CUR)?'':'<div class="win">'+esc(t(CUR.last_in_at?'win_closed':'win_none'))+'</div>'; }
 var PID=0;
 function send(){ var tx=$('#tx'); var v=tx.value.trim(); if(!v) return; tx.value=''; tx.style.height='auto'; doSend(v); tx.focus(); }
-async function doSend(v){
-  if(!CUR) return; var ph=CUR.phone, p={pid:++PID,pending:true,dir:'out',text:v,by:ME.name,at:new Date().toISOString()};
+// إرسال نص أو ملف (صورة/فيديو/صوت/PDF): الملف بيترفع أول، وبعدين منبعت رابطو عبر WhatChimp
+async function doSend(v,file){
+  if(!CUR) return; var ph=CUR.phone, kind=file?fileKind(file):'';
+  var p={pid:++PID,pending:true,dir:'out',text:v||'',by:ME.name,at:new Date().toISOString(),file:file,type:kind||'text',filename:file&&file.name};
+  if(file) try{ p.local=URL.createObjectURL(file); }catch(e){}
   PENDING.push(p); paintMsgs(true);
-  try{ await api({op:'send',phone:ph,text:v}); await loadNew(); PENDING=PENDING.filter(function(x){ return x!==p; }); paintMsgs(true); loadChats(false); }
-  catch(e){ p.failed=true; p.err=errText(e); paintMsgs(true); }
+  try{
+    var media=null;
+    if(file){ var up=await upload(file); p.url=up.url; media={type:up.kind,url:up.url,filename:file.name||''}; }
+    await api({op:'send',phone:ph,text:v||'',media:media}); await loadNew(); PENDING=PENDING.filter(function(x){ return x!==p; }); paintMsgs(true); loadChats(false);
+  }catch(e){ p.failed=true; p.err=errText(e); paintMsgs(true); }
+}
+function fileKind(f){ var ty=String(f.type||''); if(ty.indexOf('image/')===0) return 'image'; if(ty.indexOf('video/')===0) return 'video'; if(ty.indexOf('audio/')===0) return 'audio'; return 'document'; }
+async function upload(f){
+  var r; try{ r=await fetch('/api/wachat-upload?token='+encodeURIComponent(TOK)+'&name='+encodeURIComponent(f.name||''),{method:'POST',headers:{'Content-Type':f.type||'application/octet-stream'},body:f}); }catch(e){ throw {code:'net'}; }
+  var j={}; try{ j=await r.json(); }catch(e){}
+  if(!r.ok||!j.ok) throw {code:j.error==='too_big'?'too_big':j.error==='bad_type'?'bad_type':'upload',max:j.max};
+  return j;
+}
+// الصور: منصغّرها (أقصى 1600px، JPEG) لتكون خفيفة ومقبولة عند واتساب
+function shrinkImage(f){ return new Promise(function(res){ if(!/^image\/(jpeg|png|webp|heic|heif)$/i.test(f.type)&&f.type) return res(f);
+  var img=new Image(), u=URL.createObjectURL(f); img.onload=function(){ var k=Math.min(1,1600/Math.max(img.width,img.height)); if(k===1&&f.type==='image/jpeg'&&f.size<1.5e6){ URL.revokeObjectURL(u); return res(f); }
+    var c=document.createElement('canvas'); c.width=Math.round(img.width*k); c.height=Math.round(img.height*k); c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+    c.toBlob(function(b){ URL.revokeObjectURL(u); res(b?new File([b],(f.name||'photo').replace(/\.[^.]+$/,'')+'.jpg',{type:'image/jpeg'}):f); },'image/jpeg',0.85); };
+  img.onerror=function(){ URL.revokeObjectURL(u); res(f); }; img.src=u; }); }
+async function sendFile(f){
+  var k=fileKind(f);
+  if(k==='image') f=await shrinkImage(f);
+  if(k==='video'&&!/^video\/(mp4|3gpp)$/i.test(f.type)) return toast(t('e_video_fmt'));
+  if(k==='audio'&&!/^audio\/(mpeg|mp3|ogg|mp4|aac|amr|x-m4a|m4a)$/i.test(f.type)) return toast(t('e_audio_fmt'));
+  if(k==='audio'&&/m4a/.test(f.type)) f=new File([f],f.name,{type:'audio/mp4'});
+  if(k==='audio'&&f.type==='audio/mp3') f=new File([f],f.name,{type:'audio/mpeg'});
+  if(f.size>(k==='image'?5:16)*1048576) return toast(t('e_too_big',{n:k==='image'?5:16}));
+  var tx=$('#tx'), cap=k==='audio'?'':tx.value.trim(); if(cap){ tx.value=''; tx.style.height='auto'; }
+  doSend(cap,f);
+}
+// ---------- تسجيل رسالة صوتية: MediaRecorder → MP3 (واتساب ما بيقبل webm) ----------
+var REC=null;
+function loadLame(){ return window.lamejs?Promise.resolve():new Promise(function(ok,no){ var s=document.createElement('script'); s.src='https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.1/lame.min.js'; s.onload=ok; s.onerror=no; document.head.appendChild(s); }); }
+async function startRec(){
+  if(REC) return; if(!navigator.mediaDevices||!window.MediaRecorder){ toast(t('e_mic')); return; }
+  var st; try{ st=await navigator.mediaDevices.getUserMedia({audio:true}); }catch(e){ toast(t('e_mic')); return; }
+  var mr=new MediaRecorder(st), chunks=[]; mr.ondataavailable=function(e){ if(e.data&&e.data.size) chunks.push(e.data); };
+  REC={mr:mr,st:st,chunks:chunks,t0:Date.now()}; mr.start(250); loadLame().catch(function(){});
+  $('#tx').classList.add('hide'); $('#batt').classList.add('hide'); $('#rec').classList.remove('hide');
+  REC.iv=setInterval(function(){ var s=Math.floor((Date.now()-REC.t0)/1000); $('#rect').textContent=Math.floor(s/60)+':'+String(s%60).padStart(2,'0'); if(s>=600) stopRec(true); },500);
+}
+async function stopRec(keep){
+  var R=REC; if(!R) return; REC=null; clearInterval(R.iv);
+  await new Promise(function(ok){ R.mr.onstop=ok; try{ R.mr.stop(); }catch(e){ ok(); } });
+  R.st.getTracks().forEach(function(x){ x.stop(); });
+  if($('#rec')){ $('#rec').classList.add('hide'); $('#tx').classList.remove('hide'); $('#batt').classList.remove('hide'); $('#rect').textContent='0:00'; }
+  if(!keep||Date.now()-R.t0<700) return;
+  try{ var mp3=await toMp3(new Blob(R.chunks,{type:R.mr.mimeType||'audio/webm'})); doSend('',mp3); }catch(e){ toast(t('e_mic')); }
+}
+async function toMp3(blob){
+  await loadLame();
+  var ac=new (window.AudioContext||window.webkitAudioContext)(), buf=await ac.decodeAudioData(await blob.arrayBuffer()); try{ ac.close(); }catch(e){}
+  var sr=buf.sampleRate, ch=buf.getChannelData(0), enc=new lamejs.Mp3Encoder(1,sr,64), out=[], N=1152, pcm=new Int16Array(N);
+  for(var i=0;i<ch.length;i+=N){ var n=Math.min(N,ch.length-i), blk=n===N?pcm:new Int16Array(n); for(var k=0;k<n;k++){ var x=Math.max(-1,Math.min(1,ch[i+k])); blk[k]=x<0?x*0x8000:x*0x7fff; } var o=enc.encodeBuffer(blk); if(o.length) out.push(new Uint8Array(o)); }
+  var e=enc.flush(); if(e.length) out.push(new Uint8Array(e));
+  return new File(out,'voice-'+Date.now()+'.mp3',{type:'audio/mpeg'});
 }
 
 /* ---------- الإعدادات ---------- */
