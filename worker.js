@@ -1283,6 +1283,95 @@ async function accountPassword(request, env) {
   return json(200, { ok: true });
 }
 
+// ---------- البريد الإلكتروني للدخول ----------
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i;
+const RESERVED_MAIL = new RegExp('@(' + [WA_EMAIL_DOMAIN, 'panel.libanapps.com', 'libanapp.local'].map(d => d.replace(/\./g, '\\.')).join('|') + ')$', 'i');
+async function authUserByEmail(env, email) {
+  const r = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/auth_user_by_email`, {
+    method: 'POST', headers: { ...sbHeaders(env), 'Content-Type': 'application/json' }, body: JSON.stringify({ p_email: email })
+  });
+  if (!r.ok) throw new Error('lookup: ' + (await r.text()).slice(0, 120));
+  const id = await r.json();
+  return typeof id === 'string' && id ? id : null;
+}
+async function sendPasswordLink(env, email, origin) {
+  const r = await fetch(`${env.SUPABASE_URL}/auth/v1/recover?redirect_to=${encodeURIComponent(origin + '/reset')}`, {
+    method: 'POST', headers: { apikey: env.SUPABASE_SERVICE_KEY, 'Content-Type': 'application/json' }, body: JSON.stringify({ email })
+  });
+  return r.ok ? { ok: true } : { ok: false, error: (await r.text()).slice(0, 150) };
+}
+// POST /api/admin/client-email { client_id, email, password?, send_link? }
+//  مدير المنصة بيحط بريد دخول لزبون:
+//   • البريد إلو حساب موجود ← منربط الزبون فيه
+//   • الزبون إلو حساب (مثلاً سجّل بواتساب) ← منغيّر بريد حسابو للبريد الجديد (الواتساب بيضل شغّال)
+//   • ما إلو حساب ← منعمل حساب جديد بهالبريد
+//  وبعدها (اختياري) منبعتلو رابط يختار فيه كلمة المرور، أو منحط كلمة مرور مباشرة.
+async function adminClientEmail(request, env) {
+  const g = await requirePlatformAdmin(request, env); if (g.err) return g.err;
+  let b; try { b = await request.json(); } catch { return json(400, { error: 'bad json' }); }
+  const cid = String(b.client_id || '');
+  const email = String(b.email || '').trim().toLowerCase();
+  const pw = String(b.password || '');
+  if (!/^[0-9a-f-]{36}$/i.test(cid)) return json(400, { error: 'bad client' });
+  if (!EMAIL_RE.test(email) || RESERVED_MAIL.test(email)) return json(400, { error: 'البريد الإلكتروني غير صالح' });
+  if (pw && pw.length < 8) return json(400, { error: 'كلمة المرور يجب أن تكون ٨ أحرف على الأقل' });
+  const cl = (await sbGet(env, `clients?id=eq.${cid}&select=id,name,user_id&limit=1`))[0];
+  if (!cl) return json(404, { error: 'الزبون غير موجود' });
+  let uid, mode;
+  const owner = await authUserByEmail(env, email);
+  if (owner) {
+    if (cl.user_id && cl.user_id !== owner) {
+      const other = await sbGet(env, `clients?user_id=eq.${owner}&id=neq.${cid}&select=name&limit=1`);
+      if (other.length) return json(409, { error: 'هذا البريد مستعمل لحساب زبون آخر: ' + other[0].name });
+    }
+    uid = owner; mode = 'linked';
+    if (pw) {
+      const up = await fetch(`${env.SUPABASE_URL}/auth/v1/admin/users/${uid}`, { method: 'PUT', headers: { ...sbHeaders(env), 'Content-Type': 'application/json' }, body: JSON.stringify({ password: pw }) });
+      if (!up.ok) return json(500, { error: 'تعذّر حفظ كلمة المرور: ' + (await up.text()).slice(0, 150) });
+    }
+  } else if (cl.user_id) {
+    const up = await fetch(`${env.SUPABASE_URL}/auth/v1/admin/users/${cl.user_id}`, {
+      method: 'PUT', headers: { ...sbHeaders(env), 'Content-Type': 'application/json' },
+      body: JSON.stringify(Object.assign({ email, email_confirm: true }, pw ? { password: pw } : {}))
+    });
+    if (!up.ok) return json(500, { error: 'تعذّر تغيير البريد: ' + (await up.text()).slice(0, 150) });
+    uid = cl.user_id; mode = 'changed';
+  } else {
+    const rnd = Array.from(crypto.getRandomValues(new Uint8Array(24)), x => x.toString(16).padStart(2, '0')).join('');
+    const cr = await fetch(`${env.SUPABASE_URL}/auth/v1/admin/users`, {
+      method: 'POST', headers: { ...sbHeaders(env), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password: pw || rnd, email_confirm: true, user_metadata: { name: cl.name, created_by: 'super' } })
+    });
+    if (!cr.ok) return json(500, { error: 'تعذّر إنشاء الحساب: ' + (await cr.text()).slice(0, 150) });
+    uid = (await cr.json()).id; mode = 'created';
+  }
+  const pt = await sbPatch(env, `clients?id=eq.${cid}`, { user_id: uid, email });
+  if (!pt.ok) return json(500, { error: 'تعذّر ربط الزبون: ' + await sbErrText(pt) });
+  let sent = null;
+  if (b.send_link && !pw) sent = await sendPasswordLink(env, email, new URL(request.url).origin);
+  return json(200, { ok: true, mode, email, link_sent: sent ? sent.ok : false, link_error: sent && !sent.ok ? sent.error : undefined });
+}
+// POST /api/account/email { email, password }
+//  زبون سجّل بواتساب بيضيف بريد + كلمة مرور ← بيصير يقدر يدخل بالبريد كمان (والواتساب بيضل شغّال)
+async function accountEmail(request, env) {
+  const u = await currentUser(request, env);
+  if (!u || !u.id) return json(401, { error: 'سجّل الدخول أولاً' });
+  let b; try { b = await request.json(); } catch { return json(400, { error: 'bad json' }); }
+  const email = String(b.email || '').trim().toLowerCase();
+  const pw = String(b.password || '');
+  if (!EMAIL_RE.test(email) || RESERVED_MAIL.test(email)) return json(400, { error: 'البريد الإلكتروني غير صالح' });
+  if (!isWaAccount(u)) return json(400, { error: 'حسابك مرتبط ببريد إلكتروني مسبقًا' });
+  if (pw.length < 8) return json(400, { error: 'كلمة المرور يجب أن تكون ٨ أحرف على الأقل' });
+  const owner = await authUserByEmail(env, email);
+  if (owner && owner !== u.id) return json(409, { error: 'هذا البريد مستعمل لحساب آخر' });
+  const up = await fetch(`${env.SUPABASE_URL}/auth/v1/admin/users/${u.id}`, {
+    method: 'PUT', headers: { ...sbHeaders(env), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, email_confirm: true, password: pw })
+  });
+  if (!up.ok) return json(500, { error: 'تعذّر حفظ البريد: ' + (await up.text()).slice(0, 150) });
+  return json(200, { ok: true, email });
+}
+
 // ---------- الدخول عبر واتساب داخل برامج التجاري والصناعي ----------
 const APP_WA_PRODUCTS = ['trade', 'alum'];
 // زبون مين؟ (من جلسة رابط البرنامج نفسها)
@@ -4185,6 +4274,7 @@ async function serveLinkOnDomain(request, env, url, ld, ctx) {
     if (asset.status !== 404) return withCache(asset, url.pathname);
     return new Response('Not found', { status: 404, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
   }
+  if (/^\/admin\/?$/.test(url.pathname)) return await serveLinkAdmin(env, url, ld.slug);
   if ((url.pathname.replace(/\/+$/, '') || '/') !== '/') return Response.redirect('https://' + url.hostname + '/', 301);
   if (request.method !== 'GET' && request.method !== 'HEAD') return new Response('Method not allowed', { status: 405 });
   return await serveLink(request, env, url, ld.slug, ctx, true);
@@ -4275,6 +4365,58 @@ async function linkDomain(request, env) {
   return json(400, { ok: false, error: 'bad_op' });
 }
 
+// ---------- «وصلة»: دخول لوحة التحكم باسم مستخدم وكلمة مرور (/l/<slug>/admin) ----------
+//  بيعطي جلسة لحساب داخلي خاص بهالصفحة بس (link-<page_id>@panel.libanapps.com) — ما إلو وصول لحساب الزبون
+const LINK_PANEL_DOMAIN = 'panel.libanapps.com';
+async function linkPanelUser(env, pageId) {
+  const email = `link-${pageId}@${LINK_PANEL_DOMAIN}`;
+  const pw = Array.from(crypto.getRandomValues(new Uint8Array(24)), b => b.toString(16).padStart(2, '0')).join('');
+  const cr = await fetch(`${env.SUPABASE_URL}/auth/v1/admin/users`, {
+    method: 'POST', headers: { ...sbHeaders(env), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password: pw, email_confirm: true, user_metadata: { link_panel: pageId } })
+  });
+  if (cr.ok) return (await cr.json()).id;
+  const t = await cr.text();
+  if (!/already|exists|registered/i.test(t)) throw new Error(t.slice(0, 150));
+  const lk = await fetch(`${env.SUPABASE_URL}/auth/v1/admin/users?filter=${encodeURIComponent(email)}`, { headers: sbHeaders(env) });
+  const lj = lk.ok ? await lk.json() : {};
+  const hit = (lj.users || []).find(u => String(u.email).toLowerCase() === email);
+  if (!hit) throw new Error('panel user not found');
+  return hit.id;
+}
+async function linkLogin(request, env) {
+  if (request.method !== 'POST') return json(405, { ok: false, error: 'method not allowed' });
+  let b; try { b = await request.json(); } catch { return json(400, { ok: false, error: 'bad_json' }); }
+  const slug = String(b.slug || '').trim().toLowerCase();
+  if (!LINK_SLUG_RE.test(slug)) return json(200, { ok: false, error: 'bad' });
+  const r = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/link_panel_login`, {
+    method: 'POST', headers: { ...sbHeaders(env), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ p_slug: slug, p_user: String(b.username || '').slice(0, 60), p_pass: String(b.password || '').slice(0, 200) })
+  });
+  if (!r.ok) return json(500, { ok: false, error: 'server', detail: (await r.text()).slice(0, 150) });
+  const d = await r.json();
+  if (!d || !d.ok) return json(200, { ok: false, error: (d && d.reason) || 'bad', minutes: d && d.minutes, left: d && d.left });
+  let uid = d.uid;
+  try {
+    if (!uid) {
+      uid = await linkPanelUser(env, d.page_id);
+      await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/link_panel_set_uid`, {
+        method: 'POST', headers: { ...sbHeaders(env), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ p_page: d.page_id, p_uid: uid })
+      });
+    }
+  } catch (e) { return json(500, { ok: false, error: 'server', detail: String(e.message || e) }); }
+  const sess = await waSessionFor(env, uid);
+  if (sess.error) return json(500, { ok: false, error: 'server', detail: sess.error });
+  return json(200, { ok: true, hashed_token: sess.token, slug: d.slug });
+}
+async function serveLinkAdmin(env, url, slug) {
+  const res = await env.ASSETS.fetch(new URL('/link-admin.html', url.origin));
+  let html = await res.text();
+  html = html.replace('<head>', '<head><script>window.LINK_PANEL=' + JSON.stringify({ slug }) + ';</script>');
+  return new Response(html, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' } });
+}
+
 // نقرة على زر بصفحة «وصلة» (sendBeacon من الصفحة)
 async function linkHit(request, env) {
   if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
@@ -4362,6 +4504,9 @@ const RL_RULES = [
   [/^\/api\/store\/import-image$/, 'imp', 60],
   [/^\/api\/link\/hit$/, 'lhit', 120],
   [/^\/api\/link\/domain$/, 'ldom', 30],
+  [/^\/api\/link\/login$/, 'llog', 12],
+  [/^\/api\/admin\/client-email$/, 'cem', 20],
+  [/^\/api\/account\/email$/, 'aem', 10],
 ];
 function securityHeaders(res, url, env, request) {
   if (!res || res.status === 101) return res;   // WebSocket
@@ -4441,6 +4586,7 @@ const LA_WORKER = {
         // «وصلة»: عدّ النقرات
         if (url.pathname === '/api/link/hit') return await linkHit(request, env);
         if (url.pathname === '/api/link/domain') return await linkDomain(request, env);
+        if (url.pathname === '/api/link/login') return await linkLogin(request, env);
         if (url.pathname === '/api/offline/manifest') return await offlineManifest(env, url);
         // النسخة المحلية: «فعّل الرابط» — بيعمل نفق Cloudflare + رابط subdomain للزبون بكبسة وحدة
         if (url.pathname === '/api/tunnel/provision') {
@@ -4550,6 +4696,14 @@ const LA_WORKER = {
           if (url.pathname === '/api/meta-ads/deauthorize') return await metaAdsPlatformDelete(request, env, false);
           if (url.pathname === '/api/meta-ads/data-deletion') return await metaAdsPlatformDelete(request, env, true);
           return json(404, { error: 'not found' });
+        }
+        if (url.pathname === '/api/account/email') {
+          if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
+          return await accountEmail(request, env);
+        }
+        if (url.pathname === '/api/admin/client-email') {
+          if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
+          return await adminClientEmail(request, env);
         }
         if (url.pathname === '/api/phone/status' || url.pathname === '/api/phone/send' || url.pathname === '/api/phone/link' || url.pathname === '/api/account/password') {
           if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
@@ -4705,6 +4859,8 @@ const LA_WORKER = {
     }
 
     // 1.6) «وصلة»: /l/<slug> (والرابط القديم /portal-link/<slug> بيتحوّل عليه)
+    const lka = url.pathname.match(/^\/l\/([a-z0-9-]{2,31})\/admin\/?$/i);
+    if (lka) return await serveLinkAdmin(env, url, lka[1].toLowerCase());
     const lkm = url.pathname.match(/^\/l\/([^/]+)\/?$/);
     if (lkm && (request.method === 'GET' || request.method === 'HEAD')) return await serveLink(request, env, url, decodeURIComponent(lkm[1]).toLowerCase(), ctx);
     const lkp = url.pathname.match(/^\/portal-link\/([^/]+)\/?$/);

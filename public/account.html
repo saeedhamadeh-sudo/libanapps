@@ -979,6 +979,17 @@ window.dbMsg=function(m){ var M={
         <div class="msg" id="adsMsg"></div>
       </div>
 
+      <div class="card hidden" style="margin-bottom:18px;border:2px solid var(--sky)" id="emCard">
+        <h3 style="font-size:19px">✉️ الدخول بالبريد الإلكتروني</h3>
+        <p style="color:var(--muted);font-size:14px;margin:4px 0 14px">أضف بريدًا إلكترونيًا وكلمة مرور لتتمكّن من تسجيل الدخول بهما أيضًا، إلى جانب واتساب.</p>
+        <div class="grid2" style="gap:12px">
+          <div><label>البريد الإلكتروني</label><input type="email" id="emNew" autocomplete="email" dir="ltr" placeholder="name@example.com"></div>
+          <div><label>كلمة المرور</label><input type="password" id="emPw" autocomplete="new-password" placeholder="٨ أحرف على الأقل"></div>
+        </div>
+        <button class="btn btn-o" id="emSave" style="margin-top:14px">حفظ البريد الإلكتروني</button>
+        <div class="msg" id="emMsg"></div>
+      </div>
+
       <div class="card" style="margin-bottom:18px" id="pwCard">
         <h3 style="font-size:19px">🔑 تغيير كلمة المرور</h3>
         <div id="pwCurWrap"><label>كلمة المرور الحالية</label><input type="password" id="pwCur" autocomplete="current-password"></div>
@@ -1325,7 +1336,7 @@ function laWaForce(sb, opts){
   async function waBoot(){
     if(!sb) return;
     var st=await authApi('/api/phone/status');
-    if(st.wa_account){ $('#pwCurWrap').classList.add('hidden'); $('#pwWaNote').classList.remove('hidden'); }
+    if(st.wa_account){ $('#pwCurWrap').classList.add('hidden'); $('#pwWaNote').classList.remove('hidden'); $('#emCard').classList.remove('hidden'); }
     if(!st.wa_enabled && !st.phone) return;          // الخدمة مش مفعّلة بعد
     $('#waCard').classList.remove('hidden');
     waState.phone=st.phone;
@@ -1364,6 +1375,19 @@ function laWaForce(sb, opts){
     $('#waSub').textContent='يمكنك الآن تسجيل الدخول برمز يصلك على هذا الرقم عبر واتساب.';
     $('#waLinkedNum').textContent=j.phone; waShow(true);
     setMsg('#waMsg','تم ربط الرقم ✓',true);
+  });
+  $('#emSave').addEventListener('click',async function(){
+    var em=$('#emNew').value.trim(), pw=$('#emPw').value;
+    if(!/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(em)){ setMsg('#emMsg','البريد الإلكتروني غير صالح',false); return; }
+    if(pw.length<8){ setMsg('#emMsg','كلمة المرور يجب أن تكون ٨ أحرف على الأقل',false); return; }
+    var b=this; b.disabled=true; setMsg('#emMsg','جارٍ الحفظ…');
+    var j=await authApi('/api/account/email',{email:em,password:pw});
+    b.disabled=false;
+    if(!j.ok){ setMsg('#emMsg',j.error||'تعذّر حفظ البريد',false); return; }
+    $('#emPw').value=''; $('#emSave').classList.add('hidden'); $('#emNew').disabled=true;
+    $('#pwCurWrap').classList.remove('hidden'); $('#pwWaNote').classList.add('hidden');
+    setMsg('#emMsg','تم ✓ يمكنك الآن تسجيل الدخول بالبريد '+j.email+' وكلمة المرور، أو عبر واتساب كالمعتاد.',true);
+    try{ await sb.auth.refreshSession(); }catch(e){}
   });
   $('#pwSave').addEventListener('click',async function(){
     var cur=$('#pwCur').value, n1=$('#pwNew').value, n2=$('#pwNew2').value;
@@ -1521,7 +1545,10 @@ function laWaForce(sb, opts){
           ? '<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">'+
             '<a class="btn btn-p sm" href="/portal-link/'+esc(p.slug)+'/admin" target="_blank">لوحة تحكم صفحتك</a>'+
             '<a class="btn btn-g sm" href="/l/'+esc(p.slug)+'" target="_blank">عرض صفحتك</a></div>'+
-            '<p class="hint">رابط صفحتك: libanapps.com/l/'+esc(p.slug)+'</p>'
+            '<p class="hint">رابط صفحتك: libanapps.com/l/'+esc(p.slug)+'</p>'+
+            '<div class="hint lk-cred" data-lkslug="'+esc(p.slug)+'" style="background:var(--bg);border-radius:10px;padding:10px 12px;margin-top:8px;line-height:1.9">'+
+              'دخول لوحة التحكم من أي جهاز: <b dir="ltr">libanapps.com/l/'+esc(p.slug)+'/admin</b><br>'+
+              'اسم المستخدم: <b dir="ltr">admin</b> — كلمة المرور: <b dir="ltr" class="lk-pw">0000</b></div>'
           : '<p class="hint">رابط الصفحة غير محدد — تواصل معنا.</p>';
       } else if(p.product==='club'){
         extra = p.slug
@@ -1574,6 +1601,12 @@ function laWaForce(sb, opts){
 
     $('#subs').innerHTML=html;
     if(window.siteRelang) siteRelang();
+    // «وصلة»: إذا الزبون غيّر كلمة مرور اللوحة ما منعرض 0000
+    Array.prototype.forEach.call(document.querySelectorAll('.lk-cred'),function(el){
+      sb.rpc('link_panel_info',{p_slug:el.getAttribute('data-lkslug')}).then(function(r){
+        if(r && r.data && r.data.is_default===false){ var pw=el.querySelector('.lk-pw'); if(pw){ pw.removeAttribute('dir'); pw.textContent='التي اخترتها'; if(window.siteRelang) siteRelang(); } }
+      },function(){});
+    });
   }
 
   var RENEW=null;
@@ -1689,7 +1722,7 @@ function laWaForce(sb, opts){
       b.disabled=false; b.textContent='ابدأ التجربة'; return;
     }
     alertBox('فُعِّلت تجربتك المجانية لمدة '+((prod==='store'||prod==='club'||prod==='motor'||prod==='link')?(r.data.days||TRIAL_DAYS):TRIAL_DAYS)+' أيام ✓ '+
-      (prod==='link' && r.data.slug ? 'صفحتك جاهزة على libanapps.com/l/'+esc(r.data.slug)+' — أضف روابطك من «لوحة تحكم صفحتك»'
+      (prod==='link' && r.data.slug ? 'صفحتك جاهزة على libanapps.com/l/'+esc(r.data.slug)+' — أضف روابطك من «لوحة تحكم صفحتك»\nدخول اللوحة: libanapps.com/l/'+esc(r.data.slug)+'/admin\nاسم المستخدم: admin — كلمة المرور: 0000'
        : prod==='motor' && r.data.slug ? 'برنامج المولّد جاهز على libanapps.com/portal-motor/'+esc(r.data.slug)
        : prod==='club' && r.data.slug ? 'لوحة ناديك جاهزة على libanapps.com/portal-club/'+esc(r.data.slug)+'/admin'
        : prod==='menu' ? 'المنيو جاهز على libanapps.com/'+esc(r.data.slug)

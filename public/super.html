@@ -883,7 +883,7 @@ function paintClients(){
         '<td>'+act+' سارية من '+mine.length+'</td>'+
         '<td style="white-space:nowrap">'+
           '<button class="btn alt sm" data-edit="'+c.id+'">تعديل</button> '+
-          '<button class="btn alt sm" data-linkacct="'+c.id+'">ربط حساب</button> '+
+          '<button class="btn alt sm" data-linkacct="'+c.id+'">بريد الدخول</button> '+
           (c.email&&c.user_id?'<button class="btn alt sm" data-resetpw="'+c.id+'">رابط كلمة المرور</button> ':'')+
           (c.user_id?'<button class="btn alt sm" data-mfa="'+c.user_id+'" data-mfaname="'+esc(c.name)+'">2FA</button> ':'')+
           (c.secure_apps===true
@@ -1088,13 +1088,28 @@ $('#clientsTbl').addEventListener('click',async function(e){
   }
 
   if(b.dataset.linkacct){
-    var em=prompt('البريد الإلكتروني لحساب دخول "'+c.name+'"\n\n'+
-      'يجب أن يكون لديه حساب مسبقاً — بعد الربط يرى اشتراكاته في صفحة حسابه.','');
+    var em=prompt('البريد الإلكتروني لدخول "'+c.name+'"\n\n'+
+      '• إذا للبريد حساب موجود: يُربط الزبون به.\n'+
+      '• إذا سجّل الزبون عبر واتساب: يصبح هذا بريد حسابه (ويبقى الدخول بواتساب).\n'+
+      '• إذا لم يكن له حساب: يُنشأ حساب جديد بهذا البريد.',(c.email||''));
     if(em===null||!em.trim()) return;
-    var lr=await sb.rpc('link_client_user',{p_client:c.id,p_email:em.trim()});
-    if(lr.error) alert('لم ينجح: '+lr.error.message);
-    else if(lr.data&&lr.data.ok) alert('تم الربط ✓');
-    else alert(lr.data&&lr.data.reason==='ما في حساب بهذا الإيميل'?'لا يوجد حساب بهذا البريد الإلكتروني':(lr.data&&lr.data.reason||'لم نعثر على الحساب'));
+    var pw=prompt('كلمة مرور للزبون (٨ أحرف على الأقل)\n\nاتركها فارغة لنرسل إلى بريده رابطًا يختار فيه كلمة المرور بنفسه.','');
+    if(pw===null) return;
+    b.disabled=true;
+    try{
+      var ss=await sb.auth.getSession(), tok=ss.data.session&&ss.data.session.access_token;
+      var rr=await fetch('/api/admin/client-email',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok},
+        body:JSON.stringify({client_id:c.id,email:em.trim(),password:pw,send_link:!pw})});
+      var jj={}; try{ jj=await rr.json(); }catch(x){}
+      if(!rr.ok||!jj.ok) alert('لم ينجح: '+(jj.error||('HTTP '+rr.status)));
+      else{
+        var how={linked:'رُبط الزبون بالحساب الموجود',changed:'تغيّر بريد حساب الزبون',created:'أُنشئ حساب جديد للزبون'}[jj.mode]||'تم';
+        alert(how+' ✓\n\nيستطيع الآن الدخول من libanapps.com/login\nبالبريد: '+jj.email+'\n'+
+          (pw?'وكلمة المرور التي كتبتها.':(jj.link_sent?'أرسلنا إلى بريده رابطًا لاختيار كلمة المرور.':'تعذّر إرسال رابط كلمة المرور'+(jj.link_error?' ('+jj.link_error+')':'')+' — استعمل زر «رابط كلمة المرور».')));
+        if(typeof loadClients==='function') loadClients();
+      }
+    }catch(x){ alert('لم ينجح: '+(x.message||x)); }
+    b.disabled=false;
     return;
   }
 

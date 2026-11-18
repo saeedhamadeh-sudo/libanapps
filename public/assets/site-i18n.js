@@ -6,6 +6,28 @@
    ============================================================ */
 window.SITE_I18N = {
 "en": {
+/* دخول بالبريد + لوحة وصلة */
+"✉️ الدخول بالبريد الإلكتروني": "✉️ Sign in with email",
+"الدخول بالبريد الإلكتروني": "Sign in with email",
+"أضف بريدًا إلكترونيًا وكلمة مرور لتتمكّن من تسجيل الدخول بهما أيضًا، إلى جانب واتساب.": "Add an email and a password so you can also sign in with them, alongside WhatsApp.",
+"أضف بريدًا إلكترونيًا وكلمة مرور لتتمكّن من تسجيل الدخول بهما أيضًا": "Add an email and a password so you can also sign in with them",
+"إلى جانب واتساب.": "alongside WhatsApp.",
+"حفظ البريد الإلكتروني": "Save email",
+"البريد الإلكتروني غير صالح": "Invalid email address",
+"كلمة المرور يجب أن تكون {n} أحرف على الأقل": "The password must be at least {n} characters",
+"تعذّر حفظ البريد": "Could not save the email",
+"هذا البريد مستعمل لحساب آخر": "This email is used by another account",
+"حسابك مرتبط ببريد إلكتروني مسبقًا": "Your account already has an email",
+"تم ✓ يمكنك الآن تسجيل الدخول بالبريد {s} وكلمة المرور، أو عبر واتساب كالمعتاد.": "Done ✓ You can now sign in with the email {s} and your password, or with WhatsApp as usual.",
+"تم ✓ يمكنك الآن تسجيل الدخول بالبريد {s} وكلمة المرور": "Done ✓ You can now sign in with the email {s} and your password",
+"أو عبر واتساب كالمعتاد.": "or with WhatsApp as usual.",
+"دخول لوحة التحكم من أي جهاز": "Dashboard sign-in from any device",
+"دخول لوحة التحكم من أي جهاز:": "Dashboard sign-in from any device:",
+"اسم المستخدم": "Username",
+"اسم المستخدم:": "Username:",
+"— كلمة المرور:": "— Password:",
+"التي اخترتها": "the one you chose",
+"دخول اللوحة": "Dashboard sign-in",
 "يُفعَّل اشتراكك فورًا": "Your subscription is activated instantly",
 /* البرامج الجديدة (النوادي · المولّدات) + لوحة تحكم الزبون — نوفمبر 2026 */
 "برنامج النوادي": "Club management",
@@ -803,6 +825,28 @@ window.SITE_I18N = {
 "مدفوع": "Paid"
 },
 "fr": {
+/* دخول بالبريد + لوحة وصلة */
+"✉️ الدخول بالبريد الإلكتروني": "✉️ Connexion par e-mail",
+"الدخول بالبريد الإلكتروني": "Connexion par e-mail",
+"أضف بريدًا إلكترونيًا وكلمة مرور لتتمكّن من تسجيل الدخول بهما أيضًا، إلى جانب واتساب.": "Ajoutez un e-mail et un mot de passe pour pouvoir aussi vous connecter avec, en plus de WhatsApp.",
+"أضف بريدًا إلكترونيًا وكلمة مرور لتتمكّن من تسجيل الدخول بهما أيضًا": "Ajoutez un e-mail et un mot de passe pour pouvoir aussi vous connecter avec",
+"إلى جانب واتساب.": "en plus de WhatsApp.",
+"حفظ البريد الإلكتروني": "Enregistrer l’e-mail",
+"البريد الإلكتروني غير صالح": "Adresse e-mail invalide",
+"كلمة المرور يجب أن تكون {n} أحرف على الأقل": "Le mot de passe doit contenir au moins {n} caractères",
+"تعذّر حفظ البريد": "Impossible d’enregistrer l’e-mail",
+"هذا البريد مستعمل لحساب آخر": "Cet e-mail est utilisé par un autre compte",
+"حسابك مرتبط ببريد إلكتروني مسبقًا": "Votre compte a déjà un e-mail",
+"تم ✓ يمكنك الآن تسجيل الدخول بالبريد {s} وكلمة المرور، أو عبر واتساب كالمعتاد.": "C’est fait ✓ Vous pouvez maintenant vous connecter avec l’e-mail {s} et votre mot de passe, ou via WhatsApp comme d’habitude.",
+"تم ✓ يمكنك الآن تسجيل الدخول بالبريد {s} وكلمة المرور": "C’est fait ✓ Vous pouvez maintenant vous connecter avec l’e-mail {s} et votre mot de passe",
+"أو عبر واتساب كالمعتاد.": "ou via WhatsApp comme d’habitude.",
+"دخول لوحة التحكم من أي جهاز": "Connexion au tableau de bord depuis n’importe quel appareil",
+"دخول لوحة التحكم من أي جهاز:": "Connexion au tableau de bord depuis n’importe quel appareil :",
+"اسم المستخدم": "Nom d’utilisateur",
+"اسم المستخدم:": "Nom d’utilisateur :",
+"— كلمة المرور:": "— Mot de passe :",
+"التي اخترتها": "celui que vous avez choisi",
+"دخول اللوحة": "Connexion au tableau de bord",
 "يُفعَّل اشتراكك فورًا": "Votre abonnement est activé immédiatement",
 /* البرامج الجديدة (النوادي · المولّدات) + لوحة تحكم الزبون — نوفمبر 2026 */
 "برنامج النوادي": "Gestion de club",
