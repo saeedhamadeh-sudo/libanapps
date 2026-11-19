@@ -1649,7 +1649,7 @@ async function buyCreate(request, env) {
       });
     }
     await sbPatch(env, `purchases?id=eq.${p.id}`, { status: 'awaiting_payment' });
-    return json(200, { collectUrl: res.collectUrl });
+    return json(200, { collectUrl: await payPageUrl(env, 'buy', p.id, res.collectUrl, `/account?paid=${p.id}`, `/account?failed=${p.id}`) });
   } catch (e) {
     console.error('buy create failed', JSON.stringify(e, Object.getOwnPropertyNames(e)));
     const d = (e && e.dialog && e.dialog.message) || (e && (e.code || e.message)) || '';
@@ -1661,6 +1661,89 @@ async function buyCreate(request, env) {
       sent_currency: 'USD'
     });
   }
+}
+
+// ============================================================
+//  صفحة الدفع الخاصة بـLibanApps: بدل ما نودّي الزبون على صفحة Whish،
+//  منعرض الـQR ورمز الدفع (Pay by code) على /pay، ومنتحقق من الدفع من Whish مباشرة
+// ============================================================
+function payCollectId(collectUrl) { const m = String(collectUrl || '').match(/\/pay\/([A-Za-z0-9_-]{4,40})(?:[/?#]|$)/) || String(collectUrl || '').match(/[?&]q=([A-Za-z0-9_-]{4,40})/); return m ? m[1] : ''; }
+async function payPageUrl(env, kind, id, collectUrl, okPath, failPath) {
+  const c = payCollectId(collectUrl);
+  if (!c) return collectUrl;   // شكل رابط غير معروف — منرجع لصفحة Whish
+  const q = new URLSearchParams({ k: kind, id: String(id), c, ok: okPath, fail: failPath });
+  q.set('s', await gdSign(env, ['pay', kind, id, c, okPath, failPath].join('|')));
+  return `${env.WEBSITE_URL || 'https://libanapps.com'}/pay?${q.toString()}`;
+}
+async function payParams(env, url) {
+  const g = (k) => String(url.searchParams.get(k) || '');
+  const p = { kind: g('k'), id: Number(g('id')) || 0, c: g('c'), ok: g('ok'), fail: g('fail') };
+  if (!['buy', 'addon', 'test'].includes(p.kind) || !p.id || !/^[A-Za-z0-9_-]{4,40}$/.test(p.c) || !p.ok.startsWith('/') || !p.fail.startsWith('/') || p.ok.startsWith('//') || p.fail.startsWith('//')) return null;
+  const sig = await gdSign(env, ['pay', p.kind, p.id, p.c, p.ok, p.fail].join('|'));
+  return sig === g('s') ? p : null;
+}
+const WHISH_PAY = 'https://pay.whish.money';
+// دفعة تجربة (مثلاً 1$) — رابط لمرّة وحدة: الـhash بـplatform_settings.pay_test_hash (صالح لوقت محدد)
+async function laPayTest(env, url) {
+  const tok = String(url.searchParams.get('t') || '');
+  const s = (await sbGet(env, 'platform_settings?id=eq.1&select=pay_test_hash,pay_test_until,pay_test_amount&limit=1'))[0] || {};
+  const h = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(tok)))).map((b) => b.toString(16).padStart(2, '0')).join('');
+  if (!tok || !s.pay_test_hash || h !== s.pay_test_hash || !(new Date(s.pay_test_until) > new Date())) return json(403, { ok: false, error: 'bad_token' });
+  const w = await platformWhish(env);
+  if (!w) return json(400, { ok: false, error: 'no_whish' });
+  const site = env.WEBSITE_URL || 'https://libanapps.com';
+  const ext = 990000000 + Math.floor(Math.random() * 9000000);
+  const res = await w.client.createPayment({ amount: Number(s.pay_test_amount) || 1, currency: 'USD', invoice: `LibanApps — test #${ext}`, externalId: ext,
+    successCallbackUrl: `${site}/api/buy/callback-success`, failureCallbackUrl: `${site}/api/buy/callback-failure`,
+    successRedirectUrl: `${site}/account`, failureRedirectUrl: `${site}/account` });
+  if (!res.success) return json(502, { ok: false, error: 'rejected', detail: res.dialog || null });
+  return Response.redirect(await payPageUrl(env, 'test', ext, res.collectUrl, '/account?paytest=ok', '/account?paytest=failed'), 302);
+}
+async function payInfo(env, url) {
+  const p = await payParams(env, url);
+  if (!p) return json(400, { ok: false, error: 'bad_link' });
+  const r = await fetch(`${WHISH_PAY}/invoice/pay/render?q=${encodeURIComponent(p.c)}&client=desktop`, { headers: { 'User-Agent': 'Mozilla/5.0 LibanApps' } });
+  const h = r.ok ? await r.text() : '';
+  const pick = (re) => { const m = h.match(re); return m ? m[1].replace(/&amp;/g, '&').replace(/&#x2F;/g, '/').trim() : ''; };
+  const code = pick(/id="pay-code"[^>]*>\s*([0-9]{3}-?[0-9]{3})\s*</).replace('-', '');
+  const exp = Number(pick(/let expiryTime = new Date\((\d{12,14})\)/)) || 0;
+  const total = pick(/id="total"[^>]*>([^<]+)</) || pick(/id="price"[^>]*>([^<]+)</);
+  const note = pick(/id="note-amount"[^>]*>([^<]+)</);
+  const expired = !h || (!/id="active-state"/.test(h) && /This link has expired/.test(h));
+  return json(200, { ok: true, qr: `https://whish.money/app/pay/${p.c}`, code, expiry: exp, total, note, expired });
+}
+async function payNewCode(env, url) {
+  const p = await payParams(env, url);
+  if (!p) return json(400, { ok: false, error: 'bad_link' });
+  const r = await fetch(`${WHISH_PAY}/whish/code/${encodeURIComponent(p.c)}`, { method: 'POST', headers: { 'User-Agent': 'Mozilla/5.0 LibanApps' } });
+  let j = {}; try { j = await r.json(); } catch {}
+  if (j && j.status === false) return json(200, { ok: false, error: 'limit', detail: (j.dialog && j.dialog.message) || '' });
+  const d = (j && j.data) || j || {};
+  if (!d.code || !d.expiry) return json(200, { ok: false, error: 'limit' });
+  return json(200, { ok: true, code: String(d.code), expiry: Number(new Date(d.expiry).getTime()) || Number(d.expiry) });
+}
+// التحقق من الدفع: من Whish مباشرة، وإذا تمّ منفعّل (نفس مسار الـcallback الرسمي)
+async function payStatus(env, url) {
+  const p = await payParams(env, url);
+  if (!p) return json(400, { ok: false, error: 'bad_link' });
+  const site = env.WEBSITE_URL || 'https://libanapps.com';
+  if (p.kind !== 'test') {
+    const table = p.kind === 'addon' ? 'addon_purchases' : 'purchases';
+    const row = (await sbGet(env, `${table}?id=eq.${p.id}&select=id,status&limit=1`))[0];
+    if (!row) return json(404, { ok: false, error: 'not_found' });
+    if (row.status === 'paid') return json(200, { ok: true, state: 'paid', go: site + p.ok });
+  }
+  const w = await platformWhish(env);
+  if (!w) return json(200, { ok: true, state: 'pending' });
+  let st; try { st = await w.client.getPaymentStatus('USD', p.id); } catch { return json(200, { ok: true, state: 'pending' }); }
+  const cs = String((st && st.collectStatus) || 'pending');
+  if (cs === 'failed') return json(200, { ok: true, state: 'failed', go: site + p.fail });
+  if (cs !== 'success') return json(200, { ok: true, state: 'pending' });
+  if (p.kind === 'test') { await waDebug(env, null, 'pay_test', JSON.stringify(st)); return json(200, { ok: true, state: 'paid', go: site + p.ok }); }
+  const cb = new Request(`${site}/api/${p.kind === 'addon' ? 'addon' : 'buy'}/callback-success?externalId=${p.id}&currency=USD`);
+  const res = p.kind === 'addon' ? await addonCallbackSuccess(cb, env) : await buySuccess(cb, env);
+  if (!res.ok) return json(200, { ok: true, state: 'pending', note: 'activation_failed' });
+  return json(200, { ok: true, state: 'paid', go: site + p.ok });
 }
 
 async function buySuccess(request, env) {
@@ -2321,7 +2404,7 @@ async function waBuy(env, b, op) {
       successRedirectUrl: `${site}/chat?paid=${made.id}`, failureRedirectUrl: `${site}/chat?failed=${made.id}` });
     if (!res.success) return json(502, { ok: false, error: 'pay_rejected', detail: (res.dialog && res.dialog.message) || '' });
     await sbPatch(env, `purchases?id=eq.${made.id}`, { status: 'awaiting_payment' });
-    return json(200, { ok: true, id: made.id, url: res.collectUrl });
+    return json(200, { ok: true, id: made.id, url: await payPageUrl(env, 'buy', made.id, res.collectUrl, `/chat?paid=${made.id}`, `/chat?failed=${made.id}`) });
   } catch (e) {
     return json(502, { ok: false, error: 'pay_rejected', detail: String((e && e.dialog && e.dialog.message) || (e && (e.code || e.message)) || '').slice(0, 200) });
   }
@@ -4059,7 +4142,7 @@ async function addonPay(request, env) {
       return json(400, { error: (res.dialog && res.dialog.message) || 'رفضت بوابة الدفع العملية' });
     }
     await sbPatch(env, `addon_purchases?id=eq.${p.id}`, { status: 'awaiting_payment' });
-    return json(200, { collectUrl: res.collectUrl });
+    return json(200, { collectUrl: await payPageUrl(env, 'addon', p.id, res.collectUrl, `/${encodeURIComponent(slug)}/admin?addon=${p.id}`, `/${encodeURIComponent(slug)}/admin?addon_failed=${p.id}`) });
   } catch (e) {
     console.error('addon pay failed', JSON.stringify(e, Object.getOwnPropertyNames(e)));
     return json(502, { error: 'بوابة الدفع: ' + ((e && e.dialog && e.dialog.message) || (e && (e.code || e.message)) || '') });
@@ -4735,6 +4818,7 @@ function pageFor(pathname) {
   // رابط برنامج تجارة مخصص لزبون معيّن: /portal-trade/اسم-محله
   if (/^\/portal-trade\/[^/]+\/?$/.test(p)) return '/app-trade.html';
   // برنامج اشتراكات المولّدات (motorapp): /portal-motor/اسم-المولّد
+  if (p === '/pay')           return '/pay.html';   // صفحة الدفع (QR + رمز Whish) بشعار LibanApps
   if (p === '/chat' || p === '/chat/') return '/chat.html';   // LibanApps Chat (محادثات واتساب)
   if (p === '/motor' || p === '/portal-motor') return '/app-motor.html';
   if (/^\/portal-motor\/[^/]+\/?$/.test(p)) return '/app-motor.html';
@@ -4868,6 +4952,10 @@ const LA_WORKER = {
           return await addonVerify(request, env);
         }
         if (url.pathname === '/api/addon/callback-success') return await addonCallbackSuccess(request, env);
+        if (url.pathname === '/api/pay/info') return await payInfo(env, url);
+        if (url.pathname === '/api/pay/test') return await laPayTest(env, url);
+        if (url.pathname === '/api/pay/code') { if (request.method !== 'POST') return json(405, { error: 'method not allowed' }); return await payNewCode(env, url); }
+        if (url.pathname === '/api/pay/status') return await payStatus(env, url);
         if (url.pathname === '/api/addon/callback-failure') return await addonCallbackFailure(request, env);
         if (url.pathname === '/api/track/osmand' || url.pathname === '/api/track/push') {
           return await trackPush(request, env, url);
