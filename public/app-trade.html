@@ -11845,8 +11845,49 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-11-19 · 17:40 · v104';
+const APP_TRADE_BUILD = '2026-11-19 · 18:20 · v105';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
+// ===== ترجيع حركات ناقصة من ملف (إضافة بس — ما منمحي ولا منغيّر شي موجود) =====
+document.addEventListener('change', async e=>{
+  if(!e.target || e.target.id!=='rstFile') return;
+  const f = e.target.files && e.target.files[0]; e.target.value = ''; if(!f) return;
+  let j = null; try{ j = JSON.parse(await f.text()); }catch(err){ toast('⚠️ الملف مش مقروء'); return; }
+  if(!j || j.la_restore!==1 || !Array.isArray(j.groups) || !KEYS[j.table] || !Array.isArray(DB[j.table])){ toast('⚠️ هيدا مش ملف ترجيع'); return; }
+  openRestoreRowsModal(j);
+});
+function openRestoreRowsModal(j){
+  const key = j.table, arr = DB[key];
+  const have = new Set(arr.map(r=>r.id));
+  const haveSale = new Set(key==='cashMovements'? arr.filter(m=>m.type==='sale' && m.refSaleId && !m.deleted).map(m=>m.refSaleId) : []);
+  const groups = j.groups.map(g=>{ const rows = (g.rows||[]).filter(r=>r && r.id && !have.has(r.id) && !(key==='cashMovements' && r.type==='sale' && r.refSaleId && haveSale.has(r.refSaleId)));
+    const sum = {}; rows.forEach(r=>{ const c = r.currency||'LBP'; sum[c] = (sum[c]||0) + (Number(r.amount)||0); });
+    return { key:g.key, label:g.label, rows, total:(g.rows||[]).length, sum }; });
+  const fmtSum = sm=> Object.keys(sm).map(c=> (c==='USD'? '$'+(Math.round(sm[c]*100)/100).toLocaleString('en-US') : Math.round(sm[c]).toLocaleString('en-US')+' ل.ل')).join(' + ') || '—';
+  const wrap = document.createElement('div'); wrap.className = 'modal-bg';
+  wrap.innerHTML = `<div class="modal" style="max-width:560px;"><h3>📥 ترجيع ${escapeHtml(SUPABASE_TABLES[key]? SUPABASE_TABLES[key].label : key)}</h3>
+    <p style="font-size:12.5px; color:var(--ink-soft);">علّم يلي بدك ترجّعو. يلي موجود أصلاً بالبرنامج ما بينزاد.</p>
+    ${groups.map((g,i)=>`<label style="display:flex; gap:10px; align-items:flex-start; padding:9px 4px; border-bottom:1px dashed var(--line); ${g.rows.length? '' : 'opacity:.55;'}">
+      <input type="checkbox" data-rg="${i}" ${g.rows.length? '' : 'disabled'} style="margin-top:4px;">
+      <span style="flex:1;"><b>${escapeHtml(g.label||g.key)}</b><br><small style="color:var(--ink-soft);">${g.rows.length? `<span class="num">${g.rows.length}</span> حركة · <span class="num">${fmtSum(g.sum)}</span>` : `موجودين كلّن (${g.total})`}</small></span></label>`).join('')}
+    <div id="rg_tot" style="margin-top:10px; font-weight:700;"></div>
+    <div class="row" style="margin-top:12px;"><button class="btn" id="rg_x">إلغاء</button><button class="btn btn-primary" id="rg_ok" disabled>📥 رجّع المعلّم</button></div></div>`;
+  document.body.appendChild(wrap);
+  const sel = ()=> Array.from(wrap.querySelectorAll('[data-rg]:checked')).map(x=>groups[+x.getAttribute('data-rg')]);
+  const upd = ()=>{ const g = sel(); const n = g.reduce((t,x)=>t+x.rows.length,0); const sm = {}; g.forEach(x=>Object.keys(x.sum).forEach(c=>sm[c]=(sm[c]||0)+x.sum[c]));
+    wrap.querySelector('#rg_tot').textContent = n? ('رح ينزاد: '+n+' حركة · '+fmtSum(sm)) : ''; wrap.querySelector('#rg_ok').disabled = !n; };
+  wrap.addEventListener('change', upd);
+  wrap.querySelector('#rg_x').addEventListener('click', ()=>wrap.remove());
+  wrap.querySelector('#rg_ok').addEventListener('click', async ()=>{
+    const g = sel(); const rows = []; const seen = new Set(DB[key].map(r=>r.id));
+    g.forEach(x=>x.rows.forEach(r=>{ if(!seen.has(r.id)){ seen.add(r.id); rows.push(Object.assign({}, r)); } }));
+    if(!rows.length) return;
+    if(!confirm('رح ينزاد '+rows.length+' حركة. أكيد؟')) return;
+    const b = wrap.querySelector('#rg_ok'); b.disabled = true; b.textContent = '⏳';
+    rows.forEach(r=>DB[key].push(r));
+    const ok = await save(KEYS[key], DB[key]);
+    wrap.remove(); toast(ok? '✅ رجعت '+rows.length+' حركة' : '⚠️ صار خطأ بالحفظ'); render();
+  });
+}
 function settingsView(){
   const s = DB.settings;
   const lic = licenseStatus();
@@ -12146,6 +12187,13 @@ function settingsView(){
   </div>
 
   ${(isPrivilegedUser(currentUser) && window.laIntCardHtml)? laIntCardHtml() : ''}
+
+  ${isPrivilegedUser(currentUser)? `<div class="card">
+    <h2><span class="dot"></span> 📥 ترجيع حركات ناقصة</h2>
+    <p style="font-size:12.5px; color:var(--ink-soft); line-height:1.7;">بيزيد من ملف الترجيع (يلي بيبعتو الدعم) بس الحركات يلي مش موجودة. ما بيمحي ولا بيغيّر شي موجود، وإذا انعمل مرتين ما بيكرّر. قبل الحفظ بيعرضلك شو رح يزيد، وبتختار شو بدك.</p>
+    <input type="file" id="rstFile" accept=".json,application/json" style="display:none;">
+    <button class="btn btn-primary" type="button" onclick="document.getElementById('rstFile').click()">📥 اختار ملف الترجيع</button>
+  </div>` : ''}
 
   <div class="card">
     <h2><span class="dot"></span> نسخة احتياطية (ملف)</h2>
