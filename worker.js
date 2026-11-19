@@ -2204,7 +2204,8 @@ async function waDebug(env, inbox, kind, body) {
 }
 async function waCtx(env, token) {
   const cr = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/wa_send_ctx`, { method: 'POST', headers: svcH(env), body: JSON.stringify({ p_token: String(token || '') }) });
-  return cr.ok ? await cr.json() : null;
+  if (cr.ok) return await cr.json();
+  return /WACHAT:no_license/.test(await cr.text()) ? { no_license: true } : null;
 }
 const WA_MEDIA = { image: ['image/jpeg', 'image/png', 'image/webp'], video: ['video/mp4', 'video/3gpp'],
   audio: ['audio/mpeg', 'audio/ogg', 'audio/mp4', 'audio/aac', 'audio/amr'], document: ['application/pdf'] };
@@ -2214,6 +2215,7 @@ const WA_EXT = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 
 async function waUpload(request, env, url) {
   const c = await waCtx(env, url.searchParams.get('token'));
   if (!c) return json(401, { ok: false, error: 'auth' });
+  if (c.no_license) return json(402, { ok: false, error: 'no_license' });
   const ct = String(request.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
   const kind = Object.keys(WA_MEDIA).find((k) => WA_MEDIA[k].includes(ct)) || (ct.startsWith('application/') || ct.startsWith('text/') ? 'document' : '');
   if (!kind) return json(415, { ok: false, error: 'bad_type' });
@@ -2233,6 +2235,7 @@ async function waApi(request, env) {
   const op = String(b.op || '');
   const c = await waCtx(env, b.token);
   if (!c) return json(401, { ok: false, error: 'auth' });
+  if (c.no_license) return json(402, { ok: false, error: 'no_license' });
   // تشخيص (المدير الأساسي): منحاول نجيب توثيق الـAPI من WhatChimp ومنحفظو بالسجل
   if (op === 'probe') {
     if (c.role !== 'main' || !c.key) return json(200, { ok: true });
@@ -2325,6 +2328,7 @@ async function waHistory(env, c, b) {
 async function waMedia(request, env, url) {
   const c = await waCtx(env, url.searchParams.get('token'));
   if (!c) return json(401, { ok: false, error: 'auth' });
+  if (c.no_license) return json(402, { ok: false, error: 'no_license' });
   let u; try { u = new URL(String(url.searchParams.get('u') || '')); } catch { return json(400, { ok: false }); }
   if (u.protocol !== 'https:' || !/(^|\.)whatchimp\.com$/i.test(u.hostname)) return json(400, { ok: false, error: 'host' });
   const r = await fetch(u.toString(), { headers: { Authorization: `Bearer ${c.key}` } });

@@ -1507,6 +1507,12 @@ function laWaForce(sb, opts){
     var r=await sb.rpc('wa_my_inbox',{p_new_code:!!newCode});
     if(r.error){ m.textContent='تعذّر فتح الصندوق، حاول مرة ثانية'; return; }
     var d=r.data||{}, apk='https://github.com/saeedhamadeh-sudo/libanapps/releases/download/chat-apk/LibanApps-Chat.apk';
+    if(d.licensed===false){
+      b.innerHTML='<p style="margin:0 0 10px">🔒 لاستخدام LibanApps Chat يجب شراء البرنامج — <b>دفعة واحدة بلا تجديد</b>'+(d.plan?' ('+d.plan.price+' $)':'')+'.</p>'+
+        (d.plan?'<button class="btn btn-o" id="waChatBuy">اشترك الآن</button>':'<p class="hint">البرنامج غير متاح للشراء حالياً — تواصل معنا.</p>');
+      var bb=$('#waChatBuy'); if(bb) bb.addEventListener('click',async function(){ if(!PLANS.some(function(x){return x.id===d.plan.id})) await loadPlans(); openPlan(d.plan.id); });
+      return;
+    }
     b.innerHTML=(d.setup_code?
       '<p style="margin:0 0 8px">رمز الإعداد لإنشاء حساب <b>المدير الأساسي</b> (صالح 30 يوم، لمرة واحدة):</p>'+
       '<div dir="ltr" style="font:700 26px/1.2 ui-monospace,Consolas,monospace;letter-spacing:4px;background:#F4F6F8;border-radius:10px;padding:12px 16px;display:inline-block">'+d.setup_code+'</div>'+
@@ -1517,6 +1523,7 @@ function laWaForce(sb, opts){
     var n=$('#waChatNew'); if(n) n.addEventListener('click',function(){ waChat(true); });
   }
   $('#waChatGo').addEventListener('click',function(){ waChat(false); });
+  if(location.hash==='#waChatCard') setTimeout(function(){ try{ $('#waChatCard').scrollIntoView({behavior:'smooth'}); waChat(false); }catch(e){} },800);
 
   async function loadSubs(){
     var lic=await sb.rpc('my_licenses');
@@ -1544,8 +1551,9 @@ function laWaForce(sb, opts){
 
     var html=rows.map(function(p){
       var d=p.days_left||0;
+      var life=(p.plan==='lifetime'||d>3650);
       var cls=(!p.active||d<=0)?'bad':(d<=15?'warn':'ok');
-      var txt=(!p.active||d<=0)?'منتهٍ':('الأيام المتبقية: '+d);
+      var txt=(!p.active||d<=0)?'منتهٍ':(life?'شراء دائم ✓':('الأيام المتبقية: '+d));
       var extra='';
       if(p.product==='menu'&&p.slug){
         extra='<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">'+
@@ -1564,6 +1572,10 @@ function laWaForce(sb, opts){
             '<p class="hint">اسم المستخدم الأول: <b>ADMIN</b> — كلمة المرور: <b>0000</b> — غيّرها من داخل البرنامج (الإعدادات) فور فتحه.</p>'+
             '<p class="hint">رابط الجباة والموظفين والزبائن: libanapps.com/portal-motor/'+esc(p.slug)+' — أضف حساباتهم من داخل البرنامج.</p>'
           : '<p class="hint">رابط البرنامج غير محدد — تواصل معنا.</p>';
+      } else if(p.product==='chat'){
+        extra='<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">'+
+          '<a class="btn btn-p sm" href="/chat" target="_blank">افتح المحادثات</a>'+
+          '<a class="btn btn-g sm" href="#waChatCard" onclick="setTimeout(function(){document.getElementById(\'waChatGo\')&&document.getElementById(\'waChatGo\').click()},50)">رمز الإعداد والتطبيق</a></div>';
       } else if(p.product==='link'){
         extra = p.slug
           ? '<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">'+
@@ -1596,7 +1608,7 @@ function laWaForce(sb, opts){
           '<p class="hint">أدخل هذا المفتاح في شاشة التفعيل داخل البرنامج.</p>';
       }
       var isTrial = (p.plan==='trial');
-      var renew = p.id ? '<button class="btn btn-o sm" data-renew="'+p.id+
+      var renew = (p.id && !life) ? '<button class="btn btn-o sm" data-renew="'+p.id+
         '" data-prod="'+esc(p.product)+'">'+(isTrial?'اشترك الآن':'تجديد')+'</button>' : '';
       return '<div style="padding:14px 0;border-bottom:1px solid var(--line)">'+
         '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">'+
@@ -1760,7 +1772,7 @@ function laWaForce(sb, opts){
   async function loadPlans(){
     var r=await sb.from('plans').select('*').eq('is_active',true).order('product_code').order('sort');
     PLANS=r.data||[];
-    var NAMES={menu:'منيو المطاعم',alum:'محاسبة الصناعيين',trade:'محاسبة التجارة',store:'متجر إلكتروني',club:'إدارة النوادي',motor:'اشتراكات المولّدات',link:'وصلة — صفحة روابط'};
+    var NAMES={chat:'LibanApps Chat',menu:'منيو المطاعم',alum:'محاسبة الصناعيين',trade:'محاسبة التجارة',store:'متجر إلكتروني',club:'إدارة النوادي',motor:'اشتراكات المولّدات',link:'وصلة — صفحة روابط'};
     $('#planList').innerHTML=PLANS.map(function(p){
       if(window.siteLearn){ siteLearn(p.name_ar,p.name_en); (p.features_ar||[]).forEach(function(x,i){ siteLearn(x,(p.features_en||[])[i]); }); }
       var f=(p.features_ar||[]).slice(0,4).map(function(x){return '<li>'+esc(x)+'</li>'}).join('');
@@ -1770,6 +1782,7 @@ function laWaForce(sb, opts){
           esc(NAMES[p.product_code]||p.product_code)+'</div>'+
         '<h3>'+esc(p.name_ar)+'</h3>'+
         '<div class="price">'+p.price_usd+' <small>$</small></div>'+
+        (p.days>3650?'<div class="hint" style="margin-top:-4px">دفعة واحدة — بلا تجديد</div>':'')+
         (p.renew_price_usd!=null&&Number(p.renew_price_usd)!==Number(p.price_usd)?'<div class="hint" style="margin-top:-4px">التجديد السنوي: '+p.renew_price_usd+' $</div>':'')+
         '<ul>'+f+'</ul>'+
         '<button class="btn btn-o full" data-plan="'+p.id+'">اشترك</button></div>';
@@ -1809,7 +1822,7 @@ function laWaForce(sb, opts){
     PICK=PLANS.find(function(x){return x.id===id});
     if(!PICK) return;
     $('#mTitle').textContent=PICK.name_ar;
-    $('#mSub').textContent='المبلغ: '+PICK.price_usd+' $ · المدة: '+PICK.days+' يومًا';
+    $('#mSub').textContent='المبلغ: '+PICK.price_usd+' $ · '+(PICK.days>3650?'شراء مرة واحدة — بلا تجديد':'المدة: '+PICK.days+' يومًا');
     var needsSlug=(PICK.product_code==='menu'||PICK.product_code==='alum'||PICK.product_code==='trade'||PICK.product_code==='store'||PICK.product_code==='club'||PICK.product_code==='motor'||PICK.product_code==='link');
     $('#mSlug').classList.toggle('hidden', !needsSlug);
     if(PICK.product_code==='alum'){

@@ -126,6 +126,10 @@ var L={
  hist_done:['تم استيراد {n} رسالة قديمة','Imported {n} old messages','{n} anciens messages importés'],
  hist_ok:['✓ تم الاستيراد ({n} رسالة) — يمكن إعادته لجلب ما فات','✓ Imported ({n} messages) — run again to fetch anything missed','✓ Importé ({n} messages)'],
  hist_note:['يُجلب ما يحتفظ به WhatChimp من رسائل (حتى 300 رسالة لكل محادثة).','Fetches what WhatChimp keeps (up to 300 messages per chat).','Récupère ce que WhatChimp conserve (300 messages max par conversation).'],
+ e_no_license:['هذا الحساب غير مشترك في LibanApps Chat','This account has no LibanApps Chat subscription','Ce compte n’a pas d’abonnement LibanApps Chat'],
+ lic_t:['يجب الاشتراك أولاً','Subscription required','Abonnement requis'],
+ lic_d:['لاستخدام LibanApps Chat يجب شراء البرنامج (دفعة واحدة) من حسابك على LibanApps. بعد الشراء ادخل من جديد.','To use LibanApps Chat, buy it once from your LibanApps account, then sign in again.','Pour utiliser LibanApps Chat, achetez-le une fois depuis votre compte LibanApps, puis reconnectez-vous.'],
+ lic_buy:['اشترك الآن','Subscribe now','S’abonner'],
  open_wa:['فتح في واتساب','Open in WhatsApp','Ouvrir dans WhatsApp'], apk:['تحميل تطبيق الأندرويد','Download Android app','Télécharger l’app Android']
 };
 var LANG='ar'; try{ LANG=localStorage.getItem('wachat_lang')||'ar'; }catch(e){}
@@ -148,7 +152,7 @@ async function rpc(fn,args){
 async function api(body){
   var r; try{ r=await fetch('/api/wachat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(Object.assign({token:TOK},body))}); }catch(e){ throw {code:'net'}; }
   var j={}; try{ j=await r.json(); }catch(e){}
-  if(!r.ok||!j.ok){ if(j.error==='auth'){ saveTok(''); setTimeout(boot,0); } throw {code:j.error||'net',detail:j.detail}; }
+  if(!r.ok||!j.ok){ if(j.error==='auth'){ saveTok(''); setTimeout(boot,0); } if(j.error==='no_license') setTimeout(licView,0); throw {code:j.error||'net',detail:j.detail}; }
   return j;
 }
 function errText(e){ var c=e&&e.code||'net'; var k={window:'e_window',no_key:'e_no_key',wc_error:'e_wc'}[c]||('e_'+c); return L[k]?t(k,{n:e.minutes||e.max||15}):c; }
@@ -156,6 +160,19 @@ var toastT; function toast(m){ var d=$('.toast'); if(!d){ d=document.createEleme
 function langBar(){ return '<div class="langs">'+[['ar','العربية'],['en','English'],['fr','Français']].map(function(x){ return '<button data-lang="'+x[0]+'"'+(LANG===x[0]?' style="border-color:var(--g2);color:var(--g2)"':'')+'>'+x[1]+'</button>'; }).join('')+'</div>'; }
 function bindLang(root){ $$('[data-lang]',root).forEach(function(b){ b.onclick=function(){ LANG=b.dataset.lang; try{ localStorage.setItem('wachat_lang',LANG); }catch(e){} setDir(); boot(); }; }); }
 
+/* ---------- بلا اشتراك ---------- */
+function licView(){
+  stopPoll();
+  var R=$('#root');
+  R.innerHTML='<div class="auth"><div class="card"><div class="brand"><img src="/assets/chat-icon.svg" alt=""><b>'+esc(t('app'))+'</b></div>'+
+    '<div style="font-weight:700;font-size:18px">🔒 '+esc(t('lic_t'))+'</div><p class="muted" style="font-size:14px;line-height:1.7">'+esc(t('lic_d'))+'</p>'+
+    '<a class="btn full" href="https://libanapps.com/account#waChatCard" target="_blank" rel="noopener" style="display:block;text-align:center;text-decoration:none">'+esc(t('lic_buy'))+'</a>'+
+    '<button class="btn ghost full" id="lr" style="margin-top:8px">'+esc(t('retry'))+'</button>'+
+    '<button class="link" id="lo">'+esc(t('logout'))+'</button>'+langBar()+'</div></div>';
+  bindLang(R);
+  $('#lr').onclick=function(){ boot(); };
+  $('#lo').onclick=function(){ rpc('wa_logout',{p_token:TOK}).catch(function(){}); saveTok(''); boot(); };
+}
 /* ---------- الدخول ---------- */
 function loginView(setup){
   stopPoll();
@@ -184,7 +201,7 @@ function stopPoll(){ clearInterval(pollA); clearInterval(pollB); pollA=pollB=nul
 async function boot(){
   stopPoll();
   if(!TOK) return loginView(false);
-  try{ var d=await rpc('wa_me',{p_token:TOK}); ME=d.me; INBOX=d.inbox; USERS=d.users; }catch(e){ if(!TOK) return; $('#root').innerHTML='<div class="auth"><div class="card"><div class="err">'+esc(errText(e))+'</div><button class="btn full" onclick="boot()">'+esc(t('retry'))+'</button></div></div>'; return; }
+  try{ var d=await rpc('wa_me',{p_token:TOK}); ME=d.me; INBOX=d.inbox; USERS=d.users; }catch(e){ if(!TOK) return; if(e&&e.code==='no_license') return licView(); $('#root').innerHTML='<div class="auth"><div class="card"><div class="err">'+esc(errText(e))+'</div><button class="btn full" onclick="boot()">'+esc(t('retry'))+'</button></div></div>'; return; }
   CHATS=[]; SINCE=null; CUR=null; MSGS=[];
   layout(); await loadChats(true);
   pollA=setInterval(function(){ loadChats(false); },5000);
