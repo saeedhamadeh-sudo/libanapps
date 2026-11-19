@@ -2704,37 +2704,6 @@ async function gdAccess(env, refresh) {
   if (!j.access_token) throw new Error('gd_token:' + (j.error || r.status));
   return j.access_token;
 }
-// أداة مؤقتة (للمشرف): البحث عن سطور ممحية (إيصالات/فواتير) بالنسخ الاحتياطية على Google Drive
-// الدخول بنفس رمز التجربة المؤقت (platform_settings.pay_test_hash) — بيرجّع السطور بس، ما بيغيّر شي
-async function motorBkFind(env, url) {
-  const tok = String(url.searchParams.get('t') || '');
-  const ps = (await sbGet(env, 'platform_settings?id=eq.1&select=pay_test_hash,pay_test_until&limit=1'))[0] || {};
-  const h = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(tok)))).map((b) => b.toString(16).padStart(2, '0')).join('');
-  if (!tok || !ps.pay_test_hash || h !== ps.pay_test_hash || !(new Date(ps.pay_test_until) > new Date())) return json(403, { ok: false, error: 'bad_token' });
-  const slug = String(url.searchParams.get('slug') || '');
-  const table = String(url.searchParams.get('table') || 'motor_payments');
-  const nos = String(url.searchParams.get('nos') || '').split(',').map((x) => Number(x)).filter((x) => x > 0);
-  const fileId = String(url.searchParams.get('file') || '');
-  const site = (await sbGet(env, `motor_sites?slug=eq.${encodeURIComponent(slug)}&select=id,gd_refresh,gd_folder&limit=1`))[0];
-  if (!site || !site.gd_refresh || !site.gd_folder) return json(404, { ok: false, error: 'no_gd' });
-  const at = await gdAccess(env, site.gd_refresh); const GH = { Authorization: `Bearer ${at}` };
-  if (!fileId) {
-    const lr = await fetch('https://www.googleapis.com/drive/v3/files?' + new URLSearchParams({ q: `'${site.gd_folder}' in parents and trashed=false`, fields: 'files(id,name,size,createdTime)', orderBy: 'createdTime', pageSize: '100' }), { headers: GH });
-    return json(200, await lr.json().catch(() => ({})));
-  }
-  const fr = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?alt=media`, { headers: GH });
-  if (!fr.ok) return json(502, { ok: false, error: 'gd_' + fr.status });
-  const txt = await fr.text();
-  const st = txt.search(new RegExp('"' + table + '":\\s*\\['));
-  if (st < 0) return json(200, { ok: true, found: [], note: 'no_table' });
-  const found = [];
-  const en = txt.slice(st + 1).search(/\]\s*,\s*"[a-z_]+"\s*:\s*\[/); const seg = txt.slice(st, en > 0 ? st + 1 + en : undefined);
-  for (const n of nos) {
-    const re = new RegExp('\\{[^{}]*"no":\\s*' + n + '\\s*,[^{}]*\\}', 'g');
-    let m; while ((m = re.exec(seg))) { try { const o = JSON.parse(m[0]); if (o.no === n) found.push(o); } catch {} }
-  }
-  return json(200, { ok: true, size: txt.length, found });
-}
 async function gdBackup(env, sid) {
   const SH = svcH(env);
   const setSite = (o) => fetch(`${env.SUPABASE_URL}/rest/v1/motor_sites?id=eq.${sid}`, { method: 'PATCH', headers: SH, body: JSON.stringify(o) });
@@ -4985,7 +4954,6 @@ const LA_WORKER = {
         if (url.pathname === '/api/addon/callback-success') return await addonCallbackSuccess(request, env);
         if (url.pathname === '/api/pay/info') return await payInfo(env, url);
         if (url.pathname === '/api/pay/test') return await laPayTest(env, url);
-        if (url.pathname === '/api/admin-tmp/motor-find') return await motorBkFind(env, url);
         if (url.pathname === '/api/pay/code') { if (request.method !== 'POST') return json(405, { error: 'method not allowed' }); return await payNewCode(env, url); }
         if (url.pathname === '/api/pay/status') return await payStatus(env, url);
         if (url.pathname === '/api/addon/callback-failure') return await addonCallbackFailure(request, env);
