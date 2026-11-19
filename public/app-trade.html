@@ -917,7 +917,21 @@ function splitWhTrash(){
   if(ch) invalidateWarehouseCaches();
   return ch;
 }
+// خلال الدخول السريع (منعرض نسخة الجهاز لحتى توصل آخر البيانات) ما منحفظ ولا منرفع شي:
+// النسخة القديمة لو انحفظت كانت تمحي يلي ضافتو أجهزة تانية بالنص (إقفالات، سندات، أصناف…)
+let _bgLoading = false;
+function bgLoadingOverlay(on){
+  let el = document.getElementById('la-bg-loading');
+  if(!on){ if(el) el.remove(); return; }
+  if(el) return;
+  el = document.createElement('div'); el.id = 'la-bg-loading';
+  el.style.cssText = 'position:fixed; inset:0; z-index:99999; background:rgba(255,255,255,.55); display:flex; align-items:flex-start; justify-content:center; padding-top:18vh; cursor:wait;';
+  el.innerHTML = '<div style="background:#1d2433; color:#fff; padding:12px 20px; border-radius:12px; font-weight:700; box-shadow:0 8px 24px rgba(0,0,0,.2);">⏳ عم نجيب آخر البيانات…</div>';
+  ['click','mousedown','touchstart','keydown'].forEach(ev=>el.addEventListener(ev, e=>{ e.preventDefault(); e.stopPropagation(); }, true));
+  document.body.appendChild(el);
+}
 async function save(key, value){
+  if(_bgLoading){ console.warn('⏳ حفظ «'+key+'» تأجّل — عم نجيب آخر البيانات'); return true; }
   if(key===KEYS.customers && window.laWcCustomersSaved){ try{ window.laWcCustomersSaved(value); }catch(e){} }
   if(key===KEYS.warehouseItems){ const same = value===DB.warehouseItems; splitWhTrash(); value = same? DB.warehouseItems : (Array.isArray(value)? value.filter(x=>!(x && x.deleted)) : value); }
   try{
@@ -1768,6 +1782,23 @@ function mergeLocalOnly(key, remote, firstRunMerge){
   setSyncedIds(key, remote.map(r=>r.id));
   return { merged, localOnly };
 }
+// ===== حماية من الحذف الغلط =====
+// الحذف الحقيقي (بكبسة حذف من المستخدم) بيسجّل إذن قصير للجدول. أي حذف تاني جايي من المزامنة
+// (جهاز عندو نسخة ناقصة أو قديمة) ما بيوصل للسيرفر — بيتسجّل بس بـ «la_blocked_del» للتحقيق
+const PROTECTED_DEL_KEYS = new Set(['invoices','receipts','purchaseInvoices','paymentVouchers','warehouseItems','budgetCategories','budgetEntries','cashMovements','dayClosures','cashierShifts','workers','workEntries','workerPayments','customers','suppliers']);
+const _allowDel = {};
+function allowDelKey(key){ _allowDel[key] = Date.now(); }
+function filterSyncDeletes(key, ids, where){
+  if(!ids || !ids.length || !PROTECTED_DEL_KEYS.has(key)) return ids || [];
+  if(_allowDel[key] && Date.now() - _allowDel[key] < 20000) return ids;
+  try{
+    const lg = JSON.parse(localStorage.getItem('la_blocked_del') || '[]');
+    lg.push({ at: new Date().toISOString(), key, n: ids.length, ids: ids.slice(0, 50), where, user: currentUser && currentUser.username, page: location.hash, build: APP_TRADE_BUILD });
+    localStorage.setItem('la_blocked_del', JSON.stringify(lg.slice(-200)));
+  }catch(e){}
+  console.warn('🛡 منعنا حذف '+ids.length+' من '+key+' (مش من كبسة حذف)', where);
+  return [];
+}
 async function syncArrayToSupabase(localKey, arr){
   if(localKey===KEYS.warehouseItems) arr = whWithTrash(arr);   // المحذوفات بتضل بالسحابة
   const cfg = SUPABASE_TABLES[localKey];
@@ -1777,7 +1808,7 @@ async function syncArrayToSupabase(localKey, arr){
     if(snap0 || known0){
       const ids0 = new Set(arr.map(r=>r.id));
       const ch0 = snap0 ? arr.filter(r=>snap0.get(r.id)!==JSON.stringify(cfg.toDb(r))).map(r=>r.id) : [];
-      const rm0 = known0 ? Array.from(known0).filter(id=>!ids0.has(id)) : [];
+      const rm0 = filterSyncDeletes(localKey, known0 ? Array.from(known0).filter(id=>!ids0.has(id)) : [], 'outbox');
       obAdd(localKey, ch0, rm0);
     }
   }
@@ -1821,6 +1852,8 @@ async function syncArrayToSupabase(localKey, arr){
     let removed = [];
     if(known){
       removed = Array.from(known).filter(id=>!now.has(id));
+      const blocked = new Set(removed); removed = filterSyncDeletes(localKey, removed, 'sync'); removed.forEach(id=>blocked.delete(id));
+      if(blocked.size) blocked.forEach(id=>ids.push(id));   // منضل نعتبرها موجودة — ما منرجع نحاول نحذفها
       for(let i=0; i<removed.length; i+=100){
         const { error: delErr } = await scoped(supabaseClient.from(T(cfg.table)).delete()).in('id', removed.slice(i, i+100));
         if(delErr){ lastSupabaseError = describeSupabaseError(delErr); console.error(cfg.table+' delete error:', lastSupabaseError); }
@@ -2050,7 +2083,7 @@ function backupPayload(){
 }
 async function applyBackupData(data){
   if(!data || typeof data!=='object' || !Array.isArray(data.customers)) throw new Error('bad');
-  Object.keys(KEYS).forEach(k=>{ if(k!=='settings' && Array.isArray(data[k])) DB[k] = data[k]; });
+  Object.keys(KEYS).forEach(k=>{ if(k!=='settings' && Array.isArray(data[k])){ allowDelKey(k); DB[k] = data[k]; } });
   if(data.settings){ const key = DB.settings.intKey; DB.settings = {...DB.settings, ...data.settings}; if(key) DB.settings.intKey = key; }
   if(typeof migrateUsers==='function') migrateUsers();
   if(typeof migrateBudgetCategories==='function') migrateBudgetCategories();
@@ -5491,7 +5524,9 @@ async function finishRpcLogin(res){
       currentUser = (DB.settings.users||[]).find(x=>x.id===a.id) || { id:a.id, username:a.username, role:a.role, permissions:a.permissions||[], totpEnabled:!!a.totp_enabled };
       currentUser = Object.assign({}, currentUser, {role:a.role||currentUser.role, permissions:a.permissions||currentUser.permissions||[]});
       invalidateWarehouseCaches();
-      go('#/'); render();
+      _bgLoading = true;
+      go('#/'); render(); bgLoadingOverlay(true);
+      const bgT = setTimeout(()=>{ if(_bgLoading){ _bgLoading = false; bgLoadingOverlay(false); toast('⚠️ ما قدرنا نجيب آخر البيانات — عم تشتغل على نسخة الجهاز'); } }, 45000);
       (async ()=>{
         try{
           if(obCount()) await flushOutbox();
@@ -5500,10 +5535,12 @@ async function finishRpcLogin(res){
           stripLocalSecrets(); migrateUsers();
           const me = (DB.settings.users||[]).find(x=>x.id===a.id); if(me) currentUser = Object.assign({}, me, {role:a.role||me.role, permissions:a.permissions||me.permissions||[]});
           invalidateWarehouseCaches();
+          _bgLoading = false; clearTimeout(bgT); bgLoadingOverlay(false);
           if(seedBudgetCategoriesLocal()) await save(KEYS.budgetCategories, DB.budgetCategories);
-          scheduleLiveRender();
+          render();
           shrinkSettingsImages();
         }catch(e){ console.error('background load', e); }
+        finally{ if(_bgLoading){ _bgLoading = false; clearTimeout(bgT); bgLoadingOverlay(false); render(); } }
       })();
       return;
     }
@@ -11808,7 +11845,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-11-17 · 03:50 · v103';
+const APP_TRADE_BUILD = '2026-11-19 · 17:40 · v104';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 function settingsView(){
   const s = DB.settings;
@@ -13352,7 +13389,7 @@ const DOC_KIND_MAP = {
       const id = btn.getAttribute('data-purge-doc');
       const isSuperadmin = currentUser && currentUser.role==='superuser';
       if(isSuperadmin){
-        DB[cfg.arr] = DB[cfg.arr].filter(x=>x.id!==id);
+        allowDelKey(cfg.arr); DB[cfg.arr] = DB[cfg.arr].filter(x=>x.id!==id);
         await save(KEYS[cfg.key], DB[cfg.arr]);
       } else {
         const item = DB[cfg.arr].find(x=>x.id===id);
@@ -13686,8 +13723,8 @@ function openDeleteBudgetCategoryModal(cat){
   document.body.appendChild(wrap);
   wrap.querySelector('#dbc_cancel').addEventListener('click', ()=>wrap.remove());
   wrap.querySelector('#dbc_confirm').addEventListener('click', async ()=>{
-    DB.budgetCategories = DB.budgetCategories.filter(c=>c.id!==cat.id);
-    DB.budgetEntries = DB.budgetEntries.filter(e=>e.categoryId!==cat.id);
+    allowDelKey('budgetCategories'); DB.budgetCategories = DB.budgetCategories.filter(c=>c.id!==cat.id);
+    allowDelKey('budgetEntries'); DB.budgetEntries = DB.budgetEntries.filter(e=>e.categoryId!==cat.id);
     await Promise.all([save(KEYS.budgetCategories, DB.budgetCategories), save(KEYS.budgetEntries, DB.budgetEntries)]);
     wrap.remove();
     toast('تم حذف الحقل نهائيًا');
@@ -14009,9 +14046,9 @@ function openDeleteCustomerModal(cust){
   wrap.querySelector('#del_confirm_btn').addEventListener('click', async ()=>{
     const typed = wrap.querySelector('#del_confirm').value.trim();
     if(typed !== cust.name){ toast('يجب أن تكتب اسم الزبون كما هو بالضبط'); return; }
-    DB.customers = DB.customers.filter(c=>c.id!==cust.id);
-    DB.invoices = DB.invoices.filter(i=>i.customerId!==cust.id);
-    DB.receipts = DB.receipts.filter(r=>r.customerId!==cust.id);
+    allowDelKey('customers'); DB.customers = DB.customers.filter(c=>c.id!==cust.id);
+    allowDelKey('invoices'); DB.invoices = DB.invoices.filter(i=>i.customerId!==cust.id);
+    allowDelKey('receipts'); DB.receipts = DB.receipts.filter(r=>r.customerId!==cust.id);
     await Promise.all([deleteCustomerRemote(cust.id), save(KEYS.invoices, DB.invoices), save(KEYS.receipts, DB.receipts)]);
     wrap.remove();
     toast('تم حذف الزبون وكل بياناته نهائيًا');
@@ -14114,10 +14151,10 @@ function openDeletePartyModal(kind, party){
   wrap.querySelector('#del_confirm_btn').addEventListener('click', async ()=>{
     const typed = wrap.querySelector('#del_confirm').value.trim();
     if(typed !== party.name){ toast('يجب أن تكتب الاسم كما هو بالضبط'); return; }
-    DB[cfg.arr] = DB[cfg.arr].filter(p=>p.id!==party.id);
+    allowDelKey(cfg.arr); DB[cfg.arr] = DB[cfg.arr].filter(p=>p.id!==party.id);
     const ops = [save(KEYS[cfg.key], DB[cfg.arr])];
     cfg.docs.forEach(d=>{
-      DB[d.arr] = DB[d.arr].filter(x=>x[d.field]!==party.id);
+      allowDelKey(d.arr); DB[d.arr] = DB[d.arr].filter(x=>x[d.field]!==party.id);
       ops.push(save(KEYS[d.key], DB[d.arr]));
     });
     await Promise.all(ops);
@@ -14582,7 +14619,7 @@ function openDeleteWarehouseItemModal(item, opts){
       // حذف عادي: عالمحذوفات (السجلات بتضل — إذا رجّعتو بيرجع متل ما كان)
       const it = DB.warehouseItems.find(x=>x.id===item.id); if(!it){ wrap.remove(); return; }
       Object.assign(it, { deleted:true, deletedAt:Date.now(), deletedBy: currentUser? currentUser.username : '' });
-      DB.warehouseItems = DB.warehouseItems.filter(x=>x.id!==item.id);
+      allowDelKey('warehouseItems'); DB.warehouseItems = DB.warehouseItems.filter(x=>x.id!==item.id);
       DB._whTrash = (DB._whTrash||[]).filter(x=>x.id!==item.id).concat([it]);
       await save(KEYS.warehouseItems, DB.warehouseItems);
       wrap.remove(); invalidateWarehouseCaches();
@@ -14590,7 +14627,7 @@ function openDeleteWarehouseItemModal(item, opts){
       if(opts.onDone){ opts.onDone(); render(); } else if(opts.stay) render(); else go('#/warehouse');
       return;
     }
-    DB.warehouseItems = DB.warehouseItems.filter(x=>x.id!==item.id);
+    allowDelKey('warehouseItems'); DB.warehouseItems = DB.warehouseItems.filter(x=>x.id!==item.id);
     DB._whTrash = (DB._whTrash||[]).filter(x=>x.id!==item.id);
     DB.stockIns = DB.stockIns.filter(x=>x.itemId!==item.id);
     DB.stockOuts = DB.stockOuts.filter(x=>x.itemId!==item.id);
