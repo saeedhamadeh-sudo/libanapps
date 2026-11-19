@@ -1507,12 +1507,6 @@ function laWaForce(sb, opts){
     var r=await sb.rpc('wa_my_inbox',{p_new_code:!!newCode});
     if(r.error){ m.textContent='تعذّر فتح الصندوق، حاول مرة ثانية'; return; }
     var d=r.data||{}, apk='https://github.com/saeedhamadeh-sudo/libanapps/releases/download/chat-apk/LibanApps-Chat.apk';
-    if(d.licensed===false){
-      b.innerHTML='<p style="margin:0 0 10px">🔒 لاستخدام LibanApps Chat يجب شراء البرنامج — <b>دفعة واحدة بلا تجديد</b>'+(d.plan?' ('+d.plan.price+' $)':'')+'.</p>'+
-        (d.plan?'<button class="btn btn-o" id="waChatBuy">اشترك الآن</button>':'<p class="hint">البرنامج غير متاح للشراء حالياً — تواصل معنا.</p>');
-      var bb=$('#waChatBuy'); if(bb) bb.addEventListener('click',async function(){ if(!PLANS.some(function(x){return x.id===d.plan.id})) await loadPlans(); openPlan(d.plan.id); });
-      return;
-    }
     b.innerHTML=(d.setup_code?
       '<p style="margin:0 0 8px">رمز الإعداد لإنشاء حساب <b>المدير الأساسي</b> (صالح 30 يوم، لمرة واحدة):</p>'+
       '<div dir="ltr" style="font:700 26px/1.2 ui-monospace,Consolas,monospace;letter-spacing:4px;background:#F4F6F8;border-radius:10px;padding:12px 16px;display:inline-block">'+d.setup_code+'</div>'+
@@ -1521,6 +1515,13 @@ function laWaForce(sb, opts){
       '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px"><a class="btn btn-o sm" href="/chat" target="_blank">فتح المحادثات</a><a class="btn btn-g sm" href="'+apk+'">🤖 تطبيق الأندرويد (APK)</a>'+
       (d.setup_code?'':'<button class="btn btn-g sm" id="waChatNew">رمز إعداد جديد (مدير أساسي إضافي)</button>')+'</div>';
     var n=$('#waChatNew'); if(n) n.addEventListener('click',function(){ waChat(true); });
+    if(d.licensed===false){
+      var lk=document.createElement('div'); lk.style.cssText='background:#FFF8EF;border:1px solid var(--orange);border-radius:12px;padding:12px 14px;margin-bottom:12px';
+      lk.innerHTML='<p style="margin:0 0 8px">🔒 البرنامج يحتاج شراء <b>مرة واحدة بلا تجديد</b>'+(d.plan?' ('+d.plan.price+' $)':'')+' — يمكنك شراؤه من هنا أو من داخل التطبيق على الهاتف بعد تسجيل الدخول.</p>'+
+        (d.plan?'<button class="btn btn-o sm" id="waChatBuy">اشترك الآن</button>':'<p class="hint" style="margin:0">البرنامج غير متاح للشراء حالياً — تواصل معنا.</p>');
+      b.insertBefore(lk,b.firstChild);
+      var bb=$('#waChatBuy'); if(bb) bb.addEventListener('click',async function(){ if(!PLANS.some(function(x){return x.id===d.plan.id})) await loadPlans(); openPlan(d.plan.id); });
+    }
   }
   $('#waChatGo').addEventListener('click',function(){ waChat(false); });
   if(location.hash==='#waChatCard') setTimeout(function(){ try{ $('#waChatCard').scrollIntoView({behavior:'smooth'}); waChat(false); }catch(e){} },800);

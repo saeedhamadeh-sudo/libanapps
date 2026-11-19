@@ -128,8 +128,19 @@ var L={
  hist_note:['يُجلب ما يحتفظ به WhatChimp من رسائل (حتى 300 رسالة لكل محادثة).','Fetches what WhatChimp keeps (up to 300 messages per chat).','Récupère ce que WhatChimp conserve (300 messages max par conversation).'],
  e_no_license:['هذا الحساب غير مشترك في LibanApps Chat','This account has no LibanApps Chat subscription','Ce compte n’a pas d’abonnement LibanApps Chat'],
  lic_t:['يجب الاشتراك أولاً','Subscription required','Abonnement requis'],
- lic_d:['لاستخدام LibanApps Chat يجب شراء البرنامج (دفعة واحدة) من حسابك على LibanApps. بعد الشراء ادخل من جديد.','To use LibanApps Chat, buy it once from your LibanApps account, then sign in again.','Pour utiliser LibanApps Chat, achetez-le une fois depuis votre compte LibanApps, puis reconnectez-vous.'],
+ lic_d:['لاستخدام LibanApps Chat يجب شراء البرنامج مرة واحدة. ادفع عبر Whish ثم ارجع إلى التطبيق.','To use LibanApps Chat, buy it once. Pay with Whish, then come back to the app.','Pour utiliser LibanApps Chat, achetez-le une fois via Whish, puis revenez à l’application.'],
  lic_buy:['اشترك الآن','Subscribe now','S’abonner'],
+ buy_once:['دفعة واحدة — بلا تجديد','one-time — no renewal','paiement unique'],
+ buy_check:['تحقّق من الدفع','Check payment','Vérifier le paiement'],
+ buy_ok:['تم الدفع وتفعيل البرنامج ✓','Payment received — activated ✓','Paiement reçu — activé ✓'],
+ buy_wait:['لم يتم تأكيد الدفع بعد','Payment not confirmed yet','Paiement pas encore confirmé'],
+ buy_na:['البرنامج غير متاح للشراء حالياً — تواصل مع LibanApps','Not available for purchase right now — contact LibanApps','Pas disponible à l’achat pour le moment'],
+ buy_main:['الشراء متاح للمدير الأساسي فقط','Only the main manager can buy','Seul le gérant principal peut acheter'],
+ e_no_plan:['البرنامج غير متاح للشراء حالياً','Not available for purchase','Indisponible'],
+ e_no_account:['هذا الصندوق غير مربوط بحساب على LibanApps — تواصل معنا','This inbox is not linked to a LibanApps account','Boîte non liée à un compte'],
+ e_no_pay:['الدفع الإلكتروني غير مفعّل حالياً','Online payment is not available','Paiement en ligne indisponible'],
+ e_pay_rejected:['رفضت بوابة الدفع العملية','The payment gateway rejected the request','Paiement refusé'],
+ e_buy_failed:['تعذّر إنشاء عملية الشراء','Could not create the purchase','Achat impossible'],
  open_wa:['فتح في واتساب','Open in WhatsApp','Ouvrir dans WhatsApp'], apk:['تحميل تطبيق الأندرويد','Download Android app','Télécharger l’app Android']
 };
 var LANG='ar'; try{ LANG=localStorage.getItem('wachat_lang')||'ar'; }catch(e){}
@@ -161,18 +172,41 @@ function langBar(){ return '<div class="langs">'+[['ar','العربية'],['en',
 function bindLang(root){ $$('[data-lang]',root).forEach(function(b){ b.onclick=function(){ LANG=b.dataset.lang; try{ localStorage.setItem('wachat_lang',LANG); }catch(e){} setDir(); boot(); }; }); }
 
 /* ---------- بلا اشتراك ---------- */
+var BUY_ID=''; try{ BUY_ID=localStorage.getItem('wachat_buy')||''; }catch(e){}
+(function(){ try{ var q=new URLSearchParams(location.search), pd=q.get('paid')||q.get('failed'); if(pd){ BUY_ID=pd; localStorage.setItem('wachat_buy',pd); history.replaceState(null,'',location.pathname); } }catch(e){} })();
+function setBuy(v){ BUY_ID=v?String(v):''; try{ if(v) localStorage.setItem('wachat_buy',BUY_ID); else localStorage.removeItem('wachat_buy'); }catch(e){} }
+async function buyCheck(quiet){
+  if(!BUY_ID) return false;
+  try{ var r=await api({op:'buy_check',id:BUY_ID}); if(r.paid){ setBuy(''); toast(t('buy_ok')); setTimeout(boot,600); return true; } if(!quiet) toast(t('buy_wait')); }
+  catch(e){ if(e.code==='not_found') setBuy(''); else if(!quiet) toast(errText(e)); }
+  return false;
+}
 function licView(){
   stopPoll();
   var R=$('#root');
   R.innerHTML='<div class="auth"><div class="card"><div class="brand"><img src="/assets/chat-icon.svg" alt=""><b>'+esc(t('app'))+'</b></div>'+
     '<div style="font-weight:700;font-size:18px">🔒 '+esc(t('lic_t'))+'</div><p class="muted" style="font-size:14px;line-height:1.7">'+esc(t('lic_d'))+'</p>'+
-    '<a class="btn full" href="https://libanapps.com/account#waChatCard" target="_blank" rel="noopener" style="display:block;text-align:center;text-decoration:none">'+esc(t('lic_buy'))+'</a>'+
-    '<button class="btn ghost full" id="lr" style="margin-top:8px">'+esc(t('retry'))+'</button>'+
+    '<div id="lb"><div class="muted" style="font-size:13px">…</div></div>'+
+    '<div class="err" id="le"></div>'+
+    '<button class="btn ghost full" id="lr" style="margin-top:8px">'+esc(t('buy_check'))+'</button>'+
     '<button class="link" id="lo">'+esc(t('logout'))+'</button>'+langBar()+'</div></div>';
   bindLang(R);
-  $('#lr').onclick=function(){ boot(); };
-  $('#lo').onclick=function(){ rpc('wa_logout',{p_token:TOK}).catch(function(){}); saveTok(''); boot(); };
+  $('#lr').onclick=async function(){ var b=this; b.disabled=true; if(!(await buyCheck(false))) boot(); b.disabled=false; };
+  $('#lo').onclick=function(){ rpc('wa_logout',{p_token:TOK}).catch(function(){}); saveTok(''); setBuy(''); boot(); };
+  api({op:'buy_info'}).then(function(i){
+    if(i.licensed){ boot(); return; }
+    var lb=$('#lb'); if(!lb) return;
+    if(i.price==null){ lb.innerHTML='<div class="muted" style="font-size:14px">'+esc(t('buy_na'))+'</div>'; return; }
+    if(i.role!=='main'){ lb.innerHTML='<div style="font-size:22px;font-weight:800;margin:6px 0">'+i.price+' $</div><div class="muted" style="font-size:14px">'+esc(t('buy_main'))+'</div>'; return; }
+    lb.innerHTML='<div style="font-size:26px;font-weight:800;margin:6px 0">'+i.price+' $ <span class="muted" style="font-size:13px;font-weight:400">'+esc(t('buy_once'))+'</span></div>'+
+      '<button class="btn full" id="lbuy">'+esc(t('lic_buy'))+' — Whish</button>';
+    $('#lbuy').onclick=async function(){ var b=this; b.disabled=true; $('#le').textContent='';
+      try{ var r=await api({op:'buy'}); if(r.licensed){ boot(); return; } setBuy(r.id); location.href=r.url; }
+      catch(e){ $('#le').textContent=errText(e)+(e.detail?' — '+e.detail:''); b.disabled=false; } };
+  }).catch(function(e){ $('#lb').innerHTML=''; $('#le').textContent=errText(e); });
+  if(BUY_ID) buyCheck(true);
 }
+document.addEventListener('visibilitychange',function(){ if(!document.hidden&&BUY_ID&&$('#lbuy,#lr')) buyCheck(true); });
 /* ---------- الدخول ---------- */
 function loginView(setup){
   stopPoll();

@@ -2233,6 +2233,7 @@ async function waUpload(request, env, url) {
 async function waApi(request, env) {
   let b; try { b = await request.json(); } catch { return json(400, { ok: false, error: 'bad_json' }); }
   const op = String(b.op || '');
+  if (op === 'buy_info' || op === 'buy' || op === 'buy_check') return await waBuy(env, b, op);
   const c = await waCtx(env, b.token);
   if (!c) return json(401, { ok: false, error: 'auth' });
   if (c.no_license) return json(402, { ok: false, error: 'no_license' });
@@ -2278,6 +2279,52 @@ async function waApi(request, env) {
     p_inbox: c.inbox_id, p_dir: 'out', p_phone: phone, p_name: '', p_type: media ? media.type : 'text', p_text: text,
     p_media: media ? media.url : '', p_ext: ext, p_by: c.name || '', p_status: 'sent' }) });
   return json(200, { ok: true, id: ext });
+}
+// الشراء من داخل التطبيق (Whish) — بيشتغل حتى لو الصندوق مقفول
+async function waBuy(env, b, op) {
+  const cr = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/wa_buy_ctx`, { method: 'POST', headers: svcH(env), body: JSON.stringify({ p_token: String(b.token || '') }) });
+  if (!cr.ok) return json(401, { ok: false, error: 'auth' });
+  const c = await cr.json();
+  const plan = c.plan || null;
+  if (op === 'buy_info') return json(200, { ok: true, licensed: !!c.licensed, role: c.role, price: plan ? Number(plan.price) : null });
+  if (c.licensed) return json(200, { ok: true, licensed: true, paid: true });
+  if (op === 'buy_check') {
+    const pid = Number(b.id) || 0;
+    if (!pid) return json(200, { ok: true, paid: false });
+    const p = (await sbGet(env, `purchases?id=eq.${pid}&select=id,client_id,status,product_code&limit=1`))[0];
+    if (!p || p.client_id !== c.client_id || p.product_code !== 'chat') return json(404, { ok: false, error: 'not_found' });
+    if (p.status === 'paid') return json(200, { ok: true, paid: true });
+    const w = await platformWhish(env);
+    if (!w) return json(200, { ok: true, paid: false });
+    let st; try { st = await w.client.getPaymentStatus('USD', pid); } catch { return json(200, { ok: true, paid: false }); }
+    if (!st || st.collectStatus !== 'success') return json(200, { ok: true, paid: false, status: (st && st.collectStatus) || 'pending' });
+    const r = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/provision_purchase`, { method: 'POST', headers: { ...sbHeaders(env), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ p_id: pid, p_txn: st.transactionId || null }) });
+    return json(200, { ok: true, paid: r.ok });
+  }
+  // op === 'buy'
+  if (c.role !== 'main') return json(403, { ok: false, error: 'forbidden' });
+  if (!plan) return json(409, { ok: false, error: 'no_plan' });
+  if (!c.client_id || !c.user_id) return json(409, { ok: false, error: 'no_account' });
+  const mk = await fetch(`${env.SUPABASE_URL}/rest/v1/purchases`, { method: 'POST',
+    headers: { ...sbHeaders(env), 'Content-Type': 'application/json', Prefer: 'return=representation' },
+    body: JSON.stringify({ user_id: c.user_id, client_id: c.client_id, plan_id: plan.id, product_code: 'chat',
+      amount_usd: Number(plan.price), days: Number(plan.days) || 36500, slug: '', biz_name: 'LibanApps Chat' }) });
+  const made = mk.ok ? (await mk.json())[0] : null;
+  if (!made) return json(502, { ok: false, error: 'buy_failed' });
+  const w = await platformWhish(env);
+  if (!w) return json(409, { ok: false, error: 'no_pay' });
+  const site = env.WEBSITE_URL || 'https://libanapps.com';
+  try {
+    const res = await w.client.createPayment({ amount: Number(made.amount_usd), currency: 'USD', invoice: `LibanApps — chat #${made.id}`, externalId: Number(made.id),
+      successCallbackUrl: `${site}/api/buy/callback-success`, failureCallbackUrl: `${site}/api/buy/callback-failure`,
+      successRedirectUrl: `${site}/chat?paid=${made.id}`, failureRedirectUrl: `${site}/chat?failed=${made.id}` });
+    if (!res.success) return json(502, { ok: false, error: 'pay_rejected', detail: (res.dialog && res.dialog.message) || '' });
+    await sbPatch(env, `purchases?id=eq.${made.id}`, { status: 'awaiting_payment' });
+    return json(200, { ok: true, id: made.id, url: res.collectUrl });
+  } catch (e) {
+    return json(502, { ok: false, error: 'pay_rejected', detail: String((e && e.dialog && e.dialog.message) || (e && (e.code || e.message)) || '').slice(0, 200) });
+  }
 }
 // رسالة من API تبع WhatChimp → صف عنا
 function waApiMsg(m) {
