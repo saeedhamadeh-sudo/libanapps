@@ -2583,7 +2583,10 @@ Object.assign(D,{
  wa_e_nowa:['هذا الرقم ليس عليه واتساب','This number is not on WhatsApp','Ce numéro n’a pas WhatsApp'],
  wa_need_link:['فعّل واتساب الرسمي (WhatChimp) من الإعدادات أولاً','Enable official WhatsApp (WhatChimp) in settings first','Activez WhatsApp officiel (WhatChimp) dans les paramètres'],
  wa_batch50:['إرسال للجميع','Send to all','Envoyer à tous'],
- rm_col:['التذكير','Reminder','Rappel'], rm_sent:['✅ تم إرسال التذكير','✅ Reminder sent','✅ Rappel envoyé'],
+ rm_col:['التذكير','Reminder','Rappel'], rm_one:['تذكير بالدفع','Payment reminder','Rappel de paiement'],
+ rm_one_q:['إرسال تذكير بالدفع إلى «{n}» (المستحق {v})؟','Send a payment reminder to “{n}” (due {v})?','Envoyer un rappel de paiement à « {n} » (dû {v}) ?'],
+ rm_one_last:['آخر تذكير أُرسل بتاريخ {a}.','Last reminder was sent on {a}.','Dernier rappel envoyé le {a}.'],
+ rm_one_none:['لا توجد فواتير مستحقة على هذا الزبون','This customer has no unpaid bills','Ce client n’a pas de factures impayées'], rm_sent:['✅ تم إرسال التذكير','✅ Reminder sent','✅ Rappel envoyé'],
  rm_again:['يظهر من جديد للإرسال في {d}','Shows again for sending on {d}','Réapparaît le {d}'],
  rm_show:['إظهار الذين تم تذكيرهم هذا الشهر ({n})','Show customers reminded this month ({n})','Afficher les clients déjà rappelés ce mois ({n})'],
  rm_small:['لا يُرسَل تذكير لمن رصيده {v} أو أقل','No reminder for balances of {v} or less','Pas de rappel pour les soldes de {v} ou moins'],
@@ -3231,6 +3234,27 @@ function dueText(r){
     return Math.abs(n2(d.balance))<0.005?okm.split('\n').slice(0,-1).join('\n'):okm; }
   return t('due_msg',{s:SITE.name||'',n:c.name,k:fmtN((d.count||0)+(d.older?1:0),0),v:amt,m:months.join(t('due_and'))});
 }
+// تذكير بالدفع لزبون واحد (من صفحة الزبون) — بينبعت حتى لو انبعتلو تذكير بهالشهر
+async function remindOne(c,btn){
+  if(!c.mobile){ toast(t('no_mobile'),'e'); return; }
+  if(btn) btn.disabled=true;
+  try{
+    var d=await call('motor_unpaid',{p_period:SITE.bill_period,p_min:1}), r=(d.rows||[]).filter(function(x){ return x.id===c.id; })[0];
+    if(!r){ toast(t('rm_one_none'),'e'); return; }
+    var cur=mainCur(), f=function(v){ return fmtN(v,cur==='LBP'?0:2)+' '+cur; }, b=r.bills||{}, ps=Object.keys(b).sort(), lines=[], names=[];
+    if(n2(r.older_amt)>0.005){ lines.push(t('up_msg_older',{v:f(r.older_amt)})); names.push(t('due_older')); }
+    ps.forEach(function(p){ lines.push(t('up_msg_bill',{m:monthName(p,true),v:f(b[p])})); names.push(monthName(p,true)); });
+    var vals={name:r.name,count:fmtN(names.length,0),months:names.join(t('due_and')),total:f(r.balance),generator:SITE.name||''};
+    var vars={'{المولد}':SITE.name||'','{الاسم}':r.name,'{العدد}':vals.count,'{الأشهر}':vals.months,'{الفواتير}':lines.join('\n'),'{المجموع}':vals.total};
+    var text=String(d.msg||t('up_tpl_def')).replace(/\{(المولد|الاسم|العدد|الأشهر|الفواتير|المجموع)\}/g,function(k){ return vars[k]; }).replace(/\n{3,}/g,'\n\n').trim();
+    var last=r.reminded_at?t('rm_one_last',{a:dt(r.reminded_at)})+'\n\n':'';
+    if(!(await confirmBox(last+t('rm_one_q',{n:r.name,v:vals.total})))) return;
+    if(wcOn()){ await wcSend(r.mobile_cc,r.mobile,'payment_reminder',vals); toast('✅ '+t('wa_sent'),'s'); }
+    else openWa(r.mobile_cc,r.mobile,text);
+    try{ await call('motor_remind_mark',{p_customer:r.id}); }catch(e){}
+  }catch(e){ toast(typeof waErr==='function'?waErr(e):errText(e),'e'); }
+  finally{ if(btn) btn.disabled=false; }
+}
 VIEWS.unpaid=async function(main){
   if(!RF.upPer) RF.upPer=SITE.bill_period; if(!RF.upMin) RF.upMin=1;
   var d=await call('motor_unpaid',{p_period:RF.upPer,p_min:RF.upMin}), q='', tpl=d.msg||'';
@@ -3633,6 +3657,7 @@ async function openCustomer(id,barcode,mode){
         (can('cut')?(c.is_active?'<button class="btn danger" data-a="cut">'+esc(t('cut'))+'</button>':'<button class="btn acc" data-a="connect">'+esc(t('connect'))+'</button>'):'')+
         '<button class="btn alt" data-a="stmt">'+esc(t('statement'))+'</button>'+
         (c.mobile&&waHere()?'<button class="btn wa sm" data-a="wa">'+esc(t('whatsapp'))+'</button>':'')+
+        (adm&&c.mobile&&n2(c.balance)>0.005?'<button class="btn wa sm" data-a="remind">🔔 '+esc(t('rm_one'))+'</button>':'')+
         (adm?'<button class="btn ghost sm" data-a="edit">✏️ '+esc(t('edit'))+'</button><button class="btn danger sm" data-a="ccancel">🗑️ '+esc(t('cc_btn'))+'</button>'+(d.read_now?'<button class="btn ghost sm" data-a="redit">🔢 '+esc(t('edit_reading'))+'</button>':'')+
           '<button class="btn ghost sm" data-a="clogin">🔑 '+esc(t('cust_login'))+(d.has_login?' ✓':'')+'</button>'+(c.mobile&&waHere()?'<button class="btn wa sm" data-a="sendlogin">📲 '+esc(t('send_login'))+'</button>':'')+'<button class="btn ghost sm" data-a="adj">'+esc(t('adjust'))+'</button><button class="btn ghost sm" data-a="label">🏷️ '+esc(t('label_one'))+'</button>':'')+
       '</div>';
@@ -3657,6 +3682,7 @@ async function openCustomer(id,barcode,mode){
     else if(a==='redit') editReading(d.read_now,function(){ reload().then(function(){ paint(); }); });
     else if(a==='clogin') loginForm();
     else if(a==='sendlogin') sendLogin();
+    else if(a==='remind') remindOne(c,b);
   });
   async function sendLogin(){
     if(!(await confirmBox(t('send_login_q',{n:c.name})))) return;
