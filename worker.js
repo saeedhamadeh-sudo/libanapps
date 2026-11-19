@@ -2725,12 +2725,12 @@ async function motorBkFind(env, url) {
   const fr = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?alt=media`, { headers: GH });
   if (!fr.ok) return json(502, { ok: false, error: 'gd_' + fr.status });
   const txt = await fr.text();
-  const st = txt.indexOf('"' + table + '":[');
+  const st = txt.search(new RegExp('"' + table + '":\\s*\\['));
   if (st < 0) return json(200, { ok: true, found: [], note: 'no_table' });
   const found = [];
+  const en = txt.slice(st + 1).search(/\]\s*,\s*"[a-z_]+"\s*:\s*\[/); const seg = txt.slice(st, en > 0 ? st + 1 + en : undefined);
   for (const n of nos) {
-    const re = new RegExp('\\{[^{}]*"no":' + n + ',[^{}]*\\}', 'g');
-    const en = txt.indexOf('],"', st); const seg = txt.slice(st, en > 0 ? en : undefined);
+    const re = new RegExp('\\{[^{}]*"no":\\s*' + n + '\\s*,[^{}]*\\}', 'g');
     let m; while ((m = re.exec(seg))) { try { const o = JSON.parse(m[0]); if (o.no === n) found.push(o); } catch {} }
   }
   return json(200, { ok: true, size: txt.length, found });
