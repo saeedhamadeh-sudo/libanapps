@@ -2374,6 +2374,10 @@ Object.assign(D,{
  save_no_photo:['حفظ بدون صورة وموقع (للمدير)','Save without photo & location (admin)','Enregistrer sans photo ni position (admin)'],
  edit_reading:['تعديل العداد','Edit reading','Modifier le relevé'],
  edit_reading_t:['تعديل قراءة العداد — السابق: {p}','Edit reading — previous: {p}','Modifier — précédent : {p}'],
+ er_prev:['العداد السابق','Previous reading','Relevé précédent'], er_cur:['العداد الحالي','Current reading','Relevé actuel'],
+ er_kwh:['الاستهلاك: {k} ك.و.س — تُعاد حساب الفاتورة والرصيد تلقائياً','Consumption: {k} kWh — the bill and balance are recalculated','Consommation : {k} kWh — facture et solde recalculés'],
+ er_when:['القراءة بتاريخ {d}','Reading taken on {d}','Relevé du {d}'],
+ er_lower:['العداد الحالي لا يمكن أن يكون أقل من السابق','Current reading cannot be lower than the previous one','Le relevé actuel ne peut pas être inférieur au précédent'],
  e_not_latest:['يمكن تعديل آخر قراءة للزبون فقط','Only the customer’s latest reading can be edited','Seul le dernier relevé est modifiable'],
  reading_edited:['تم تعديل العداد وتصحيح الفاتورة ✓','Reading edited and invoice corrected ✓','Relevé modifié ✓'],
  cust_login:['حساب الدخول','Login','Connexion'],
@@ -2465,12 +2469,21 @@ Object.assign(D,{
 function roleLabel(s){ if(!s) return ''; if(s.role==='owner') return t('role_owner'); if(s.role==='admin') return t('role_admin'); return (s.can_read&&!s.can_collect)?t('role_reader'):t('role_collector'); }
 function editReading(r,after){
   if(!r) return;
-  var m=modal(t('edit_reading'),'<label>'+esc(t('edit_reading_t',{p:fmtN(r.prev_value)}))+'</label><input id="erv" class="valinput" inputmode="decimal" value="'+esc(r.value)+'">'+
+  var m=modal(t('edit_reading'),
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><div><label>'+esc(t('er_prev'))+'</label><input id="erp" class="valinput" inputmode="decimal" value="'+esc(r.prev_value)+'"></div>'+
+    '<div><label>'+esc(t('er_cur'))+'</label><input id="erv" class="valinput" inputmode="decimal" value="'+esc(r.value)+'"></div></div>'+
+    '<div class="muted" id="erk" style="margin-top:6px"></div>'+
+    (r.created_at?'<div class="muted" style="font-size:12px;margin-top:4px">'+esc(t('er_when',{d:dt(r.created_at)}))+'</div>':'')+
     '<label style="margin-top:8px">'+esc(t('note'))+'</label><input id="ern"><div id="ermsg" class="err msg" style="margin-top:8px"></div>',
     '<button class="btn ghost" data-x>'+esc(t('cancel'))+'</button><button class="btn" data-s>'+esc(t('save'))+'</button>');
+  function kw(){ var p=Number($('#erp',m.body).value), v=Number($('#erv',m.body).value);
+    $('#erk',m.body).textContent=isFinite(p)&&isFinite(v)&&$('#erp',m.body).value!==''&&$('#erv',m.body).value!==''?t('er_kwh',{k:fmtN(v-p)}):''; }
+  $('#erp',m.body).addEventListener('input',kw); $('#erv',m.body).addEventListener('input',kw); kw();
   m.foot.addEventListener('click',async function(e){ if(e.target.closest('[data-x]')) return m.close(); var b=e.target.closest('[data-s]'); if(!b) return;
-    var v=$('#erv',m.body).value.trim(); if(v===''||!isFinite(Number(v))){ $('#ermsg',m.body).textContent=t('e_bad_value'); return; }
-    busy(b,true); try{ await call('motor_reading_edit',{p_reading:r.id,p_value:Number(v),p_note:$('#ern',m.body).value}); toast(t('reading_edited'),'s'); m.close(); after&&after(); }
+    var v=$('#erv',m.body).value.trim(), p=$('#erp',m.body).value.trim();
+    if(v===''||!isFinite(Number(v))||p===''||!isFinite(Number(p))||Number(p)<0){ $('#ermsg',m.body).textContent=t('e_bad_value'); return; }
+    if(Number(v)<Number(p)){ $('#ermsg',m.body).textContent=t('er_lower'); return; }
+    busy(b,true); try{ await call('motor_reading_edit',{p_reading:r.id,p_value:Number(v),p_note:$('#ern',m.body).value,p_prev:Number(p)!==Number(r.prev_value)?Number(p):null}); toast(t('reading_edited'),'s'); m.close(); after&&after(); }
     catch(err){ $('#ermsg',m.body).textContent=errText(err); busy(b,false); } });
 }
 /* ---------- صفحة الزبون (دخول باسم مستخدم الزبون) ---------- */
@@ -3658,7 +3671,7 @@ async function openCustomer(id,barcode,mode){
         '<button class="btn alt" data-a="stmt">'+esc(t('statement'))+'</button>'+
         (c.mobile&&waHere()?'<button class="btn wa sm" data-a="wa">'+esc(t('whatsapp'))+'</button>':'')+
         (adm&&c.mobile&&n2(c.balance)>0.005?'<button class="btn wa sm" data-a="remind">🔔 '+esc(t('rm_one'))+'</button>':'')+
-        (adm?'<button class="btn ghost sm" data-a="edit">✏️ '+esc(t('edit'))+'</button><button class="btn danger sm" data-a="ccancel">🗑️ '+esc(t('cc_btn'))+'</button>'+(d.read_now?'<button class="btn ghost sm" data-a="redit">🔢 '+esc(t('edit_reading'))+'</button>':'')+
+        (adm?'<button class="btn ghost sm" data-a="edit">✏️ '+esc(t('edit'))+'</button><button class="btn danger sm" data-a="ccancel">🗑️ '+esc(t('cc_btn'))+'</button>'+((d.read_now||d.last_reading)?'<button class="btn ghost sm" data-a="redit">🔢 '+esc(t('edit_reading'))+'</button>':'')+
           '<button class="btn ghost sm" data-a="clogin">🔑 '+esc(t('cust_login'))+(d.has_login?' ✓':'')+'</button>'+(c.mobile&&waHere()?'<button class="btn wa sm" data-a="sendlogin">📲 '+esc(t('send_login'))+'</button>':'')+'<button class="btn ghost sm" data-a="adj">'+esc(t('adjust'))+'</button><button class="btn ghost sm" data-a="label">🏷️ '+esc(t('label_one'))+'</button>':'')+
       '</div>';
     $('#cmSide',m.body).innerHTML=
@@ -3679,7 +3692,7 @@ async function openCustomer(id,barcode,mode){
     else if(a==='adj') adjustForm();
     else if(a==='label') printLabels([c]);
     else if(a==='note') addNote();
-    else if(a==='redit') editReading(d.read_now,function(){ reload().then(function(){ paint(); }); });
+    else if(a==='redit') editReading(d.read_now||d.last_reading,function(){ reload().then(function(){ paint(); }); });
     else if(a==='clogin') loginForm();
     else if(a==='sendlogin') sendLogin();
     else if(a==='remind') remindOne(c,b);
