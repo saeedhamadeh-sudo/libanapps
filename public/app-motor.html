@@ -2407,6 +2407,11 @@ Object.assign(D,{
  backup_now:['💾 نسخة احتياطية الآن','💾 Backup now','💾 Sauvegarder'],
  edit_amount:['تعديل المبلغ','Edit amount','Modifier le montant'],
  void_reading:['إلغاء القراءة','Cancel reading','Annuler le relevé'],
+ rv_btn:['إلغاء عداد','Cancel a reading','Annuler un relevé'],
+ rv_t:['عدادات {n}','Readings — {n}','Relevés — {n}'],
+ rv_hint:['اختر الدورة التي تريد إلغاء عدادها. تُلغى الفاتورة معه ويعود الرصيد، ويمكن أخذ العداد من جديد لهذه الدورة. يمكن استرجاعه من سلة المحذوفات.','Pick the period to cancel. Its bill is cancelled and the balance restored; the reading can be taken again. Restorable from the trash.','Choisissez la période à annuler. La facture est annulée et le solde rétabli ; le relevé peut être repris.'],
+ rv_q:['إلغاء عداد «{n}» لدورة {p} مع فاتورته؟','Cancel {n}’s reading for {p} and its bill?','Annuler le relevé de {n} pour {p} et sa facture ?'],
+ rv_mid:['هذا ليس آخر عداد للزبون: العداد الذي بعده يبقى كما هو، فاستهلاك هذه الدورة لن يُحسب على الزبون.','This is not the latest reading: the next reading stays as is, so this period’s consumption will not be billed.','Ce n’est pas le dernier relevé : la consommation de cette période ne sera pas facturée.'],
  confirm_void_reading:['إلغاء قراءة {n} وفاتورتها؟ سيُعاد أخذ العداد.','Cancel {n}’s reading and its invoice?','Annuler le relevé de {n} ?'],
  fill_barcodes:['🏷️ إصدار باركود للزبائن بلا باركود','🏷️ Generate missing barcodes','🏷️ Générer les codes-barres manquants'],
  fill_done:['صدر باركود لـ {n} زبون','{n} barcodes generated','{n} codes-barres générés'],
@@ -2467,6 +2472,24 @@ Object.assign(D,{
  now:['الحالي','current','actuel'], new:['الجديد','new','nouveau']
 });
 function roleLabel(s){ if(!s) return ''; if(s.role==='owner') return t('role_owner'); if(s.role==='admin') return t('role_admin'); return (s.can_read&&!s.can_collect)?t('role_reader'):t('role_collector'); }
+// إلغاء عداد مأخوذ لأي دورة (المدير + المدير الأساسي) — بيلغي الفاتورة تبعو وبيرجع الرصيد
+async function readingsVoid(c,after){
+  var m=modal(t('rv_t',{n:c.name}),'<div class="muted">'+esc(t('loading'))+'</div>','<button class="btn ghost" data-x>'+esc(t('close'))+'</button>');
+  m.foot.addEventListener('click',function(e){ if(e.target.closest('[data-x]')) m.close(); });
+  async function load(){
+    var L; try{ L=await call('motor_cust_readings',{p_customer:c.id}); }catch(e){ m.body.innerHTML='<div class="err">'+esc(errText(e))+'</div>'; return; }
+    if(!L.length){ m.body.innerHTML='<div class="muted">'+esc(t('no_results'))+'</div>'; return; }
+    m.body.innerHTML='<p class="muted" style="margin:0 0 8px">'+esc(t('rv_hint'))+'</p><div class="tw"><table><thead><tr><th>'+esc(t('bill_period'))+'</th><th>'+esc(t('prev_reading'))+'</th><th>'+esc(t('cur_reading'))+'</th><th>'+esc(t('consumption'))+'</th><th>'+esc(t('inv_amount'))+'</th><th>'+esc(t('by'))+'</th><th></th></tr></thead><tbody>'+
+      L.map(function(r){ return '<tr><td class="num"><b>'+esc(r.period||'')+'</b><div class="muted" style="font-size:11px">'+esc(dt(r.at))+'</div></td><td class="num">'+esc(fmtN(r.prev_value))+'</td><td class="num"><b>'+esc(fmtN(r.value))+'</b></td>'+
+        '<td class="num">'+esc(fmtN(r.kwh))+'</td><td class="num">'+(r.invoice_no!=null?esc(money(r.amount))+'<div class="muted" style="font-size:11px">#'+esc(r.invoice_no)+'</div>':'<span class="muted">—</span>')+'</td><td>'+esc(r.by||'')+'</td>'+
+        '<td><button class="btn danger sm" data-rv="'+esc(r.id)+'" data-p="'+esc(r.period||'')+'" data-l="'+(r.latest?1:0)+'">'+esc(t('void_reading'))+'</button></td></tr>'; }).join('')+'</tbody></table></div>';
+  }
+  m.body.addEventListener('click',async function(e){ var b=e.target.closest('[data-rv]'); if(!b||b.disabled) return;
+    var q=t('rv_q',{n:c.name,p:b.dataset.p})+(b.dataset.l==='1'?'':'\n\n⚠️ '+t('rv_mid'));
+    if(!(await confirmBox(q))) return;
+    b.disabled=true; try{ await call('motor_reading_void',{p_reading:b.dataset.rv}); toast(t('saved'),'s'); loadCustomers(); after&&after(); await load(); }catch(err){ toast(errText(err),'e'); b.disabled=false; } });
+  load();
+}
 function editReading(r,after){
   if(!r) return;
   var m=modal(t('edit_reading'),
@@ -3671,7 +3694,7 @@ async function openCustomer(id,barcode,mode){
         '<button class="btn alt" data-a="stmt">'+esc(t('statement'))+'</button>'+
         (c.mobile&&waHere()?'<button class="btn wa sm" data-a="wa">'+esc(t('whatsapp'))+'</button>':'')+
         (adm&&c.mobile&&n2(c.balance)>0.005?'<button class="btn wa sm" data-a="remind">🔔 '+esc(t('rm_one'))+'</button>':'')+
-        (adm?'<button class="btn ghost sm" data-a="edit">✏️ '+esc(t('edit'))+'</button><button class="btn danger sm" data-a="ccancel">🗑️ '+esc(t('cc_btn'))+'</button>'+((d.read_now||d.last_reading)?'<button class="btn ghost sm" data-a="redit">🔢 '+esc(t('edit_reading'))+'</button>':'')+
+        (adm?'<button class="btn ghost sm" data-a="edit">✏️ '+esc(t('edit'))+'</button><button class="btn danger sm" data-a="ccancel">🗑️ '+esc(t('cc_btn'))+'</button>'+((d.read_now||d.last_reading)?'<button class="btn ghost sm" data-a="rvoid">🗑️ '+esc(t('rv_btn'))+'</button>':'')+((d.read_now||d.last_reading)?'<button class="btn ghost sm" data-a="redit">🔢 '+esc(t('edit_reading'))+'</button>':'')+
           '<button class="btn ghost sm" data-a="clogin">🔑 '+esc(t('cust_login'))+(d.has_login?' ✓':'')+'</button>'+(c.mobile&&waHere()?'<button class="btn wa sm" data-a="sendlogin">📲 '+esc(t('send_login'))+'</button>':'')+'<button class="btn ghost sm" data-a="adj">'+esc(t('adjust'))+'</button><button class="btn ghost sm" data-a="label">🏷️ '+esc(t('label_one'))+'</button>':'')+
       '</div>';
     $('#cmSide',m.body).innerHTML=
@@ -3696,6 +3719,7 @@ async function openCustomer(id,barcode,mode){
     else if(a==='clogin') loginForm();
     else if(a==='sendlogin') sendLogin();
     else if(a==='remind') remindOne(c,b);
+    else if(a==='rvoid') readingsVoid(c,function(){ reload().then(function(){ paint(); }); });
   });
   async function sendLogin(){
     if(!(await confirmBox(t('send_login_q',{n:c.name})))) return;
@@ -5103,13 +5127,13 @@ VIEWS.month=async function(main){
         '<td class="num">'+esc(fmtN(r.prev_value))+'</td><td class="num"><b>'+esc(fmtN(r.value))+'</b></td><td class="num">'+esc(fmtN(r.kwh))+'</td><td class="num">'+esc(money(r.amount))+'</td>'+
         '<td>'+(r.photo?'<img class="thumb" loading="lazy" src="'+esc(r.photo)+'?w=160" data-big="'+esc(r.photo)+'" alt="">':'—')+'</td>'+
         '<td>'+(r.remote?'<span class="chip gray">📷 '+esc(t('remote_chip'))+'</span>':r.lat!=null?'<a target="_blank" rel="noopener" href="https://maps.google.com/?q='+esc(r.lat)+','+esc(r.lng)+'">📍</a>'+(r.dist_m!=null?' <span class="chip '+(far?'off':'gray')+'">'+esc(fmtN(r.dist_m,0))+' m</span>':''):'—')+'</td><td>'+esc(r.staff)+'</td>'+
-        (adm?'<td><button class="btn ghost sm" data-er="'+esc(r.id)+'">🔢 '+esc(t('edit'))+'</button>'+(r.invoice_id?' <button class="btn ghost sm" data-vr="'+esc(r.invoice_id)+'|'+esc(r.name)+'">'+esc(t('void_reading'))+'</button>':'')+'</td>':'')+'</tr>'; }).join('')||'<tr><td colspan="11" class="muted">'+esc(t('no_results'))+'</td></tr>';
+        (adm?'<td><button class="btn ghost sm" data-er="'+esc(r.id)+'">🔢 '+esc(t('edit'))+'</button>'+' <button class="btn ghost sm" data-vr="'+esc(r.id)+'|'+esc(r.name)+'">'+esc(t('void_reading'))+'</button>'+'</td>':'')+'</tr>'; }).join('')||'<tr><td colspan="11" class="muted">'+esc(t('no_results'))+'</td></tr>';
   }
   $('#mp',main).addEventListener('change',function(){ if(/^\d{4}-\d{2}$/.test(this.value)){ MF.period=this.value; go('month'); } });
   if($('#ms',main)) $('#ms',main).addEventListener('change',function(){ MF.staff=this.value; paint(); });
   $('#mq',main).addEventListener('input',function(){ MF.q=this.value; paint(); });
   $('#mtb',main).addEventListener('click',function(e){ var im=e.target.closest('[data-big]'); if(im) lightbox(im.dataset.big); var a=e.target.closest('a[data-cust]'); if(a) e.preventDefault();
-    var vr=e.target.closest('[data-vr]'); if(vr){ var pp=vr.dataset.vr.split('|'); confirmBox(t('confirm_void_reading',{n:pp[1]})).then(async function(ok){ if(!ok) return; try{ await call('motor_invoice_void',{p_id:pp[0]}); toast(t('saved'),'s'); go('month'); }catch(err){ toast(errText(err),'e'); } }); return; }
+    var vr=e.target.closest('[data-vr]'); if(vr){ var pp=vr.dataset.vr.split('|'); confirmBox(t('confirm_void_reading',{n:pp[1]})).then(async function(ok){ if(!ok) return; try{ await call('motor_reading_void',{p_reading:pp[0]}); toast(t('saved'),'s'); loadCustomers(); go('month'); }catch(err){ toast(errText(err),'e'); } }); return; }
     var er=e.target.closest('[data-er]'); if(er){ var rr=d.rows.filter(function(x){return x.id===er.dataset.er})[0]; editReading({id:rr.id,value:rr.value,prev_value:rr.prev_value},function(){ go('month'); }); } });
   $('#mexp',main).addEventListener('click',function(){ var R=[[t('time'),t('code'),t('name'),t('barcode'),t('box'),t('prev_reading'),t('cur_reading'),t('consumption'),t('inv_amount'),t('lat'),t('lng'),'m',t('collector'),t('photo')]];
     rows().forEach(function(r){ R.push([dt(r.at),r.code,r.name,r.barcode,r.box,r.prev_value,r.value,r.kwh,r.amount,r.lat,r.lng,r.dist_m,r.staff,r.photo?location.origin+r.photo:'']); }); downloadCsv(R,'readings-'+d.period+'.csv'); });
