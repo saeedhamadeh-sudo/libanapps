@@ -423,6 +423,15 @@ td .btn{margin:2px 0}
       <div class="sw"><input type="checkbox" id="chActive"><label for="chActive" style="margin:0">البرنامج ظاهر للشراء في الموقع</label></div>
       <div class="acts"><button class="btn" id="chSave">حفظ إعدادات LibanApps Chat</button></div>
       <div class="msg" id="chMsg"></div>
+      <h3 style="margin-top:22px">👥 مشتركو LibanApps Chat</h3>
+      <p class="muted">كل زبون اشترى البرنامج أو عنده صندوق محادثات. «إيقاف» يُقفل التطبيق عنده فوراً (وتبقى رسائله محفوظة)، «تفعيل» يرجّعه، «إلغاء الاشتراك» يحذف الشراء نهائياً، و«منح اشتراك» يعطيه البرنامج مجاناً بلا دفع.</p>
+      <div class="g3" style="align-items:end">
+        <div><label>منح اشتراك دائم لزبون</label><select id="chGrantClient"></select></div>
+        <div><button class="btn alt" id="chGrant">منح اشتراك</button></div>
+        <div><button class="btn alt" id="chReload">تحديث اللائحة</button></div>
+      </div>
+      <div style="overflow:auto;margin-top:10px"><table id="chTbl"><tbody></tbody></table></div>
+      <div class="msg" id="chLMsg"></div>
     </div>
     <div class="panel" id="motorProdPanel">
       <h3>برنامج اشتراكات المولّدات (motorapp) — إعدادات التفعيل</h3>
@@ -937,6 +946,7 @@ function paintSubs(){
     (rows.length?rows.map(function(s){
       var d=daysLeft(s.expires_at), cls, txt;
       if(s.status==='suspended'){cls='bad';txt='موقوف';}
+      else if(d>3650){cls='ok';txt='دائم';}
       else if(d<0){cls='bad';txt='منتهي من '+(-d)+' يوم';}
       else if(d<=15){cls='warn';txt='متبقٍّ '+d+' يوم';}
       else {cls='ok';txt='متبقٍّ '+d+' يوم';}
@@ -949,11 +959,12 @@ function paintSubs(){
         '<div class="muted">'+new Date(s.expires_at).toLocaleDateString('en-GB')+'</div></td>'+
         '<td class="muted">'+(s.device_id?'مربوط':'غير مفعّل')+'</td>'+
         '<td style="white-space:nowrap">'+
+          (d>3650?'':
           '<button class="btn alt sm" data-x="'+s.id+'" data-d="30">+شهر</button> '+
           '<button class="btn alt sm" data-x="'+s.id+'" data-d="365">+سنة</button> '+
           '<button class="btn dg sm" data-x="'+s.id+'" data-d="-30" title="تنقيص شهر">−شهر</button> '+
           '<button class="btn dg sm" data-x="'+s.id+'" data-d="-365" title="تنقيص سنة">−سنة</button> '+
-          '<button class="btn alt sm" data-rst="'+s.id+'">فك ربط الجهاز</button> '+
+          '<button class="btn alt sm" data-rst="'+s.id+'">فك ربط الجهاز</button> ')+
           '<button class="btn dg sm" data-sus="'+s.id+'" data-cur="'+s.status+'">'+
             (s.status==='active'?'إيقاف':'تفعيل')+'</button> '+
           (s.product_code==='alum'
@@ -1240,10 +1251,61 @@ $('#lpSave').addEventListener('click',async function(){
   if(r.error){ m.className='msg e'; m.textContent='لم يُحفظ: '+r.error.message; return; }
   m.className='msg s'; m.textContent='تم الحفظ'; await loadPlans();
 });
+var CHAT_ROWS=[];
+async function loadChatSubs(){
+  var r=await sb.rpc('admin_chat_list');
+  var b=$('#chTbl').querySelector('tbody');
+  if(r.error){ b.innerHTML='<tr><td class="muted">تعذّر التحميل: '+esc(r.error.message)+'</td></tr>'; return; }
+  CHAT_ROWS=r.data||[];
+  var have={}; CHAT_ROWS.forEach(function(x){ if(x.sub_id) have[x.client_id]=1; });
+  $('#chGrantClient').innerHTML='<option value="">— اختر زبوناً —</option>'+(CLIENTS||[]).filter(function(c){return !have[c.id]}).map(function(c){
+    return '<option value="'+c.id+'">'+esc(c.name||'')+(c.business?' — '+esc(c.business):'')+(c.phone?' · '+esc(c.phone):'')+'</option>'; }).join('');
+  var act=CHAT_ROWS.filter(function(x){return x.active}).length;
+  b.innerHTML='<tr><th>الزبون</th><th>الاشتراك</th><th>الصندوق</th><th>آخر نشاط</th><th></th></tr>'+
+    (CHAT_ROWS.length?CHAT_ROWS.map(function(x){
+      var st=!x.sub_id?'<span class="tag warn">غير مشترك</span>'
+        :(x.status!=='active'?'<span class="tag bad">موقوف</span>':(x.active?'<span class="tag ok">فعّال — دائم</span>':'<span class="tag bad">منتهٍ</span>'));
+      return '<tr><td>'+esc(x.client||'—')+'<div class="muted">'+esc(x.business||'')+(x.phone?' · '+esc(x.phone):'')+'</div></td>'+
+        '<td>'+st+(x.sub_id?'<div class="muted">'+new Date(x.sub_at).toLocaleDateString('en-GB')+' · '+(Number(x.price)||0)+' $</div>':'')+'</td>'+
+        '<td>'+(x.inbox?esc(x.inbox)+'<div class="muted">'+x.users+' مستخدم · '+x.chats+' محادثة</div>':'<span class="muted">لم يُنشأ بعد</span>')+'</td>'+
+        '<td class="muted">'+(x.last_at?new Date(x.last_at).toLocaleString('en-GB',{dateStyle:'short',timeStyle:'short'}):'—')+'</td>'+
+        '<td style="white-space:nowrap">'+
+          (x.sub_id
+            ? '<button class="btn '+(x.status==='active'?'dg':'alt')+' sm" data-chsus="'+x.sub_id+'" data-cur="'+x.status+'">'+(x.status==='active'?'إيقاف':'تفعيل')+'</button> '+
+              '<button class="btn dg sm" data-chdel="'+x.sub_id+'" data-who="'+esc(x.client||'')+'">إلغاء الاشتراك</button>'
+            : '<button class="btn alt sm" data-chgive="'+x.client_id+'" data-who="'+esc(x.client||'')+'">منح اشتراك</button>')+
+        '</td></tr>';
+    }).join(''):'<tr><td colspan="5" class="muted" style="padding:16px">لا يوجد مشتركون بعد</td></tr>');
+  $('#chLMsg').className='msg'; $('#chLMsg').textContent='المشتركون الفعّالون: '+act;
+}
+async function chatGrant(cid, who){
+  if(!cid) return;
+  if(!confirm('منح «'+(who||'')+'» اشتراكاً دائماً في LibanApps Chat مجاناً (بلا دفع)؟')) return;
+  var r=await sb.rpc('new_subscription',{p_client:cid,p_product:'chat',p_plan:'lifetime',p_days:36500,p_price:0,p_slug:'',p_notes:'منح من لوحة الإدارة'});
+  if(r.error){ alert('لم يُمنح: '+r.error.message); return; }
+  await loadChatSubs(); if(typeof loadSubs==='function') loadSubs();
+}
+$('#chReload').addEventListener('click',loadChatSubs);
+$('#chGrant').addEventListener('click',function(){ var sel=$('#chGrantClient'); chatGrant(sel.value, sel.options[sel.selectedIndex]&&sel.options[sel.selectedIndex].text); });
+$('#chTbl').addEventListener('click',async function(e){
+  var b=e.target.closest('button'); if(!b) return;
+  if(b.dataset.chsus){
+    var next=b.dataset.cur==='active'?'suspended':'active';
+    if(next==='suspended'&&!confirm('إيقاف LibanApps Chat عند هذا الزبون؟ سيُقفل التطبيق عنده فوراً، وتبقى رسائله محفوظة.')) return;
+    var r=await sb.from('subscriptions').update({status:next}).eq('id',b.dataset.chsus);
+    if(r.error){ alert(r.error.message); return; }
+  }else if(b.dataset.chdel){
+    if(!confirm('إلغاء اشتراك «'+b.dataset.who+'» في LibanApps Chat نهائياً؟\n\nسيُقفل التطبيق عنده، ويحتاج إلى شراء جديد ليعود. الرسائل تبقى محفوظة.\nلا يمكن التراجع عن ذلك.')) return;
+    var r2=await sb.from('subscriptions').delete().eq('id',b.dataset.chdel);
+    if(r2.error){ alert('فشل الحذف: '+r2.error.message); return; }
+  }else if(b.dataset.chgive){ await chatGrant(b.dataset.chgive,b.dataset.who); return; }
+  await loadChatSubs(); if(typeof loadSubs==='function') loadSubs();
+});
 function loadChatProd(){
   var pl=PLANS.filter(function(x){return x.product_code==='chat'})[0];
   $('#chatProdPanel').classList.toggle('hidden', !pl);
   if(!pl) return;
+  loadChatSubs();
   $('#chPrice').value=Number(pl.price_usd)||'';
   $('#chActive').checked=!!pl.is_active;
 }
