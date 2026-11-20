@@ -5138,10 +5138,17 @@ VIEWS.month=async function(main){
     '<div class="tw"><table><thead><tr><th>'+esc(t('time'))+'</th><th>'+esc(t('code'))+'</th><th>'+esc(t('name'))+'</th><th>'+esc(t('box'))+'</th><th>'+esc(t('prev_reading'))+'</th><th>'+esc(t('cur_reading'))+'</th><th>'+esc(t('consumption'))+'</th><th>'+esc(t('inv_amount'))+'</th><th>'+esc(t('photo'))+'</th><th>'+esc(t('map'))+'</th><th>'+esc(t('collector'))+'</th>'+(adm?'<th></th>':'')+'</tr></thead><tbody id="mtb"></tbody></table></div>';
   if(adm&&d.unread){
     var uc=document.createElement('div'); uc.className='card'; uc.style.marginTop='14px';
-    uc.innerHTML='<div class="row"><h3 style="margin:0">⏳ '+esc(t('ur_t'))+' <span class="chip off" id="urn"></span></h3><span class="sp"></span><button class="btn ghost sm" id="urx">'+esc(t('export_csv'))+'</button></div>'+
+    uc.innerHTML='<div class="row"><h3 style="margin:0">⏳ '+esc(t('ur_t'))+' <span class="chip off" id="urn"></span></h3><span class="sp"></span><button class="btn sm" id="urp">'+esc(t('print'))+'</button> <button class="btn ghost sm" id="urx">'+esc(t('export_csv'))+'</button></div>'+
       '<div class="tw" style="margin-top:8px"><table><thead><tr><th>'+esc(t('code'))+'</th><th>'+esc(t('name'))+'</th><th>'+esc(t('box'))+'</th><th>'+esc(t('area'))+'</th><th>'+esc(t('collector'))+'</th><th>'+esc(t('ur_last'))+'</th><th>'+esc(t('mobile'))+'</th></tr></thead><tbody id="urb"></tbody></table></div>';
     main.appendChild(uc);
     $('#urb',uc).addEventListener('click',function(e){ var a=e.target.closest('a[data-cust]'); if(a) e.preventDefault(); });
+    $('#urp',uc).addEventListener('click',function(){ var L=urows(), logo=SITE.logo_url||'', sf=MF.staff?(STAFF.filter(function(x){return x.id===MF.staff})[0]||{}).name:'';
+      printA4('<style>#printArea .hd{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:8px;font-size:12px}#printArea h2{margin:0 0 2px;font-size:18px}#printArea td.w{text-align:start}#printArea td.rd{width:90px}</style>'+
+        '<div class="hd"><div style="display:flex;align-items:center;gap:12px">'+(logo?'<img src="'+esc(logo)+'" alt="" style="height:70px;max-width:180px;object-fit:contain">':'')+'<div><h2>'+esc(SITE.name||'')+'</h2><div><b>'+esc(t('ur_t'))+'</b> — '+esc(d.period)+(sf?' — '+esc(t('collector'))+': '+esc(sf):'')+'</div></div></div>'+
+        '<div>'+esc(t('date'))+': '+esc(TODAY)+'<br>'+esc(t('dr_count'))+': <b>'+fmtN(L.length,0)+'</b></div></div>'+
+        '<table><thead><tr><th>#</th><th>'+esc(t('code'))+'</th><th>'+esc(t('name'))+'</th><th>'+esc(t('box'))+'</th><th>'+esc(t('area'))+'</th><th>'+esc(t('collector'))+'</th><th>'+esc(t('ur_last'))+'</th><th>'+esc(t('cur_reading'))+'</th></tr></thead><tbody>'+
+        L.map(function(r,i){ return '<tr><td>'+(i+1)+'</td><td>'+esc(r.code)+'</td><td class="w">'+esc(r.name)+'</td><td>'+esc(r.box||'')+'</td><td>'+esc(r.area||'')+'</td><td>'+esc(r.collector||'')+'</td><td>'+(r.last_value!=null?esc(fmtN(r.last_value)):'—')+'</td><td class="rd"></td></tr>'; }).join('')+
+        '</tbody></table>'); });
     $('#urx',uc).addEventListener('click',function(){ var R=[[t('code'),t('name'),t('barcode'),t('box'),t('area'),t('collector'),t('ur_last'),t('mobile')]];
       urows().forEach(function(r){ R.push([r.code,r.name,r.barcode,r.box,r.area,r.collector,r.last_value,r.mobile]); }); downloadCsv(R,'not-read-'+d.period+'.csv'); });
   }
