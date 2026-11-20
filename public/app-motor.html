@@ -2408,6 +2408,8 @@ Object.assign(D,{
  edit_amount:['تعديل المبلغ','Edit amount','Modifier le montant'],
  void_reading:['إلغاء القراءة','Cancel reading','Annuler le relevé'],
  kf_btn:['عداد مقطوع','Monthly allowance','Forfait mensuel'],
+ dc_type:['نوع الحسم','Discount type','Type de remise'], dc_t_amt:['مبلغ ثابت','Fixed amount','Montant fixe'], dc_t_pct:['نسبة مئوية','Percentage','Pourcentage'],
+ dc_equals:['= حسم {v}','= {v} off','= remise de {v}'],
  kf_t:['عداد مقطوع — {n}','Monthly kWh allowance — {n}','Forfait kWh mensuel — {n}'],
  kf_d:['عدد الكيلوات المقطوعة شهرياً لا يُحسب على الزبون: إذا كان الاستهلاك 240 والمقطوع 150 يُحسب 90 فقط. يُطبّق على الفواتير الجديدة.','These kWh are not billed each month: 240 used with 150 allowance bills 90. Applies to new bills.','Ces kWh ne sont pas facturés chaque mois : 240 consommés avec 150 de forfait = 90 facturés.'],
  kf_lbl:['المقطوع الشهري (ك.و.س)','Monthly allowance (kWh)','Forfait mensuel (kWh)'],
@@ -6034,7 +6036,8 @@ VIEWS.disc=async function(main){
       '<button class="btn" id="dps" style="margin-top:10px">💾 '+esc(t('dc_save'))+'</button></div>'+
     '<div class="card"><h3>🧾 '+esc(t('dc_once'))+'</h3><p class="muted" style="margin-top:0">'+esc(t('dc_once_hint'))+'</p>'+
       '<label>'+esc(t('customer'))+'</label>'+custInput('doc')+'<label style="margin-top:8px">'+esc(t('dc_pick_inv'))+'</label><select id="doi" disabled></select>'+
-      '<div class="g2" style="margin-top:8px"><div><label>'+esc(t('dc_pct'))+'</label><input id="dop" type="number" step="0.01" min="0" max="100" inputmode="decimal" placeholder="%"></div><div><label>'+esc(t('dc_amount'))+'</label><input id="doa" type="number" step="0.01" min="0" inputmode="decimal"></div><div style="grid-column:1/-1"><label>'+esc(t('dc_desc'))+'</label><input id="dod"></div></div>'+
+      '<div class="g2" style="margin-top:8px"><div><label>'+esc(t('dc_type'))+'</label><select id="dot"><option value="amt">'+esc(t('dc_t_amt'))+' ('+esc(sym(mainCur()))+')</option><option value="pct">'+esc(t('dc_t_pct'))+' (%)</option></select></div>'+
+        '<div><label id="dol">'+esc(t('dc_amount'))+'</label><input id="dov" type="number" step="0.01" min="0" inputmode="decimal"><div class="muted" id="dopv" style="font-size:12px;margin-top:3px"></div></div><div style="grid-column:1/-1"><label>'+esc(t('dc_desc'))+'</label><input id="dod"></div></div>'+
       '<button class="btn ok" id="dos" style="margin-top:10px">✅ '+esc(t('dc_apply'))+'</button></div></div>'+
     '<div class="card"><h3>'+esc(t('dc_perm_list'))+'</h3><div class="tw"><table><thead><tr><th>'+esc(t('code'))+'</th><th>'+esc(t('name'))+'</th><th>'+esc(t('box'))+'</th><th>'+esc(t('dc_amount'))+'</th><th>'+esc(t('dc_desc'))+'</th><th></th></tr></thead><tbody>'+
       (d.permanent.map(function(r,i){ return '<tr><td class="num">'+esc(r.code)+'</td><td><b>'+esc(r.name)+'</b></td><td>'+esc(r.box||'')+'</td><td class="num"><b>'+(n2(r.pct)?esc(fmtN(r.pct,2))+'%':esc(money(r.amount)))+'</b></td><td>'+esc(r.desc||'')+'</td>'+
@@ -6059,11 +6062,12 @@ VIEWS.disc=async function(main){
     try{ invs=await call('motor_disc_invoices',{p_customer:oc.id}); }catch(e){ toast(errText(e),'e'); return; }
     sel.innerHTML=invs.length?invs.map(function(x,i){ return '<option value="'+i+'">#'+esc(x.no)+' · '+esc(x.kind==='sale'?t('k_sale'):monthName(x.period,true))+' · '+esc(money(x.amount))+(n2(x.discount)?' ('+esc(t('discount'))+' '+esc(money(x.discount))+')':'')+'</option>'; }).join(''):'<option>'+esc(t('dc_no_inv'))+'</option>';
     sel.disabled=!invs.length; });
-  function pctFill(){ var x=invs[+$('#doi',main).value], p=n2($('#dop',main).value); if(x&&p>0) $('#doa',main).value=(Math.round(n2(x.amount)*Math.min(p,100))/100).toFixed(2); }
-  $('#dop',main).addEventListener('input',pctFill); $('#doi',main).addEventListener('change',pctFill);
-  $('#doa',main).addEventListener('input',function(){ $('#dop',main).value=''; });
+  function onceVal(){ var x=invs[+$('#doi',main).value], v=n2($('#dov',main).value); if($('#dot',main).value!=='pct') return v; return x?Math.round(n2(x.amount)*Math.min(v,100))/100:0; }
+  function pctFill(){ var isP=$('#dot',main).value==='pct'; $('#dol',main).textContent=isP?t('dc_pct'):t('dc_amount'); $('#dov',main).max=isP?'100':'';
+    var v=onceVal(); $('#dopv',main).textContent=isP&&v>0?t('dc_equals',{v:money(v)}):''; }
+  $('#dot',main).addEventListener('change',function(){ $('#dov',main).value=''; pctFill(); }); $('#dov',main).addEventListener('input',pctFill); $('#doi',main).addEventListener('change',pctFill);
   $('#dos',main).addEventListener('click',async function(){ if(!oc){ toast(t('sl_pick_cust'),'e'); return; } var x=invs[+$('#doi',main).value]; if(!x) return;
-    var v=n2($('#doa',main).value); if(!(v>0)||v>n2(x.amount)){ toast(t('e_bad_amount'),'e'); return; }
+    var v=onceVal(); if(!(v>0)||v>n2(x.amount)+0.001||($('#dot',main).value==='pct'&&n2($('#dov',main).value)>100)){ toast(t('e_bad_amount'),'e'); return; }
     if(!(await confirmBox(t('dc_once_q',{v:money(v),n:x.no,c:oc.name})))) return; var b=this; busy(b,true);
     try{ await call('motor_invoice_discount',{p_invoice:x.id,p_amount:v,p_note:$('#dod',main).value.trim()}); toast(t('dc_ok'),'s'); await loadCustomers(); go('disc'); }catch(e){ toast(errText(e),'e'); busy(b,false); } });
 };
