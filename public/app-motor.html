@@ -2407,6 +2407,15 @@ Object.assign(D,{
  backup_now:['💾 نسخة احتياطية الآن','💾 Backup now','💾 Sauvegarder'],
  edit_amount:['تعديل المبلغ','Edit amount','Modifier le montant'],
  void_reading:['إلغاء القراءة','Cancel reading','Annuler le relevé'],
+ kf_btn:['عداد مقطوع','Monthly allowance','Forfait mensuel'],
+ kf_t:['عداد مقطوع — {n}','Monthly kWh allowance — {n}','Forfait kWh mensuel — {n}'],
+ kf_d:['عدد الكيلوات المقطوعة شهرياً لا يُحسب على الزبون: إذا كان الاستهلاك 240 والمقطوع 150 يُحسب 90 فقط. يُطبّق على الفواتير الجديدة.','These kWh are not billed each month: 240 used with 150 allowance bills 90. Applies to new bills.','Ces kWh ne sont pas facturés chaque mois : 240 consommés avec 150 de forfait = 90 facturés.'],
+ kf_lbl:['المقطوع الشهري (ك.و.س)','Monthly allowance (kWh)','Forfait mensuel (kWh)'],
+ kf_off:['إلغاء المقطوع','Remove allowance','Supprimer le forfait'],
+ b_free:['المقطوع','Allowance','Forfait'], b_billed:['الاستهلاك المحسوب','Billed consumption','Consommation facturée'],
+ ur_t:['زبائن لم يُؤخذ عدادهم بعد','Customers not read yet','Clients non relevés'],
+ ur_none:['تم أخذ عدادات جميع الزبائن لهذه الدورة ✓','All customers have been read for this period ✓','Tous les clients ont été relevés ✓'],
+ ur_last:['آخر عداد','Last reading','Dernier relevé'],
  rv_btn:['إلغاء عداد','Cancel a reading','Annuler un relevé'],
  rv_t:['عدادات {n}','Readings — {n}','Relevés — {n}'],
  rv_hint:['اختر الدورة التي تريد إلغاء عدادها. تُلغى الفاتورة معه ويعود الرصيد، ويمكن أخذ العداد من جديد لهذه الدورة. يمكن استرجاعه من سلة المحذوفات.','Pick the period to cancel. Its bill is cancelled and the balance restored; the reading can be taken again. Restorable from the trash.','Choisissez la période à annuler. La facture est annulée et le solde rétabli ; le relevé peut être repris.'],
@@ -3693,6 +3702,7 @@ async function openCustomer(id,barcode,mode){
         (can('cut')?(c.is_active?'<button class="btn danger" data-a="cut">'+esc(t('cut'))+'</button>':'<button class="btn acc" data-a="connect">'+esc(t('connect'))+'</button>'):'')+
         '<button class="btn alt" data-a="stmt">'+esc(t('statement'))+'</button>'+
         (c.mobile&&waHere()?'<button class="btn wa sm" data-a="wa">'+esc(t('whatsapp'))+'</button>':'')+
+        (adm&&(!d.plan||d.plan.kind!=='fixed')?'<button class="btn ghost sm" data-a="kfree">⚡ '+esc(t('kf_btn'))+(n2(c.kwh_free)>0?': '+esc(fmtN(c.kwh_free)):'')+'</button>':'')+
         (adm&&c.mobile&&n2(c.balance)>0.005?'<button class="btn wa sm" data-a="remind">🔔 '+esc(t('rm_one'))+'</button>':'')+
         (adm?'<button class="btn ghost sm" data-a="edit">✏️ '+esc(t('edit'))+'</button><button class="btn danger sm" data-a="ccancel">🗑️ '+esc(t('cc_btn'))+'</button>'+((d.read_now||d.last_reading)?'<button class="btn ghost sm" data-a="rvoid">🗑️ '+esc(t('rv_btn'))+'</button>':'')+((d.read_now||d.last_reading)?'<button class="btn ghost sm" data-a="redit">🔢 '+esc(t('edit_reading'))+'</button>':'')+
           '<button class="btn ghost sm" data-a="clogin">🔑 '+esc(t('cust_login'))+(d.has_login?' ✓':'')+'</button>'+(c.mobile&&waHere()?'<button class="btn wa sm" data-a="sendlogin">📲 '+esc(t('send_login'))+'</button>':'')+'<button class="btn ghost sm" data-a="adj">'+esc(t('adjust'))+'</button><button class="btn ghost sm" data-a="label">🏷️ '+esc(t('label_one'))+'</button>':'')+
@@ -3719,8 +3729,17 @@ async function openCustomer(id,barcode,mode){
     else if(a==='clogin') loginForm();
     else if(a==='sendlogin') sendLogin();
     else if(a==='remind') remindOne(c,b);
+    else if(a==='kfree') kwhFreeForm();
     else if(a==='rvoid') readingsVoid(c,function(){ reload().then(function(){ paint(); }); });
   });
+  function kwhFreeForm(){
+    var mm=modal(t('kf_t',{n:c.name}),'<p class="muted" style="margin:0 0 8px">'+esc(t('kf_d'))+'</p><label>'+esc(t('kf_lbl'))+'</label><input id="kfv" class="valinput" inputmode="decimal" value="'+esc(n2(c.kwh_free)||'')+'" placeholder="0"><div id="kfmsg" class="err msg" style="margin-top:8px"></div>',
+      '<button class="btn ghost" data-x>'+esc(t('cancel'))+'</button>'+(n2(c.kwh_free)>0?'<button class="btn danger" data-z>'+esc(t('kf_off'))+'</button>':'')+'<button class="btn" data-s>'+esc(t('save'))+'</button>');
+    mm.foot.addEventListener('click',async function(e){ if(e.target.closest('[data-x]')) return mm.close(); var z=e.target.closest('[data-z]'), b=e.target.closest('[data-s]'); if(!z&&!b) return;
+      var v=z?0:Number(($('#kfv',mm.body).value||'0').trim()); if(!isFinite(v)||v<0){ $('#kfmsg',mm.body).textContent=t('e_bad_value'); return; }
+      busy(z||b,true); try{ await call('motor_customer_kwh_free',{p_customer:c.id,p_kwh:v}); toast(t('saved'),'s'); mm.close(); loadCustomers(); await reload(); paint(); }
+      catch(err){ $('#kfmsg',mm.body).textContent=errText(err); busy(z||b,false); } });
+  }
   async function sendLogin(){
     if(!(await confirmBox(t('send_login_q',{n:c.name})))) return;
     var w=window.open('about:blank','_blank');
@@ -3790,7 +3809,7 @@ async function openCustomer(id,barcode,mode){
   function estimate(v){
     var p=d.plan||{}, prev=d.baseline?n2(v):n2(d.prev_value), k=Math.max(0,n2(v)-prev);
     var kp=m.body.querySelector('#rkp'), price=p.kind==='fixed'?0:(kp&&kp.value.trim()!==''?n2(kp.value):(p.kwh_price!=null&&p.kwh_price!==''?n2(p.kwh_price):n2(SITE.kwh_price)));
-    var gross=n2(p.fee)+k*price; return {kwh:k,price:price,amt:gross-n2(c.charge_discount)-Math.round(gross*n2(c.charge_discount_pct))/100+n2(c.charge_addition)};
+    var gross=n2(p.fee)+Math.max(0,k-(p.kind==='fixed'?0:n2(c.kwh_free)))*price; return {kwh:k,price:price,amt:gross-n2(c.charge_discount)-Math.round(gross*n2(c.charge_discount_pct))/100+n2(c.charge_addition)};
   }
   function readForm(){
     var box=$('#cstep',m.body); photoBlob=null;
@@ -3933,6 +3952,7 @@ function billLines(o){
     if(n2(inv.fee)) L.push({k:t('b_fee'),v:money(inv.fee)});
     if(inv.kind==='meter'){
       L.push({k:t('b_prev'),v:fmtN(inv.prev_value)},{k:t('b_cur'),v:fmtN(inv.cur_value)},{k:t('b_cons'),v:fmtN(inv.kwh)+' '+t('b_kwh_unit')});
+      if(n2(inv.free_kwh)>0) L.push({k:t('b_free'),v:fmtN(inv.free_kwh)+' '+t('b_kwh_unit')},{k:t('b_billed'),v:fmtN(Math.max(0,n2(inv.kwh)-n2(inv.free_kwh)))+' '+t('b_kwh_unit')});
       if(n2(inv.kwh_price)||n2(inv.energy)) L.push({k:t('b_price'),v:priceStr(inv.kwh_price)},{k:t('b_energy'),v:money(inv.energy)});
     }
     if(n2(inv.discount)) L.push({k:t('discount')+(inv.disc_note?' ('+inv.disc_note+')':''),v:'−'+money(inv.discount)});
@@ -5116,10 +5136,23 @@ VIEWS.month=async function(main){
       (adm?'<select id="ms"><option value="">'+esc(t('collector'))+': '+esc(t('all'))+'</option>'+STAFF.map(function(s){return '<option value="'+esc(s.id)+'">'+esc(s.name)+'</option>'}).join('')+'</select>':'')+
       '<input type="search" id="mq" placeholder="'+esc(t('search_ph'))+'" value="'+esc(MF.q)+'"><button class="btn ghost" id="mexp">'+esc(t('export_csv'))+'</button><span class="sp"></span><b id="mcount"></b></div>'+
     '<div class="tw"><table><thead><tr><th>'+esc(t('time'))+'</th><th>'+esc(t('code'))+'</th><th>'+esc(t('name'))+'</th><th>'+esc(t('box'))+'</th><th>'+esc(t('prev_reading'))+'</th><th>'+esc(t('cur_reading'))+'</th><th>'+esc(t('consumption'))+'</th><th>'+esc(t('inv_amount'))+'</th><th>'+esc(t('photo'))+'</th><th>'+esc(t('map'))+'</th><th>'+esc(t('collector'))+'</th>'+(adm?'<th></th>':'')+'</tr></thead><tbody id="mtb"></tbody></table></div>';
+  if(adm&&d.unread){
+    var uc=document.createElement('div'); uc.className='card'; uc.style.marginTop='14px';
+    uc.innerHTML='<div class="row"><h3 style="margin:0">⏳ '+esc(t('ur_t'))+' <span class="chip off" id="urn"></span></h3><span class="sp"></span><button class="btn ghost sm" id="urx">'+esc(t('export_csv'))+'</button></div>'+
+      '<div class="tw" style="margin-top:8px"><table><thead><tr><th>'+esc(t('code'))+'</th><th>'+esc(t('name'))+'</th><th>'+esc(t('box'))+'</th><th>'+esc(t('area'))+'</th><th>'+esc(t('collector'))+'</th><th>'+esc(t('ur_last'))+'</th><th>'+esc(t('mobile'))+'</th></tr></thead><tbody id="urb"></tbody></table></div>';
+    main.appendChild(uc);
+    $('#urb',uc).addEventListener('click',function(e){ var a=e.target.closest('a[data-cust]'); if(a) e.preventDefault(); });
+    $('#urx',uc).addEventListener('click',function(){ var R=[[t('code'),t('name'),t('barcode'),t('box'),t('area'),t('collector'),t('ur_last'),t('mobile')]];
+      urows().forEach(function(r){ R.push([r.code,r.name,r.barcode,r.box,r.area,r.collector,r.last_value,r.mobile]); }); downloadCsv(R,'not-read-'+d.period+'.csv'); });
+  }
+  function urows(){ var q=normS(MF.q); return (d.unread||[]).filter(function(r){ return (!MF.staff||r.collector_id===MF.staff)&&(!q||normS(r.name).indexOf(q)>=0||normS(r.barcode).indexOf(q)>=0||normS(r.box)===q); }); }
+  function upaint(){ var b=$('#urb',main); if(!b) return; var L=urows(); $('#urn',main).textContent=L.length;
+    b.innerHTML=L.map(function(r){ return '<tr><td class="num">'+esc(r.code)+'</td><td><a href="#" data-cust="'+esc(r.customer_id)+'"><b>'+esc(r.name)+'</b></a><div class="muted" style="font-size:11px">'+esc(r.barcode||'')+'</div></td><td>'+esc(r.box||'')+'</td><td>'+esc(r.area||'')+'</td><td>'+esc(r.collector||'')+'</td><td class="num">'+(r.last_value!=null?esc(fmtN(r.last_value)):'—')+'</td><td class="num">'+esc(r.mobile||'')+'</td></tr>'; }).join('')||'<tr><td colspan="7" class="muted">'+esc(t('ur_none'))+'</td></tr>'; }
   if($('#ms',main)) $('#ms',main).value=MF.staff;
   function rows(){ var q=normS(MF.q); return d.rows.filter(function(r){ return (!MF.staff||r.staff_id===MF.staff)&&(!q||normS(r.name).indexOf(q)>=0||normS(r.barcode).indexOf(q)>=0||normS(r.box)===q); }); }
   function paint(){
     var list=rows(), sum=list.reduce(function(s,r){return s+n2(r.amount)},0), kw=list.reduce(function(s,r){return s+n2(r.kwh)},0);
+    upaint();
     $('#mcount',main).textContent=t('read_of',{a:list.length,b:d.total_active})+' · '+fmtN(kw)+' '+t('kwh')+' · '+money(sum);
     $('#mtb',main).innerHTML=list.map(function(r){
       var far=SITE.max_distance_m>0&&r.dist_m!=null&&r.dist_m>SITE.max_distance_m;
