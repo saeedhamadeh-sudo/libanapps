@@ -1961,6 +1961,7 @@ function accHubView(){
     ['#/leb-recurring','🔁','القيود الدورية','مصاريف مدفوعة سلف ومستحقة، قيود شهرية'],
     ['#/leb-cc','🏷','مراكز الكلفة','ربح كل مشروع أو ورشة أو فرع'],
     ['#/leb-year','🗓','السنة المالية','أرصدة افتتاحية، إقفال الأشهر والسنة'],
+    ['#/leb-pack','📦','ملف المحاسب السنوي','كل كشوفات السنة بملف Excel واحد'],
     ['#/leb-audit','🕵️','سجل المحذوفات','كل شي انحذف، إيمتى ومين'],
     ['#/leb-vat','🧾','TVA','الضريبة على القيمة المضافة وتصريح فصلي'],
     ['#/leb-forms','📑','نماذج المالية','ق2-1 للـ TVA، ر10 والكشف السنوي للرواتب'],
@@ -2350,12 +2351,12 @@ function xlNum(s){   // "1,234 ل.ل" / "$1,000.00" / "-$5" / "(12%)" → رقم
   const v = Number((m[3]+(m[4]||'')).replace(/,/g,'')); return (m[1]||m[2])? -v : v;
 }
 function xlColName(i){ let s = ''; i++; while(i>0){ const r = (i-1)%26; s = String.fromCharCode(65+r)+s; i = Math.floor((i-1)/26); } return s; }
-function exportDocXlsx(name){
-  const doc = document.querySelector('.doc'); if(!doc){ toast('ما في جدول للتصدير'); return; }
+function xlRowsFromDoc(doc){
   const rows = [], clean = s=>String(s||'').replace(/\s+/g,' ').trim();
   const title = doc.querySelector('.doc-title, h1, h2'); if(title) rows.push({cells:[{v:clean(title.innerText), b:true}]});
   doc.querySelectorAll('.doc-info .r').forEach(r=>rows.push({cells:Array.from(r.children).map(c=>({v:clean(c.innerText)}))}));
   doc.querySelectorAll('h3, table').forEach(el=>{
+    if(el.closest('.no-print')) return;
     if(el.tagName==='H3'){ rows.push({cells:[]}); rows.push({cells:[{v:clean(el.innerText), b:true}]}); return; }
     rows.push({cells:[]}); const occ = {};
     el.querySelectorAll('tr').forEach(tr=>{ const bold = tr.parentElement.tagName==='THEAD' || tr.parentElement.tagName==='TFOOT' || /font-weight:\s*8/.test(tr.getAttribute('style')||'');
@@ -2365,20 +2366,80 @@ function exportDocXlsx(name){
         cells.push({v, b:bold || td.tagName==='TH' || !!td.querySelector('b')}); for(let k=1;k<cs;k++) cells.push({v:''});
         if(rs>1) for(let k=0;k<cs;k++) occ[col+k] = rs-1; col += cs; });
       place(); if(cells.length) rows.push({cells}); }); });
-  const W = []; rows.forEach(r=>r.cells.forEach((c,i)=>{ W[i] = Math.min(60, Math.max(W[i]||8, String(c.v).length+2)); }));
-  const sheetRows = rows.map((r,ri)=>`<row r="${ri+1}">${r.cells.map((c,ci)=>{ const ref = xlColName(ci)+(ri+1), n = xlNum(c.v);
-    if(c.v==='') return ''; if(n!=null) return `<c r="${ref}" s="${c.b? 3 : 2}"><v>${n}</v></c>`;
+  return rows;
+}
+function xlSheetXml(rows){
+  const W = []; rows.forEach(r=>r.cells.forEach((c,i)=>{ const L = typeof c.v==='number'? 14 : String(c.v).length+2; W[i] = Math.min(60, Math.max(W[i]||8, L)); }));
+  const body = rows.map((r,ri)=>`<row r="${ri+1}">${r.cells.map((c,ci)=>{ const ref = xlColName(ci)+(ri+1), n = typeof c.v==='number'? c.v : (c.raw? null : xlNum(c.v));
+    if(c.v==='' || c.v==null) return ''; if(n!=null && isFinite(n)) return `<c r="${ref}" s="${c.b? 3 : 2}"><v>${Math.round(n*100)/100}</v></c>`;
     return `<c r="${ref}" t="inlineStr" s="${c.b? 1 : 0}"><is><t xml:space="preserve">${xlEsc(c.v)}</t></is></c>`; }).join('')}</row>`).join('');
-  const X = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+  return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+`<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0" rightToLeft="1"/></sheetViews>${W.length? '<cols>'+W.map((w,i)=>`<col min="${i+1}" max="${i+1}" width="${w||8}" customWidth="1"/>`).join('')+'</cols>' : ''}<sheetData>${body}</sheetData></worksheet>`;
+}
+function xlWorkbook(sheets){   // sheets: [{name, rows}]
+  const X = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>', used = {};
+  const nm = s=>{ let n = String(s).replace(/[\[\]:*?\/\\]/g,' ').slice(0,28).trim() || 'Sheet'; let k = n, i = 2; while(used[k]) k = n+' '+(i++); used[k] = 1; return k; };
+  const S = sheets.map((s,i)=>({id:i+1, name:nm(s.name), rows:s.rows}));
   const files = [
-    {name:'[Content_Types].xml', data:X+'<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>'},
+    {name:'[Content_Types].xml', data:X+'<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'+S.map(s=>`<Override PartName="/xl/worksheets/sheet${s.id}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('')+'<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>'},
     {name:'_rels/.rels', data:X+'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>'},
-    {name:'xl/workbook.xml', data:X+'<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Report" sheetId="1" r:id="rId1"/></sheets></workbook>'},
-    {name:'xl/_rels/workbook.xml.rels', data:X+'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>'},
+    {name:'xl/workbook.xml', data:X+'<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>'+S.map(s=>`<sheet name="${xlEsc(s.name)}" sheetId="${s.id}" r:id="rId${s.id}"/>`).join('')+'</sheets></workbook>'},
+    {name:'xl/_rels/workbook.xml.rels', data:X+'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'+S.map(s=>`<Relationship Id="rId${s.id}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${s.id}.xml"/>`).join('')+`<Relationship Id="rId${S.length+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`},
     {name:'xl/styles.xml', data:X+'<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><numFmts count="1"><numFmt numFmtId="164" formatCode="#,##0.##;-#,##0.##;0"/></numFmts><fonts count="2"><font><sz val="11"/><name val="Arial"/></font><font><b/><sz val="11"/><name val="Arial"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border/></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="4"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/><xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/><xf numFmtId="164" fontId="1" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyFont="1"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>'},
-    {name:'xl/worksheets/sheet1.xml', data:X+`<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0" rightToLeft="1"/></sheetViews>${W.length? '<cols>'+W.map((w,i)=>`<col min="${i+1}" max="${i+1}" width="${w||8}" customWidth="1"/>`).join('')+'</cols>' : ''}<sheetData>${sheetRows}</sheetData></worksheet>`},
-  ];
-  const blob = xlZip(files), a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = (name||'report')+'.xlsx'; document.body.appendChild(a); a.click(); setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+  ].concat(S.map(s=>({name:`xl/worksheets/sheet${s.id}.xml`, data:xlSheetXml(s.rows)})));
+  return xlZip(files);
+}
+function xlDownload(blob, name){ const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 3000); }
+function exportDocXlsx(name){
+  const doc = document.querySelector('.doc'); if(!doc){ toast('ما في جدول للتصدير'); return; }
+  xlDownload(xlWorkbook([{name:'Report', rows:xlRowsFromDoc(doc)}]), (name||'report')+'.xlsx');
+}
+/* ---------- 📦 ملف المحاسب السنوي: كل الكشوفات بملف Excel واحد ---------- */
+function lebPackView(){
+  const ys = Array.from(new Set(journalEntriesAll().map(e=>String(e.date).slice(0,4)).filter(Boolean))).sort().reverse();
+  const y = ys[0] || todayISO().slice(0,4);
+  return `<div class="card"><h2><span class="dot"></span> 📦 ملف المحاسب السنوي</h2>
+    <p style="font-size:12.5px; color:var(--ink-soft); line-height:1.8;">ملف Excel واحد فيه كل كشوفات السنة، كل كشف بورقة لحالو: ميزان المراجعة، دفتر اليومية الكامل، دفتر الأستاذ لكل الحسابات، كشف الإيرادات والأعباء، الميزانية العمومية، التدفقات النقدية، أعمار الديون، الأصول الثابتة. ابعتو للمحاسب أو احفظو نسخة آخر السنة. ما في شي بيتغيّر بالمستندات.</p>
+    <div class="grid grid-2"><div class="field"><label>السنة</label><select id="pk_y">${(ys.length? ys : [y]).map(v=>`<option value="${v}">${v}</option>`).join('')}</select></div>
+      <div class="field"><label>العملة</label><select id="pk_cur"><option value="lbp">🇱🇧 ليرة لبنانية — الدفاتر الرسمية</option><option value="usd">💵 دولار أميركي</option></select></div></div>
+    <button class="btn btn-primary" id="pk_go">⬇️ نزّل ملف المحاسب</button> <span id="pk_msg" style="font-size:12.5px; color:var(--ink-soft);"></span>
+  </div>${appFooter()}`;
+}
+function buildAccountantPack(y, cur){
+  const keep = _jrCur; _jrCur = cur; _jrCache = null;
+  const host = document.createElement('div'); host.style.cssText = 'position:absolute; left:-99999px; top:0; width:1200px;'; document.body.appendChild(host);
+  const sheets = [];
+  try{
+    const end = y+'-12-31', at = end < todayISO()? end : todayISO(), Q = o=>new URLSearchParams(o);
+    const fromView = (name, html)=>{ try{ host.innerHTML = html; const d = host.querySelector('.doc'); if(d) sheets.push({name, rows:xlRowsFromDoc(d)}); }catch(e){ console.error(name, e); } };
+    fromView('ميزان المراجعة', lebJournalView(Q({m:'t', period:'year', a:y})));
+    const all = journalEntriesAll(), E = all.filter(e=>String(e.date).slice(0,4)===String(y));
+    const J = [{cells:[{v:'دفتر اليومية '+y, b:true}]}, {cells:[]}, {cells:['رقم القيد','التاريخ','المستند','البيان','رقم الحساب','اسم الحساب','مدين','دائن'].map(v=>({v, b:true}))}];
+    let tD = 0, tC = 0;
+    E.forEach(e=>e.lines.forEach((l,i)=>{ tD += l.dr; tC += l.cr; J.push({cells:[{v:i? '' : String(e.no), raw:true}, {v:i? '' : fmtDate(e.date), raw:true}, {v:i? '' : (e.doc||''), raw:true}, {v:i? '' : (e.desc||''), raw:true}, {v:l.a, raw:true}, {v:jrName(l.a), raw:true}, {v:l.dr || ''}, {v:l.cr || ''}]}); }));
+    J.push({cells:[{v:'المجموع ('+E.length+' قيد)', b:true}, {v:''}, {v:''}, {v:''}, {v:''}, {v:''}, {v:tD, b:true}, {v:tC, b:true}]});
+    sheets.push({name:'دفتر اليومية', rows:J});
+    const G = [{cells:[{v:'دفتر الأستاذ '+y, b:true}]}], codes = Array.from(new Set(all.flatMap(e=>e.lines.map(l=>l.a)))).sort();
+    codes.forEach(c=>{ let open = 0; const R = []; all.forEach(e=>e.lines.forEach(l=>{ if(l.a!==c) return; const yy = String(e.date).slice(0,4); if(yy<String(y)) open += l.dr - l.cr; else if(yy===String(y)) R.push({e, l}); }));
+      if(!R.length && Math.abs(open)<0.005) return;
+      G.push({cells:[]}, {cells:[{v:c, b:true, raw:true}, {v:jrName(c), b:true}]}, {cells:['التاريخ','رقم القيد','البيان','مدين','دائن','الرصيد'].map(v=>({v, b:true}))}, {cells:[{v:'رصيد أول المدة'}, {v:''}, {v:''}, {v:''}, {v:''}, {v:open}]});
+      let bal = open; R.forEach(({e,l})=>{ bal += l.dr - l.cr; G.push({cells:[{v:fmtDate(e.date), raw:true}, {v:String(e.no), raw:true}, {v:(e.doc||'')+' — '+(e.desc||''), raw:true}, {v:l.dr || ''}, {v:l.cr || ''}, {v:bal}]}); });
+      G.push({cells:[{v:'رصيد آخر المدة', b:true}, {v:''}, {v:''}, {v:''}, {v:''}, {v:bal, b:true}]}); });
+    sheets.push({name:'دفتر الأستاذ', rows:G});
+    fromView('الإيرادات والأعباء', lebPLView(Q({period:'year', a:y})));
+    fromView('الميزانية العمومية', lebBSView(Q({at})));
+    fromView('التدفقات النقدية', lebCFView(Q({period:'year', a:y})));
+    fromView('أعمار ديون الزبائن', lebAgingView(Q({at})));
+    fromView('أعمار ديون الموردين', lebAgingView(Q({k:'supplier', at})));
+    fromView('الأصول الثابتة', lebAssetsView());
+  } finally { host.remove(); _jrCur = keep; _jrCache = null; }
+  return sheets;
+}
+function bindLebPack(){
+  const b = document.getElementById('pk_go'); if(!b) return;
+  b.addEventListener('click', ()=>{ const y = document.getElementById('pk_y').value, cur = document.getElementById('pk_cur').value, msg = document.getElementById('pk_msg');
+    b.disabled = true; msg.textContent = '⏳ عم نحضّر الملف…';
+    setTimeout(()=>{ try{ const S = buildAccountantPack(y, cur); xlDownload(xlWorkbook(S), 'Accountant-'+y+'-'+(cur==='lbp'? 'LBP' : 'USD')+'.xlsx'); msg.textContent = '✅ نزل الملف ('+S.length+' أوراق)'; }
+      catch(e){ console.error(e); msg.textContent = '⚠️ صار خطأ بتحضير الملف'; } b.disabled = false; }, 50); });
 }
 function exportDocCsv(name){
   const doc = document.querySelector('.doc'); if(!doc){ toast('ما في جدول للتصدير'); return; }
@@ -3672,7 +3733,7 @@ function routeRequiredPermission(routeKey){
     warehouse:'warehouse', 'warehouse-print':'warehouse', 'warehouse-item':'warehouse', stockout:'warehouse', stockin:'warehouse',
     orders:'orders', order:'orders', 'order-map':'orders',
     budget:'budget', 'budget-category':'budget', 'budget-overview':'budget',
-    acc:'budget', 'leb-journal':'budget', 'leb-pl':'budget', 'leb-bs':'budget', 'leb-year':'budget', 'leb-vat':'budget', 'leb-assets':'budget', 'leb-fx':'budget', 'leb-bank':'budget', 'leb-nssf':'budget', 'leb-cf':'budget', 'leb-audit':'budget', 'leb-payroll':'budget', 'leb-payslip':'budget', 'leb-cheques':'budget', 'leb-aging':'budget', 'leb-recurring':'budget', 'leb-cc':'budget', 'leb-forms':'budget',
+    acc:'budget', 'leb-journal':'budget', 'leb-pl':'budget', 'leb-bs':'budget', 'leb-year':'budget', 'leb-vat':'budget', 'leb-assets':'budget', 'leb-fx':'budget', 'leb-bank':'budget', 'leb-nssf':'budget', 'leb-cf':'budget', 'leb-audit':'budget', 'leb-payroll':'budget', 'leb-payslip':'budget', 'leb-cheques':'budget', 'leb-aging':'budget', 'leb-recurring':'budget', 'leb-cc':'budget', 'leb-forms':'budget', 'leb-pack':'budget',
     settings:'__admin__', trash:'__admin__', 'customer-accounts':'__admin__', 'worker-accounts':'__admin__'
   };
   return map[routeKey] || null;
@@ -3997,6 +4058,8 @@ function render(){
     html += crumbs([['الرئيسية','#/'],['المحاسبة','#/acc'],['أعمار الديون',null]]) + lebAgingView(new URLSearchParams(location.hash.split('?')[1]||''));
   } else if(parts[0]==='leb-year'){
     html += crumbs([['الرئيسية','#/'],['المحاسبة','#/acc'],['السنة المالية',null]]) + lebYearView();
+  } else if(parts[0]==='leb-pack'){
+    html += crumbs([['الرئيسية','#/'],['المحاسبة','#/acc'],['ملف المحاسب السنوي',null]]) + lebPackView();
   } else if(parts[0]==='leb-forms'){
     html += crumbs([['الرئيسية','#/'],['المحاسبة','#/acc'],['نماذج المالية',null]]) + lebFormsView(new URLSearchParams(location.hash.split('?')[1]||''));
   } else if(parts[0]==='leb-vat'){
@@ -7334,6 +7397,7 @@ function bindEvents(){
   if(location.hash.indexOf('#/leb-recurring')===0) bindLebRecurring();
   if(location.hash.indexOf('#/leb-cc')===0) bindLebCC();
   if(location.hash.indexOf('#/leb-forms')===0) bindLebForms();
+  if(location.hash.indexOf('#/leb-pack')===0) bindLebPack();
   if(document.getElementById('ti_save')) bindTaxInv();
   if(document.querySelector('input[name="s_vat_mode"]')) bindVatSettings();
   document.querySelectorAll('[data-as-disp]').forEach(b=>b.addEventListener('click', ()=>openAssetDisposeModal(b.getAttribute('data-as-disp'))));
