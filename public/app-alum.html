@@ -1679,6 +1679,9 @@ async function alGlSave(){ _jrCache = null; return await save(KEYS.settings, DB.
 function accVatOn(){ return !!accCfg().vatRegistered; }
 function accClosedYears(){ return (accCfg().closed||[]).map(x=>String(x.year)); }
 function isClosedDate(d){ if(!d) return false; const lk = accCfg().lockedTo; return accClosedYears().includes(String(d).slice(0,4)) || (!!lk && String(d)<=lk); }
+function lockBlocks(d){ if(!d || !isClosedDate(d)) return false;
+  if(currentUser && currentUser.role==='admin') return !confirm('🔒 التاريخ '+d+' بفترة مقفلة — تسجيل مستند فيها بيغيّر كشوفات انسلّمت. أكيد بدك تكمّل؟');
+  toast('🔒 التاريخ '+d+' بفترة مقفلة — غيّر التاريخ أو اطلب من الـ admin يفتح الفترة من «🏛 المحاسبة»'); return true; }
 function primSym(){ return '$'; }
 function inPrim(v){ return Math.round((Number(v)||0)*100)/100; }
 function outPrim(v){ return Number(v)||0; }
@@ -1811,6 +1814,7 @@ function openGlEntryModal(){
   wrap.querySelector('#gl_x').addEventListener('click', ()=>wrap.remove());
   wrap.querySelector('#gl_ok').addEventListener('click', async ()=>{ const dr = wrap.querySelector('#gl_dr').value, cr = wrap.querySelector('#gl_cr').value, v = Number(wrap.querySelector('#gl_amt').value)||0;
     if(!(v>0) || dr===cr){ toast('اكتب المبلغ واختار حسابين مختلفين'); return; }
+    if(lockBlocks(wrap.querySelector('#gl_date').value||todayISO())) return;
     postGl(dr, cr, 'USD', v, wrap.querySelector('#gl_desc').value.trim(), wrap.querySelector('#gl_date').value||todayISO()); const ok = await alGlSave(); wrap.remove(); toast(ok? '✅ انسجّل القيد' : '⚠️ صار خطأ'); render(); });
 }
 
@@ -1959,6 +1963,7 @@ function accHubView(){
     ['#/leb-year','🗓','السنة المالية','أرصدة افتتاحية، إقفال الأشهر والسنة'],
     ['#/leb-audit','🕵️','سجل المحذوفات','كل شي انحذف، إيمتى ومين'],
     ['#/leb-vat','🧾','TVA','الضريبة على القيمة المضافة وتصريح فصلي'],
+    ['#/leb-forms','📑','نماذج المالية','ق2-1 للـ TVA، ر10 والكشف السنوي للرواتب'],
     ['#/leb-assets','🏗','الأصول الثابتة','معدات، سيارات، ديكور واستهلاكها'],
     ['#/leb-fx','💱','صرف العملات','ليرة ↔ دولار مع فروقات الصرف'],
     ['#/leb-bank','🏦','تسوية المصرف','مطابقة كشف البنك مع الحساب'],
@@ -2356,7 +2361,7 @@ function lebYearView(){
     </div><button class="btn btn-primary" id="op_add">➕ زيد رصيد</button>` : ''}
   </div>
   <div class="card"><h2><span class="dot"></span> 🔐 إقفال الأشهر</h2>
-    <p style="font-size:12.5px; color:var(--ink-soft); line-height:1.7;">بعد ما يخلص المحاسب من شهر، قفّلو: الفواتير والإيصالات والسندات يلي تاريخها لغاية آخر هالشهر ما بقى حدا يعدّلها أو يحذفها إلا الـ admin. المستندات بتضل موجودة وبتنطبع عادي.</p>
+    <p style="font-size:12.5px; color:var(--ink-soft); line-height:1.7;">بعد ما يخلص المحاسب من شهر، قفّلو: الفواتير والإيصالات والسندات يلي تاريخها لغاية آخر هالشهر ما بقى حدا يعدّلها أو يحذفها أو يزيد مستند جديد بتاريخ فيها إلا الـ admin (وبيطلعلو تنبيه). المستندات بتضل موجودة وبتنطبع عادي.</p>
     <div class="grid grid-2"><div class="field"><label>مقفل لغاية</label><input type="text" class="num" disabled value="${c.lockedTo? fmtDate(c.lockedTo) : 'ولا شهر'}"></div>
       ${can? `<div class="field"><label>قفّل لغاية آخر شهر</label><input type="month" id="lk_m" value="${(c.lockedTo||'').slice(0,7) || addMonths(todayISO().slice(0,7), -1)}"></div>` : ''}</div>
     ${can? `<div class="action-row"><button class="btn btn-primary" id="lk_set">🔐 قفّل</button>${c.lockedTo? '<button class="btn" id="lk_clear">🔓 شيل الإقفال</button>' : ''}<button class="btn" data-nav="#/leb-audit">🕵️ سجل المحذوفات</button></div>` : ''}
@@ -2392,7 +2397,7 @@ function lebVatView(qs){
   const y = qs.get('y') || todayISO().slice(0,4), q = Number(qs.get('q') || Math.floor((Number(todayISO().slice(5,7))-1)/3)+1);
   const from = y+'-'+String((q-1)*3+1).padStart(2,'0')+'-01', to = monthEnd(y+'-'+String(q*3).padStart(2,'0'));
   const on = accVatOn();
-  const E = journalEntriesAll().filter(e=>e.date>=from && e.date<=to);
+  const E = journalEntriesAll().filter(e=>e.date>=from && e.date<=to && !vatIsPay(e));
   let out = 0, inp = 0, salesNet = 0, purNet = 0, salesExempt = 0;
   E.forEach(e=>e.lines.forEach(l=>{ if(l.a==='44270') out += l.cr - l.dr; if(l.a==='44260') inp += l.dr - l.cr; if(l.a==='70101') salesNet += l.cr - l.dr; if(l.a==='60101') purNet += l.dr - l.cr; }));
   const net = out - inp;
@@ -2416,6 +2421,120 @@ function lebVatView(qs){
     </tbody></table>
     ${isPrivilegedUser(currentUser) && net>0.005? `<div class="no-print" style="margin-top:10px;"><button class="btn" id="vat_pay">💸 سجّل دفع الضريبة (قيد: 4427 / 4426 ← الصندوق)</button></div>` : ''}
   </div>${appFooter()}`;
+}
+/* ===================== 📑 نماذج المالية: ق2-1 (TVA الفصلي) و ر10 (ضريبة الرواتب الفصلية) والكشف السنوي للأجراء ===================== */
+function frmLbpEntries(){ const keep = _jrCur; _jrCur = 'lbp'; _jrCache = null; let E; try{ E = journalEntriesAll(); } finally { _jrCur = keep; _jrCache = null; } return E; }
+function frmQRange(y, q){ return {from:y+'-'+String((q-1)*3+1).padStart(2,'0')+'-01', to:monthEnd(y+'-'+String(q*3).padStart(2,'0'))}; }
+const FRM_QN = ['كانون الثاني – آذار','نيسان – حزيران','تموز – أيلول','تشرين الأول – كانون الأول'];
+function vatIsPay(e){ return e.lines.some(l=>(l.a==='44270' && l.dr>0) || (l.a==='44260' && l.cr>0)) && e.lines.some(l=>/^5/.test(l.a)); }
+function frmVatCalc(E, from, to){
+  const rate = settingsVatRate(); let out = 0, inp = 0, sales = 0, pur = 0;
+  E.forEach(e=>{ if(e.date<from || e.date>to || vatIsPay(e)) return; e.lines.forEach(l=>{
+    if(l.a==='44270') out += l.cr - l.dr; else if(l.a==='44260') inp += l.dr - l.cr;
+    else if(/^70/.test(l.a)) sales += l.cr - l.dr; else if(/^60/.test(l.a) && l.a!=='60370') pur += l.dr - l.cr; }); });
+  const taxS = Math.min(sales, rate>0? out*100/rate : 0), taxP = Math.min(pur, rate>0? inp*100/rate : 0);
+  return {rate, out, inp, sales, pur, taxS, exS:Math.max(0, sales - taxS), taxP, exP:Math.max(0, pur - taxP)};
+}
+function frmVatCarry(E, y, q){   // الرصيد الدائن المدوّر من الفصول السابقة
+  const first = E.find(e=>e.lines.some(l=>l.a==='44270' || l.a==='44260')); if(!first) return 0;
+  let yy = Number(first.date.slice(0,4)), qq = Math.floor((Number(first.date.slice(5,7))-1)/3)+1, credit = 0;
+  while(yy<y || (yy===y && qq<q)){ const r = frmQRange(yy, qq), c = frmVatCalc(E, r.from, r.to), n = c.out - c.inp - credit; credit = n<0? -n : 0; qq++; if(qq>4){ qq = 1; yy++; } }
+  return credit;
+}
+function frmPayRows(from, to){
+  const R = []; (DB.workEntries||[]).forEach(e=>{ if(e.deleted || !isSalaryEntry(e)) return; const ym = salaryMonthOf(e); if(!ym || ym<from.slice(0,7) || ym>to.slice(0,7)) return; const pf = payFor(e); if(pf) R.push({e, ym, pf}); });
+  return R;
+}
+function lebFormsView(qs){
+  const tab = qs.get('t') || 'vat', y = Number(qs.get('y') || todayISO().slice(0,4)), q = Number(qs.get('q') || Math.floor((Number(todayISO().slice(5,7))-1)/3)+1);
+  const L = n=>Math.round(Number(n)||0).toLocaleString('en-US');
+  const co = DB.settings || {}, vatNo = co.companyVatNo || accCfg().vatNo || '', fin = accCfg().finNo || '';
+  const tabs = [['vat','🧾 ق2-1 — TVA الفصلي'],['r10','💼 ر10 — ضريبة الرواتب الفصلية'],['annual','📋 الكشف السنوي للأجراء']];
+  const can = isPrivilegedUser(currentUser);
+  let head = `<div class="card no-print"><h2><span class="dot"></span> 📑 نماذج وزارة المالية</h2>
+    <p style="font-size:12.5px; color:var(--ink-soft); line-height:1.7;">الأرقام هون محسوبة من القيود بالليرة اللبنانية (كل مستند على سعر صرفو)، مرتّبة متل خانات التصريح، لينقلها المحاسب عالنموذج الرسمي أو عالمنصّة الإلكترونية. ما في شي بينحفظ أو بيتغيّر بالمستندات.</p>
+    <div class="action-row">${tabs.map(t=>`<button class="btn ${t[0]===tab? 'btn-primary' : ''}" data-nav="#/leb-forms?t=${t[0]}&y=${y}&q=${q}">${t[1]}</button>`).join('')}</div>
+    <div class="grid grid-2"><div class="field"><label>السنة</label><input type="number" id="fm_y" class="num" value="${y}"></div>
+    ${tab!=='annual'? `<div class="field"><label>الفصل</label><select id="fm_q">${[1,2,3,4].map(i=>`<option value="${i}" ${i===q? 'selected' : ''}>الفصل ${i} (${FRM_QN[i-1]})</option>`).join('')}</select></div>` : ''}</div>
+    ${can? `<div class="grid grid-2"><div class="field"><label>الرقم الضريبي (رقم التسجيل بالمالية)</label><input type="text" id="fm_fin" class="num" value="${escapeHtml(fin || vatNo)}"></div><div style="align-self:end;"><button class="btn" id="fm_save">💾 حفظ الرقم</button></div></div>` : ''}
+  </div>`;
+  const info = (period)=>`<div class="doc-info"><div class="r"><span>اسم المكلّف:</span><b>${escapeHtml(co.companyName || co.shopName || '')}</b></div>${(fin||vatNo)? `<div class="r"><span>الرقم الضريبي:</span><b class="num">${escapeHtml(fin||vatNo)}</b></div>` : ''}<div class="r"><span>الفترة:</span><b class="num">${period}</b></div><div class="r"><span>العملة:</span><b>ليرة لبنانية</b></div></div>`;
+  const row = (no, label, v, bold)=>`<tr${bold? ' style="font-weight:800; background:var(--paper)"' : ''}><td class="num" style="width:44px;">${no}</td><td>${label}</td><td class="num">${v==null? '' : L(v)}</td></tr>`;
+  let body = '';
+  if(tab==='vat'){
+    const r = frmQRange(y, q), E = frmLbpEntries(), c = frmVatCalc(E, r.from, r.to), carry = frmVatCarry(E, y, q);
+    const due = c.out - c.inp - carry;
+    body = `<div class="doc-actions no-print"><button class="btn btn-primary" onclick="printWithFilename('Q2-1-TVA-${y}-Q${q}')">🖨 طباعة</button><button class="btn" data-nav="#/leb-vat?y=${y}&q=${q}">🧾 صفحة TVA</button></div>
+    <div class="doc">${docHead('التصريح الدوري عن الضريبة على القيمة المضافة — ق2-1')}
+      ${info('الفصل '+q+' / '+y+' ('+fmtDate(r.from)+' – '+fmtDate(r.to)+')')}
+      ${accVatOn()? '' : '<div style="color:var(--debit); font-weight:700; margin:8px 0;">⚠️ المؤسسة مش معلّمة «مسجّلة بالـ TVA» من صفحة TVA — المبيعات مش مقسومة.</div>'}
+      <h3 style="margin:10px 0 4px;">أولًا: العمليات (المبيعات)</h3>
+      <table><thead><tr><th>#</th><th>البيان</th><th>المبلغ ل.ل</th></tr></thead><tbody>
+        ${row(1, 'العمليات الخاضعة للضريبة بمعدّل '+c.rate+'% (القيمة بدون الضريبة)', c.taxS)}
+        ${row(2, 'الضريبة المستحقة على العمليات الخاضعة (4427)', c.out, true)}
+        ${row(3, 'العمليات المعفاة أو بمعدّل صفر (منتجات نسبتها 0%)', c.exS)}
+        ${row(4, 'مجموع العمليات (1 + 3)', c.sales)}
+      </tbody></table>
+      <h3 style="margin:14px 0 4px;">ثانيًا: الضريبة القابلة للحسم (المشتريات)</h3>
+      <table><thead><tr><th>#</th><th>البيان</th><th>المبلغ ل.ل</th></tr></thead><tbody>
+        ${row(5, 'مشتريات خاضعة للضريبة (القيمة بدون الضريبة)', c.taxP)}
+        ${row(6, 'الضريبة المدفوعة على المشتريات والقابلة للحسم (4426)', c.inp, true)}
+        ${row(7, 'مشتريات بدون ضريبة أو من غير مسجّلين', c.exP)}
+        ${row(8, 'الرصيد الدائن المدوّر من الفترة السابقة', carry)}
+        ${row(9, 'مجموع الضريبة القابلة للحسم (6 + 8)', c.inp + carry, true)}
+      </tbody></table>
+      <h3 style="margin:14px 0 4px;">ثالثًا: النتيجة</h3>
+      <table><tbody>
+        ${due>=0? row(10, 'الضريبة المتوجّبة للدفع (2 − 9)', due, true) : row(11, 'رصيد دائن يُدوّر للفترة التالية (9 − 2)', -due, true)}
+      </tbody></table>
+      <div style="font-size:11.5px; color:var(--ink-soft); margin-top:8px; line-height:1.7;">ميعاد التقديم: خلال شهر من آخر الفصل. القيمة الخاضعة محسوبة من الضريبة على أساس ${c.rate}%. إذا في عمليات تصدير أو مشتريات أصول ثابتة عليها ضريبة، المحاسب بيوزّعها عالخانات الخاصة فيها بالنموذج الرسمي.</div>
+    </div>`;
+  } else if(tab==='r10'){
+    const r = frmQRange(y, q), R = frmPayRows(r.from, r.to), M = {}, W = {};
+    R.forEach(x=>{ const m = M[x.ym] = M[x.ym] || {g:0, d:0, tx:0, t:0, ee:0, w:new Set()}; m.g += x.pf.grossL; m.d += Math.min(x.pf.ded, x.pf.grossL); m.tx += x.pf.taxable; m.t += x.pf.taxL; m.ee += x.pf.eeL; m.w.add(x.e.workerId);
+      const w = W[x.e.workerId] = W[x.e.workerId] || {g:0, t:0, n:0}; w.g += x.pf.grossL; w.t += x.pf.taxL; w.n++; });
+    const months = [0,1,2].map(i=>y+'-'+String((q-1)*3+1+i).padStart(2,'0'));
+    const T = months.reduce((a,m)=>{ const v = M[m]; if(v){ a.g += v.g; a.d += v.d; a.tx += v.tx; a.t += v.t; a.ee += v.ee; } return a; }, {g:0, d:0, tx:0, t:0, ee:0});
+    let paid = 0; frmLbpEntries().forEach(e=>{ if(e.date<r.from || e.date>monthEnd(addMonths(r.to.slice(0,7), 1))) return; if(e.lines.some(l=>/^5/.test(l.a))) e.lines.forEach(l=>{ if(l.a==='44210') paid += l.dr; }); });
+    body = `<div class="doc-actions no-print"><button class="btn btn-primary" onclick="printWithFilename('R10-${y}-Q${q}')">🖨 طباعة</button><button class="btn" data-nav="#/leb-payroll">💼 الرواتب</button></div>
+    <div class="doc">${docHead('التصريح الفصلي وتسديد ضريبة الرواتب والأجور — ر10')}
+      ${info('الفصل '+q+' / '+y+' ('+FRM_QN[q-1]+')')}
+      ${payCfg().on? '' : '<div style="color:var(--debit); font-weight:700; margin:8px 0;">⚠️ احتساب ضريبة الرواتب مش مفعّل — فعّلو من صفحة «💼 الرواتب» وعلّم العمال المشمولين.</div>'}
+      <table><thead><tr><th>الشهر</th><th>عدد الأجراء</th><th>الرواتب الإجمالية</th><th>التنزيلات العائلية</th><th>الخاضع للضريبة</th><th>الضريبة المقتطعة</th></tr></thead><tbody>
+        ${months.map(m=>{ const v = M[m]; return `<tr><td class="num">${fmtMonthAr(m)}</td><td class="num">${v? v.w.size : 0}</td><td class="num">${L(v? v.g : 0)}</td><td class="num">${L(v? v.d : 0)}</td><td class="num">${L(v? v.tx : 0)}</td><td class="num">${L(v? v.t : 0)}</td></tr>`; }).join('')}
+      </tbody><tfoot><tr style="font-weight:800; background:var(--paper)"><td>مجموع الفصل</td><td class="num">${new Set(R.map(x=>x.e.workerId)).size}</td><td class="num">${L(T.g)}</td><td class="num">${L(T.d)}</td><td class="num">${L(T.tx)}</td><td class="num">${L(T.t)}</td></tr></tfoot></table>
+      <table style="margin-top:12px;"><tbody>
+        <tr style="font-weight:800;"><td>الضريبة الواجب تسديدها عن الفصل</td><td class="num">${L(T.t)}</td></tr>
+        <tr><td>المسدّد من حساب 4421 خلال الفصل والشهر يلي بعدو</td><td class="num">${L(paid)}</td></tr>
+      </tbody></table>
+      <h3 style="margin:14px 0 4px;">تفصيل حسب الأجير</h3>
+      <table><thead><tr><th>الأجير</th><th>عدد الأشهر</th><th>الرواتب الإجمالية</th><th>الضريبة المقتطعة</th></tr></thead><tbody>
+        ${Object.keys(W).map(id=>{ const w = DB.workers.find(x=>x.id===id); return `<tr><td>${escapeHtml(w? w.name : '')}</td><td class="num">${W[id].n}</td><td class="num">${L(W[id].g)}</td><td class="num">${L(W[id].t)}</td></tr>`; }).join('') || '<tr><td colspan="4">ما في معاشات رسمية بهالفصل</td></tr>'}
+      </tbody></table>
+      <div style="font-size:11.5px; color:var(--ink-soft); margin-top:8px; line-height:1.7;">ميعاد التسديد: خلال 15 يوم من آخر الفصل (15 نيسان، 15 تموز، 15 تشرين الأول، 15 كانون الثاني). سجّل الدفع من صفحة الرواتب ← «💸 دفع ضريبة الرواتب للمالية».</div>
+    </div>`;
+  } else {
+    const R = frmPayRows(y+'-01-01', y+'-12-31'), W = {};
+    R.forEach(x=>{ const w = W[x.e.workerId] = W[x.e.workerId] || {g:0, d:0, t:0, ee:0, n:0, from:x.ym, to:x.ym}; w.g += x.pf.grossL; w.d += Math.min(x.pf.ded, x.pf.grossL); w.t += x.pf.taxL; w.ee += x.pf.eeL; w.n++; if(x.ym<w.from) w.from = x.ym; if(x.ym>w.to) w.to = x.ym; });
+    const P = payCfg().workers || {}, T = {g:0, d:0, t:0, ee:0};
+    const rows = Object.keys(W).map(id=>{ const w = DB.workers.find(x=>x.id===id), v = W[id], p = P[id] || {}; T.g += v.g; T.d += v.d; T.t += v.t; T.ee += v.ee;
+      return `<tr><td>${escapeHtml(w? w.name : '')}</td><td>${p.married? 'متزوّج' : 'عازب'}${Number(p.kids)? ' / '+p.kids : ''}</td><td class="num">${fmtMonthAr(v.from)} – ${fmtMonthAr(v.to)}</td><td class="num">${v.n}</td><td class="num">${L(v.g)}</td><td class="num">${L(v.d)}</td><td class="num">${L(v.t)}</td><td class="num">${L(v.ee)}</td></tr>`; }).join('');
+    body = `<div class="doc-actions no-print"><button class="btn btn-primary" onclick="printWithFilename('Salaries-Annual-${y}')">🖨 طباعة</button></div>
+    <div class="doc">${docHead('الكشف السنوي بالرواتب والأجور والضريبة المقتطعة')}
+      ${info('السنة '+y)}
+      <table><thead><tr><th>الأجير</th><th>الوضع العائلي / أولاد</th><th>فترة العمل</th><th>أشهر</th><th>الرواتب الإجمالية</th><th>التنزيلات العائلية</th><th>الضريبة المقتطعة</th><th>ضمان الأجير</th></tr></thead>
+      <tbody>${rows || '<tr><td colspan="8">ما في معاشات رسمية بهالسنة</td></tr>'}</tbody>
+      <tfoot><tr style="font-weight:800; background:var(--paper)"><td colspan="4">المجموع</td><td class="num">${L(T.g)}</td><td class="num">${L(T.d)}</td><td class="num">${L(T.t)}</td><td class="num">${L(T.ee)}</td></tr></tfoot></table>
+      <div style="font-size:11.5px; color:var(--ink-soft); margin-top:8px; line-height:1.7;">هالكشف هو الأساس يلي بيتعبّى منو التصريح السنوي عن الرواتب والأجور (آخر مهلة 28 شباط من السنة يلي بعدها)، وبيتطابق مع مجموع تصاريح ر10 الأربعة.</div>
+    </div>`;
+  }
+  return head + body + appFooter();
+}
+function bindLebForms(){
+  const qs = new URLSearchParams(location.hash.split('?')[1]||''), t = qs.get('t') || 'vat';
+  const go2 = ()=>{ const qq = document.getElementById('fm_q'); go('#/leb-forms?t='+t+'&y='+document.getElementById('fm_y').value+(qq? '&q='+qq.value : '&q='+(qs.get('q')||1))); };
+  ['fm_y','fm_q'].forEach(id=>{ const el = document.getElementById(id); if(el) el.addEventListener('change', go2); });
+  const sv = document.getElementById('fm_save'); if(sv) sv.addEventListener('click', async ()=>{ const v = document.getElementById('fm_fin').value.trim(); await accSave(a=>{ a.finNo = v; }); toast('✅ انحفظ الرقم الضريبي'); render(); });
 }
 function bindLebVat(){
   const on = document.getElementById('vat_on'); if(on) on.addEventListener('change', async ()=>{ await accSave(a=>{ a.vatRegistered = on.checked; }); toast(on.checked? '✅ صارت المؤسسة مسجّلة بالـ TVA' : 'تشال التسجيل'); render(); });
@@ -3501,7 +3620,7 @@ function routeRequiredPermission(routeKey){
     warehouse:'warehouse', 'warehouse-print':'warehouse', 'warehouse-item':'warehouse', stockout:'warehouse', stockin:'warehouse',
     orders:'orders', order:'orders', 'order-map':'orders',
     budget:'budget', 'budget-category':'budget', 'budget-overview':'budget',
-    acc:'budget', 'leb-journal':'budget', 'leb-pl':'budget', 'leb-bs':'budget', 'leb-year':'budget', 'leb-vat':'budget', 'leb-assets':'budget', 'leb-fx':'budget', 'leb-bank':'budget', 'leb-nssf':'budget', 'leb-cf':'budget', 'leb-audit':'budget', 'leb-payroll':'budget', 'leb-payslip':'budget', 'leb-cheques':'budget', 'leb-aging':'budget', 'leb-recurring':'budget', 'leb-cc':'budget',
+    acc:'budget', 'leb-journal':'budget', 'leb-pl':'budget', 'leb-bs':'budget', 'leb-year':'budget', 'leb-vat':'budget', 'leb-assets':'budget', 'leb-fx':'budget', 'leb-bank':'budget', 'leb-nssf':'budget', 'leb-cf':'budget', 'leb-audit':'budget', 'leb-payroll':'budget', 'leb-payslip':'budget', 'leb-cheques':'budget', 'leb-aging':'budget', 'leb-recurring':'budget', 'leb-cc':'budget', 'leb-forms':'budget',
     settings:'__admin__', trash:'__admin__', 'customer-accounts':'__admin__', 'worker-accounts':'__admin__'
   };
   return map[routeKey] || null;
@@ -3826,6 +3945,8 @@ function render(){
     html += crumbs([['الرئيسية','#/'],['المحاسبة','#/acc'],['أعمار الديون',null]]) + lebAgingView(new URLSearchParams(location.hash.split('?')[1]||''));
   } else if(parts[0]==='leb-year'){
     html += crumbs([['الرئيسية','#/'],['المحاسبة','#/acc'],['السنة المالية',null]]) + lebYearView();
+  } else if(parts[0]==='leb-forms'){
+    html += crumbs([['الرئيسية','#/'],['المحاسبة','#/acc'],['نماذج المالية',null]]) + lebFormsView(new URLSearchParams(location.hash.split('?')[1]||''));
   } else if(parts[0]==='leb-vat'){
     html += crumbs([['الرئيسية','#/'],['المحاسبة','#/acc'],['TVA',null]]) + lebVatView(new URLSearchParams(location.hash.split('?')[1]||''));
   } else if(parts[0]==='leb-assets'){
@@ -5263,6 +5384,7 @@ function bindWorkEntryFormEvents(){
       if(!d.number){ toast('رقم القيد مطلوب'); return; }
       if(!/^\d{4}-\d{2}$/.test(d.__month||'')){ toast('اختار الشهر'); return; }
       if(!(Number(d.dailyWage)>0)){ toast('اكتب المعاش'); return; }
+      if(lockBlocks(d.date||todayISO())) return;
       const dup = DB.workEntries.find(x=>!x.deleted && x.workerId===d.workerId && x.id!==d.id && isSalaryEntry(x) && salaryMonthOf(x)===d.__month);
       if(dup && !confirm('في معاش مسجّل لهالعامل عن شهر '+fmtMonthAr(d.__month)+' — بدك تسجّل كمان واحد؟')) return;
       const details = SALARY_TAG + d.__month + (String(d.__extra||'').trim()? ' — '+String(d.__extra).trim() : '');
@@ -5294,6 +5416,7 @@ function bindWorkEntryFormEvents(){
   saveBtn.addEventListener('click', async ()=>{
     if(!_workEntryDraft.number){ toast('رقم اليومية مطلوب'); return; }
     if(!_workEntryDraft.date){ toast('التاريخ مطلوب'); return; }
+    if(lockBlocks(_workEntryDraft.date)) return;
     if(computeWorkEntryTotal(_workEntryDraft)<=0){ toast('يجب تحديد قيمة واحدة على الأقل (يومية أو ساعات أو كيلو)'); return; }
     let savedId;
     if(_workEntryDraft.id){
@@ -7111,6 +7234,7 @@ function bindEvents(){
   if(document.getElementById('ag_k')) bindLebAging();
   if(location.hash.indexOf('#/leb-recurring')===0) bindLebRecurring();
   if(location.hash.indexOf('#/leb-cc')===0) bindLebCC();
+  if(location.hash.indexOf('#/leb-forms')===0) bindLebForms();
   document.querySelectorAll('[data-as-disp]').forEach(b=>b.addEventListener('click', ()=>openAssetDisposeModal(b.getAttribute('data-as-disp'))));
   injectExcelBtn();
   { const jc = document.getElementById('jr_cur'); if(jc) jc.addEventListener('change', ()=>{ try{ localStorage.setItem('la_jr_cur', jc.value); }catch(e){} _jrCache = null; render(); }); }
@@ -8239,6 +8363,7 @@ function bindItemDocFormEvents(){
   if(saveBtn) saveBtn.addEventListener('click', async ()=>{
     if(!_itemDocDraft.number){ toast('الرقم مطلوب '+cfg.title); return; }
     if(!_itemDocDraft.date){ toast('التاريخ مطلوب'); return; }
+    if(lockBlocks(_itemDocDraft.date)) return;
     if(cfg.numberUnique){
       const dupInv = DB[cfg.docArr].find(i=> i.number===_itemDocDraft.number && i.id!==_itemDocDraft.id);
       if(dupInv){ toast('رقم '+cfg.title+' هذا الرقم مستخدم لفاتورة أخرى — يجب أن يكون فريدًا'); return; }
@@ -8281,6 +8406,7 @@ function bindPaymentFormEvents(){
   saveBtn.addEventListener('click', async ()=>{
     if(!_paymentDraft.number){ toast('الرقم مطلوب'); return; }
     if(!_paymentDraft.date){ toast('التاريخ مطلوب'); return; }
+    if(lockBlocks(_paymentDraft.date)) return;
     if(!(Number(_paymentDraft.amount)>0)){ toast('يجب إدخال مبلغ أكبر من صفر'); return; }
     let savedId;
     if(_paymentDraft.id){
