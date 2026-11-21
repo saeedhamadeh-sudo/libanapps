@@ -2704,40 +2704,6 @@ async function gdAccess(env, refresh) {
   if (!j.access_token) throw new Error('gd_token:' + (j.error || r.status));
   return j.access_token;
 }
-// أداة مؤقتة (للمشرف): إرجاع السطور الناقصة من نسخة Google Drive (بلا مسح — بس اللي مش موجود بينضاف)
-async function motorRecover(env, url) {
-  const tok = String(url.searchParams.get('t') || '');
-  const ps = (await sbGet(env, 'platform_settings?id=eq.1&select=pay_test_hash,pay_test_until&limit=1'))[0] || {};
-  const h = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(tok)))).map((b) => b.toString(16).padStart(2, '0')).join('');
-  if (!tok || !ps.pay_test_hash || h !== ps.pay_test_hash || !(new Date(ps.pay_test_until) > new Date())) return json(403, { ok: false, error: 'bad_token' });
-  const site = (await sbGet(env, `motor_sites?slug=eq.${encodeURIComponent(String(url.searchParams.get('slug') || ''))}&select=id,gd_refresh,gd_folder&limit=1`))[0];
-  if (!site || !site.gd_refresh || !site.gd_folder) return json(404, { ok: false, error: 'no_gd' });
-  const at = await gdAccess(env, site.gd_refresh); const GH = { Authorization: `Bearer ${at}` };
-  const fileId = String(url.searchParams.get('file') || '');
-  if (!fileId) {
-    const lr = await fetch('https://www.googleapis.com/drive/v3/files?' + new URLSearchParams({ q: `'${site.gd_folder}' in parents and trashed=false`, fields: 'files(id,name,size,createdTime)', orderBy: 'createdTime desc', pageSize: '15' }), { headers: GH });
-    return json(200, await lr.json().catch(() => ({})));
-  }
-  const fr = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?alt=media`, { headers: GH });
-  if (!fr.ok) return json(502, { ok: false, error: 'gd_' + fr.status });
-  const o = JSON.parse(await fr.text());
-  const tables = o.tables || {};
-  const counts = {}; for (const k of Object.keys(tables)) counts[k] = (tables[k] || []).length;
-  const want = String(url.searchParams.get('tables') || '').split(',').filter(Boolean);
-  if (!want.length) return json(200, { ok: true, created_at: o.created_at, counts });
-  const res = {};
-  const chunk = Number(url.searchParams.get('chunk')) || 1500;
-  for (const k of want) {
-    const rows = tables[k] || []; let n = 0;
-    for (let i = 0; i < rows.length; i += chunk) {
-      const r = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/motor_restore_rows_svc`, { method: 'POST', headers: svcH(env), body: JSON.stringify({ p_site: site.id, p_table: k, p_rows: rows.slice(i, i + chunk) }) });
-      const tx = await r.text(); if (!r.ok) { res[k] = { ok: false, n, err: tx.slice(0, 300) }; break; }
-      n += (JSON.parse(tx).n || 0);
-    }
-    if (!res[k]) res[k] = { ok: true, n, of: rows.length };
-  }
-  return json(200, { ok: true, created_at: o.created_at, res });
-}
 async function gdBackup(env, sid) {
   const SH = svcH(env);
   const setSite = (o) => fetch(`${env.SUPABASE_URL}/rest/v1/motor_sites?id=eq.${sid}`, { method: 'PATCH', headers: SH, body: JSON.stringify(o) });
@@ -4988,7 +4954,6 @@ const LA_WORKER = {
         if (url.pathname === '/api/addon/callback-success') return await addonCallbackSuccess(request, env);
         if (url.pathname === '/api/pay/info') return await payInfo(env, url);
         if (url.pathname === '/api/pay/test') return await laPayTest(env, url);
-        if (url.pathname === '/api/admin-tmp/motor-recover') return await motorRecover(env, url);
         if (url.pathname === '/api/pay/code') { if (request.method !== 'POST') return json(405, { error: 'method not allowed' }); return await payNewCode(env, url); }
         if (url.pathname === '/api/pay/status') return await payStatus(env, url);
         if (url.pathname === '/api/addon/callback-failure') return await addonCallbackFailure(request, env);

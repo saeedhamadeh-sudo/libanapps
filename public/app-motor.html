@@ -2408,6 +2408,7 @@ Object.assign(D,{
  edit_amount:['تعديل المبلغ','Edit amount','Modifier le montant'],
  void_reading:['إلغاء القراءة','Cancel reading','Annuler le relevé'],
  kf_btn:['عداد مقطوع','Monthly allowance','Forfait mensuel'],
+ rs_trunc:['هذه النسخة ناقصة (جدول فيه 5000 سطر بالضبط) — لا يمكن الاسترجاع منها. استعمل «إضافة الناقص من نسخة».','This backup is truncated (a table has exactly 5000 rows) — cannot restore from it. Use “Add missing from a backup”.','Sauvegarde tronquée — restauration impossible.'],
  bk_add:['إضافة الناقص من نسخة','Add missing from a backup','Ajouter les manquants'],
  bk_add_d:['تُضاف فقط الفواتير والإيصالات والحركات غير الموجودة حالياً. لا يُمسح ولا يُعدّل أي شيء موجود، ولا تتغيّر أرصدة الزبائن.','Only invoices, receipts and moves that are missing are added. Nothing existing is deleted or changed; balances stay the same.','Seules les lignes manquantes sont ajoutées. Rien n’est supprimé ni modifié.'],
  bk_add_ok:['تمت إضافة {n} سطر','{n} rows added','{n} lignes ajoutées'],
@@ -6351,6 +6352,7 @@ async function restoreBackup(file){
     if(e.target.closest('[data-x]')) return m.close();
     var b=e.target.closest('[data-ok]'); if(!b) return;
     if($('#rsc',m.body).value.trim()!==t('rs_word')){ toast(t('rs_type'),'e'); return; }
+    if(tbs.some(function(k){ return (o.tables[k]||[]).length===5000; })){ toast(t('rs_trunc'),'e'); return; }
     var P=$('#rsp',m.body), bar=$('#rsb',m.body); bar.classList.remove('hidden'); busy(b,true); $('[data-x]',m.foot).disabled=true;
     function pr(txt,pc){ P.textContent=txt; $('i',bar).style.width=Math.round(pc)+'%'; }
     try{
