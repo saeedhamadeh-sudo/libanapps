@@ -2408,6 +2408,9 @@ Object.assign(D,{
  edit_amount:['تعديل المبلغ','Edit amount','Modifier le montant'],
  void_reading:['إلغاء القراءة','Cancel reading','Annuler le relevé'],
  kf_btn:['عداد مقطوع','Monthly allowance','Forfait mensuel'],
+ bk_add:['إضافة الناقص من نسخة','Add missing from a backup','Ajouter les manquants'],
+ bk_add_d:['تُضاف فقط الفواتير والإيصالات والحركات غير الموجودة حالياً. لا يُمسح ولا يُعدّل أي شيء موجود، ولا تتغيّر أرصدة الزبائن.','Only invoices, receipts and moves that are missing are added. Nothing existing is deleted or changed; balances stay the same.','Seules les lignes manquantes sont ajoutées. Rien n’est supprimé ni modifié.'],
+ bk_add_ok:['تمت إضافة {n} سطر','{n} rows added','{n} lignes ajoutées'],
  dc_type:['نوع الحسم','Discount type','Type de remise'], dc_t_amt:['مبلغ ثابت','Fixed amount','Montant fixe'], dc_t_pct:['نسبة مئوية','Percentage','Pourcentage'],
  dc_equals:['= حسم {v}','= {v} off','= remise de {v}'],
  kf_t:['عداد مقطوع — {n}','Monthly kWh allowance — {n}','Forfait kWh mensuel — {n}'],
@@ -6312,6 +6315,27 @@ async function backupNow(){
   if(gd&&gd.on){ await gdApi({op:'backup'}); return; }
   await downloadBackup();
 }
+/* إضافة الناقص من ملف نسخة — بلا مسح: السطر الموجود ما بيتغيّر، بس اللي مش موجود بينضاف */
+async function addMissing(file){
+  var txt=await file.text(), o; try{ o=JSON.parse(txt); }catch(e){ toast(t('rs_bad'),'e'); return; }
+  if(!o||o.app!=='motorapp'||!o.tables){ toast(t('rs_bad'),'e'); return; }
+  if(o.slug&&o.slug!==SLUG){ toast(t('rs_other',{s:o.slug}),'e'); return; }
+  var order=['moves','invoices','payments','notes','switch_log','insurance','trash','stock_moves','purchases','salary_dues','day_closes','fin_reports','maint_requests'].filter(function(k){ return (o.tables[k]||[]).length; });
+  var total=order.reduce(function(a,k){ return a+o.tables[k].length; },0);
+  var m=modal('➕ '+t('bk_add'),'<div class="muted">'+esc(t('bk_add_d'))+'</div><div style="margin:10px 0"><b>'+esc(dt(o.created_at))+'</b> · '+order.map(function(k){ return esc(k)+': '+fmtN(o.tables[k].length,0); }).join(' · ')+'</div><div id="amp" class="muted"></div><div class="pbar hidden" id="amb" style="margin-top:6px"><i></i></div>',
+    '<button class="btn ghost" data-x>'+esc(t('cancel'))+'</button><button class="btn" data-ok>➕ '+esc(t('bk_add'))+'</button>',true);
+  m.foot.addEventListener('click',async function(e){ if(e.target.closest('[data-x]')) return m.close(); var b=e.target.closest('[data-ok]'); if(!b) return;
+    var P=$('#amp',m.body), bar=$('#amb',m.body); bar.classList.remove('hidden'); busy(b,true); $('[data-x]',m.foot).disabled=true;
+    var done=0, added=0, rep=[];
+    try{
+      for(var k of order){ var rows=o.tables[k], a2=0; for(var i=0;i<rows.length;i+=200){
+          var r=await call('motor_restore_rows',{p_table:k,p_rows:rows.slice(i,i+200)}); a2+=n2(r&&r.n); done+=Math.min(200,rows.length-i);
+          P.textContent=k+' … '+fmtN(done,0)+' / '+fmtN(total,0); $('i',bar).style.width=Math.round(100*done/Math.max(total,1))+'%'; }
+        added+=a2; rep.push(k+': +'+fmtN(a2,0)); }
+      P.className='ok msg'; P.textContent='✅ '+t('bk_add_ok',{n:fmtN(added,0)})+' — '+rep.join(' · '); $('[data-x]',m.foot).disabled=false; loadCustomers();
+    }catch(err){ P.textContent=t('rs_fail')+' '+errText(err)+' ('+rep.join(' · ')+')'; P.className='err msg'; busy(b,false); $('[data-x]',m.foot).disabled=false; }
+  });
+}
 async function restoreBackup(file){
   var txt=await file.text(), o; try{ o=JSON.parse(txt); }catch(e){ toast(t('rs_bad'),'e'); return; }
   if(!o||o.app!=='motorapp'||!o.tables){ toast(t('rs_bad'),'e'); return; }
@@ -6336,7 +6360,7 @@ async function restoreBackup(file){
       var order=['plans','staff','staff_secrets','suppliers','stock','customers','customer_secrets','readings','invoices','payments','moves','notes','switch_log','insurance','trash','stock_moves','purchases','salary_dues','day_closes','fin_reports','maint_requests'];
       order=order.concat(tbs.filter(function(k){ return order.indexOf(k)<0; }));
       var done=0;
-      for(var k of order){ var rows=o.tables[k]||[]; for(var i=0;i<rows.length;i+=500){ await call('motor_restore_rows',{p_table:k,p_rows:rows.slice(i,i+500)}); done+=Math.min(500,rows.length-i); pr(t('rs_s3',{t:k,d:fmtN(done,0),n:fmtN(total,0)}),30+70*done/Math.max(total,1)); } }
+      for(var k of order){ var rows=o.tables[k]||[]; for(var i=0;i<rows.length;i+=200){ await call('motor_restore_rows',{p_table:k,p_rows:rows.slice(i,i+200)}); done+=Math.min(200,rows.length-i); pr(t('rs_s3',{t:k,d:fmtN(done,0),n:fmtN(total,0)}),30+70*done/Math.max(total,1)); } }
       pr(t('rs_ok'),100); toast(t('rs_ok'),'s');
       setTimeout(function(){ location.reload(); },1500);
     }catch(err){ P.textContent=t('rs_fail')+' '+errText(err); P.className='err msg'; busy(b,false); $('[data-x]',m.foot).disabled=false; }
@@ -6347,6 +6371,7 @@ async function bkCard(box){
   var gd=info.gd||{};
   box.innerHTML='<h3>💾 '+esc(t('bk_title'))+'</h3><p class="muted" style="margin-top:0">'+esc(t('bk_hint'))+'</p>'+
     '<div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn" id="bkd">⬇️ '+esc(t('bk_dl'))+'</button>'+
+    '<label class="btn" style="cursor:pointer">➕ '+esc(t('bk_add'))+'<input type="file" id="bka" accept=".json,application/json" class="hidden"></label>'+
     '<label class="btn danger" style="cursor:pointer">♻️ '+esc(t('bk_rs'))+'<input type="file" id="bkr" accept=".json,application/json" class="hidden"></label></div>'+
     '<div id="bkp" class="muted" style="margin-top:8px"></div>'+
     '<div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--line)"><h3 style="margin-top:0">☁️ Google Drive</h3>'+
@@ -6358,6 +6383,7 @@ async function bkCard(box){
     '<p class="muted" style="font-size:12.5px;margin-bottom:0">'+esc(t('gd_auto'))+'</p></div>';
   $('#bkd',box).addEventListener('click',async function(){ var b=this; busy(b,true); try{ await downloadBackup(function(i,n,tb){ $('#bkp',box).textContent=t('bk_prog',{i:i+1,n:n}); }); $('#bkp',box).textContent='✅ '+t('bk_ok'); }catch(e){ toast(errText(e),'e'); } busy(b,false); });
   $('#bkr',box).addEventListener('change',function(){ var f=this.files&&this.files[0]; this.value=''; if(f) restoreBackup(f); });
+  $('#bka',box).addEventListener('change',function(){ var f=this.files&&this.files[0]; this.value=''; if(f) addMissing(f); });
   var gl=$('#gdl',box); if(gl) gl.addEventListener('click',async function(){ var b=this; busy(b,true); try{ var r=await gdApi({op:'auth_url'}); location.href=r.url; }catch(e){ toast(e.message,'e'); busy(b,false); } });
   var gn=$('#gdn',box); if(gn) gn.addEventListener('click',async function(){ var b=this; busy(b,true,t('gd_uploading')); try{ var r=await gdApi({op:'backup'}); toast('☁️ '+t('gd_done'),'s'); bkCard(box); }catch(e){ toast(e.message,'e'); busy(b,false); } });
   var gx=$('#gdx',box); if(gx) gx.addEventListener('click',async function(){ if(!(await confirmBox(t('gd_unlink_q')))) return; try{ await call('motor_gd_disconnect'); bkCard(box); }catch(e){ toast(errText(e),'e'); } });
