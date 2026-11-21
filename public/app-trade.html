@@ -10531,7 +10531,18 @@ function journalEntriesBuild(){
   (DB.cashMovements||[]).forEach(m=>{ if(m.deleted || isDocMirrorMove(m)) return; const v = m.currency==='LBP'? Math.abs(Number(m.amount)||0)/r : Math.abs(Number(m.amount)||0);
     const main = m.currency==='USD'? '53102' : '53101', k = 'cm:'+m.id;
     if(m.type==='gl'){ const g = glInfo(m)||{}; if(g.dr && g.cr) add(m.date, m.createdAt, 'gl', 'قيد يدوي', g.desc||'قيد محاسبي', null, g.dr, g.cr, v, k); return; }
-    if(m.type==='shift_close' && m.shiftId) add(m.date, m.createdAt, 'transfer', 'إقفال صندوق', 'تحويل من صندوق الموظف للصندوق الأساسي', null, main, jrShiftAcct(m.shiftId, M), v, k);
+    if(m.type==='shift_close'){   // إقفال صندوق موظف: المبلغ المعدود بيروح عالصندوق الأساسي (الصندوق محفوظ بـ refSaleId)
+      const sid = m.shiftId || m.refSaleId; if(!sid) return; const inf = shiftCloseInfo(m) || {}, from = jrShiftAcct(sid, M); if(inf.legacy) return;   // القديمة بالسجل بس
+      add(m.date, m.createdAt, 'transfer', 'إقفال صندوق', 'تحويل من صندوق '+(inf.user||'الموظف')+' للصندوق الأساسي', null, main, from, inf.toSafeLBP!=null? Math.abs(Number(inf.toSafeLBP)||0)/r : v, k);
+      const u = Number(inf.toSafeUSD)||0; if(u>0 && m.currency!=='USD') add(m.date, m.createdAt, 'transfer', 'إقفال صندوق', 'تحويل دولار من صندوق '+(inf.user||'الموظف')+' للصندوق الأساسي', null, '53102', from, u, k+':usd');
+      return; }
+    if(m.type==='withdraw' && m.shiftId && String(m.note||'').indexOf('ترحيل إقفال يومية شاملة على')===0) return;   // جزء من قيد الإقفال فوق
+    if(m.type==='acct_in' || m.type==='acct_out'){   // حركات الحسابات المالية (Whish، صندوق المدير…): التحويلات بتتقابل بالحساب الانتقالي
+      const a = moneyAcctOf(m); if(!a || !/^5/.test(a)) return; const nt = String(m.note||'').replace(/^\[حساب\] /,'').replace(/\s*⟨\d+⟩/,'').slice(0,60);
+      if(m.type==='acct_out' && String(m.note||'').includes(WHISH_TO_MAIN)) add(m.date, m.createdAt, 'transfer', 'سحب Whish للصندوق', nt, null, main, a, v, k);
+      else if(m.type==='acct_in') add(m.date, m.createdAt, 'cash', 'إيداع بحساب '+jrName(a), nt, null, a, '47100', v, k);
+      else add(m.date, m.createdAt, 'cash', 'سحب من حساب '+jrName(a), nt, null, '47100', a, v, k);
+      return; }
     else if(m.type==='safe_in') add(m.date, m.createdAt, 'cash', 'إيداع بالصندوق', String(m.note||'').slice(0,60), null, main, '47100', v, k);
     else if(m.type==='safe_out') add(m.date, m.createdAt, 'cash', 'سحب من الصندوق', String(m.note||'').slice(0,60), null, '47100', main, v, k);
     else if(m.type==='owner_pay') add(m.date, m.createdAt, 'cash', 'دفع من حساب صاحب المؤسسة', String(m.note||'').slice(0,60), null, '47100', '10801', v, k);
@@ -13702,7 +13713,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-11-22 · 01:15 · v119';
+const APP_TRADE_BUILD = '2026-11-22 · 02:10 · v120';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 // ===== ترجيع حركات ناقصة من ملف (إضافة بس — ما منمحي ولا منغيّر شي موجود) =====
 document.addEventListener('change', async e=>{
