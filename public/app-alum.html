@@ -248,6 +248,7 @@
   .settings-link:hover{opacity:1;}
   .app-footer{text-align:center; font-size:11.5px; color:var(--ink-soft); padding:18px 10px 6px; opacity:.75; letter-spacing:.2px;}
   .hub-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-bottom:18px;}
+  .print-only{display:none;} @media print{ .print-only{display:inline;} }
   @media(max-width:900px){.hub-grid{grid-template-columns:repeat(2,1fr);}}
   @media(max-width:640px){.hub-grid{grid-template-columns:1fr;}}
   .hub-card{background:var(--white); border:1px solid var(--line); border-radius:14px; padding:22px 18px; text-align:center; box-shadow:var(--shadow); cursor:pointer; transition:transform .1s ease, box-shadow .15s ease;}
@@ -1677,7 +1678,7 @@ async function accSave(mut){ const a = Object.assign({}, accCfg()); mut(a); DB.s
 async function alGlSave(){ _jrCache = null; return await save(KEYS.settings, DB.settings); }
 function accVatOn(){ return !!accCfg().vatRegistered; }
 function accClosedYears(){ return (accCfg().closed||[]).map(x=>String(x.year)); }
-function isClosedDate(d){ return !!d && accClosedYears().includes(String(d).slice(0,4)); }
+function isClosedDate(d){ if(!d) return false; const lk = accCfg().lockedTo; return accClosedYears().includes(String(d).slice(0,4)) || (!!lk && String(d)<=lk); }
 function primSym(){ return '$'; }
 function inPrim(v){ return Math.round((Number(v)||0)*100)/100; }
 function outPrim(v){ return Number(v)||0; }
@@ -1739,8 +1740,29 @@ function alAccounts(){
   _alAcc = L; _alAccAt = Date.now(); return L;
 }
 function coaAccounts(){ return alAccounts(); }
-let _jrCache = null, _jrCacheAt = 0;
-function journalEntriesAll(){ if(_jrCache && Date.now()-_jrCacheAt < 1500) return _jrCache; _alAcc = null; _jrCache = journalEntriesBuild(); _jrCacheAt = Date.now(); return _jrCache; }
+let _jrCache = null, _jrCacheAt = 0, _jrCur = '';
+function jrCurPref(){ try{ return localStorage.getItem('la_jr_cur')||''; }catch(e){ return ''; } }
+function jrCurSel(){ const c = _jrCur; return `<div class="field no-print" style="max-width:320px;"><label>عملة الكشف</label><select id="jr_cur">
+  <option value="" ${c!=='lbp'? 'selected' : ''}>💵 دولار أميركي</option><option value="lbp" ${c==='lbp'? 'selected' : ''}>🇱🇧 ليرة لبنانية — الدفاتر الرسمية</option></select></div>`; }
+function fmtJ(v){ v = Number(v)||0; if(_jrCur==='lbp') return (v<0? '-' : '')+Math.round(Math.abs(v)).toLocaleString('en-US')+' ل.ل'; return fmtMoney(v); }
+function fmtDateTime12(ts){ const d = new Date(ts); if(!(ts>0) || isNaN(d)) return ''; return fmtDate(d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'))+' '+d.toLocaleTimeString('en-US',{hour:'numeric', minute:'2-digit'}); }
+function jrRateIndex(){ const I = {}; const put = (pre, arr)=>(arr||[]).forEach(d=>{ const r = Number(d.exchangeRate); if(r>0) I[pre+d.id] = r; }); put('inv:', DB.invoices); put('pur:', DB.purchaseInvoices); return I; }
+function journalEntriesAll(){
+  const k = _jrCur==='lbp'? 'lbp' : 'p';
+  if(_jrCache && _jrCache.k===k && Date.now()-_jrCacheAt < 1500) return _jrCache.list;
+  _alAcc = null; let out = journalEntriesBuild();
+  if(k==='lbp'){ const I = jrRateIndex(), def = curRate(); out = out.map(e=>{ const r = I[e.key] || def; return Object.assign({}, e, {rate:r, lines:e.lines.map(l=>({a:l.a, dr:l.dr*r, cr:l.cr*r}))}); }); }
+  jrApplyClosing(out);
+  out.sort((a,b)=> a.date<b.date? -1 : a.date>b.date? 1 : (a.at||0)-(b.at||0)); out.forEach((e,i)=>{ e.no = i+1; });
+  _jrCache = {k, list:out}; _jrCacheAt = Date.now(); return out;
+}
+function jrApplyClosing(out){
+  accClosedYears().sort().forEach(y=>{ const S = {};
+    out.forEach(e=>{ if(String(e.date).slice(0,4)!==y) return; e.lines.forEach(l=>{ if(l.a[0]==='6' || l.a[0]==='7') S[l.a] = (S[l.a]||0) + l.dr - l.cr; }); });
+    const L = []; let res = 0; Object.keys(S).forEach(a=>{ const b = S[a]; if(Math.abs(b)<0.000001) return; L.push({a, dr:b<0? -b : 0, cr:b>0? b : 0}); res += b; });
+    if(!L.length) return; L.push({a:res>0? '12900' : '12001', dr:res>0? res : 0, cr:res<0? -res : 0});
+    out.push({key:'close:'+y, date:y+'-12-31', at:Date.parse(y+'-12-31T23:59:59'), kind:'closing', doc:'قيد إقفال '+y, desc:'إقفال حسابات الأعباء والإيرادات بنتيجة الدورة', nav:'#/leb-year', lines:L}); });
+}
 function journalEntriesBuild(){
   const M = alAccounts().map_, out = [], vatOn = accVatOn(), vr = settingsVatRate()/100, vatPur = vatOn && !!accCfg().vatPurchases;
   const addL = (key, date, at, kind, doc, desc, nav, lines)=>{ lines = lines.filter(l=>l.a && ((l.dr||0)>0.0000001 || (l.cr||0)>0.0000001)).map(l=>({a:String(l.a), dr:roundAmt(l.dr||0), cr:roundAmt(l.cr||0)}));
@@ -1774,13 +1796,6 @@ function journalEntriesBuild(){
     else { const la = M['loan:'+x.id]; if(la) add(x.date, x.createdAt, 'loan', 'قرض #'+(x.number||''), x.lender||'', '#/loan/'+x.id, acct, la, x.amount, 'ln:'+x.id); } });
   (accCfg().gl||[]).forEach(g=>{ if(Array.isArray(g.lines)) addL('gl:'+g.id, g.date, g.at, 'gl', g.fx? 'صرف عملات' : 'قيد يدوي', g.desc||'', g.fx? '#/leb-fx' : null, g.lines); else add(g.date, g.at, 'gl', 'قيد يدوي', g.desc||'', null, g.dr, g.cr, g.amt, 'gl:'+g.id); });
   (accCfg().assets||[]).forEach(as=>{ const c = assetCat(as.cat); assetDepSchedule(as).forEach(x=>add(x.date, Date.parse(x.date+'T23:00:00'), 'dep', 'استهلاك '+fmtMonthAr(x.ym), 'استهلاك شهري — '+(as.name||''), '#/leb-assets', '68110', c.d, x.amt, 'dep:'+as.id+':'+x.ym)); });
-  accClosedYears().sort().forEach(y=>{ const S = {};
-    out.forEach(e=>{ if(String(e.date).slice(0,4)!==y) return; e.lines.forEach(l=>{ if(l.a[0]==='6' || l.a[0]==='7') S[l.a] = (S[l.a]||0) + l.dr - l.cr; }); });
-    const L = []; let res = 0; Object.keys(S).forEach(a=>{ const b = S[a]; if(Math.abs(b)<0.000001) return; L.push({a, dr:b<0? -b : 0, cr:b>0? b : 0}); res += b; });
-    if(!L.length) return; L.push({a:res>0? '12900' : '12001', dr:res>0? res : 0, cr:res<0? -res : 0});
-    addL('close:'+y, y+'-12-31', Date.parse(y+'-12-31T23:59:59'), 'closing', 'قيد إقفال '+y, 'إقفال حسابات الأعباء والإيرادات بنتيجة الدورة', '#/leb-year', L); });
-  out.sort((a,b)=> a.date<b.date? -1 : a.date>b.date? 1 : (a.at||0)-(b.at||0));
-  out.forEach((e,i)=>{ e.no = i+1; });
   return out;
 }
 function openGlEntryModal(){
@@ -1816,7 +1831,7 @@ function lebJournalView(qs){
       <button class="btn ${mode==='g'? 'btn-primary' : ''}" data-jr-mode="g">📒 دفتر الأستاذ</button>
       ${canPostGl()? '<button class="btn" id="jrNewGl">➕ قيد يدوي</button>' : ''}
     </div>
-    ${periodFilterHtml('lj', P.period, P.a, P.b)}
+    ${periodFilterHtml('lj', P.period, P.a, P.b)}${jrCurSel()}
     <div class="grid grid-2">
       <div class="field"><label>نوع العملية</label><select id="lj_k"><option value="">الكل</option>${Object.keys(JR_KINDS).map(k=>`<option value="${k}" ${k===kind? 'selected' : ''}>${JR_KINDS[k]}</option>`).join('')}</select></div>
       <div class="field"><label>رقم حساب (أو أوّلو: 5، 531، 70101…)</label><input type="text" id="lj_acc" class="num" value="${escapeHtml(acc)}" placeholder="كل الحسابات"></div>
@@ -1832,12 +1847,12 @@ function lebJournalView(qs){
     let T = {od:0, oc:0, dr:0, cr:0, cd:0, cc:0};
     const rows = codes.map(c=>{ const x = B[c], cl = x.open + x.dr - x.cr; const od = x.open>0? x.open : 0, oc = x.open<0? -x.open : 0, cd = cl>0? cl : 0, cc = cl<0? -cl : 0;
       T.od += od; T.oc += oc; T.dr += x.dr; T.cr += x.cr; T.cd += cd; T.cc += cc;
-      return `<tr data-nav="#/leb-journal?m=g&acc=${c}&period=${P.period}&a=${encodeURIComponent(P.a)}&b=${encodeURIComponent(P.b)}" style="cursor:pointer;"><td class="num">${c}</td><td>${escapeHtml(jrName(c))}</td><td class="num">${od? fmtMoney(od) : ''}</td><td class="num">${oc? fmtMoney(oc) : ''}</td><td class="num">${x.dr? fmtMoney(x.dr) : ''}</td><td class="num">${x.cr? fmtMoney(x.cr) : ''}</td><td class="num">${cd? fmtMoney(cd) : ''}</td><td class="num">${cc? fmtMoney(cc) : ''}</td></tr>`; }).join('');
-    const ok = Math.abs(T.cd - T.cc) < 0.01;
+      return `<tr data-nav="#/leb-journal?m=g&acc=${c}&period=${P.period}&a=${encodeURIComponent(P.a)}&b=${encodeURIComponent(P.b)}" style="cursor:pointer;"><td class="num">${c}</td><td>${escapeHtml(jrName(c))}</td><td class="num">${od? fmtJ(od) : ''}</td><td class="num">${oc? fmtJ(oc) : ''}</td><td class="num">${x.dr? fmtJ(x.dr) : ''}</td><td class="num">${x.cr? fmtJ(x.cr) : ''}</td><td class="num">${cd? fmtJ(cd) : ''}</td><td class="num">${cc? fmtJ(cc) : ''}</td></tr>`; }).join('');
+    const ok = Math.abs(T.cd - T.cc) < (_jrCur==='lbp'? 50 : 0.01);
     return head + actions('Trial-Balance') + `<div class="doc">${docHead('ميزان المراجعة')}${info}
       <div class="table-wrap"><table><thead><tr><th rowspan="2">الحساب</th><th rowspan="2">الاسم</th><th colspan="2">رصيد أول المدة</th><th colspan="2">حركة الفترة</th><th colspan="2">رصيد آخر المدة</th></tr><tr><th>مدين</th><th>دائن</th><th>مدين</th><th>دائن</th><th>مدين</th><th>دائن</th></tr></thead>
       <tbody>${rows || '<tr><td colspan="8">ما في حركات</td></tr>'}</tbody>
-      <tfoot><tr style="font-weight:800; background:var(--paper)"><td colspan="2">المجموع</td><td class="num">${fmtMoney(T.od)}</td><td class="num">${fmtMoney(T.oc)}</td><td class="num">${fmtMoney(T.dr)}</td><td class="num">${fmtMoney(T.cr)}</td><td class="num">${fmtMoney(T.cd)}</td><td class="num">${fmtMoney(T.cc)}</td></tr></tfoot></table></div>
+      <tfoot><tr style="font-weight:800; background:var(--paper)"><td colspan="2">المجموع</td><td class="num">${fmtJ(T.od)}</td><td class="num">${fmtJ(T.oc)}</td><td class="num">${fmtJ(T.dr)}</td><td class="num">${fmtJ(T.cr)}</td><td class="num">${fmtJ(T.cd)}</td><td class="num">${fmtJ(T.cc)}</td></tr></tfoot></table></div>
       <div style="margin-top:8px; font-weight:700; color:${ok? 'var(--credit)' : 'var(--debit)'};">${ok? '✅ الميزان متوازن (مجموع المدين = مجموع الدائن)' : '⚠️ الميزان مش متوازن'}</div></div>${appFooter()}`;
   }
   if(mode==='g'){
@@ -1846,20 +1861,20 @@ function lebJournalView(qs){
     all.forEach(e=>{ if(kind && e.kind!==kind) return; e.lines.forEach(l=>{ if(l.a.indexOf(acc)!==0) return; if(e.date<P.from) open += l.dr - l.cr; else if(e.date<=P.to) rows.push({e, l}); }); });
     let bal = open;
     const body = rows.map(({e,l})=>{ bal += l.dr - l.cr; const other = e.lines.find(x=>x!==l);
-      return `<tr ${e.nav? `data-nav="${e.nav}" style="cursor:pointer;"` : ''}><td class="num">${fmtDate(e.date)}</td><td class="num">${e.no}</td><td>${escapeHtml(e.doc)} — ${escapeHtml(e.desc)}<div style="font-size:11px; color:var(--ink-soft);">مقابل: ${escapeHtml(other? other.a+' '+jrName(other.a) : '')}</div></td><td class="num">${l.dr? fmtMoney(l.dr) : ''}</td><td class="num">${l.cr? fmtMoney(l.cr) : ''}</td><td class="num">${fmtMoney(bal)}</td></tr>`; }).join('');
+      return `<tr ${e.nav? `data-nav="${e.nav}" style="cursor:pointer;"` : ''}><td class="num">${fmtDate(e.date)}</td><td class="num">${e.no}</td><td>${escapeHtml(e.doc)} — ${escapeHtml(e.desc)}<div style="font-size:11px; color:var(--ink-soft);">مقابل: ${escapeHtml(other? other.a+' '+jrName(other.a) : '')}</div></td><td class="num">${l.dr? fmtJ(l.dr) : ''}</td><td class="num">${l.cr? fmtJ(l.cr) : ''}</td><td class="num">${fmtJ(bal)}</td></tr>`; }).join('');
     return head + actions('Ledger-'+acc) + `<div class="doc">${docHead('دفتر الأستاذ — '+acc+' '+jrName(acc))}${info}
       <div class="table-wrap"><table><thead><tr><th>التاريخ</th><th>رقم القيد</th><th>البيان</th><th>مدين</th><th>دائن</th><th>الرصيد</th></tr></thead><tbody>
-      <tr style="background:var(--bg-2);"><td colspan="5">رصيد أول المدة</td><td class="num">${fmtMoney(open)}</td></tr>${body}</tbody>
-      <tfoot><tr style="font-weight:800; background:var(--paper)"><td colspan="5">رصيد آخر المدة (${bal>=0? 'مدين' : 'دائن'})</td><td class="num">${fmtMoney(Math.abs(bal))}</td></tr></tfoot></table></div></div>${appFooter()}`;
+      <tr style="background:var(--bg-2);"><td colspan="5">رصيد أول المدة</td><td class="num">${fmtJ(open)}</td></tr>${body}</tbody>
+      <tfoot><tr style="font-weight:800; background:var(--paper)"><td colspan="5">رصيد آخر المدة (${bal>=0? 'مدين' : 'دائن'})</td><td class="num">${fmtJ(Math.abs(bal))}</td></tr></tfoot></table></div></div>${appFooter()}`;
   }
   const lim = 400, shown = list.slice(-lim);
   const body = shown.map(e=>`<tr class="jr-h" ${e.nav? `data-nav="${e.nav}" style="cursor:pointer; background:var(--bg-2);"` : 'style="background:var(--bg-2);"'}><td class="num">${e.no}</td><td class="num">${fmtDate(e.date)}</td><td colspan="4"><b>${escapeHtml(e.doc)}</b> — ${escapeHtml(e.desc)} <span style="font-size:11px; color:var(--ink-soft);">(${JR_KINDS[e.kind]||''})</span></td></tr>`
-    + e.lines.map(l=>`<tr><td></td><td></td><td class="num" style="${l.cr? 'padding-inline-start:28px;' : ''}">${l.a}</td><td style="${l.cr? 'padding-inline-start:28px;' : ''}">${l.cr? 'إلى ' : 'من '}${escapeHtml(jrName(l.a))}</td><td class="num">${l.dr? fmtMoney(l.dr) : ''}</td><td class="num">${l.cr? fmtMoney(l.cr) : ''}</td></tr>`).join('')).join('');
+    + e.lines.map(l=>`<tr><td></td><td></td><td class="num" style="${l.cr? 'padding-inline-start:28px;' : ''}">${l.a}</td><td style="${l.cr? 'padding-inline-start:28px;' : ''}">${l.cr? 'إلى ' : 'من '}${escapeHtml(jrName(l.a))}</td><td class="num">${l.dr? fmtJ(l.dr) : ''}</td><td class="num">${l.cr? fmtJ(l.cr) : ''}</td></tr>`).join('')).join('');
   return head + actions('Journal') + `<div class="doc">${docHead('دفتر اليومية')}${info}
     ${list.length>lim? `<div class="no-print" style="font-size:12px; color:var(--ink-soft);">عم نعرض آخر ${lim} قيد من ${list.length} — صغّر الفترة لتشوف الكل.</div>` : ''}
     <div class="table-wrap"><table><thead><tr><th>رقم القيد</th><th>التاريخ</th><th>رقم الحساب</th><th>اسم الحساب / البيان</th><th>مدين</th><th>دائن</th></tr></thead>
     <tbody>${body || '<tr><td colspan="6">ما في قيود بهالفترة</td></tr>'}</tbody>
-    <tfoot><tr style="font-weight:800; background:var(--paper)"><td colspan="4">المجموع (${list.length} قيد)</td><td class="num">${fmtMoney(totDr)}</td><td class="num">${fmtMoney(totCr)}</td></tr></tfoot></table></div></div>${appFooter()}`;
+    <tfoot><tr style="font-weight:800; background:var(--paper)"><td colspan="4">المجموع (${list.length} قيد)</td><td class="num">${fmtJ(totDr)}</td><td class="num">${fmtJ(totCr)}</td></tr></tfoot></table></div></div>${appFooter()}`;
 }
 function bindLebJournal(){
   const qs = new URLSearchParams(location.hash.split('?')[1]||'');
@@ -1871,52 +1886,57 @@ function bindLebJournal(){
   const ng = document.getElementById('jrNewGl'); if(ng) ng.addEventListener('click', ()=>openGlEntryModal());
 }
 /* ===== 📊 كشف الإيرادات والأعباء (حساب النتيجة) — الفئة 6 والفئة 7 ===== */
+function jrShiftYear(d, n){ if(!d) return d; const y = Number(d.slice(0,4))+n; let r = y+d.slice(4); if(r.slice(5)==='02-29') r = y+'-02-28'; return r; }
+function jrSum67(from, to){ const S = {}; journalEntriesAll().forEach(e=>{ if(e.date<from || e.date>to || e.kind==='closing') return; e.lines.forEach(l=>{ const c = l.a[0]; if(c!=='6' && c!=='7') return; S[l.a] = (S[l.a]||0) + l.dr - l.cr; }); }); return S; }
+const PL_NAMES = {'60':'المشتريات المستهلكة','61':'الأعباء الخارجية','62':'أعباء خارجية أخرى','63':'الضرائب والرسوم','64':'أعباء المستخدمين','65':'أعباء تشغيلية أخرى','66':'الأعباء المالية','67':'أعباء استثنائية','68':'مخصصات الاستهلاكات والمؤونات','69':'ضريبة الدخل','70':'مبيعات البضائع والإنتاج','71':'تغيّر مخزون الإنتاج','72':'إنتاج مثبّت','74':'إعانات الاستثمار','75':'إيرادات تشغيلية أخرى','76':'الإيرادات المالية','77':'إيرادات استثنائية','78':'استردادات مؤونات'};
 function lebPLView(qs){
-  const P = jrPeriodParams(qs);
-  const all = journalEntriesAll().filter(e=>e.date>=P.from && e.date<=P.to);
-  const S = {}; all.forEach(e=>e.lines.forEach(l=>{ const c = l.a[0]; if(c!=='6' && c!=='7') return; S[l.a] = (S[l.a]||0) + l.dr - l.cr; }));
-  const sp = {cost:S['60101']||0};
-  const purch = S['60101']||0;
-  const varStock = roundAmt(sp.cost - purch);   // تغيّر المخزون = كلفة البضاعة المباعة − المشتريات
-  const charges = [], products = [];
-  Object.keys(S).sort().forEach(c=>{ const v = S[c]; if(Math.abs(v)<0.000001) return; if(c[0]==='6') charges.push({c, n:jrName(c), v}); else products.push({c, n:jrName(c), v:-v}); });
-  if(Math.abs(varStock)>0.000001) charges.splice(charges.findIndex(x=>x.c>'60101')<0? charges.length : charges.findIndex(x=>x.c>'60101'), 0, {c:'6037', n:'تغيّر مخزون البضائع (أول المدة − آخر المدة)', v:varStock});
-  const totC = charges.reduce((t,x)=>t+x.v,0), totP = products.reduce((t,x)=>t+x.v,0), net = totP - totC;
-  const sales = S['70101']? -S['70101'] : 0, gross = sales - (purch + varStock);
-  const grp = (list)=>{ const by = {}; list.forEach(x=>{ const g = x.c.slice(0,2); (by[g] = by[g] || []).push(x); }); return by; };
-  const NAMES = {'60':'المشتريات المستهلكة','61':'الأعباء الخارجية','62':'أعباء خارجية أخرى','63':'الضرائب والرسوم','64':'أعباء المستخدمين','65':'أعباء تشغيلية أخرى','66':'الأعباء المالية','67':'أعباء استثنائية','68':'مخصصات الاستهلاكات والمؤونات','69':'ضريبة الدخل','70':'مبيعات البضائع والإنتاج','71':'الإنتاج المخزون','74':'إعانات الاستثمار','75':'إيرادات تشغيلية أخرى','76':'الإيرادات المالية','77':'إيرادات استثنائية','78':'استردادات الاستهلاكات والمؤونات'};
-  const table = (list, title, tot)=>{ const G = grp(list); return `<table><thead><tr><th>الحساب</th><th>البيان</th><th>المبلغ</th></tr></thead><tbody>
-    ${Object.keys(G).sort().map(g=>`<tr style="background:var(--bg-2); font-weight:700;"><td class="num">${g}</td><td colspan="2">${NAMES[g]||''}</td></tr>`+G[g].map(x=>`<tr ${x.c.length>3? `data-nav="#/leb-journal?m=g&acc=${x.c}&period=${P.period}&a=${encodeURIComponent(P.a)}&b=${encodeURIComponent(P.b)}" style="cursor:pointer;"` : ''}><td class="num">${x.c}</td><td>${escapeHtml(x.n)}</td><td class="num">${fmtMoney(x.v)}</td></tr>`).join('')).join('') || '<tr><td colspan="3">—</td></tr>'}
-    </tbody><tfoot><tr style="font-weight:800; background:var(--paper)"><td colspan="2">${title}</td><td class="num">${fmtMoney(tot)}</td></tr></tfoot></table>`; };
+  const P = jrPeriodParams(qs), pf = jrShiftYear(P.from, -1), pt = jrShiftYear(P.to, -1);
+  const S = jrSum67(P.from, P.to), S0 = jrSum67(pf, pt);
+  const codes = Array.from(new Set(Object.keys(S).concat(Object.keys(S0)))).sort().filter(c=>Math.abs(S[c]||0)>0.000001 || Math.abs(S0[c]||0)>0.000001);
+  const charges = codes.filter(c=>c[0]==='6').map(c=>({c, n:jrName(c), v:S[c]||0, v0:S0[c]||0}));
+  const products = codes.filter(c=>c[0]==='7').map(c=>({c, n:jrName(c), v:-(S[c]||0), v0:-(S0[c]||0)}));
+  const tot = (L,k)=>L.reduce((t,x)=>t+x[k],0);
+  const totC = tot(charges,'v'), totP = tot(products,'v'), net = totP - totC, totC0 = tot(charges,'v0'), totP0 = tot(products,'v0'), net0 = totP0 - totC0;
+  const cogs = (S['60101']||0) + (S['60370']||0), cogs0 = (S0['60101']||0) + (S0['60370']||0);
+  const sales = -(S['70101']||0), sales0 = -(S0['70101']||0);
+  const taxRate = Number(accCfg().incomeTaxRate)>=0 && accCfg().incomeTaxRate!=null && accCfg().incomeTaxRate!==''? Number(accCfg().incomeTaxRate) : 17;
+  const hasPrev = codes.some(c=>Math.abs(S0[c]||0)>0.000001);
+  const td = v=>`<td class="num">${fmtJ(v)}</td>`, tdp = v=> hasPrev? `<td class="num" style="color:var(--ink-soft);">${fmtJ(v)}</td>` : '';
+  const nav = c=>`data-nav="#/leb-journal?m=g&acc=${c}&period=${P.period}&a=${encodeURIComponent(P.a)}&b=${encodeURIComponent(P.b)}" style="cursor:pointer;"`;
+  const table = (list, title, t, t0)=>{ const G = {}; list.forEach(x=>{ (G[x.c.slice(0,2)] = G[x.c.slice(0,2)] || []).push(x); });
+    return `<table><thead><tr><th>الحساب</th><th>البيان</th><th>هالفترة</th>${hasPrev? '<th>نفس الفترة السنة الماضية</th>' : ''}</tr></thead><tbody>
+    ${Object.keys(G).sort().map(g=>`<tr style="background:var(--bg-2); font-weight:700;"><td class="num">${g}</td><td colspan="${hasPrev? 3 : 2}">${PL_NAMES[g]||''}</td></tr>`+G[g].map(x=>`<tr ${nav(x.c)}><td class="num">${x.c}</td><td>${escapeHtml(x.n)}</td>${td(x.v)}${tdp(x.v0)}</tr>`).join('')).join('') || `<tr><td colspan="4">—</td></tr>`}
+    </tbody><tfoot><tr style="font-weight:800; background:var(--paper)"><td colspan="2">${title}</td>${td(t)}${tdp(t0)}</tr></tfoot></table>`; };
   return `<div class="card no-print">
     <h2><span class="dot"></span> 📊 كشف الإيرادات والأعباء</h2>
-    <p style="font-size:12.5px; color:var(--ink-soft); line-height:1.7;">حساب النتيجة حسب النظام المحاسبي اللبناني: الأعباء (الفئة 6) مقابل الإيرادات (الفئة 7)، والنتيجة ربح أو خسارة. اكبس على أي حساب لتشوف قيودو.</p>
-    ${periodFilterHtml('pl', P.period, P.a, P.b)}
+    <p style="font-size:12.5px; color:var(--ink-soft); line-height:1.7;">حساب النتيجة حسب النظام المحاسبي اللبناني: الأعباء (الفئة 6) مقابل الإيرادات (الفئة 7)، مع مقارنة بنفس الفترة من السنة الماضية. اكبس على أي حساب لتشوف قيودو.</p>
+    ${periodFilterHtml('pl', P.period, P.a, P.b)}${jrCurSel()}
   </div>
   <div class="doc-actions no-print"><button class="btn btn-primary" onclick="printWithFilename('Income-Statement-${P.from}-${P.to}')">🖨 طباعة</button><button class="btn" data-nav="#/leb-journal?m=t&period=${P.period}&a=${encodeURIComponent(P.a)}&b=${encodeURIComponent(P.b)}">⚖️ ميزان المراجعة</button></div>
   <div class="doc">
     ${docHead('كشف الإيرادات والأعباء (حساب النتيجة)')}
-    <div class="doc-info"><div class="r"><span>من تاريخ:</span><b class="num">${fmtDate(P.from)}</b></div><div class="r"><span>إلى تاريخ:</span><b class="num">${fmtDate(P.to)}</b></div></div>
+    <div class="doc-info"><div class="r"><span>من تاريخ:</span><b class="num">${fmtDate(P.from)}</b></div><div class="r"><span>إلى تاريخ:</span><b class="num">${fmtDate(P.to)}</b></div>${_jrCur==='lbp'? '<div class="r"><span>العملة:</span><b>ليرة لبنانية (بسعر كل مستند)</b></div>' : ''}</div>
     <div class="stats">
-      <div class="stat"><div class="k">مجموع الإيرادات (7)</div><div class="v">${fmtMoney(totP)}</div></div>
-      <div class="stat owe"><div class="k">مجموع الأعباء (6)</div><div class="v">${fmtMoney(totC)}</div></div>
-      <div class="stat ${net<0? 'owe' : ''}"><div class="k">${net>=0? 'النتيجة: ربح' : 'النتيجة: خسارة'}</div><div class="v" style="color:${net>=0? 'var(--credit)' : 'var(--debit)'};">${fmtMoney(Math.abs(net))}</div></div>
+      <div class="stat"><div class="k">مجموع الإيرادات (7)</div><div class="v">${fmtJ(totP)}</div></div>
+      <div class="stat owe"><div class="k">مجموع الأعباء (6)</div><div class="v">${fmtJ(totC)}</div></div>
+      <div class="stat ${net<0? 'owe' : ''}"><div class="k">${net>=0? 'النتيجة: ربح' : 'النتيجة: خسارة'}</div><div class="v" style="color:${net>=0? 'var(--credit)' : 'var(--debit)'};">${fmtJ(Math.abs(net))}</div></div>
     </div>
-    <div style="font-weight:800; text-decoration:underline; margin:14px 0 6px;">الإيرادات — الفئة 7</div>${table(products, 'مجموع الإيرادات', totP)}
-    <div style="font-weight:800; text-decoration:underline; margin:18px 0 6px;">الأعباء — الفئة 6</div>${table(charges, 'مجموع الأعباء', totC)}
+    <div style="font-weight:800; text-decoration:underline; margin:14px 0 6px;">الإيرادات — الفئة 7</div>${table(products, 'مجموع الإيرادات', totP, totP0)}
+    <div style="font-weight:800; text-decoration:underline; margin:18px 0 6px;">الأعباء — الفئة 6</div>${table(charges, 'مجموع الأعباء', totC, totC0)}
     <div style="font-weight:800; text-decoration:underline; margin:18px 0 6px;">الأرصدة الوسيطة</div>
-    <table><tbody>
-      <tr><td>المبيعات (701)</td><td class="num">${fmtMoney(sales)}</td></tr>
-      <tr><td>ناقص: المشتريات (601)</td><td class="num" style="color:var(--debit);">− ${fmtMoney(purch + varStock)}</td></tr>
-      <tr style="font-weight:800;"><td>الهامش التجاري الإجمالي</td><td class="num">${fmtMoney(gross)}</td></tr>
-      <tr style="font-weight:800; background:var(--paper)"><td>${net>=0? 'نتيجة الدورة: ربح صافي' : 'نتيجة الدورة: خسارة صافية'}</td><td class="num" style="color:${net>=0? 'var(--credit)' : 'var(--debit)'};">${fmtMoney(net)}</td></tr>
+    <table><thead><tr><th>البيان</th><th>هالفترة</th>${hasPrev? '<th>السنة الماضية</th>' : ''}</tr></thead><tbody>
+      <tr><td>المبيعات (701)</td>${td(sales)}${tdp(sales0)}</tr>
+      <tr><td>ناقص: المشتريات (601)</td>${td(-cogs)}${tdp(-cogs0)}</tr>
+      <tr style="font-weight:800;"><td>الهامش الإجمالي</td>${td(sales-cogs)}${tdp(sales0-cogs0)}</tr>
+      <tr style="font-weight:800; background:var(--paper)"><td>${net>=0? 'نتيجة الدورة قبل الضريبة: ربح' : 'نتيجة الدورة: خسارة'}</td><td class="num" style="color:${net>=0? 'var(--credit)' : 'var(--debit)'};">${fmtJ(net)}</td>${tdp(net0)}</tr>
+      ${net>0? `<tr><td>تقدير ضريبة الدخل (<span class="no-print"><input type="number" id="pl_tax" value="${taxRate}" step="0.5" class="num" style="width:62px; display:inline-block; padding:2px 4px;"></span><span class="print-only">${taxRate}</span>%)</td><td class="num" style="color:var(--debit);">− ${fmtJ(net*taxRate/100)}</td>${hasPrev? '<td></td>' : ''}</tr>
+      <tr style="font-weight:800;"><td>النتيجة الصافية بعد الضريبة (تقديرية)</td>${td(net - net*taxRate/100)}${hasPrev? '<td></td>' : ''}</tr>` : ''}
     </tbody></table>
-    <div style="font-size:11.5px; color:var(--ink-soft); margin-top:6px; line-height:1.7;">القروض والتسديد ما بيدخلوا بالنتيجة (حسابات ميزانية — الفئة 1).</div>
+    <div style="font-size:11.5px; color:var(--ink-soft); margin-top:6px; line-height:1.7;">ضريبة الدخل هون تقدير بس (الشركات 17%؛ المؤسسات الفردية بشطور) — القرار الأخير للمحاسب. القروض والتسديد ما بيدخلوا بالنتيجة.</div>
   </div>
   ${appFooter()}`;
 }
 
-/* ===================== 🏛 المحاسبة اللبنانية: ميزانية، سنة مالية، TVA، أصول، صرف، مصرف، ضمان ===================== */
 function postGl(dr, cr, cur, amt, desc, date, extra){
   const g = Object.assign({id:uid(), at:Date.now(), date:date||todayISO(), dr:String(dr), cr:String(cr), amt:Math.abs(Number(amt)||0), desc:desc||'', by:currentUser&&currentUser.username}, extra||{});
   const a = Object.assign({}, accCfg()); a.gl = (a.gl||[]).concat([g]); DB.settings.specOptions = Object.assign({}, DB.settings.specOptions||{}, {__acc:a}); _jrCache = null; return g;
@@ -1930,7 +1950,9 @@ function accHubView(){
     ['#/leb-pl','📊','كشف الإيرادات والأعباء','حساب النتيجة: الفئة 6 مقابل 7'],
     ['#/leb-bs','🏛','الميزانية العمومية','الأصول مقابل الخصوم ورأس المال'],
     ['#/leb-journal','📖','القيود','دفتر اليومية، الأستاذ، ميزان المراجعة'],
-    ['#/leb-year','🗓','السنة المالية','أرصدة افتتاحية وإقفال السنة'],
+    ['#/leb-cf','💧','جدول التدفقات النقدية','من وين فاتت المصاري ولوين طلعت'],
+    ['#/leb-year','🗓','السنة المالية','أرصدة افتتاحية، إقفال الأشهر والسنة'],
+    ['#/leb-audit','🕵️','سجل المحذوفات','كل شي انحذف، إيمتى ومين'],
     ['#/leb-vat','🧾','TVA','الضريبة على القيمة المضافة وتصريح فصلي'],
     ['#/leb-assets','🏗','الأصول الثابتة','معدات، سيارات، ديكور واستهلاكها'],
     ['#/leb-fx','💱','صرف العملات','ليرة ↔ دولار مع فروقات الصرف'],
@@ -1943,38 +1965,85 @@ function accHubView(){
 }
 /* ---------- 🏛 الميزانية العمومية ---------- */
 function lebBSView(qs){
-  const at = qs.get('at') || todayISO();
-  const B = jrBalances(at);
-  const fy = at.slice(0,4);
-  // نتيجة الدورة (السنة الحالية غير المقفلة + أي سنة سابقة مش مقفلة)
-  let result = 0; Object.keys(B).forEach(a=>{ if(a[0]==='6' || a[0]==='7') result -= B[a]; });
-  const A = [], L = [];
-  Object.keys(B).sort().forEach(a=>{ const b = B[a]; if(Math.abs(b)<0.005 || a[0]==='6' || a[0]==='7') return;
-    const c = a[0], row = {a, n:jrName(a), v:b};
-    if(c==='1') L.push(Object.assign(row, {v:-b}));
-    else if(c==='2' || c==='3') A.push(row);          // الاستهلاكات (28) بتطلع بالسالب تحت الأصول
-    else if(c==='4' || c==='5'){ if(b>0) A.push(row); else L.push(Object.assign(row, {v:-b})); }
-  });
-  const SEC_A = [['2','الأصول الثابتة'],['3','المخزون'],['4','الذمم المدينة (زبائن ومدينون)'],['5','الأموال الجاهزة (صناديق ومصارف)']];
+  const at = qs.get('at') || todayISO(), at0 = jrShiftYear(at, -1);
+  const B = jrBalances(at), B0 = jrBalances(at0);
+  const res = X=>{ let r = 0; Object.keys(X).forEach(a=>{ if(a[0]==='6' || a[0]==='7') r -= X[a]; }); return r; };
+  const result = res(B), result0 = res(B0);
+  const hasPrev = Object.keys(B0).some(a=>Math.abs(B0[a])>0.005);
+  const side = (X)=>{ const A = {}, L = {}; Object.keys(X).forEach(a=>{ const b = X[a]; if(Math.abs(b)<0.005 || a[0]==='6' || a[0]==='7') return; const c = a[0];
+    if(c==='1') L[a] = -b; else if(c==='2' || c==='3') A[a] = b; else if(c==='4' || c==='5'){ if(b>0) A[a] = b; else L[a] = -b; } }); return {A, L}; };
+  const s1 = side(B), s0 = side(B0);
+  const SEC_A = [['2','الأصول الثابتة (صافي الاستهلاكات)'],['3','المخزون'],['4','الذمم المدينة (زبائن ومدينون)'],['5','الأموال الجاهزة (صناديق ومصارف)']];
   const SEC_L = [['1','الأموال الخاصة والديون طويلة الأجل'],['4','الديون قصيرة الأجل (موردون، عمال، ضرائب، ضمان)'],['5','حسابات مالية دائنة']];
-  const block = (rows, secs)=> secs.map(([c,n])=>{ const rs = rows.filter(x=>x.a[0]===c); if(!rs.length) return ''; const t = rs.reduce((x,r)=>x+r.v,0);
-    return `<tr style="background:var(--bg-2); font-weight:700;"><td colspan="2">${c} — ${n}</td><td class="num">${fmtMoney(t)}</td></tr>`+rs.map(r=>`<tr data-nav="#/leb-journal?m=g&acc=${r.a}&period=range&a=2000-01-01&b=${at}" style="cursor:pointer;"><td class="num">${r.a}</td><td>${escapeHtml(r.n)}</td><td class="num">${fmtMoney(r.v)}</td></tr>`).join(''); }).join('');
-  const totA = A.reduce((t,r)=>t+r.v,0), totL = L.reduce((t,r)=>t+r.v,0) + result;
-  const ok = Math.abs(totA-totL) < 0.05;
+  const tdp = v=> hasPrev? `<td class="num" style="color:var(--ink-soft);">${fmtJ(v)}</td>` : '';
+  const block = (cur, prev, secs)=> secs.map(([c,n])=>{ const codes = Array.from(new Set(Object.keys(cur).concat(Object.keys(prev)))).filter(a=>a[0]===c).sort(); if(!codes.length) return '';
+    const t = codes.reduce((x,a)=>x+(cur[a]||0),0), t0 = codes.reduce((x,a)=>x+(prev[a]||0),0);
+    return `<tr style="background:var(--bg-2); font-weight:700;"><td colspan="2">${c} — ${n}</td><td class="num">${fmtJ(t)}</td>${tdp(t0)}</tr>`+codes.map(a=>`<tr data-nav="#/leb-journal?m=g&acc=${a}&period=range&a=2000-01-01&b=${at}" style="cursor:pointer;"><td class="num">${a}</td><td>${escapeHtml(jrName(a))}</td><td class="num">${fmtJ(cur[a]||0)}</td>${tdp(prev[a]||0)}</tr>`).join(''); }).join('');
+  const sum = o=>Object.keys(o).reduce((t,a)=>t+o[a],0);
+  const totA = sum(s1.A), totL = sum(s1.L) + result, totA0 = sum(s0.A), totL0 = sum(s0.L) + result0;
+  const ok = Math.abs(totA-totL) < (_jrCur==='lbp'? 50 : 0.05);
+  const th = `<thead><tr><th>الحساب</th><th>البيان</th><th>${fmtDate(at)}</th>${hasPrev? `<th>${fmtDate(at0)}</th>` : ''}</tr></thead>`;
   return `<div class="card no-print"><h2><span class="dot"></span> 🏛 الميزانية العمومية</h2>
-    <p style="font-size:12.5px; color:var(--ink-soft);">المركز المالي بتاريخ معيّن: شو بتملك (الأصول) مقابل شو عليك ومين موّل (الخصوم والأموال الخاصة).</p>
-    <div class="grid grid-2"><div class="field"><label>بتاريخ</label><input type="date" id="bs_at" value="${at}"></div></div></div>
-  <div class="doc-actions no-print"><button class="btn btn-primary" onclick="printWithFilename('Balance-Sheet-${at}')">🖨 طباعة</button></div>
+    <p style="font-size:12.5px; color:var(--ink-soft);">المركز المالي بتاريخ معيّن: شو بتملك (الأصول) مقابل شو عليك ومين موّل (الخصوم والأموال الخاصة)، مع مقارنة بنفس التاريخ من السنة الماضية.</p>
+    <div class="grid grid-2"><div class="field"><label>بتاريخ</label><input type="date" id="bs_at" value="${at}"></div>${jrCurSel()}</div></div>
+  <div class="doc-actions no-print"><button class="btn btn-primary" onclick="printWithFilename('Balance-Sheet-${at}')">🖨 طباعة</button><button class="btn" data-nav="#/leb-cf">💧 جدول التدفقات النقدية</button></div>
   <div class="doc">${docHead('الميزانية العمومية')}
-    <div class="doc-info"><div class="r"><span>بتاريخ:</span><b class="num">${fmtDate(at)}</b></div></div>
-    <div class="grid grid-2" style="gap:14px; align-items:start;">
-      <div><div style="font-weight:800; margin-bottom:6px;">الأصول</div><table><tbody>${block(A, SEC_A) || '<tr><td>—</td></tr>'}</tbody><tfoot><tr style="font-weight:800; background:var(--paper)"><td colspan="2">مجموع الأصول</td><td class="num">${fmtMoney(totA)}</td></tr></tfoot></table></div>
-      <div><div style="font-weight:800; margin-bottom:6px;">الخصوم والأموال الخاصة</div><table><tbody>${block(L, SEC_L)}
-        <tr style="font-weight:700;"><td class="num">${result>=0? '12' : '129'}</td><td>نتيجة الدورة (${result>=0? 'ربح' : 'خسارة'}) — غير مقفلة</td><td class="num" style="color:${result>=0? 'var(--credit)' : 'var(--debit)'};">${fmtMoney(result)}</td></tr></tbody>
-        <tfoot><tr style="font-weight:800; background:var(--paper)"><td colspan="2">مجموع الخصوم</td><td class="num">${fmtMoney(totL)}</td></tr></tfoot></table></div>
-    </div>
-    <div style="margin-top:8px; font-weight:700; color:${ok? 'var(--credit)' : 'var(--debit)'};">${ok? '✅ الميزانية متوازنة (الأصول = الخصوم)' : '⚠️ في فرق '+fmtMoney(totA-totL)+' — شوف ميزان المراجعة'}</div>
-    
+    <div class="doc-info"><div class="r"><span>بتاريخ:</span><b class="num">${fmtDate(at)}</b></div>${_jrCur==='lbp'? '<div class="r"><span>العملة:</span><b>ليرة لبنانية</b></div>' : ''}</div>
+    <div style="font-weight:800; margin:10px 0 6px;">الأصول</div>
+    <table>${th}<tbody>${block(s1.A, s0.A, SEC_A) || '<tr><td colspan="4">—</td></tr>'}</tbody><tfoot><tr style="font-weight:800; background:var(--paper)"><td colspan="2">مجموع الأصول</td><td class="num">${fmtJ(totA)}</td>${tdp(totA0)}</tr></tfoot></table>
+    <div style="font-weight:800; margin:16px 0 6px;">الخصوم والأموال الخاصة</div>
+    <table>${th}<tbody>${block(s1.L, s0.L, SEC_L)}
+      <tr style="font-weight:700;"><td class="num">${result>=0? '120' : '129'}</td><td>نتيجة الدورة (${result>=0? 'ربح' : 'خسارة'}) — غير مقفلة</td><td class="num" style="color:${result>=0? 'var(--credit)' : 'var(--debit)'};">${fmtJ(result)}</td>${tdp(result0)}</tr></tbody>
+      <tfoot><tr style="font-weight:800; background:var(--paper)"><td colspan="2">مجموع الخصوم والأموال الخاصة</td><td class="num">${fmtJ(totL)}</td>${tdp(totL0)}</tr></tfoot></table>
+    <div style="margin-top:8px; font-weight:700; color:${ok? 'var(--credit)' : 'var(--debit)'};">${ok? '✅ الميزانية متوازنة (الأصول = الخصوم)' : '⚠️ في فرق '+fmtJ(totA-totL)+' — شوف ميزان المراجعة'}</div>
+  </div>${appFooter()}`;
+}
+/* ---------- 💧 جدول التدفقات النقدية (الطريقة المباشرة) ---------- */
+function lebCFView(qs){
+  const P = jrPeriodParams(qs);
+  const isCash = a=>a[0]==='5';
+  const cat = a=>{ const c = a[0]; if(c==='2') return 'inv'; if(c==='1') return 'fin'; return 'op'; };
+  const G = {op:{}, inv:{}, fin:{}}; let open = 0, close = 0;
+  journalEntriesAll().forEach(e=>{ if(e.date>P.to || e.kind==='closing') return; const cashD = e.lines.filter(l=>isCash(l.a)).reduce((t,l)=>t+l.dr-l.cr,0);
+    if(e.date<P.from){ open += cashD; return; } close += cashD;
+    const others = e.lines.filter(l=>!isCash(l.a)); if(!others.length || Math.abs(cashD)<0.000001) return;
+    const tot = others.reduce((t,l)=>t+Math.abs(l.dr-l.cr),0) || 1;
+    others.forEach(l=>{ const share = cashD * Math.abs(l.dr-l.cr)/tot; const g = cat(l.a); const lbl = jrCfLabel(l.a); G[g][lbl] = (G[g][lbl]||0) + share; }); });
+  const sec = (k, title)=>{ const rows = Object.keys(G[k]).filter(x=>Math.abs(G[k][x])>0.005).sort((a,b)=>G[k][b]-G[k][a]); const t = rows.reduce((s,x)=>s+G[k][x],0);
+    return {t, html:`<div style="font-weight:800; text-decoration:underline; margin:14px 0 6px;">${title}</div><table><tbody>${rows.map(x=>`<tr><td>${escapeHtml(x)}</td><td class="num" style="color:${G[k][x]>=0? 'var(--credit)' : 'var(--debit)'};">${fmtJ(G[k][x])}</td></tr>`).join('') || '<tr><td colspan="2">—</td></tr>'}</tbody><tfoot><tr style="font-weight:800; background:var(--paper)"><td>صافي ${title}</td><td class="num">${fmtJ(t)}</td></tr></tfoot></table>`}; };
+  const a = sec('op','التدفقات من النشاط التشغيلي'), b = sec('inv','التدفقات من الاستثمار (أصول ثابتة)'), c = sec('fin','التدفقات من التمويل (رأس مال، قروض، صاحب المؤسسة)');
+  return `<div class="card no-print"><h2><span class="dot"></span> 💧 جدول التدفقات النقدية</h2>
+    <p style="font-size:12.5px; color:var(--ink-soft); line-height:1.7;">من وين فاتت المصاري على الصناديق والمصارف (الفئة 5) ولوين طلعت، مقسومة: تشغيل، استثمار، تمويل. التحويلات بين الصناديق ما بتنحسب.</p>
+    ${periodFilterHtml('cf', P.period, P.a, P.b)}${jrCurSel()}</div>
+  <div class="doc-actions no-print"><button class="btn btn-primary" onclick="printWithFilename('Cash-Flow-${P.from}-${P.to}')">🖨 طباعة</button></div>
+  <div class="doc">${docHead('جدول التدفقات النقدية')}
+    <div class="doc-info"><div class="r"><span>من تاريخ:</span><b class="num">${fmtDate(P.from)}</b></div><div class="r"><span>إلى تاريخ:</span><b class="num">${fmtDate(P.to)}</b></div></div>
+    ${a.html}${b.html}${c.html}
+    <table style="margin-top:14px;"><tbody>
+      <tr><td>النقدية أول الفترة</td><td class="num">${fmtJ(open)}</td></tr>
+      <tr><td>صافي التغيّر بالنقدية</td><td class="num">${fmtJ(a.t+b.t+c.t)}</td></tr>
+      <tr style="font-weight:800; background:var(--paper)"><td>النقدية آخر الفترة</td><td class="num">${fmtJ(open+close)}</td></tr>
+    </tbody></table>
+  </div>${appFooter()}`;
+}
+function jrCfLabel(a){ const p3 = a.slice(0,3), p2 = a.slice(0,2);
+  const M = {'411':'مقبوضات من الزبائن','401':'دفعات للموردين','408':'دفعات فواتير مصاريف','421':'دفعات للعمال','431':'دفعات للضمان الاجتماعي','442':'TVA','471':'حركات صندوق غير مصنّفة','164':'قروض','101':'رأس المال','108':'حساب صاحب المؤسسة'};
+  if(M[p3]) return M[p3]; if(a[0]==='2') return 'شراء/بيع أصول ثابتة'; if(p2==='70') return 'مبيعات نقدية'; if(a[0]==='7') return 'إيرادات أخرى'; if(p2==='64') return 'أجور'; if(a[0]==='6') return 'مصاريف'; return jrName(a)||a; }
+/* ---------- 🕵️ سجل المحذوفات والحماية ---------- */
+function lebAuditView(){
+  const L = [];
+  const DK = {invoice:{arr:'invoices', label:'فاتورة'}, purchase:{arr:'purchaseInvoices', label:'فاتورة مشتريات'}, receipt:{arr:'receipts', label:'إيصال'}, voucher:{arr:'paymentVouchers', label:'سند صرف'}, budgetentry:{arr:'budgetEntries', label:'سند مصاريف'}, workentry:{arr:'workEntries', label:'يومية'}, workerpay:{arr:'workerPayments', label:'دفعة عامل'}, deduction:{arr:'deductions', label:'خصمية'}, quote:{arr:'quotes', label:'عرض سعر'}, order:{arr:'cuttingOrders', label:'طلبية'}, stockin:{arr:'stockIns', label:'إدخال مستودع'}, stockout:{arr:'stockOuts', label:'سحب مستودع'}, loan:{arr:'loans', label:'قرض'}};
+  Object.keys(DK).forEach(k=>{ const c = DK[k]; (DB[c.arr]||[]).forEach(d=>{ if(d.deleted) L.push({k, label:c.label, d}); }); });
+  L.sort((a,b)=>(b.d.deletedAt||0)-(a.d.deletedAt||0));
+  let blocked = []; try{ blocked = JSON.parse(localStorage.getItem('la_blocked_del')||'[]'); }catch(e){}
+  const lk = accCfg().lockedTo;
+  return `<div class="card"><h2><span class="dot"></span> 🕵️ سجل المحذوفات والحماية</h2>
+    <p style="font-size:12.5px; color:var(--ink-soft); line-height:1.7;">ولا مستند بينمحى نهائيًا: الحذف بيودّيه لسلة المحذوفات ويضل محفوظ وبيرجع. هون لائحة بكل يلي انحذف، ومين وإيمتى (إذا متسجّل). ${lk? 'الفترة مقفلة لغاية <b class="num">'+fmtDate(lk)+'</b>.' : ''}</p>
+    <div class="table-wrap"><table><thead><tr><th>نوع المستند</th><th>الرقم</th><th>تاريخ المستند</th><th>المبلغ</th><th>انحذف إيمتى</th><th>مين</th></tr></thead><tbody>
+    ${L.slice(0,400).map(x=>`<tr><td>${escapeHtml(x.label)}</td><td class="num">${escapeHtml(x.d.number||'')}</td><td class="num">${fmtDate(x.d.date)}</td><td class="num">${x.d.amount!=null? escapeHtml(String(x.d.amount)) : ''}</td><td class="num">${x.d.deletedAt? fmtDateTime12(x.d.deletedAt) : '—'}</td><td>${escapeHtml(x.d.deletedBy||'')}</td></tr>`).join('') || '<tr><td colspan="6">ما في شي محذوف</td></tr>'}
+    </tbody></table></div>
+    ${L.length? '<div class="action-row"><button class="btn" data-nav="#/trash">🗑 سلة المحذوفات (للاسترجاع)</button></div>' : ''}
+    ${blocked.length? `<div style="margin-top:12px; font-size:12.5px;"><b>🛡 محاولات حذف وقفها البرنامج على هالجهاز (حماية المزامنة):</b> ${blocked.length}</div>` : ''}
   </div>${appFooter()}`;
 }
 /* ---------- 🗓 السنة المالية: أرصدة افتتاحية + إقفال ---------- */
@@ -1996,6 +2065,12 @@ function lebYearView(){
       <div class="field"><label>الجهة</label><select id="op_side"><option value="dr">مدين (إلي / عندي)</option><option value="cr">دائن (عليّ)</option></select></div>
     </div><button class="btn btn-primary" id="op_add">➕ زيد رصيد</button>` : ''}
   </div>
+  <div class="card"><h2><span class="dot"></span> 🔐 إقفال الأشهر</h2>
+    <p style="font-size:12.5px; color:var(--ink-soft); line-height:1.7;">بعد ما يخلص المحاسب من شهر، قفّلو: الفواتير والإيصالات والسندات يلي تاريخها لغاية آخر هالشهر ما بقى حدا يعدّلها أو يحذفها إلا الـ admin. المستندات بتضل موجودة وبتنطبع عادي.</p>
+    <div class="grid grid-2"><div class="field"><label>مقفل لغاية</label><input type="text" class="num" disabled value="${c.lockedTo? fmtDate(c.lockedTo) : 'ولا شهر'}"></div>
+      ${can? `<div class="field"><label>قفّل لغاية آخر شهر</label><input type="month" id="lk_m" value="${(c.lockedTo||'').slice(0,7) || addMonths(todayISO().slice(0,7), -1)}"></div>` : ''}</div>
+    ${can? `<div class="action-row"><button class="btn btn-primary" id="lk_set">🔐 قفّل</button>${c.lockedTo? '<button class="btn" id="lk_clear">🔓 شيل الإقفال</button>' : ''}<button class="btn" data-nav="#/leb-audit">🕵️ سجل المحذوفات</button></div>` : ''}
+  </div>
   <div class="card"><h2><span class="dot"></span> 🔒 إقفال السنة المالية</h2>
     <p style="font-size:12.5px; color:var(--ink-soft); line-height:1.7;">إقفال السنة بيصفّر حسابات الأعباء (6) والإيرادات (7) بنتيجة الدورة (12 ربح / 129 خسارة) بتاريخ 31/12، وبيقفل المستندات يلي تاريخها بهالسنة: ما حدا بيقدر يعدّلها أو يمحيها إلا صاحب المؤسسة بعد ما يفتح السنة.</p>
     <div class="table-wrap"><table><thead><tr><th>السنة</th><th>النتيجة</th><th>الحالة</th><th></th></tr></thead><tbody>
@@ -2006,6 +2081,9 @@ function lebYearView(){
     </tbody></table></div></div>${appFooter()}`;
 }
 function bindLebYear(){
+  const ls = document.getElementById('lk_set'); if(ls) ls.addEventListener('click', async ()=>{ const m = document.getElementById('lk_m').value; if(!m) return; const d = monthEnd(m);
+    if(!confirm('قفل كل المستندات لغاية '+fmtDate(d)+'؟')) return; await accSave(a=>{ a.lockedTo = d; a.lockLog = (a.lockLog||[]).concat([{to:d, at:Date.now(), by:currentUser&&currentUser.username}]); }); toast('🔐 انقفلت الفترة لغاية '+fmtDate(d)); render(); });
+  const lc = document.getElementById('lk_clear'); if(lc) lc.addEventListener('click', async ()=>{ if(!confirm('شيل إقفال الأشهر؟')) return; await accSave(a=>{ a.lockLog = (a.lockLog||[]).concat([{to:null, at:Date.now(), by:currentUser&&currentUser.username}]); delete a.lockedTo; }); render(); });
   const d = document.getElementById('op_date'); if(d) d.addEventListener('change', ()=>accSave(a=>{ a.opening = Object.assign({lines:[]}, a.opening||{}, {date:d.value}); }).then(()=>render()));
   const ad = document.getElementById('op_add'); if(ad) ad.addEventListener('click', async ()=>{
     const v = Number(outPrim(document.getElementById('op_amt').value))||0; if(!(v>0)){ toast('اكتب المبلغ'); return; }
@@ -3133,7 +3211,7 @@ function routeRequiredPermission(routeKey){
     warehouse:'warehouse', 'warehouse-print':'warehouse', 'warehouse-item':'warehouse', stockout:'warehouse', stockin:'warehouse',
     orders:'orders', order:'orders', 'order-map':'orders',
     budget:'budget', 'budget-category':'budget', 'budget-overview':'budget',
-    acc:'budget', 'leb-journal':'budget', 'leb-pl':'budget', 'leb-bs':'budget', 'leb-year':'budget', 'leb-vat':'budget', 'leb-assets':'budget', 'leb-fx':'budget', 'leb-bank':'budget', 'leb-nssf':'budget',
+    acc:'budget', 'leb-journal':'budget', 'leb-pl':'budget', 'leb-bs':'budget', 'leb-year':'budget', 'leb-vat':'budget', 'leb-assets':'budget', 'leb-fx':'budget', 'leb-bank':'budget', 'leb-nssf':'budget', 'leb-cf':'budget', 'leb-audit':'budget',
     settings:'__admin__', trash:'__admin__', 'customer-accounts':'__admin__', 'worker-accounts':'__admin__'
   };
   return map[routeKey] || null;
@@ -3182,6 +3260,7 @@ function render(){
       bindEvents(); return;
     }
   }
+  _jrCur = ['leb-journal','leb-pl','leb-bs','leb-cf'].includes(parts[0])? jrCurPref() : '';
   let html = topbar();
   if(parts.length===0){
     html += crumbs([['الرئيسية',null]]) + hubView();
@@ -3439,6 +3518,10 @@ function render(){
     html += crumbs([['الرئيسية','#/'],['المحاسبة','#/acc'],['كشف الإيرادات والأعباء',null]]) + lebPLView(new URLSearchParams(location.hash.split('?')[1]||''));
   } else if(parts[0]==='leb-bs'){
     html += crumbs([['الرئيسية','#/'],['المحاسبة','#/acc'],['الميزانية العمومية',null]]) + lebBSView(new URLSearchParams(location.hash.split('?')[1]||''));
+  } else if(parts[0]==='leb-cf'){
+    html += crumbs([['الرئيسية','#/'],['المحاسبة','#/acc'],['جدول التدفقات النقدية',null]]) + lebCFView(new URLSearchParams(location.hash.split('?')[1]||''));
+  } else if(parts[0]==='leb-audit'){
+    html += crumbs([['الرئيسية','#/'],['المحاسبة','#/acc'],['سجل المحذوفات',null]]) + lebAuditView();
   } else if(parts[0]==='leb-year'){
     html += crumbs([['الرئيسية','#/'],['المحاسبة','#/acc'],['السنة المالية',null]]) + lebYearView();
   } else if(parts[0]==='leb-vat'){
@@ -6721,6 +6804,9 @@ function bindEvents(){
   if(location.hash.indexOf('#/leb-pl')===0) bindPeriodFilter('pl', (type,a,b)=>go(`#/leb-pl?period=${type}&a=${encodeURIComponent(a)}&b=${encodeURIComponent(b||'')}`));
   { const bs = document.getElementById('bs_at'); if(bs) bs.addEventListener('change', ()=>go('#/leb-bs?at='+bs.value)); }
   if(document.getElementById('op_rows')) bindLebYear();
+  { const jc = document.getElementById('jr_cur'); if(jc) jc.addEventListener('change', ()=>{ try{ localStorage.setItem('la_jr_cur', jc.value); }catch(e){} _jrCache = null; render(); }); }
+  { const tx = document.getElementById('pl_tax'); if(tx) tx.addEventListener('change', ()=>accSave(a=>{ a.incomeTaxRate = Number(tx.value)||0; }).then(()=>render())); }
+  if(location.hash.indexOf('#/leb-cf')===0) bindPeriodFilter('cf', (type,a,b)=>go(`#/leb-cf?period=${type}&a=${encodeURIComponent(a)}&b=${encodeURIComponent(b||'')}`));
   if(document.getElementById('vat_y')) bindLebVat();
   if(location.hash.indexOf('#/leb-assets')===0) bindLebAssets();
   { const fx = document.getElementById('fx_new'); if(fx) fx.addEventListener('click', openFxModal); }
@@ -6827,7 +6913,8 @@ document.querySelectorAll('[data-create-doc]').forEach(btn=>{
       const id = btn.getAttribute('data-del-doc');
       const item = DB[cfg.arr].find(x=>x.id===id);
       if(!item) return;
-      item.deleted = true; item.deletedAt = Date.now();
+      if(item.date && isClosedDate(item.date) && !(currentUser && currentUser.role==='admin')){ toast('🔒 هالمستند بفترة مقفلة — ما بينحذف إلا من الـ admin'); return; }
+      item.deleted = true; item.deletedAt = Date.now(); item.deletedBy = currentUser? currentUser.username : '';
       await save(KEYS[cfg.key], DB[cfg.arr]);
       toast(`انتقل${cfg.label==='الفاتورة'||cfg.label==='فاتورة المشتريات'?'ت':''} ${cfg.label} إلى سلة المحذوفات`);
       go(cfg.backRoute(item[cfg.partyField]));
