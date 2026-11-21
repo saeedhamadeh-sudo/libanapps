@@ -4936,6 +4936,16 @@ const LA_WORKER = {
       }
     }
 
+    // 0.7) تنزيل النسخة المحلية (Windows): رابط ثابت بيحوّل لآخر installer مسجّل بـ offline-update.json
+    if (url.pathname === '/download/offline' || url.pathname === '/download/offline/') {
+      try {
+        const r = await env.ASSETS.fetch(new URL('/offline-update.json', url.origin));
+        const j = r.ok ? await r.json() : {};
+        if (j.installer && j.installer.url) return Response.redirect(j.installer.url, 302);
+      } catch (e) {}
+      return new Response('ملف التثبيت مش جاهز هلّق — جرّب بعد شوي', { status: 503, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
+    }
+
     // 1) الـAPI — أي مسار تحت /api/ يرجّع JSON دائماً، حتى لو صار خطأ داخلي
     if (url.pathname.startsWith('/api/')) {
       try {

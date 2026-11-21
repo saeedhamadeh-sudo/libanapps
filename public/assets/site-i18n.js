@@ -6,6 +6,8 @@
    ============================================================ */
 window.SITE_I18N = {
 "en": {
+"💻 نسخة الكمبيوتر (ويندوز، بلا إنترنت)": "💻 Desktop version (Windows, works offline)",
+"نسخة الكمبيوتر (ويندوز، بلا إنترنت)": "Desktop version (Windows, works offline)",
 /* دخول بالبريد + لوحة وصلة */
 "✉️ الدخول بالبريد الإلكتروني": "✉️ Sign in with email",
 "الدخول بالبريد الإلكتروني": "Sign in with email",
@@ -825,6 +827,8 @@ window.SITE_I18N = {
 "مدفوع": "Paid"
 },
 "fr": {
+"💻 نسخة الكمبيوتر (ويندوز، بلا إنترنت)": "💻 Version ordinateur (Windows, hors ligne)",
+"نسخة الكمبيوتر (ويندوز، بلا إنترنت)": "Version ordinateur (Windows, hors ligne)",
 /* دخول بالبريد + لوحة وصلة */
 "✉️ الدخول بالبريد الإلكتروني": "✉️ Connexion par e-mail",
 "الدخول بالبريد الإلكتروني": "Connexion par e-mail",
