@@ -2602,15 +2602,21 @@ async function accInt(request, env, url) {
         const at = await gdAccess(env, row.gd_refresh); const GH = { Authorization: `Bearer ${at}` };
         const folder = await accGdFolder(env, row, GH, url.searchParams.get('name') || '');
         const p2 = (x) => String(x).padStart(2, '0'); const bz = new Date(Date.now() + 2 * 3600000);
-        const why = (url.searchParams.get('why') || '').replace(/[^a-z]/g, '').slice(0, 10);
+        let why = (url.searchParams.get('why') || '').replace(/[^a-z]/g, '').slice(0, 10);
+        if (why === 'hourly') {   // أول نسخة ساعية بكل يوم بتنحفظ «daily» (بتضل 30 يوم) — الباقي بينمحى بعد 48 ساعة
+          const since = new Date(Date.now() - 22 * 3600000).toISOString();
+          const dq = await fetch('https://www.googleapis.com/drive/v3/files?' + new URLSearchParams({ q: `'${folder}' in parents and trashed=false and createdTime > '${since}' and not name contains '-hourly'`, fields: 'files(id)', pageSize: '1' }), { headers: GH }).then((r) => r.json()).catch(() => null);
+          if (dq && Array.isArray(dq.files) && !dq.files.length) why = 'daily';
+        }
         const fname = `${product}-backup-${bz.getUTCFullYear()}${p2(bz.getUTCMonth() + 1)}${p2(bz.getUTCDate())}-${p2(bz.getUTCHours())}${p2(bz.getUTCMinutes())}${why ? '-' + why : ''}.json`;
         const bnd = 'lbk' + crypto.randomUUID().replace(/-/g, '');
         const mp = `--${bnd}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n` + JSON.stringify({ name: fname, parents: [folder], mimeType: 'application/json' }) +
           `\r\n--${bnd}\r\nContent-Type: application/json\r\n\r\n` + body + `\r\n--${bnd}--`;
         const ur = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,size', { method: 'POST', headers: Object.assign({ 'Content-Type': `multipart/related; boundary=${bnd}` }, GH), body: mp });
         const uj = await ur.json().catch(() => ({})); if (!uj.id) throw new Error('gd_upload:' + ur.status);
-        const cutoff = new Date(Date.now() - 30 * 86400000).toISOString();
-        const lr = await fetch('https://www.googleapis.com/drive/v3/files?' + new URLSearchParams({ q: `'${folder}' in parents and trashed=false and createdTime < '${cutoff}'`, fields: 'files(id)', pageSize: '20' }), { headers: GH });
+        // التنظيف: النسخ الساعية بتضل 48 ساعة، وباقي النسخ (اليومية/الخروج/اليدوية) 30 يوم
+        const cutoff = new Date(Date.now() - 30 * 86400000).toISOString(), hcut = new Date(Date.now() - 48 * 3600000).toISOString();
+        const lr = await fetch('https://www.googleapis.com/drive/v3/files?' + new URLSearchParams({ q: `'${folder}' in parents and trashed=false and (createdTime < '${cutoff}' or (name contains '-hourly' and createdTime < '${hcut}'))`, fields: 'files(id)', pageSize: '20' }), { headers: GH });
         const lj = await lr.json().catch(() => ({ files: [] })); let removed = 0;
         for (const f of (lj.files || []).slice(0, 10)) { const dr = await fetch(`https://www.googleapis.com/drive/v3/files/${f.id}`, { method: 'DELETE', headers: GH }); if (dr.ok) removed++; }
         await accPatch(env, cid, product, { gd_last_at: new Date().toISOString(), gd_last_err: '' });

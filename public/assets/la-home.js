@@ -126,6 +126,23 @@ window.laDriveDaily = async function(){
     var last = st.gd.last_at? Date.parse(st.gd.last_at) : 0; if(Date.now()-last < 20*3600000) return;
     await window.laDriveBackup('daily'); }catch(e){}
 };
+// نسخة كل ساعة بالخفاء (من أي جهاز فاتح البرنامج، بلا ما يبيّن شي للموظف)
+var _hourlyBusy = false;
+window.laDriveHourly = async function(){
+  if(_hourlyBusy) return; _hourlyBusy = true;
+  try{ var a = A(); if(!a || !a.cid() || (a.loggedIn && !a.loggedIn())) return;
+    if(a.hasKey && !a.hasKey() && !a.canAdmin()) return;   // الموظف ما بيولّد مفتاح ربط جديد
+    var st = await status(true); if(!st || !st.gd || !st.gd.on) return;
+    var last = st.gd.last_at? Date.parse(st.gd.last_at) : 0; if(Date.now()-last < 55*60000) return;
+    await window.laDriveBackup('hourly');
+  }catch(e){} finally{ _hourlyBusy = false; }
+};
+(function(){ var started = false;
+  function go(){ if(started) return; started = true;
+    setTimeout(function(){ window.laDriveHourly(); }, 90000);
+    setInterval(function(){ window.laDriveHourly(); }, 10*60000); }
+  var iv = setInterval(function(){ var a = A(); if(a && a.cid() && (!a.loggedIn || a.loggedIn())){ clearInterval(iv); go(); } }, 15000);
+})();
 // WhatChimp: كل زبون جديد أو تعديل رقم → جهة اتصال
 var _wcMap = null;
 window.laWcCustomersSaved = function(list){
