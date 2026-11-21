@@ -2756,13 +2756,18 @@ async function gdBackup(env, sid) {
       headers: Object.assign({ 'Content-Type': `multipart/related; boundary=${bnd}` }, GH), body: mp });
     const uj = await ur.json().catch(() => ({}));
     if (!uj.id) throw new Error('gd_upload:' + ur.status);
-    // 4) حذف النسخ الأقدم من 30 يوم
-    const cutoff = new Date(Date.now() - 30 * 86400000).toISOString();
-    const q = `'${folder}' in parents and trashed=false and createdTime < '${cutoff}'`;
-    const lr = await fetch('https://www.googleapis.com/drive/v3/files?' + new URLSearchParams({ q, fields: 'files(id)', pageSize: '20' }), { headers: GH });
-    const lj = await lr.json().catch(() => ({ files: [] }));
+    // 4) التنظيف: آخر 48 ساعة كل النسخ (كل ساعة)، وبعدها نسخة وحدة بكل يوم (الأخيرة) لحد 30 يوم، والأقدم بينمحى
     let removed = 0;
-    for (const f of (lj.files || []).slice(0, 10)) { const dr = await fetch(`https://www.googleapis.com/drive/v3/files/${f.id}`, { method: 'DELETE', headers: GH }); if (dr.ok) removed++; }
+    const cutoff = new Date(Date.now() - 30 * 86400000).toISOString();
+    const lr = await fetch('https://www.googleapis.com/drive/v3/files?' + new URLSearchParams({ q: `'${folder}' in parents and trashed=false and createdTime < '${new Date(Date.now() - 48 * 3600000).toISOString()}'`, fields: 'files(id,createdTime)', orderBy: 'createdTime desc', pageSize: '1000' }), { headers: GH });
+    const lj = await lr.json().catch(() => ({ files: [] }));
+    const seenDay = {}, del = [];
+    for (const f of lj.files || []) {
+      if (f.createdTime < cutoff) { del.push(f.id); continue; }
+      const day = new Date(new Date(f.createdTime).getTime() + 2 * 3600000).toISOString().slice(0, 10);
+      if (seenDay[day]) del.push(f.id); else seenDay[day] = 1;
+    }
+    for (const id of del.slice(0, 25)) { const dr = await fetch(`https://www.googleapis.com/drive/v3/files/${id}`, { method: 'DELETE', headers: GH }); if (dr.ok) removed++; }
     await setSite({ gd_last_at: new Date().toISOString(), gd_last_err: '' });
     return { ok: true, name, size: Number(uj.size || fileBody.length), removed };
   } catch (e) {
@@ -2771,13 +2776,13 @@ async function gdBackup(env, sid) {
     return { ok: false, error: msg };
   }
 }
-// كل ساعة: موقع واحد بيحتاج نسخة (آخر نسخة أقدم من 20 ساعة)
+// كل ساعة (بالخفاء): نسخة لكل موقع مربوط بـGoogle Drive — لحد 3 مواقع بكل تشغيل، الأقدم نسخةً أولاً
 async function motorGdCron(env) {
   if (!env.GOOGLE_CLIENT_ID || !env.SUPABASE_SERVICE_KEY) return;
-  const since = new Date(Date.now() - 20 * 3600000).toISOString();
-  const r = await fetch(`${env.SUPABASE_URL}/rest/v1/motor_sites?gd_refresh=neq.&or=(gd_last_at.is.null,gd_last_at.lt.${since})&select=id&order=gd_last_at.asc.nullsfirst&limit=1`, { headers: svcH(env) });
+  const since = new Date(Date.now() - 50 * 60000).toISOString();
+  const r = await fetch(`${env.SUPABASE_URL}/rest/v1/motor_sites?gd_refresh=neq.&or=(gd_last_at.is.null,gd_last_at.lt.${since})&select=id&order=gd_last_at.asc.nullsfirst&limit=3`, { headers: svcH(env) });
   const rows = await r.json().catch(() => []);
-  if (rows && rows[0]) await gdBackup(env, rows[0].id);
+  for (const x of rows || []) await gdBackup(env, x.id);
 }
 
 async function createOwner(request, env) {
