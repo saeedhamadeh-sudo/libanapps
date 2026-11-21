@@ -13389,6 +13389,33 @@ function docHead(title){
 }
 function invoicePrintView(inv){ return itemDocPrintView('invoice', inv); }
 function purchasePrintView(p){ return itemDocPrintView('purchase', p); }
+/* ---------- 🧾 الفاتورة الضريبية: الرقم الضريبي وتفصيل TVA بالليرة اللبنانية (عرض وطباعة فقط) ---------- */
+function taxInvOn(kind, doc){ return kind==='invoice' && accVatOn() && !doc.isReturn; }
+function taxInvNo(){ return accCfg().finNo || DB.settings.companyVatNo || accCfg().vatNo || ''; }
+function taxInvCustNo(id){ return ((accCfg().custVat)||{})[id] || ''; }
+function taxInvTitle(t){ return (!t || /^فاتورة( مبيع)?$/.test(String(t).trim()))? 'فاتورة ضريبية' : t+' — فاتورة ضريبية'; }
+function taxInvBlock(doc, rate){
+  const B = taxInvBreak(doc), L = n=>Math.round(Number(n)||0).toLocaleString('en-US'); if(!B.length) return '';
+  const T = B.reduce((a,b)=>({base:a.base+b.base, vat:a.vat+b.vat}), {base:0, vat:0});
+  const can = !currentCustomerSession && isPrivilegedUser(currentUser), cid = doc.customerId;
+  return `<div class="tax-inv" style="margin-top:10px; border:1px solid var(--line, #ccc); border-radius:8px; padding:8px 10px;">
+    <div style="font-weight:800; margin-bottom:4px;">تفصيل الضريبة على القيمة المضافة بالليرة اللبنانية <span class="num" style="font-weight:600; font-size:12px;">(سعر الصرف ${L(rate)})</span></div>
+    <table style="font-size:12.5px;"><thead><tr><th>النسبة</th><th>القيمة بدون TVA (ل.ل)</th><th>TVA (ل.ل)</th><th>المجموع (ل.ل)</th></tr></thead><tbody>
+      ${B.map(b=>`<tr><td class="num">${b.rt}%${b.rt? '' : ' (معفى)'}</td><td class="num">${L(b.base*rate)}</td><td class="num">${L(b.vat*rate)}</td><td class="num">${L((b.base+b.vat)*rate)}</td></tr>`).join('')}
+    </tbody>${B.length>1? `<tfoot><tr style="font-weight:800;"><td>المجموع</td><td class="num">${L(T.base*rate)}</td><td class="num">${L(T.vat*rate)}</td><td class="num">${L((T.base+T.vat)*rate)}</td></tr></tfoot>` : ''}</table>
+    ${can? `<div class="no-print" style="display:flex; gap:6px; align-items:center; margin-top:6px; font-size:12px;"><span>الرقم الضريبي للزبون (إذا مسجّل):</span><input type="text" id="ti_cust" class="num" value="${escapeHtml(taxInvCustNo(cid))}" style="max-width:170px; padding:3px 6px;"><button class="btn btn-sm" id="ti_save" data-cid="${escapeHtml(cid||'')}">💾</button></div>` : ''}
+  </div>`;
+}
+function taxInvInfo(doc){
+  const no = taxInvNo(), cn = taxInvCustNo(doc.customerId);
+  return `<div class="r"><span>الرقم الضريبي للمؤسسة:</span><b class="num">${no? escapeHtml(no) : '<span class="no-print" style="color:var(--debit);">⚠️ حطّو من «📑 نماذج المالية»</span>'}</b></div>${cn? `<div class="r"><span>الرقم الضريبي للزبون:</span><b class="num">${escapeHtml(cn)}</b></div>` : ''}`;
+}
+function bindTaxInv(){ const b = document.getElementById('ti_save'); if(!b) return;
+  b.addEventListener('click', async ()=>{ const cid = b.getAttribute('data-cid'), v = document.getElementById('ti_cust').value.trim(); if(!cid) return;
+    await accSave(a=>{ a.custVat = Object.assign({}, a.custVat||{}); if(v) a.custVat[cid] = v; else delete a.custVat[cid]; }); toast('✅ انحفظ الرقم الضريبي للزبون'); render(); }); }
+function taxInvBreak(doc){ const t = computeInvoiceTotal(doc); if(t.vatAmount>0) return [{rt:Number(t.vatRate)||0, base:Number(t.net)||0, vat:Number(t.vatAmount)||0}];
+  const f = posDiscFactor(doc), G = {}; (doc.items||[]).forEach(it=>{ const line = (Number(it.total)||0)*f; if(!line) return; const w = it.productId && DB.warehouseItems.find(x=>x.id===it.productId); const rt = w? itemVatRate(w) : settingsVatRate();
+    const g = G[rt] = G[rt] || {rt, base:0, vat:0}; g.base += line/(1+rt/100); g.vat += line - line/(1+rt/100); }); return Object.values(G).sort((a,b)=>b.rt-a.rt); }
 function itemDocPrintView(kind, doc){
   const cfg = (kind==='purchase' && doc.isReturn) ? {...ITEMDOC_CFG[kind], title:'فاتورة مرتجع', docTypeDefault:'فاتورة مرتجع مشتريات', filenamePrefix:'PurchaseReturn'} : ITEMDOC_CFG[kind];
   const party = DB[cfg.partyArr].find(p=>p.id===doc[cfg.partyField]);
@@ -13404,12 +13431,13 @@ function itemDocPrintView(kind, doc){
     <button class="btn btn-primary" onclick="printWithFilename('${cfg.filenamePrefix}-${safeText(doc.number)}')">🖨 طباعة</button>
   </div>
   <div class="doc">
-    ${docHead(doc.docType||cfg.docTypeDefault)}
+    ${docHead(taxInvOn(kind, doc)? taxInvTitle(doc.docType||cfg.docTypeDefault) : (doc.docType||cfg.docTypeDefault))}
     <div class="doc-info">
       <div class="r"><span>${cfg.partyLabel}:</span><b>${escapeHtml(party?party.name:'')}</b></div>
       <div class="r"><span>رقم الحساب:</span><b class="num">${escapeHtml(party?party.accountNumber||'—':'')}</b></div>
       <div class="r"><span>رقم ${cfg.title}:</span><b class="num">${escapeHtml(doc.number)}</b></div>
       <div class="r"><span>التاريخ:</span><b class="num" dir="ltr">${fmtDate(doc.date)}${doc.createdAt? ' · '+fmtTime12(doc.createdAt) : ''}</b></div>
+      ${taxInvOn(kind, doc)? taxInvInfo(doc) : ''}
     </div>
     <div class="table-scroll">
     <table class="invoice-items-table"><thead><tr>
@@ -13435,6 +13463,7 @@ function itemDocPrintView(kind, doc){
       </div>
     </div>
     ${kind==='purchase'? `<div class="no-print" style="font-size:12px; color:var(--ink-soft); margin-top:8px;">${doc.addToStock? (doc.isReturn? '📤 تم خصم البنود من المستودع' : '📥 أُضيفت البنود إلى المستودع') : 'ℹ️ هذه الفاتورة لم تُضف إلى المستودع'}</div>` : ''}
+    ${taxInvOn(kind, doc)? taxInvBlock(doc, _r) : ''}
     <div class="sig">التوقيع</div>
   </div>`;
 }
@@ -13545,7 +13574,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-11-22 · 00:05 · v115';
+const APP_TRADE_BUILD = '2026-11-22 · 00:20 · v116';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 // ===== ترجيع حركات ناقصة من ملف (إضافة بس — ما منمحي ولا منغيّر شي موجود) =====
 document.addEventListener('change', async e=>{
@@ -15098,6 +15127,7 @@ function bindEvents(){
   if(location.hash.indexOf('#/leb-recurring')===0) bindLebRecurring();
   if(location.hash.indexOf('#/leb-cc')===0) bindLebCC();
   if(location.hash.indexOf('#/leb-forms')===0) bindLebForms();
+  if(document.getElementById('ti_save')) bindTaxInv();
   document.querySelectorAll('[data-as-disp]').forEach(b=>b.addEventListener('click', ()=>openAssetDisposeModal(b.getAttribute('data-as-disp'))));
   injectExcelBtn();
   { const jc = document.getElementById('jr_cur'); if(jc) jc.addEventListener('change', ()=>{ try{ localStorage.setItem('la_jr_cur', jc.value); }catch(e){} _jrCache = null; render(); }); }

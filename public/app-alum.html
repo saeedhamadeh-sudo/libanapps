@@ -6212,6 +6212,31 @@ function quotePrintPageView(doc){
   ${dedPageHtml}
   `;
 }
+/* ---------- 🧾 الفاتورة الضريبية: الرقم الضريبي وتفصيل TVA بالليرة اللبنانية (عرض وطباعة فقط) ---------- */
+function taxInvOn(kind, doc){ return kind==='invoice' && accVatOn() && !doc.isReturn; }
+function taxInvNo(){ return accCfg().finNo || DB.settings.companyVatNo || accCfg().vatNo || ''; }
+function taxInvCustNo(id){ return ((accCfg().custVat)||{})[id] || ''; }
+function taxInvTitle(t){ return (!t || /^فاتورة( مبيع)?$/.test(String(t).trim()))? 'فاتورة ضريبية' : t+' — فاتورة ضريبية'; }
+function taxInvBlock(doc, rate){
+  const B = taxInvBreak(doc), L = n=>Math.round(Number(n)||0).toLocaleString('en-US'); if(!B.length) return '';
+  const T = B.reduce((a,b)=>({base:a.base+b.base, vat:a.vat+b.vat}), {base:0, vat:0});
+  const can = !currentCustomerSession && isPrivilegedUser(currentUser), cid = doc.customerId;
+  return `<div class="tax-inv" style="margin-top:10px; border:1px solid var(--line, #ccc); border-radius:8px; padding:8px 10px;">
+    <div style="font-weight:800; margin-bottom:4px;">تفصيل الضريبة على القيمة المضافة بالليرة اللبنانية <span class="num" style="font-weight:600; font-size:12px;">(سعر الصرف ${L(rate)})</span></div>
+    <table style="font-size:12.5px;"><thead><tr><th>النسبة</th><th>القيمة بدون TVA (ل.ل)</th><th>TVA (ل.ل)</th><th>المجموع (ل.ل)</th></tr></thead><tbody>
+      ${B.map(b=>`<tr><td class="num">${b.rt}%${b.rt? '' : ' (معفى)'}</td><td class="num">${L(b.base*rate)}</td><td class="num">${L(b.vat*rate)}</td><td class="num">${L((b.base+b.vat)*rate)}</td></tr>`).join('')}
+    </tbody>${B.length>1? `<tfoot><tr style="font-weight:800;"><td>المجموع</td><td class="num">${L(T.base*rate)}</td><td class="num">${L(T.vat*rate)}</td><td class="num">${L((T.base+T.vat)*rate)}</td></tr></tfoot>` : ''}</table>
+    ${can? `<div class="no-print" style="display:flex; gap:6px; align-items:center; margin-top:6px; font-size:12px;"><span>الرقم الضريبي للزبون (إذا مسجّل):</span><input type="text" id="ti_cust" class="num" value="${escapeHtml(taxInvCustNo(cid))}" style="max-width:170px; padding:3px 6px;"><button class="btn btn-sm" id="ti_save" data-cid="${escapeHtml(cid||'')}">💾</button></div>` : ''}
+  </div>`;
+}
+function taxInvInfo(doc){
+  const no = taxInvNo(), cn = taxInvCustNo(doc.customerId);
+  return `<div class="r"><span>الرقم الضريبي للمؤسسة:</span><b class="num">${no? escapeHtml(no) : '<span class="no-print" style="color:var(--debit);">⚠️ حطّو من «📑 نماذج المالية»</span>'}</b></div>${cn? `<div class="r"><span>الرقم الضريبي للزبون:</span><b class="num">${escapeHtml(cn)}</b></div>` : ''}`;
+}
+function bindTaxInv(){ const b = document.getElementById('ti_save'); if(!b) return;
+  b.addEventListener('click', async ()=>{ const cid = b.getAttribute('data-cid'), v = document.getElementById('ti_cust').value.trim(); if(!cid) return;
+    await accSave(a=>{ a.custVat = Object.assign({}, a.custVat||{}); if(v) a.custVat[cid] = v; else delete a.custVat[cid]; }); toast('✅ انحفظ الرقم الضريبي للزبون'); render(); }); }
+function taxInvBreak(doc){ const tot = computeInvoiceTotal(doc).totalUSD; if(!(tot>0)) return []; const rt = settingsVatRate(); return [{rt, base:tot/(1+rt/100), vat:tot - tot/(1+rt/100)}]; }
 function itemDocPrintView(kind, doc){
   if(kind==='quote') return quotePrintPageView(doc);
   const cfg = ITEMDOC_CFG[kind];
@@ -6225,12 +6250,13 @@ function itemDocPrintView(kind, doc){
     <button class="btn btn-primary" onclick="printWithFilename('${cfg.filenamePrefix}-${safeText(doc.number)}')">🖨 طباعة</button>
   </div>
   <div class="doc">
-    ${docHead(doc.docType||cfg.docTypeDefault)}
+    ${docHead(taxInvOn(kind, doc)? taxInvTitle(doc.docType||cfg.docTypeDefault) : (doc.docType||cfg.docTypeDefault))}
     <div class="doc-info">
       <div class="r"><span>${cfg.partyLabel}:</span><b>${escapeHtml(party?party.name:'')}</b></div>
       <div class="r"><span>رقم الحساب:</span><b class="num">${escapeHtml(party?party.accountNumber||'—':'')}</b></div>
       <div class="r"><span>رقم ${cfg.title}:</span><b class="num">${escapeHtml(doc.number)}</b></div>
       <div class="r"><span>التاريخ:</span><b class="num">${fmtDate(doc.date)}</b></div>
+      ${taxInvOn(kind, doc)? taxInvInfo(doc) : ''}
     </div>
     <div class="table-scroll">
     <table class="invoice-items-table"><thead><tr>
@@ -6254,6 +6280,7 @@ function itemDocPrintView(kind, doc){
         <div class="line lbp">المجموع ${secCurLabel()}: ${fmtLBP(totals.totalLBP)}</div>
       </div>
     </div>
+    ${taxInvOn(kind, doc)? taxInvBlock(doc, curRate()) : ''}
     <div class="sig">التوقيع</div>
   </div>`;
 }
@@ -7287,6 +7314,7 @@ function bindEvents(){
   if(location.hash.indexOf('#/leb-recurring')===0) bindLebRecurring();
   if(location.hash.indexOf('#/leb-cc')===0) bindLebCC();
   if(location.hash.indexOf('#/leb-forms')===0) bindLebForms();
+  if(document.getElementById('ti_save')) bindTaxInv();
   document.querySelectorAll('[data-as-disp]').forEach(b=>b.addEventListener('click', ()=>openAssetDisposeModal(b.getAttribute('data-as-disp'))));
   injectExcelBtn();
   { const jc = document.getElementById('jr_cur'); if(jc) jc.addEventListener('change', ()=>{ try{ localStorage.setItem('la_jr_cur', jc.value); }catch(e){} _jrCache = null; render(); }); }
