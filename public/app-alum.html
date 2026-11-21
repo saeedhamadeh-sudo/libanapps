@@ -1720,7 +1720,7 @@ const AL_FIXED = [
   ['10100','رأس المال'],['10801','حساب صاحب المؤسسة'],['12001','نتيجة الدورة — ربح'],['12900','نتيجة الدورة — خسارة'],
   ['21301','إنشاءات وديكور وتحسينات'],['21501','معدات وآلات'],['21801','أثاث ومفروشات'],['21820','سيارات وآليات نقل'],['21830','أجهزة كمبيوتر ومعلوماتية'],
   ['28130','استهلاكات الإنشاءات والتحسينات'],['28150','استهلاكات المعدات والآلات'],['28180','استهلاكات الأثاث'],['28182','استهلاكات السيارات'],['28183','استهلاكات أجهزة الكمبيوتر'],
-  ['43100','الضمان الاجتماعي — اشتراكات مستحقة'],['44260','TVA قابلة للاسترداد (على المشتريات)'],['44270','TVA محصّلة (على المبيعات)'],['47100','حساب انتقالي'],
+  ['40310','شيكات صادرة (أوراق دفع)'],['43100','الضمان الاجتماعي — اشتراكات مستحقة'],['44210','ضريبة الرواتب المقتطعة'],['49100','مؤونة ديون مشكوك بتحصيلها'],['51130','شيكات برسم التحصيل'],['68170','مخصصات مؤونة الديون المشكوك بتحصيلها'],['78170','استرداد مؤونة ديون'],['44260','TVA قابلة للاسترداد (على المشتريات)'],['44270','TVA محصّلة (على المبيعات)'],['47100','حساب انتقالي'],
   ['51201','المصرف (شيكات وحوالات)'],['51601','Whish'],['53101','الصندوق — دولار'],['53105','الصندوق — ليرة لبنانية (بالدولار)'],
   ['60101','مشتريات مواد وبضائع'],['64101','أجور ورواتب العمال'],['64510','اشتراكات الضمان — حصة صاحب العمل'],['66600','خسائر فروقات الصرف'],['68110','مخصصات استهلاك الأصول الثابتة'],
   ['70101','مبيعات (أشغال وبضائع)'],['76600','أرباح فروقات الصرف']
@@ -1750,7 +1750,7 @@ function jrRateIndex(){ const I = {}; const put = (pre, arr)=>(arr||[]).forEach(
 function journalEntriesAll(){
   const k = _jrCur==='lbp'? 'lbp' : 'p';
   if(_jrCache && _jrCache.k===k && Date.now()-_jrCacheAt < 1500) return _jrCache.list;
-  _alAcc = null; let out = journalEntriesBuild();
+  _alAcc = null; let out = journalEntriesBuild(); jrApplyExtras(out);
   if(k==='lbp'){ const I = jrRateIndex(), def = curRate(); out = out.map(e=>{ const r = I[e.key] || def; return Object.assign({}, e, {rate:r, lines:e.lines.map(l=>({a:l.a, dr:l.dr*r, cr:l.cr*r}))}); }); }
   jrApplyClosing(out);
   out.sort((a,b)=> a.date<b.date? -1 : a.date>b.date? 1 : (a.at||0)-(b.at||0)); out.forEach((e,i)=>{ e.no = i+1; });
@@ -1814,7 +1814,7 @@ function openGlEntryModal(){
     postGl(dr, cr, 'USD', v, wrap.querySelector('#gl_desc').value.trim(), wrap.querySelector('#gl_date').value||todayISO()); const ok = await alGlSave(); wrap.remove(); toast(ok? '✅ انسجّل القيد' : '⚠️ صار خطأ'); render(); });
 }
 
-const JR_KINDS = {opening:'قيد افتتاحي', closing:'إقفال السنة', dep:'استهلاكات', nssf:'ضمان اجتماعي', sale:'مبيعات', receipt:'مقبوضات', purchase:'مشتريات', voucher:'دفعات موردين', wage:'أجور ومعاشات', workerpay:'دفعات عمال', expense:'مصاريف', income:'إيرادات أخرى', loan:'قروض', gl:'قيود يدوية'};
+const JR_KINDS = {cheque:'شيكات', paytax:'ضريبة الرواتب', opening:'قيد افتتاحي', closing:'إقفال السنة', dep:'استهلاكات', nssf:'ضمان اجتماعي', sale:'مبيعات', receipt:'مقبوضات', purchase:'مشتريات', voucher:'دفعات موردين', wage:'أجور ومعاشات', workerpay:'دفعات عمال', expense:'مصاريف', income:'إيرادات أخرى', loan:'قروض', gl:'قيود يدوية'};
 function jrName(code){ const a = alAccounts().find(x=>x.code===String(code)); if(a) return a.name; return AL_GROUPS[String(code).slice(0,3)] || AL_GROUPS[String(code)[0]] || ''; }
 function jrPeriodParams(qs){ const period = qs.get('period')||'month', a = qs.get('a')||todayISO().slice(0,7), b = qs.get('b')||''; const r = computePeriodRange(period, a, b); return {period, a, b, from:r.from, to:r.to}; }
 function lebJournalView(qs){
@@ -1951,6 +1951,9 @@ function accHubView(){
     ['#/leb-bs','🏛','الميزانية العمومية','الأصول مقابل الخصوم ورأس المال'],
     ['#/leb-journal','📖','القيود','دفتر اليومية، الأستاذ، ميزان المراجعة'],
     ['#/leb-cf','💧','جدول التدفقات النقدية','من وين فاتت المصاري ولوين طلعت'],
+    ['#/leb-aging','⏳','أعمار الديون','0–30، 60، 90، +90 يوم وسقف الدين'],
+    ['#/leb-cheques','🧾','الشيكات','برسم التحصيل، محصّلة، مرتجعة'],
+    ['#/leb-payroll','💼','الرواتب','ضريبة الرواتب وقسائم الرواتب'],
     ['#/leb-year','🗓','السنة المالية','أرصدة افتتاحية، إقفال الأشهر والسنة'],
     ['#/leb-audit','🕵️','سجل المحذوفات','كل شي انحذف، إيمتى ومين'],
     ['#/leb-vat','🧾','TVA','الضريبة على القيمة المضافة وتصريح فصلي'],
@@ -2046,6 +2049,162 @@ function lebAuditView(){
     ${blocked.length? `<div style="margin-top:12px; font-size:12.5px;"><b>🛡 محاولات حذف وقفها البرنامج على هالجهاز (حماية المزامنة):</b> ${blocked.length}</div>` : ''}
   </div>${appFooter()}`;
 }
+/* ===================== 💼 الرواتب، 🧾 الشيكات، ⏳ أعمار الديون ===================== */
+function accGlSave(){ return (typeof alGlSave==='function')? alGlSave() : save(KEYS.cashMovements, DB.cashMovements); }
+function jrPartyAcct(kind, id){ const a = coaAccounts().find(x=>x.kind===kind && x.ref===id); return a? a.code : ''; }
+const CHQ_RE = /شيك|cheque|check/i;
+const CHQ_FALLBACK = ['47100','51201'];
+function chqCfg(){ return accCfg().cheques || {}; }
+// --- ضريبة الرواتب (المادة 58 والتنزيلات العائلية — القانون 324/2024)، سنوي بالليرة
+const PAYTAX_DEF = { brackets:[[360000000,2],[900000000,4],[1800000000,7],[3600000000,11],[7200000000,15],[13500000000,20],[null,25]], single:450000000, married:225000000, child:45000000, maxKids:5 };
+function payCfg(){ const c = accCfg().payroll || {}; return Object.assign({}, PAYTAX_DEF, c, {brackets:(c.brackets && c.brackets.length)? c.brackets : PAYTAX_DEF.brackets}); }
+function payRate(){ const r = Number(payCfg().rate); return r>0? r : curRate(); }
+function payFamilyDed(w){ const c = payCfg(), p = (c.workers||{})[w] || {}; let d = Number(c.single)||0; if(p.married && !p.spouseWorks) d += Number(c.married)||0; d += Math.min(Number(p.kids)||0, c.maxKids||5) * (Number(c.child)||0) * (p.married && p.spouseWorks? 0.5 : 1); return d; }
+function payAnnualTax(taxable){ let t = 0, prev = 0; for(const [cap, rate] of payCfg().brackets){ if(taxable<=prev) break; const top = cap==null? taxable : Math.min(taxable, cap); t += (top - prev) * rate/100; prev = cap==null? taxable : cap; } return t; }
+function payFor(e){   // قسيمة معاش شهري لعامل مشمول
+  const c = payCfg(); if(!c.on || !isSalaryEntry(e) || !(c.workers||{})[e.workerId] || !(c.workers||{})[e.workerId].on) return null;
+  const r = payRate(), gross = computeWorkEntryTotal(e), grossL = gross*r, ded = payFamilyDed(e.workerId)/12;
+  const taxable = Math.max(0, grossL - ded), taxL = payAnnualTax(taxable*12)/12;
+  const ns = (typeof nssfFor==='function')? nssfFor(e) : null, eeL = ns? ns.ee*r : 0;
+  return {gross, grossL, ded, taxable, taxL, tax:taxL/r, eeL, netL: grossL - taxL - eeL, rate:r};
+}
+// تطبيق الشيكات وضريبة الرواتب على القيود (بدون ما نلمس المستندات)
+function jrApplyExtras(out){
+  const C = chqCfg(), byKey = {}; out.forEach(e=>{ byKey[e.key] = e; });
+  const push = (key, date, kind, doc, desc, nav, dr, cr, v)=>{ v = Math.abs(Number(v)||0); if(!(v>0)) return; out.push({key, date, at:Date.parse(date+'T12:00:00')||0, kind, doc, desc, nav, lines:[{a:dr, dr:v, cr:0},{a:cr, dr:0, cr:v}]}); };
+  (DB.receipts||[]).forEach(r=>{ if(r.deleted || !CHQ_RE.test(r.method||'')) return; const e = byKey['rec:'+r.id]; if(!e) return;
+    const L = e.lines.find(l=>l.dr>0 && CHQ_FALLBACK.includes(l.a)); if(!L) return; L.a = '51130'; const party = (e.lines.find(l=>l.cr>0)||{}).a, v = L.dr, st = C['rec:'+r.id] || {};
+    if(st.status==='collected') push('chq:rec:'+r.id, st.at||e.date, 'cheque', 'تحصيل شيك'+(st.no? ' #'+st.no : ''), 'شيك من زبون — إيصال #'+(r.number||''), '#/leb-cheques', st.bank||'51201', '51130', v);
+    else if(st.status==='bounced' && party) push('chq:rec:'+r.id, st.at||e.date, 'cheque', 'شيك مرتجع'+(st.no? ' #'+st.no : ''), 'شيك مرتجع — إيصال #'+(r.number||''), '#/leb-cheques', party, '51130', v); });
+  (DB.paymentVouchers||[]).forEach(p=>{ if(p.deleted || !CHQ_RE.test(p.method||'')) return; const e = byKey['vou:'+p.id]; if(!e) return;
+    const L = e.lines.find(l=>l.cr>0 && CHQ_FALLBACK.includes(l.a)); if(!L) return; L.a = '40310'; const party = (e.lines.find(l=>l.dr>0)||{}).a, v = L.cr, st = C['vou:'+p.id] || {};
+    if(st.status==='collected') push('chq:vou:'+p.id, st.at||e.date, 'cheque', 'صرف شيك'+(st.no? ' #'+st.no : ''), 'شيك لمورد — سند #'+(p.number||''), '#/leb-cheques', '40310', st.bank||'51201', v);
+    else if(st.status==='bounced' && party) push('chq:vou:'+p.id, st.at||e.date, 'cheque', 'شيك صادر مرتجع'+(st.no? ' #'+st.no : ''), 'شيك صادر رجع — سند #'+(p.number||''), '#/leb-cheques', '40310', party, v); });
+  if(payCfg().on) (DB.workEntries||[]).forEach(e=>{ if(e.deleted) return; const pf = payFor(e); if(!pf || !(pf.tax>0)) return; const wa = jrPartyAcct('worker', e.workerId) || '47100';
+    push('ptax:'+e.id, e.date, 'paytax', 'ضريبة رواتب — معاش #'+(e.number||''), 'ضريبة الرواتب المقتطعة', '#/leb-payroll', wa, '44210', pf.tax); });
+}
+/* ---------- 💼 الرواتب ---------- */
+function lebPayrollView(qs){
+  const c = payCfg(), ym = qs.get('m') || todayISO().slice(0,7), can = isPrivilegedUser(currentUser), W = c.workers || {};
+  const E = DB.workEntries.filter(e=>!e.deleted && isSalaryEntry(e) && salaryMonthOf(e)===ym);
+  const L = n=>Math.round(Number(n)||0).toLocaleString('en-US');
+  let T = {g:0, t:0, ee:0, n:0};
+  const rows = E.map(e=>{ const w = DB.workers.find(x=>x.id===e.workerId); const pf = payFor(e); if(!pf) return `<tr><td>${escapeHtml(w? w.name : '')}</td><td colspan="6" style="color:var(--ink-soft);">مش مشمول بالرواتب الرسمية (علّمو تحت)</td></tr>`;
+    T.g += pf.grossL; T.t += pf.taxL; T.ee += pf.eeL; T.n += pf.netL;
+    return `<tr><td>${escapeHtml(w? w.name : '')}</td><td class="num">${L(pf.grossL)}</td><td class="num">${L(pf.ded)}</td><td class="num">${L(pf.taxable)}</td><td class="num">${L(pf.taxL)}</td><td class="num">${L(pf.eeL)}</td><td class="num"><b>${L(pf.netL)}</b></td><td class="no-print"><button class="btn btn-sm" data-nav="#/leb-payslip/${e.id}">🧾 قسيمة</button></td></tr>`; }).join('');
+  let owed = 0; journalEntriesAll().forEach(e=>e.lines.forEach(l=>{ if(l.a==='44210') owed += l.cr - l.dr; }));
+  return `<div class="card no-print"><h2><span class="dot"></span> 💼 الرواتب وضريبة الرواتب</h2>
+    <label style="display:flex; gap:8px; align-items:center; font-weight:700;"><input type="checkbox" id="pr_on" ${c.on? 'checked' : ''} ${can? '' : 'disabled'} style="width:auto;"> احسب ضريبة الرواتب على المعاشات الشهرية</label>
+    <p style="font-size:12.5px; color:var(--ink-soft); line-height:1.7;">الشطور والتنزيلات العائلية حسب المادتين 56 و58 (القانون 324/2024): عازب 450 مليون بالسنة، متزوّج +225 مليون (إذا الزوجة ما بتشتغل)، وكل ولد 45 مليون (لغاية 5). الشطور 2% لـ 25%. الضريبة بتنحسب عالمعاش بالليرة على سعر <b class="num">${L(payRate())}</b> وبتنقص من حساب العامل لصالح 4421. ضمان الأجير من صفحة «🛡 الضمان».</p>
+    ${can? `<div class="table-wrap"><table><thead><tr><th>العامل</th><th>مشمول</th><th>متزوّج</th><th>الزوج/ة بيشتغل</th><th>عدد الأولاد</th></tr></thead><tbody>
+      ${DB.workers.filter(w=>!w.deleted).map(w=>{ const p = W[w.id]||{}; return `<tr data-pw="${w.id}"><td>${escapeHtml(w.name)}</td><td><input type="checkbox" data-k="on" ${p.on? 'checked' : ''} style="width:auto;"></td><td><input type="checkbox" data-k="married" ${p.married? 'checked' : ''} style="width:auto;"></td><td><input type="checkbox" data-k="spouseWorks" ${p.spouseWorks? 'checked' : ''} style="width:auto;"></td><td><input type="number" data-k="kids" min="0" max="10" value="${Number(p.kids)||0}" class="num" style="width:70px;"></td></tr>`; }).join('') || '<tr><td colspan="5">ما في عمال</td></tr>'}
+    </tbody></table></div>
+    <div class="grid grid-2"><div class="field"><label>سعر الصرف لاحتساب الضريبة (فاضي = سعر البرنامج)</label><input type="number" id="pr_rate" class="num" value="${c.rate||''}"></div></div>
+    <button class="btn btn-primary" id="pr_save">💾 حفظ</button>` : ''}
+    <div class="grid grid-2" style="margin-top:12px;"><div class="field"><label>الشهر</label><input type="month" id="pr_m" value="${ym}"></div></div></div>
+  <div class="doc-actions no-print"><button class="btn btn-primary" onclick="printWithFilename('Payroll-${ym}')">🖨 طباعة</button>${can && owed>0.005? `<button class="btn" id="pr_pay">💸 دفع ضريبة الرواتب للمالية (${fmtMoney(owed)})</button>` : ''}</div>
+  <div class="doc">${docHead('جدول الرواتب')}
+    <div class="doc-info"><div class="r"><span>الشهر:</span><b class="num">${fmtMonthAr(ym)}</b></div><div class="r"><span>العملة:</span><b>ليرة لبنانية</b></div></div>
+    <div class="table-wrap"><table><thead><tr><th>العامل</th><th>المعاش الإجمالي</th><th>التنزيل العائلي (شهري)</th><th>الخاضع للضريبة</th><th>ضريبة الرواتب</th><th>ضمان الأجير</th><th>الصافي</th><th class="no-print"></th></tr></thead>
+    <tbody>${rows || '<tr><td colspan="8">ما في معاشات شهرية بهالشهر — زيد «💼 معاش شهري» من صفحة العامل</td></tr>'}</tbody>
+    <tfoot><tr style="font-weight:800; background:var(--paper)"><td>المجموع</td><td class="num">${L(T.g)}</td><td></td><td></td><td class="num">${L(T.t)}</td><td class="num">${L(T.ee)}</td><td class="num">${L(T.n)}</td><td class="no-print"></td></tr></tfoot></table></div>
+  </div>${appFooter()}`;
+}
+function lebPayslipView(id){
+  const e = DB.workEntries.find(x=>x.id===id); if(!e) return emptyState('ما لقينا المعاش');
+  const w = DB.workers.find(x=>x.id===e.workerId), pf = payFor(e); if(!pf) return emptyState('هالعامل مش مشمول بالرواتب الرسمية — علّمو من صفحة الرواتب');
+  const L = n=>Math.round(Number(n)||0).toLocaleString('en-US')+' ل.ل', p = (payCfg().workers||{})[e.workerId]||{};
+  return `<div class="doc-actions no-print"><button class="btn btn-primary" onclick="printWithFilename('Payslip-${escapeHtml((w&&w.name)||'')}-${salaryMonthOf(e)}')">🖨 طباعة القسيمة</button><button class="btn" data-nav="#/leb-payroll?m=${salaryMonthOf(e)}">↩ جدول الرواتب</button></div>
+  <div class="doc">${docHead('قسيمة راتب')}
+    <div class="doc-info"><div class="r"><span>العامل:</span><b>${escapeHtml(w? w.name : '')}</b></div><div class="r"><span>الشهر:</span><b class="num">${fmtMonthAr(salaryMonthOf(e))}</b></div><div class="r"><span>الوضع العائلي:</span><b>${p.married? 'متزوّج' : 'عازب'}${Number(p.kids)? ' — '+p.kids+' أولاد' : ''}</b></div></div>
+    <table><tbody>
+      <tr><td>المعاش الإجمالي</td><td class="num">${L(pf.grossL)}</td></tr>
+      <tr><td>ناقص: ضريبة الرواتب</td><td class="num" style="color:var(--debit);">− ${L(pf.taxL)}</td></tr>
+      <tr><td>ناقص: حصة الأجير بالضمان</td><td class="num" style="color:var(--debit);">− ${L(pf.eeL)}</td></tr>
+      <tr style="font-weight:800; background:var(--paper)"><td>الصافي المستحق</td><td class="num">${L(pf.netL)}</td></tr>
+    </tbody></table>
+    <div style="font-size:11.5px; color:var(--ink-soft); margin-top:6px;">التنزيل العائلي الشهري: ${L(pf.ded)} — الخاضع للضريبة: ${L(pf.taxable)} — سعر الصرف: ${Math.round(pf.rate).toLocaleString('en-US')}</div>
+    <div class="sig" style="display:flex; justify-content:space-between;"><span>توقيع صاحب العمل</span><span>توقيع الأجير</span></div>
+  </div>${appFooter()}`;
+}
+function bindLebPayroll(){
+  const on = document.getElementById('pr_on'); if(on) on.addEventListener('change', ()=>accSave(a=>{ a.payroll = Object.assign({}, a.payroll||{}, {on:on.checked}); }).then(()=>render()));
+  const m = document.getElementById('pr_m'); if(m) m.addEventListener('change', ()=>go('#/leb-payroll?m='+m.value));
+  const sv = document.getElementById('pr_save'); if(sv) sv.addEventListener('click', async ()=>{ const W = {};
+    document.querySelectorAll('[data-pw]').forEach(tr=>{ const id = tr.getAttribute('data-pw'), g = k=>tr.querySelector('[data-k="'+k+'"]'); W[id] = {on:g('on').checked, married:g('married').checked, spouseWorks:g('spouseWorks').checked, kids:Number(g('kids').value)||0}; });
+    const rt = Number(document.getElementById('pr_rate').value)||0;
+    await accSave(a=>{ a.payroll = Object.assign({}, a.payroll||{}, {workers:W, rate:rt||null}); }); toast('✅ انحفظت إعدادات الرواتب'); render(); });
+  const pay = document.getElementById('pr_pay'); if(pay) pay.addEventListener('click', ()=>{ let owed = 0; journalEntriesAll().forEach(e=>e.lines.forEach(l=>{ if(l.a==='44210') owed += l.cr - l.dr; }));
+    openAccPayModal('دفع ضريبة الرواتب للمالية', (src, amt, date)=>postGl('44210', src, curOf(src), amt, 'دفع ضريبة الرواتب المقتطعة', date), owed); });
+}
+/* ---------- 🧾 الشيكات ---------- */
+function lebChequesView(qs){
+  const f = qs.get('f') || 'pending', C = chqCfg(), today = todayISO(), can = isPrivilegedUser(currentUser) || canPostGl();
+  const banks = coaAccounts().filter(a=>/^512/.test(a.code));
+  const list = [];
+  (DB.receipts||[]).forEach(r=>{ if(!r.deleted && CHQ_RE.test(r.method||'')) list.push({k:'rec:'+r.id, dir:'in', d:r, party:(DB.customers.find(c=>c.id===r.customerId)||{}).name||'', usd:(typeof receiptAmountUSD==='function'? Math.abs(receiptAmountUSD(r)) : Number(r.amount)||0)}); });
+  (DB.paymentVouchers||[]).forEach(v=>{ if(!v.deleted && CHQ_RE.test(v.method||'')) list.push({k:'vou:'+v.id, dir:'out', d:v, party:(DB.suppliers.find(s=>s.id===v.supplierId)||{}).name||'', usd:Number(v.amount)||0}); });
+  list.forEach(x=>{ x.st = C[x.k] || {}; x.status = x.st.status || 'pending'; x.due = x.st.due || x.d.date; });
+  const soon = list.filter(x=>x.status==='pending' && x.due<=addDaysISO(today, 7));
+  const shown = list.filter(x=>f==='all' || x.status===f).sort((a,b)=> a.due<b.due? -1 : 1);
+  const sum = (dir, st)=>list.filter(x=>x.dir===dir && x.status===st).reduce((t,x)=>t+x.usd,0);
+  const ST = {pending:'⏳ برسم التحصيل', collected:'✅ محصّل / مصروف', bounced:'↩️ مرتجع'};
+  return `<div class="card no-print"><h2><span class="dot"></span> 🧾 محفظة الشيكات</h2>
+    <p style="font-size:12.5px; color:var(--ink-soft); line-height:1.7;">كل إيصال أو سند صرف طريقة دفعو «شيك» بيطلع هون. حطّ تاريخ الاستحقاق ورقم الشيك. الشيك الوارد بيضل على 5113 (شيكات برسم التحصيل) لحد ما تعلّمو «محصّل» فبينتقل عالمصرف، والصادر على 4031 لحد ما ينصرف. الشيك المرتجع بيرجّع الدين عالزبون بالقيود.</p>
+    <div class="stats"><div class="stat"><div class="k">شيكات واردة برسم التحصيل</div><div class="v">${fmtMoney(sum('in','pending'))}</div></div><div class="stat owe"><div class="k">شيكات صادرة ما انصرفت</div><div class="v">${fmtMoney(sum('out','pending'))}</div></div><div class="stat ${soon.length? 'owe' : ''}"><div class="k">مستحقة خلال 7 أيام</div><div class="v">${soon.length}</div></div></div>
+    <div class="action-row">${['pending','collected','bounced','all'].map(k=>`<button class="btn ${f===k? 'btn-primary' : ''}" data-nav="#/leb-cheques?f=${k}">${k==='all'? 'الكل' : ST[k]}</button>`).join('')}</div></div>
+  <div class="card"><div class="table-wrap"><table><thead><tr><th>النوع</th><th>الجهة</th><th>المستند</th><th>المبلغ</th><th>رقم الشيك</th><th>المصرف</th><th>الاستحقاق</th><th>الحالة</th></tr></thead><tbody>
+    ${shown.map(x=>`<tr data-chq="${x.k}" style="${x.status==='pending' && x.due<=today? 'background:#fef2f2;' : ''}"><td>${x.dir==='in'? '⬇️ وارد' : '⬆️ صادر'}</td><td>${escapeHtml(x.party)}</td><td class="num"><a href="#/${x.dir==='in'? 'receipt' : 'voucher'}/${x.d.id}">#${escapeHtml(x.d.number||'')}</a> ${fmtDate(x.d.date)}</td><td class="num">${fmtMoney(x.usd)}</td>
+      <td><input type="text" data-f="no" value="${escapeHtml(x.st.no||'')}" ${can? '' : 'disabled'} style="width:100px;"></td>
+      <td><select data-f="bank" ${can? '' : 'disabled'}>${banks.map(b=>`<option value="${b.code}" ${(x.st.bank||'51201')===b.code? 'selected' : ''}>${escapeHtml(b.name)}</option>`).join('') || '<option value="51201">المصرف</option>'}</select></td>
+      <td><input type="date" data-f="due" value="${x.due}" ${can? '' : 'disabled'}></td>
+      <td><select data-f="status" ${can? '' : 'disabled'}>${Object.keys(ST).map(k=>`<option value="${k}" ${x.status===k? 'selected' : ''}>${ST[k]}</option>`).join('')}</select>${x.st.at? `<div style="font-size:11px; color:var(--ink-soft);">${fmtDate(x.st.at)}</div>` : ''}</td></tr>`).join('') || '<tr><td colspan="8">ما في شيكات</td></tr>'}
+  </tbody></table></div>
+  ${shown.some(x=>x.status==='bounced' && x.dir==='in')? '<div style="font-size:12px; color:var(--debit); margin-top:8px;">↩️ الشيك المرتجع رجع الدين عالزبون بالقيود والميزانية. كشف حساب الزبون بالبرنامج بيضل فيه الإيصال — إذا بدك يبيّن الدين بكشفو، احذف الإيصال أو اعمل فاتورة بقيمة الشيك.</div>' : ''}</div>${appFooter()}`;
+}
+function addDaysISO(d, n){ const t = new Date(d+'T00:00:00'); t.setDate(t.getDate()+n); return t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0')+'-'+String(t.getDate()).padStart(2,'0'); }
+function bindLebCheques(){
+  document.querySelectorAll('[data-chq]').forEach(tr=>{ const k = tr.getAttribute('data-chq');
+    tr.querySelectorAll('[data-f]').forEach(el=>el.addEventListener('change', async ()=>{ const fld = el.getAttribute('data-f'), val = el.value;
+      await accSave(a=>{ const C = Object.assign({}, a.cheques||{}); const x = Object.assign({}, C[k]||{}); x[fld] = val; if(fld==='status'){ x.at = val==='pending'? null : todayISO(); x.by = currentUser&&currentUser.username; } C[k] = x; a.cheques = C; });
+      if(fld==='status') toast(val==='collected'? '✅ انسجّل التحصيل' : val==='bounced'? '↩️ انسجّل شيك مرتجع' : 'رجع برسم التحصيل'); render(); })); });
+}
+/* ---------- ⏳ أعمار الديون ---------- */
+function jrAging(kind, at){
+  const accs = coaAccounts().filter(a=>a.kind===kind); const codes = new Set(accs.map(a=>a.code)); const sign = kind==='supplier'? -1 : 1;
+  const M = {}; journalEntriesAll().forEach(e=>{ if(e.date>at || e.kind==='closing') return; e.lines.forEach(l=>{ if(!codes.has(l.a)) return; (M[l.a] = M[l.a] || []).push({date:e.date, v:sign*(l.dr - l.cr)}); }); });
+  return accs.map(a=>{ const rows = M[a.code] || []; const debts = [], cr = []; rows.forEach(r=>{ if(r.v>0) debts.push({date:r.date, v:r.v}); else if(r.v<0) cr.push(-r.v); });
+    let pay = cr.reduce((t,x)=>t+x,0); debts.sort((x,y)=>x.date<y.date? -1 : 1); debts.forEach(d=>{ const u = Math.min(d.v, pay); d.v -= u; pay -= u; });
+    const B = [0,0,0,0]; debts.forEach(d=>{ if(d.v<0.005) return; const days = Math.floor((Date.parse(at)-Date.parse(d.date))/86400000); B[days<=30? 0 : days<=60? 1 : days<=90? 2 : 3] += d.v; });
+    const tot = B.reduce((t,x)=>t+x,0) - pay; return {a, B, tot, adv:pay}; }).filter(x=>Math.abs(x.tot)>0.005 || x.adv>0.005);
+}
+function lebAgingView(qs){
+  const kind = qs.get('k')==='supplier'? 'supplier' : 'customer', at = qs.get('at') || todayISO(), lim = accCfg().creditLimits || {}, can = isPrivilegedUser(currentUser);
+  const R = jrAging(kind, at).sort((x,y)=>y.tot-x.tot); const T = [0,0,0,0]; let tot = 0; R.forEach(x=>{ x.B.forEach((v,i)=>T[i]+=v); tot += x.tot; });
+  return `<div class="card no-print"><h2><span class="dot"></span> ⏳ أعمار الديون</h2>
+    <p style="font-size:12.5px; color:var(--ink-soft); line-height:1.7;">قديش صرلو كل دين: الدفعات بتنزل على أقدم فاتورة أول. ${kind==='customer'? 'فيك تحط سقف دين لكل زبون، والزبون يلي تخطّاه بيطلع بالأحمر. والديون الأقدم من 90 يوم فيك تعمللها مؤونة ديون مشكوك بتحصيلها.' : ''}</p>
+    <div class="grid grid-2"><div class="field"><label>النوع</label><select id="ag_k"><option value="customer" ${kind==='customer'? 'selected' : ''}>الزبائن (مين مديون إلنا)</option><option value="supplier" ${kind==='supplier'? 'selected' : ''}>الموردين (لمين نحنا مديونين)</option></select></div><div class="field"><label>بتاريخ</label><input type="date" id="ag_at" value="${at}"></div></div></div>
+  <div class="doc-actions no-print"><button class="btn btn-primary" onclick="printWithFilename('Aging-${kind}-${at}')">🖨 طباعة</button>${can && kind==='customer' && T[3]>0.005? `<button class="btn" id="ag_prov">🛡 مؤونة ديون مشكوك بتحصيلها (أقدم من 90 يوم: ${fmtMoney(T[3])})</button>` : ''}</div>
+  <div class="doc">${docHead(kind==='customer'? 'أعمار ديون الزبائن' : 'أعمار ديون الموردين')}
+    <div class="doc-info"><div class="r"><span>بتاريخ:</span><b class="num">${fmtDate(at)}</b></div></div>
+    <div class="table-wrap"><table><thead><tr><th>الحساب</th><th>الاسم</th><th>0–30 يوم</th><th>31–60</th><th>61–90</th><th>+90 يوم</th><th>المجموع</th>${kind==='customer'? '<th class="no-print">سقف الدين</th>' : ''}</tr></thead><tbody>
+    ${R.map(x=>{ const l = Number(lim[x.a.ref])||0, over = l>0 && x.tot>l; return `<tr style="${over? 'background:#fef2f2;' : ''}"><td class="num">${x.a.code}</td><td>${escapeHtml(x.a.name)}${over? ' <b style="color:var(--debit);">⚠️ متخطّي السقف</b>' : ''}</td>${x.B.map((v,i)=>`<td class="num" style="${i===3 && v>0.005? 'color:var(--debit); font-weight:700;' : ''}">${v>0.005? fmtMoney(v) : ''}</td>`).join('')}<td class="num"><b>${fmtMoney(x.tot)}</b>${x.adv>0.005? `<div style="font-size:11px; color:var(--credit);">دفعة مقدّمة ${fmtMoney(x.adv)}</div>` : ''}</td>${kind==='customer'? `<td class="no-print"><input type="number" class="num" data-lim="${x.a.ref}" value="${l? inPrim(l) : ''}" ${can? '' : 'disabled'} style="width:110px;" placeholder="بلا سقف"></td>` : ''}</tr>`; }).join('') || '<tr><td colspan="8">ما في ديون</td></tr>'}
+    </tbody><tfoot><tr style="font-weight:800; background:var(--paper)"><td colspan="2">المجموع</td>${T.map(v=>`<td class="num">${fmtMoney(v)}</td>`).join('')}<td class="num">${fmtMoney(tot)}</td>${kind==='customer'? '<td class="no-print"></td>' : ''}</tr></tfoot></table></div>
+  </div>${appFooter()}`;
+}
+function bindLebAging(){
+  const k = document.getElementById('ag_k'), at = document.getElementById('ag_at'); if(!k) return;
+  const g = ()=>go('#/leb-aging?k='+k.value+'&at='+at.value); k.addEventListener('change', g); at.addEventListener('change', g);
+  document.querySelectorAll('[data-lim]').forEach(el=>el.addEventListener('change', ()=>accSave(a=>{ const L = Object.assign({}, a.creditLimits||{}); const v = Number(outPrim(el.value))||0; if(v>0) L[el.getAttribute('data-lim')] = v; else delete L[el.getAttribute('data-lim')]; a.creditLimits = L; }).then(()=>toast('✅ انحفظ السقف'))));
+  const pv = document.getElementById('ag_prov'); if(pv) pv.addEventListener('click', async ()=>{ const R = jrAging('customer', at.value); const old = R.reduce((t,x)=>t+x.B[3],0);
+    let have = 0; journalEntriesAll().forEach(e=>e.lines.forEach(l=>{ if(l.a==='49100') have += l.cr - l.dr; })); const need = old - have;
+    if(Math.abs(need)<0.005){ toast('المؤونة مظبوطة'); return; }
+    if(!confirm((need>0? 'زيادة' : 'تخفيض')+' مؤونة الديون المشكوك بتحصيلها بـ '+fmtMoney(Math.abs(need))+'؟')) return;
+    if(need>0) postGl('68170', '49100', 'USD', Math.round(need*100)/100, 'مؤونة ديون مشكوك بتحصيلها (+90 يوم)', at.value);
+    else postGl('49100', '78170', 'USD', Math.round(-need*100)/100, 'استرداد مؤونة ديون مشكوك بتحصيلها', at.value);
+    const ok = await accGlSave(); toast(ok? '🛡 انسجّلت المؤونة' : '⚠️ صار خطأ'); render(); });
+}
+
 /* ---------- 🗓 السنة المالية: أرصدة افتتاحية + إقفال ---------- */
 function lebYearView(){
   const c = accCfg(), op = c.opening || {date:'', lines:[]}, closed = c.closed || [];
@@ -3211,7 +3370,7 @@ function routeRequiredPermission(routeKey){
     warehouse:'warehouse', 'warehouse-print':'warehouse', 'warehouse-item':'warehouse', stockout:'warehouse', stockin:'warehouse',
     orders:'orders', order:'orders', 'order-map':'orders',
     budget:'budget', 'budget-category':'budget', 'budget-overview':'budget',
-    acc:'budget', 'leb-journal':'budget', 'leb-pl':'budget', 'leb-bs':'budget', 'leb-year':'budget', 'leb-vat':'budget', 'leb-assets':'budget', 'leb-fx':'budget', 'leb-bank':'budget', 'leb-nssf':'budget', 'leb-cf':'budget', 'leb-audit':'budget',
+    acc:'budget', 'leb-journal':'budget', 'leb-pl':'budget', 'leb-bs':'budget', 'leb-year':'budget', 'leb-vat':'budget', 'leb-assets':'budget', 'leb-fx':'budget', 'leb-bank':'budget', 'leb-nssf':'budget', 'leb-cf':'budget', 'leb-audit':'budget', 'leb-payroll':'budget', 'leb-payslip':'budget', 'leb-cheques':'budget', 'leb-aging':'budget',
     settings:'__admin__', trash:'__admin__', 'customer-accounts':'__admin__', 'worker-accounts':'__admin__'
   };
   return map[routeKey] || null;
@@ -3522,6 +3681,14 @@ function render(){
     html += crumbs([['الرئيسية','#/'],['المحاسبة','#/acc'],['جدول التدفقات النقدية',null]]) + lebCFView(new URLSearchParams(location.hash.split('?')[1]||''));
   } else if(parts[0]==='leb-audit'){
     html += crumbs([['الرئيسية','#/'],['المحاسبة','#/acc'],['سجل المحذوفات',null]]) + lebAuditView();
+  } else if(parts[0]==='leb-payroll'){
+    html += crumbs([['الرئيسية','#/'],['المحاسبة','#/acc'],['الرواتب',null]]) + lebPayrollView(new URLSearchParams(location.hash.split('?')[1]||''));
+  } else if(parts[0]==='leb-payslip' && parts[1]){
+    html += crumbs([['الرئيسية','#/'],['المحاسبة','#/acc'],['الرواتب','#/leb-payroll'],['قسيمة راتب',null]]) + lebPayslipView(parts[1]);
+  } else if(parts[0]==='leb-cheques'){
+    html += crumbs([['الرئيسية','#/'],['المحاسبة','#/acc'],['الشيكات',null]]) + lebChequesView(new URLSearchParams(location.hash.split('?')[1]||''));
+  } else if(parts[0]==='leb-aging'){
+    html += crumbs([['الرئيسية','#/'],['المحاسبة','#/acc'],['أعمار الديون',null]]) + lebAgingView(new URLSearchParams(location.hash.split('?')[1]||''));
   } else if(parts[0]==='leb-year'){
     html += crumbs([['الرئيسية','#/'],['المحاسبة','#/acc'],['السنة المالية',null]]) + lebYearView();
   } else if(parts[0]==='leb-vat'){
@@ -6804,6 +6971,9 @@ function bindEvents(){
   if(location.hash.indexOf('#/leb-pl')===0) bindPeriodFilter('pl', (type,a,b)=>go(`#/leb-pl?period=${type}&a=${encodeURIComponent(a)}&b=${encodeURIComponent(b||'')}`));
   { const bs = document.getElementById('bs_at'); if(bs) bs.addEventListener('change', ()=>go('#/leb-bs?at='+bs.value)); }
   if(document.getElementById('op_rows')) bindLebYear();
+  if(document.getElementById('pr_m')) bindLebPayroll();
+  if(location.hash.indexOf('#/leb-cheques')===0) bindLebCheques();
+  if(document.getElementById('ag_k')) bindLebAging();
   { const jc = document.getElementById('jr_cur'); if(jc) jc.addEventListener('change', ()=>{ try{ localStorage.setItem('la_jr_cur', jc.value); }catch(e){} _jrCache = null; render(); }); }
   { const tx = document.getElementById('pl_tax'); if(tx) tx.addEventListener('change', ()=>accSave(a=>{ a.incomeTaxRate = Number(tx.value)||0; }).then(()=>render())); }
   if(location.hash.indexOf('#/leb-cf')===0) bindPeriodFilter('cf', (type,a,b)=>go(`#/leb-cf?period=${type}&a=${encodeURIComponent(a)}&b=${encodeURIComponent(b||'')}`));
