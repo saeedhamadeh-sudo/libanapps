@@ -9822,7 +9822,7 @@ async function checkForNewBuild(){
   try{
     const r = await fetch(location.pathname + '?v=' + Date.now(), {cache:'no-store'});
     if(!r.ok) return;
-    const m = (await r.text()).match(/const APP_TRADE_BUILD = '2026-11-21 · 23:55 · v114']+)'/);
+    const m = (await r.text()).match(/const APP_TRADE_BUILD = '([^']+)'/);
     if(!m || m[1]===APP_TRADE_BUILD) return;
     // ما منعمل refresh لحالنا (الـ refresh بيطلب تسجيل دخول) — منبيّن شريط والموظف بيكبسو وقت ما يفضى
     if(document.getElementById('new_build_bar')) return;
@@ -11085,6 +11085,58 @@ function bindLebCC(){
   document.querySelectorAll('[data-cc-key]').forEach(x=>x.addEventListener('change', ()=>setMap('ccMap', x.getAttribute('data-cc-key'), x.value)));
 }
 /* ---------- ⬇️ تصدير Excel ---------- */
+/* ---------- ⬇️ تصدير Excel حقيقي (.xlsx) بدون مكتبات: أرقام كأرقام، عناوين عريضة، ورقة من اليمين لليسار ---------- */
+const XL_CRC = (()=>{ const t = new Uint32Array(256); for(let n=0;n<256;n++){ let c = n; for(let k=0;k<8;k++) c = c&1? 0xEDB88320^(c>>>1) : c>>>1; t[n] = c>>>0; } return t; })();
+function xlCrc(b){ let c = 0xFFFFFFFF; for(let i=0;i<b.length;i++) c = XL_CRC[(c^b[i])&255]^(c>>>8); return (c^0xFFFFFFFF)>>>0; }
+function xlZip(files){   // ZIP بدون ضغط (STORE)
+  const enc = new TextEncoder(), parts = [], cen = []; let off = 0;
+  const u16 = v=>[v&255, (v>>>8)&255], u32 = v=>[v&255, (v>>>8)&255, (v>>>16)&255, (v>>>24)&255];
+  files.forEach(f=>{ const name = enc.encode(f.name), data = enc.encode(f.data), crc = xlCrc(data);
+    const head = [0x50,0x4b,0x03,0x04, ...u16(20), ...u16(0x0800), ...u16(0), ...u16(0), ...u16(0x21), ...u32(crc), ...u32(data.length), ...u32(data.length), ...u16(name.length), ...u16(0)];
+    parts.push(new Uint8Array(head), name, data);
+    cen.push(new Uint8Array([0x50,0x4b,0x01,0x02, ...u16(20), ...u16(20), ...u16(0x0800), ...u16(0), ...u16(0), ...u16(0x21), ...u32(crc), ...u32(data.length), ...u32(data.length), ...u16(name.length), ...u16(0), ...u16(0), ...u16(0), ...u16(0), ...u32(0), ...u32(off)]), name);
+    off += head.length + name.length + data.length; });
+  const cenLen = cen.reduce((t,a)=>t+a.length, 0);
+  return new Blob([...parts, ...cen, new Uint8Array([0x50,0x4b,0x05,0x06, ...u16(0), ...u16(0), ...u16(files.length), ...u16(files.length), ...u32(cenLen), ...u32(off), ...u16(0)])], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+}
+function xlEsc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g,''); }
+function xlNum(s){   // "1,234 ل.ل" / "$1,000.00" / "-$5" / "(12%)" → رقم، وإلا null
+  const t = String(s).replace(/[‎‏ ]/g,'').trim(); if(!t) return null;
+  if(/^\d{5,}$/.test(t)) return null;                       // أرقام حسابات تضل نص
+  const m = t.match(/^([-−]?)\s*\$?\s*([-−]?)\s*(\d{1,3}(?:,\d{3})+|\d+)(\.\d+)?\s*(ل\.ل|\$|%)?$/); if(!m) return null;
+  const v = Number((m[3]+(m[4]||'')).replace(/,/g,'')); return (m[1]||m[2])? -v : v;
+}
+function xlColName(i){ let s = ''; i++; while(i>0){ const r = (i-1)%26; s = String.fromCharCode(65+r)+s; i = Math.floor((i-1)/26); } return s; }
+function exportDocXlsx(name){
+  const doc = document.querySelector('.doc'); if(!doc){ toast('ما في جدول للتصدير'); return; }
+  const rows = [], clean = s=>String(s||'').replace(/\s+/g,' ').trim();
+  const title = doc.querySelector('.doc-title, h1, h2'); if(title) rows.push({cells:[{v:clean(title.innerText), b:true}]});
+  doc.querySelectorAll('.doc-info .r').forEach(r=>rows.push({cells:Array.from(r.children).map(c=>({v:clean(c.innerText)}))}));
+  doc.querySelectorAll('h3, table').forEach(el=>{
+    if(el.tagName==='H3'){ rows.push({cells:[]}); rows.push({cells:[{v:clean(el.innerText), b:true}]}); return; }
+    rows.push({cells:[]}); const occ = {};
+    el.querySelectorAll('tr').forEach(tr=>{ const bold = tr.parentElement.tagName==='THEAD' || tr.parentElement.tagName==='TFOOT' || /font-weight:\s*8/.test(tr.getAttribute('style')||'');
+      const cells = []; let col = 0; const place = ()=>{ while(occ[col]>0){ occ[col]--; cells.push({v:''}); col++; } };
+      Array.from(tr.children).forEach(td=>{ if(td.classList.contains('no-print')) return; place(); const inp = td.querySelector('input,select'); const v = clean(inp? (inp.value||'') : td.innerText);
+        const cs = Number(td.getAttribute('colspan'))||1, rs = Number(td.getAttribute('rowspan'))||1;
+        cells.push({v, b:bold || td.tagName==='TH' || !!td.querySelector('b')}); for(let k=1;k<cs;k++) cells.push({v:''});
+        if(rs>1) for(let k=0;k<cs;k++) occ[col+k] = rs-1; col += cs; });
+      place(); if(cells.length) rows.push({cells}); }); });
+  const W = []; rows.forEach(r=>r.cells.forEach((c,i)=>{ W[i] = Math.min(60, Math.max(W[i]||8, String(c.v).length+2)); }));
+  const sheetRows = rows.map((r,ri)=>`<row r="${ri+1}">${r.cells.map((c,ci)=>{ const ref = xlColName(ci)+(ri+1), n = xlNum(c.v);
+    if(c.v==='') return ''; if(n!=null) return `<c r="${ref}" s="${c.b? 3 : 2}"><v>${n}</v></c>`;
+    return `<c r="${ref}" t="inlineStr" s="${c.b? 1 : 0}"><is><t xml:space="preserve">${xlEsc(c.v)}</t></is></c>`; }).join('')}</row>`).join('');
+  const X = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+  const files = [
+    {name:'[Content_Types].xml', data:X+'<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>'},
+    {name:'_rels/.rels', data:X+'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>'},
+    {name:'xl/workbook.xml', data:X+'<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Report" sheetId="1" r:id="rId1"/></sheets></workbook>'},
+    {name:'xl/_rels/workbook.xml.rels', data:X+'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>'},
+    {name:'xl/styles.xml', data:X+'<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><numFmts count="1"><numFmt numFmtId="164" formatCode="#,##0.##;-#,##0.##;0"/></numFmts><fonts count="2"><font><sz val="11"/><name val="Arial"/></font><font><b/><sz val="11"/><name val="Arial"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border/></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="4"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/><xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/><xf numFmtId="164" fontId="1" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyFont="1"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>'},
+    {name:'xl/worksheets/sheet1.xml', data:X+`<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0" rightToLeft="1"/></sheetViews>${W.length? '<cols>'+W.map((w,i)=>`<col min="${i+1}" max="${i+1}" width="${w||8}" customWidth="1"/>`).join('')+'</cols>' : ''}<sheetData>${sheetRows}</sheetData></worksheet>`},
+  ];
+  const blob = xlZip(files), a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = (name||'report')+'.xlsx'; document.body.appendChild(a); a.click(); setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+}
 function exportDocCsv(name){
   const doc = document.querySelector('.doc'); if(!doc){ toast('ما في جدول للتصدير'); return; }
   const lines = []; const q = v=>'"'+String(v).replace(/\s+/g,' ').trim().replace(/"/g,'""')+'"';
@@ -11096,7 +11148,7 @@ function exportDocCsv(name){
 }
 function injectExcelBtn(){ if(location.hash.indexOf('#/leb-')!==0) return; const da = document.querySelector('.doc-actions'); if(!da || da.querySelector('[data-xls]')) return;
   const b = document.createElement('button'); b.className = 'btn'; b.setAttribute('data-xls','1'); b.textContent = '⬇️ Excel';
-  b.addEventListener('click', ()=>exportDocCsv(location.hash.slice(2).split('?')[0].replace(/[^a-z0-9-]/gi,'_')+'-'+todayISO())); da.appendChild(b); }
+  b.addEventListener('click', ()=>{ const nm = location.hash.slice(2).split('?')[0].replace(/[^a-z0-9-]/gi,'_')+'-'+todayISO(); try{ exportDocXlsx(nm); }catch(e){ console.error(e); exportDocCsv(nm); } }); da.appendChild(b); }
 
 /* ---------- 🗓 السنة المالية: أرصدة افتتاحية + إقفال ---------- */
 function lebYearView(){
@@ -13493,7 +13545,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-11-21 · 23:55 · v114';
+const APP_TRADE_BUILD = '2026-11-22 · 00:05 · v115';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 // ===== ترجيع حركات ناقصة من ملف (إضافة بس — ما منمحي ولا منغيّر شي موجود) =====
 document.addEventListener('change', async e=>{
