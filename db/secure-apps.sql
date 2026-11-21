@@ -76,14 +76,14 @@ returns text[] language sql immutable as $$
       when 'quotes'     then array['quotes']
       when 'warehouse'  then array['warehouse_items','stock_ins','stock_outs']
       when 'orders'     then array['cutting_orders']
-      when 'budget'     then array['budget_categories','budget_entries']
+      when 'budget'     then array['budget_categories','budget_entries','loans']
       else array[]::text[] end
     when 'trade' then case p_perm
       when 'pos'        then array['customers','invoices','receipts','stock_outs','stock_ins','cash_movements','cashier_shifts']
       when 'customers'  then array['customers','invoices','receipts','stock_outs']
       when 'suppliers'  then array['suppliers','purchase_invoices','payment_vouchers']
       when 'warehouse'  then array['warehouse_items','stock_ins','stock_outs']
-      when 'budget'     then array['budget_categories','budget_entries']
+      when 'budget'     then array['budget_categories','budget_entries','loans']
       when 'workers'    then array['workers','work_entries','worker_payments']
       else array[]::text[] end
     else array[]::text[] end;

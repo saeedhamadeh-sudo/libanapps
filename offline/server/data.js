@@ -18,21 +18,21 @@ const TBL_RE = /^(alum|trade)_[a-z_]+$/;
 const TABLES = {
   alum: ['app_settings', 'app_users', 'customers', 'invoices', 'receipts', 'suppliers', 'purchase_invoices',
     'payment_vouchers', 'workers', 'work_entries', 'worker_payments', 'deductions', 'quotes', 'warehouse_items',
-    'stock_ins', 'stock_outs', 'cutting_orders', 'customer_accounts', 'worker_accounts', 'budget_categories', 'budget_entries'],
+    'stock_ins', 'stock_outs', 'cutting_orders', 'customer_accounts', 'worker_accounts', 'budget_categories', 'budget_entries', 'loans'],
   trade: ['app_settings', 'app_users', 'customers', 'invoices', 'receipts', 'suppliers', 'purchase_invoices',
     'payment_vouchers', 'warehouse_items', 'stock_ins', 'stock_outs', 'customer_accounts', 'budget_categories',
     'budget_entries', 'cash_movements', 'day_closures', 'cashier_shifts', 'workers', 'work_entries',
-    'worker_payments', 'worker_accounts']
+    'worker_payments', 'worker_accounts', 'loans']
 };
 
 function permTables(product, perm){
   const m = {
     alum: { customers: ['customers', 'invoices', 'receipts'], suppliers: ['suppliers', 'purchase_invoices', 'payment_vouchers'],
       workers: ['workers', 'work_entries', 'worker_payments'], deductions: ['deductions'], quotes: ['quotes'],
-      warehouse: ['warehouse_items', 'stock_ins', 'stock_outs'], orders: ['cutting_orders'], budget: ['budget_categories', 'budget_entries'] },
+      warehouse: ['warehouse_items', 'stock_ins', 'stock_outs'], orders: ['cutting_orders'], budget: ['budget_categories', 'budget_entries', 'loans'] },
     trade: { pos: ['customers', 'invoices', 'receipts', 'stock_outs', 'stock_ins', 'cash_movements', 'cashier_shifts'],
       customers: ['customers', 'invoices', 'receipts', 'stock_outs'], suppliers: ['suppliers', 'purchase_invoices', 'payment_vouchers'],
-      warehouse: ['warehouse_items', 'stock_ins', 'stock_outs'], budget: ['budget_categories', 'budget_entries'],
+      warehouse: ['warehouse_items', 'stock_ins', 'stock_outs'], budget: ['budget_categories', 'budget_entries', 'loans'],
       workers: ['workers', 'work_entries', 'worker_payments'] }
   };
   return (m[product] && m[product][perm]) || [];

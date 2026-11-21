@@ -299,10 +299,10 @@ const KEYS = {customers:'customers', invoices:'invoices', receipts:'receipts', s
   deductions:'deductions', quotes:'quotes',
   warehouseItems:'warehouseItems', stockIns:'stockIns', stockOuts:'stockOuts',
   cuttingOrders:'cuttingOrders', customerAccounts:'customerAccounts', workerAccounts:'workerAccounts',
-  budgetCategories:'budgetCategories', budgetEntries:'budgetEntries'};
+  budgetCategories:'budgetCategories', budgetEntries:'budgetEntries', loans:'loans'};
 
 async function loadAll(){
-  const [c,i,r,s,sup,pi,pv,wk,we,wp,ded,q,wi,si,so,co,ca,wa,bc,be] = await Promise.all([
+  const [c,i,r,s,sup,pi,pv,wk,we,wp,ded,q,wi,si,so,co,ca,wa,bc,be,ln] = await Promise.all([
     loadCustomers(),
     loadSyncedArray(KEYS.invoices, []),
     loadSyncedArray(KEYS.receipts, []),
@@ -339,7 +339,8 @@ async function loadAll(){
     loadSyncedArray(KEYS.customerAccounts, []),
     loadSyncedArray(KEYS.workerAccounts, []),
     loadSyncedArray(KEYS.budgetCategories, []),
-    loadSyncedArray(KEYS.budgetEntries, [])
+    loadSyncedArray(KEYS.budgetEntries, []),
+    loadSyncedArray(KEYS.loans, []).catch(()=>[])
   ]);
   return {customers:c, invoices:i, receipts:r, settings:s,
     suppliers:sup, purchaseInvoices:pi, paymentVouchers:pv,
@@ -347,7 +348,7 @@ async function loadAll(){
     deductions:ded, quotes:q,
     warehouseItems:wi, stockIns:si, stockOuts:so,
     cuttingOrders:co, customerAccounts:ca, workerAccounts:wa,
-    budgetCategories:bc, budgetEntries:be};
+    budgetCategories:bc, budgetEntries:be, loans:ln||[]};
 }
 async function loadCustomers(){
   if(supabaseClient){
@@ -389,7 +390,7 @@ async function waitPendingSyncs(ms){
   while(_pendingSyncs.size && Date.now()-t0 < (ms||15000)){ await Promise.race([Promise.allSettled(Array.from(_pendingSyncs)), new Promise(r=>setTimeout(r, 500))]); }
 }
 
-let DB = {customers:[], invoices:[], receipts:[], settings:{}, suppliers:[], purchaseInvoices:[], paymentVouchers:[], workers:[], workEntries:[], workerPayments:[], deductions:[], quotes:[], warehouseItems:[], stockIns:[], stockOuts:[], cuttingOrders:[], customerAccounts:[], workerAccounts:[], budgetCategories:[], budgetEntries:[]};
+let DB = {customers:[], invoices:[], receipts:[], settings:{}, suppliers:[], purchaseInvoices:[], paymentVouchers:[], workers:[], workEntries:[], workerPayments:[], deductions:[], quotes:[], warehouseItems:[], stockIns:[], stockOuts:[], cuttingOrders:[], customerAccounts:[], workerAccounts:[], budgetCategories:[], budgetEntries:[], loans:[]};
 let authenticated = false;
 
 // خروج من البرنامج لازم يلغي جلسة المنصة كمان (يلي فتحناها تلقائياً عبر رابط
@@ -659,6 +660,8 @@ function budgetCategoryToDb(c){
 function budgetEntryFromDb(row){
   return { id:row.id, categoryId:row.category_id, amount:row.amount||0, date:row.date, note:row.note||'', number:row.number, createdAt:row.created_at||0, deleted:!!row.deleted, deletedAt:row.deleted_at||null };
 }
+function loanFromDb(r){ return { id:r.id, kind:r.kind||'loan', loanId:r.loan_id||null, lender:r.lender||'', amount:Number(r.amount)||0, date:r.date, number:r.number||'', note:r.note||'', extra:r.extra||{}, createdAt:r.created_at||0, deleted:!!r.deleted, deletedAt:r.deleted_at||null }; }
+function loanToDb(l){ return { id:l.id, kind:l.kind||'loan', loan_id:l.loanId||null, lender:l.lender||null, amount:Number(l.amount)||0, date:l.date||null, number:l.number||null, note:l.note||null, extra:l.extra||null, created_at:l.createdAt||Date.now(), deleted:!!l.deleted, deleted_at:l.deletedAt||null }; }
 function budgetEntryToDb(e){
   return { id:e.id, category_id:e.categoryId||null, amount:Number(e.amount)||0, date:e.date||null, note:e.note||null, number:e.number||null, created_at:e.createdAt||Date.now(), deleted:!!e.deleted, deleted_at:e.deletedAt||null };
 }
@@ -810,7 +813,8 @@ const SUPABASE_TABLES = {
   customerAccounts: {table:'customer_accounts', toDb:customerAccountToDb, fromDb:customerAccountFromDb, label:'حسابات دخول الزبائن'},
   workerAccounts: {table:'worker_accounts', toDb:workerAccountToDb, fromDb:workerAccountFromDb, label:'حسابات دخول العمال'},
   budgetCategories: {table:'budget_categories', toDb:budgetCategoryToDb, fromDb:budgetCategoryFromDb, label:'حقول الميزانية'},
-  budgetEntries: {table:'budget_entries', toDb:budgetEntryToDb, fromDb:budgetEntryFromDb, label:'سندات الميزانية'}
+  budgetEntries: {table:'budget_entries', toDb:budgetEntryToDb, fromDb:budgetEntryFromDb, label:'سندات الميزانية'},
+  loans: {table:'loans', toDb:loanToDb, fromDb:loanFromDb, label:'القروض'}
 };
 /* ============================= مزامنة لايف بين الأجهزة =============================
    كل جهاز بيحفظ شي، بيبعت إشارة صغيرة (اسم الجدول وأرقام الصفوف بس، بلا بيانات) على قناة المؤسسة.
@@ -1391,7 +1395,7 @@ function computeWorkEntryTotal(e){
 }
 function buildWorkerLedger(workerId){
   const entries = DB.workEntries.filter(e=>e.workerId===workerId && !e.deleted).map(e=>({
-    date:e.date, type:'يومية', label:e.details? e.details : 'يومية عمل', number:e.number,
+    date:e.date, type:isSalaryEntry(e)? 'معاش' : 'يومية', label:isSalaryEntry(e)? 'معاش شهر '+fmtMonthAr(salaryMonthOf(e))+(salaryExtraOf(e)? ' — '+salaryExtraOf(e) : '') : (e.details? e.details : 'يومية عمل'), number:e.number,
     from:0, to:computeWorkEntryTotal(e), ref:'workentry', id:e.id, sortKey:e.createdAt||0
   }));
   const pay = DB.workerPayments.filter(p=>p.workerId===workerId && !p.deleted).map(p=>({
@@ -2696,6 +2700,14 @@ function render(){
     if(!sup) html += emptyState('لم يتم العثور على هذا المورد');
     else html += crumbs([['الرئيسية','#/'],['الموردون','#/suppliers'],[sup.name,`#/supplier/${sup.id}`],['كشف حساب',null]]) + supplierStatementPrintView(sup);
 
+  /* ---------- القروض ---------- */
+  } else if(parts[0]==='loans'){
+    html += crumbs([['الرئيسية','#/'],['القروض',null]]) + loansView();
+  } else if(parts[0]==='loan' && parts[1]){
+    const ln = (DB.loans||[]).find(x=>x.id===parts[1] && x.kind!=='repay');
+    if(!ln) html += emptyState('لم يتم العثور على هذا القرض');
+    else html += crumbs([['الرئيسية','#/'],['القروض','#/loans'],[ln.lender||'قرض',null]]) + loanView(ln);
+
   /* ---------- Workers ---------- */
   } else if(parts[0]==='workers'){
     html += crumbs([['الرئيسية','#/'],['العمال',null]]) + workersListView();
@@ -2946,6 +2958,12 @@ function hubView(){
       <div class="hub-title">الميزانية</div>
       <div class="hub-sub">${DB.budgetCategories.length} حقل</div>
       <div class="hub-amt" style="color:var(--steel)">مقبوضات ومدفوعات</div>
+    </div>`},
+    {perm:'budget', html:`<div class="hub-card" data-nav="#/loans">
+      <div class="hub-icon">🏦</div>
+      <div class="hub-title">القروض</div>
+      <div class="hub-sub">${loansList().length} قرض</div>
+      <div class="hub-amt owe">${fmtMoney(loansList().reduce((t,l)=>t+Math.max(loanRemain(l),0),0))} باقي علينا</div>
     </div>`}
   ];
   const visibleCards = allCards.filter(c=>hasPermission(c.perm)).map(c=>c.html).join('');
@@ -3169,6 +3187,7 @@ function workerView(wk){
       </div>
       <div class="action-row">
         <button class="btn btn-debit" data-nav="#/workentry/new?worker=${wk.id}">+ يومية جديدة</button>
+        <button class="btn btn-debit" data-nav="#/workentry/new?worker=${wk.id}&salary=1">💼 + معاش شهري</button>
         <button class="btn btn-credit" data-nav="#/workerpay/new?worker=${wk.id}">+ دفعة</button>
         <button class="btn" data-nav="#/worker-statement/${wk.id}">🖨 طباعة كشف حساب</button>
         <button class="btn btn-sm" id="editWkBtn">✎ تعديل بيانات العامل</button>
@@ -3390,6 +3409,172 @@ function bindPeriodFilter(idPrefix, onApply){
     onApply(type, a, b);
   });
 }
+
+/* ===================== 🏦 القروض ===================== */
+const LOAN_ACCOUNTS = ['نقدًا (الصندوق)','تحويل بنكي','شيك','Whish'];
+function loanAcct(d){ return (d && d.extra && d.extra.account) || ''; }
+function loansList(){ return (DB.loans||[]).filter(x=>!x.deleted && x.kind!=='repay'); }
+function loanRepays(id){ return (DB.loans||[]).filter(x=>!x.deleted && x.kind==='repay' && x.loanId===id).sort((a,b)=> (a.date||'')<(b.date||'')? -1 : (a.date||'')>(b.date||'')? 1 : (a.createdAt||0)-(b.createdAt||0)); }
+function loanPaid(id){ return loanRepays(id).reduce((t,r)=>t+(Number(r.amount)||0), 0); }
+function loanRemain(l){ return (Number(l.amount)||0) - loanPaid(l.id); }
+function nextLoanNumber(kind){ let mx = 0; (DB.loans||[]).forEach(x=>{ if((x.kind||'loan')!==kind) return; const n = parseInt(String(x.number||'').replace(/\D/g,''),10); if(n>mx) mx = n; }); return String(mx+1); }
+function loansInPeriod(from, to){ const o = {got:0, paid:0}; (DB.loans||[]).forEach(x=>{ if(x.deleted || !x.date || x.date<from || x.date>to) return; if(x.kind==='repay') o.paid += Number(x.amount)||0; else o.got += Number(x.amount)||0; }); return o; }
+function loansBudgetCard(){
+  if(!hasPermission('budget')) return '';
+  const L = loansList(); const tot = L.reduce((t,l)=>t+(Number(l.amount)||0),0), rem = L.reduce((t,l)=>t+Math.max(loanRemain(l),0),0);
+  return `<div class="card">
+    <h2><span class="dot"></span> 🏦 القروض</h2>
+    <div class="stats"><div class="stat"><div class="k">مجموع القروض</div><div class="v">${fmtMoney(tot)}</div></div>
+      <div class="stat"><div class="k">المدفوع منها</div><div class="v">${fmtMoney(tot-rem)}</div></div>
+      <div class="stat owe"><div class="k">الباقي علينا</div><div class="v">${fmtMoney(rem)}</div></div></div>
+    <div class="action-row" style="margin-top:10px;"><button class="btn btn-primary" data-nav="#/loans">🏦 فتح القروض</button><button class="btn" data-loan-new="1">+ قرض جديد</button></div>
+  </div>`;
+}
+function loansView(){
+  const all = loansList().sort((a,b)=> (a.date||'')<(b.date||'')? 1 : -1);
+  const showDone = new URLSearchParams(location.hash.split('?')[1]||'').get('all')==='1';
+  const L = showDone? all : all.filter(l=>loanRemain(l)>0.000001);
+  const tot = all.reduce((t,l)=>t+(Number(l.amount)||0),0), rem = all.reduce((t,l)=>t+Math.max(loanRemain(l),0),0);
+  return `
+  <div class="card">
+    <h2><span class="dot"></span> 🏦 القروض</h2>
+    <div class="stats"><div class="stat"><div class="k">مجموع القروض</div><div class="v">${fmtMoney(tot)}</div></div>
+      <div class="stat"><div class="k">المدفوع منها</div><div class="v">${fmtMoney(tot-rem)}</div></div>
+      <div class="stat owe"><div class="k">الباقي علينا</div><div class="v">${fmtMoney(rem)}</div></div></div>
+    <div class="action-row" style="margin-top:12px;">
+      ${hasPermission('budget')? '<button class="btn btn-primary" data-loan-new="1">+ قرض جديد</button>' : ''}
+      <button class="btn" data-nav="#/loans${showDone? '' : '?all=1'}">${showDone? 'بس يلي عليها باقي' : 'اعرض المسدّدة كمان'}</button>
+    </div>
+  </div>
+  <div class="card">
+    ${L.length? `<div class="table-wrap"><table><thead><tr><th>#</th><th>التاريخ</th><th>المُقرض</th><th>المبلغ</th><th>المدفوع</th><th>الباقي</th><th>نزل على</th></tr></thead><tbody>
+      ${L.map(l=>{ const rm = loanRemain(l); return `<tr data-nav="#/loan/${l.id}" style="cursor:pointer;"><td class="num">${escapeHtml(l.number||'')}</td><td class="num">${fmtDate(l.date)}</td><td><b>${escapeHtml(l.lender||'')}</b>${l.note? `<div style="font-size:11.5px; color:var(--ink-soft);">${escapeHtml(l.note)}</div>` : ''}</td>
+        <td class="num">${fmtMoney(l.amount)}</td><td class="num">${fmtMoney(loanPaid(l.id))}</td><td class="num" style="font-weight:800; color:${rm>0.000001? 'var(--debit)' : 'var(--credit)'};">${rm>0.000001? fmtMoney(rm) : '✅ مسدّد'}</td><td style="font-size:12px;">${escapeHtml(loanAcct(l))}</td></tr>`; }).join('')}
+    </tbody></table></div>` : emptyState(all.length? 'كل القروض مسدّدة ✅' : 'ما في قروض بعد')}
+  </div>
+  ${appFooter()}`;
+}
+function loanView(l){
+  const reps = loanRepays(l.id); let bal = Number(l.amount)||0;
+  const can = hasPermission('budget'), rm = loanRemain(l);
+  const rows = reps.map(r=>{ bal -= Number(r.amount)||0; return `<tr><td class="num">${fmtDate(r.date)}</td><td>💸 سند دفع #${escapeHtml(r.number||'')}${r.note? ' — '+escapeHtml(r.note) : ''}${loanAcct(r)? `<div style="font-size:11.5px; color:var(--ink-soft);">من: ${escapeHtml(loanAcct(r))}</div>` : ''}</td><td class="num"></td><td class="num">${fmtMoney(r.amount)}</td><td class="num">${fmtMoney(bal)}</td>
+    <td class="no-print">${can? `<button class="btn btn-sm" data-loan-repay-edit="${r.id}">✏️</button> <button class="btn btn-sm btn-danger" data-loan-del="${r.id}">🗑</button>` : ''}</td></tr>`; }).join('');
+  return `
+  <div class="doc-actions no-print">
+    ${can? `<button class="btn btn-primary" data-loan-repay="${l.id}" ${rm>0.000001? '' : 'disabled'}>💸 سند دفع على القرض</button>
+    <button class="btn" data-loan-edit="${l.id}">✏️ تعديل القرض</button>` : ''}
+    <button class="btn" onclick="printWithFilename('Loan-${escapeHtml(l.number||'')}')">🖨 طباعة</button>
+    ${can? `<button class="btn btn-danger" data-loan-del="${l.id}">🗑 حذف القرض</button>` : ''}
+  </div>
+  <div class="doc">
+    ${docHead('كشف قرض')}
+    <div class="doc-info">
+      <div class="r"><span>المُقرض:</span><b>${escapeHtml(l.lender||'')}</b></div>
+      <div class="r"><span>رقم القرض:</span><b class="num">${escapeHtml(l.number||'')}</b></div>
+      <div class="r"><span>التاريخ:</span><b class="num">${fmtDate(l.date)}</b></div>
+      ${loanAcct(l)? `<div class="r"><span>نزل على:</span><b>${escapeHtml(loanAcct(l))}</b></div>` : ''}
+      ${l.note? `<div class="r"><span>ملاحظة:</span><b>${escapeHtml(l.note)}</b></div>` : ''}
+    </div>
+    <div class="stats"><div class="stat"><div class="k">قيمة القرض</div><div class="v">${fmtMoney(l.amount)}</div></div>
+      <div class="stat"><div class="k">المدفوع</div><div class="v">${fmtMoney(loanPaid(l.id))}</div></div>
+      <div class="stat ${rm>0.000001? 'owe' : ''}"><div class="k">الباقي</div><div class="v">${fmtMoney(rm)}</div></div></div>
+    <div class="table-wrap"><table><thead><tr><th>التاريخ</th><th>البيان</th><th>قرض</th><th>دفعة</th><th>الباقي</th><th class="no-print"></th></tr></thead><tbody>
+      <tr><td class="num">${fmtDate(l.date)}</td><td>🏦 استلام القرض من ${escapeHtml(l.lender||'')}</td><td class="num">${fmtMoney(l.amount)}</td><td class="num"></td><td class="num">${fmtMoney(l.amount)}</td><td class="no-print"></td></tr>
+      ${rows}
+    </tbody><tfoot><tr style="font-weight:800; background:var(--paper)"><td colspan="2">الباقي</td><td class="num">${fmtMoney(l.amount)}</td><td class="num">${fmtMoney(loanPaid(l.id))}</td><td class="num">${fmtMoney(rm)}</td><td class="no-print"></td></tr></tfoot></table></div>
+  </div>
+  ${appFooter()}`;
+}
+function loanAcctField(id, label, cur){
+  const known = LOAN_ACCOUNTS.includes(cur);
+  return `<div class="field"><label>${label} *</label><select id="${id}_t"><option value="">— اختار —</option>${LOAN_ACCOUNTS.map(a=>`<option ${cur===a? 'selected' : ''}>${escapeHtml(a)}</option>`).join('')}<option value="__other" ${cur && !known? 'selected' : ''}>✍️ غير (اكتب)</option></select>
+    <input type="text" id="${id}_o" value="${cur && !known? escapeHtml(cur) : ''}" placeholder="مثلاً: بنك عودة" style="${cur && !known? '' : 'display:none;'} margin-top:6px;"></div>`;
+}
+function bindLoanAcct(wrap, id){ const t = wrap.querySelector('#'+id+'_t'), o = wrap.querySelector('#'+id+'_o'); t.addEventListener('change', ()=>{ o.style.display = t.value==='__other'? '' : 'none'; if(t.value==='__other') o.focus(); });
+  return ()=> t.value==='__other'? o.value.trim() : t.value; }
+function openLoanModal(editId){
+  const ed = editId? (DB.loans||[]).find(x=>x.id===editId) : null;
+  const lenders = Array.from(new Set(loansList().map(l=>l.lender).filter(Boolean)));
+  const wrap = document.createElement('div'); wrap.className = 'modal-bg';
+  wrap.innerHTML = `<div class="modal" style="max-width:460px;">
+    <h3>🏦 ${ed? 'تعديل القرض #'+escapeHtml(ed.number||'') : 'قرض جديد'}</h3>
+    <div class="field"><label>مين عطاك القرض؟ *</label><input type="text" id="ln_lender" list="ln_lenders" value="${escapeHtml(ed? ed.lender : '')}" placeholder="اسم الشخص أو البنك"><datalist id="ln_lenders">${lenders.map(n=>`<option value="${escapeHtml(n)}">`).join('')}</datalist></div>
+    <div class="grid grid-2">
+      <div class="field"><label>المبلغ $ *</label><input type="number" id="ln_amount" class="num" value="${ed? ed.amount : ''}"></div>
+      <div class="field"><label>التاريخ</label><input type="date" id="ln_date" value="${ed? ed.date : todayISO()}"></div>
+    </div>
+    ${loanAcctField('ln_a', '💰 لوين نزل القرض؟', ed? loanAcct(ed) : LOAN_ACCOUNTS[0])}
+    <div class="field"><label>ملاحظة</label><input type="text" id="ln_note" value="${escapeHtml(ed? ed.note : '')}" placeholder="مثلاً: لمدة سنة، بلا فايدة..."></div>
+    <div id="ln_err" style="color:var(--debit); font-size:13px; min-height:16px;"></div>
+    <div class="row"><button class="btn" id="ln_x">إلغاء</button><button class="btn btn-primary" id="ln_ok">💾 حفظ</button></div>
+  </div>`;
+  document.body.appendChild(wrap);
+  const acct = bindLoanAcct(wrap, 'ln_a');
+  wrap.querySelector('#ln_x').addEventListener('click', ()=>wrap.remove());
+  wrap.querySelector('#ln_ok').addEventListener('click', async ()=>{
+    const err = m=>{ wrap.querySelector('#ln_err').textContent = m; };
+    const lender = wrap.querySelector('#ln_lender').value.trim(); if(!lender){ err('اكتب مين عطاك القرض'); return; }
+    const amount = Number(wrap.querySelector('#ln_amount').value)||0; if(!(amount>0)){ err('لازم مبلغ أكبر من صفر'); return; }
+    const a = acct(); if(!a){ err('حدّد لوين نزل القرض'); return; }
+    const date = wrap.querySelector('#ln_date').value || todayISO(), note = wrap.querySelector('#ln_note').value.trim();
+    if(ed){ if(amount < loanPaid(ed.id) - 0.000001){ err('المبلغ أقل من يلي انقدر دفعتو'); return; }
+      Object.assign(ed, {lender, amount, date, note, extra:Object.assign({}, ed.extra||{}, {account:a})}); const ok = await save(KEYS.loans, DB.loans); wrap.remove(); toast(ok? '✅ انحفظ' : '⚠️ صار خطأ'); render(); return; }
+    const l = {id:uid(), kind:'loan', lender, amount, date, note, number:nextLoanNumber('loan'), extra:{account:a}, createdAt:Date.now()};
+    DB.loans = [...(DB.loans||[]), l];
+    const ok = await save(KEYS.loans, DB.loans);
+    wrap.remove(); toast(ok? '🏦 انحفظ القرض' : '⚠️ صار خطأ بالحفظ'); go('#/loan/'+l.id);
+  });
+}
+function openLoanRepayModal(loanId, editId){
+  const l = (DB.loans||[]).find(x=>x.id===loanId); if(!l) return;
+  const ed = editId? (DB.loans||[]).find(x=>x.id===editId) : null;
+  const max = loanRemain(l) + (ed? Number(ed.amount)||0 : 0);
+  const wrap = document.createElement('div'); wrap.className = 'modal-bg';
+  wrap.innerHTML = `<div class="modal" style="max-width:460px;">
+    <h3>💸 ${ed? 'تعديل سند الدفع #'+escapeHtml(ed.number||'') : 'سند دفع على قرض'} — ${escapeHtml(l.lender||'')}</h3>
+    <div style="font-size:13px; margin-bottom:8px;">الباقي على القرض: <b class="num">${fmtMoney(max)}</b></div>
+    <div class="grid grid-2">
+      <div class="field"><label>المبلغ $ *</label><input type="number" id="lr_amount" class="num" value="${ed? ed.amount : ''}"></div>
+      <div class="field"><label>التاريخ</label><input type="date" id="lr_date" value="${ed? ed.date : todayISO()}"></div>
+    </div>
+    ${loanAcctField('lr_a', '💸 من وين دفعت؟', ed? loanAcct(ed) : LOAN_ACCOUNTS[0])}
+    <div class="field"><label>ملاحظة</label><input type="text" id="lr_note" value="${escapeHtml(ed? ed.note : '')}"></div>
+    <div id="lr_err" style="color:var(--debit); font-size:13px; min-height:16px;"></div>
+    <div class="row"><button class="btn" id="lr_x">إلغاء</button><button class="btn btn-primary" id="lr_ok">💾 حفظ</button></div>
+  </div>`;
+  document.body.appendChild(wrap);
+  const acct = bindLoanAcct(wrap, 'lr_a');
+  wrap.querySelector('#lr_x').addEventListener('click', ()=>wrap.remove());
+  wrap.querySelector('#lr_ok').addEventListener('click', async ()=>{
+    const err = m=>{ wrap.querySelector('#lr_err').textContent = m; };
+    const amount = Number(wrap.querySelector('#lr_amount').value)||0; if(!(amount>0)){ err('لازم مبلغ أكبر من صفر'); return; }
+    if(amount > max + 0.000001){ err('المبلغ أكبر من الباقي على القرض'); return; }
+    const a = acct(); if(!a){ err('حدّد من وين دفعت'); return; }
+    const date = wrap.querySelector('#lr_date').value || todayISO(), note = wrap.querySelector('#lr_note').value.trim();
+    if(ed){ Object.assign(ed, {amount, date, note, extra:Object.assign({}, ed.extra||{}, {account:a})}); const ok = await save(KEYS.loans, DB.loans); wrap.remove(); toast(ok? '✅ انحفظ' : '⚠️ صار خطأ'); render(); return; }
+    const r = {id:uid(), kind:'repay', loanId:l.id, lender:l.lender, amount, date, note, number:nextLoanNumber('repay'), extra:{account:a}, createdAt:Date.now()};
+    DB.loans = [...DB.loans, r];
+    const ok = await save(KEYS.loans, DB.loans);
+    wrap.remove(); toast(ok? '💸 انحفظ سند الدفع' : '⚠️ صار خطأ بالحفظ'); render();
+  });
+}
+async function deleteLoanDoc(id){
+  const d = (DB.loans||[]).find(x=>x.id===id); if(!d) return;
+  const isLoan = d.kind!=='repay', reps = isLoan? loanRepays(id) : [];
+  if(!confirm(isLoan? 'حذف القرض «'+(d.lender||'')+'»'+(reps.length? ' مع '+reps.length+' سند دفع عليه' : '')+'؟' : 'حذف سند الدفع #'+(d.number||'')+'؟')) return;
+  const now = Date.now(); [d].concat(reps).forEach(x=>{ x.deleted = true; x.deletedAt = now; });
+  await save(KEYS.loans, DB.loans); toast('🗑 انحذف'); if(isLoan) go('#/loans'); else render();
+}
+document.addEventListener('click', e=>{
+  const t = e.target.closest && e.target.closest('[data-loan-new],[data-loan-edit],[data-loan-repay],[data-loan-repay-edit],[data-loan-del]'); if(!t) return;
+  e.preventDefault(); e.stopPropagation();
+  if(!hasPermission('budget')){ toast('ما عندك صلاحية الميزانية'); return; }
+  if(t.hasAttribute('data-loan-new')) openLoanModal();
+  else if(t.hasAttribute('data-loan-edit')) openLoanModal(t.getAttribute('data-loan-edit'));
+  else if(t.hasAttribute('data-loan-repay')) openLoanRepayModal(t.getAttribute('data-loan-repay'));
+  else if(t.hasAttribute('data-loan-repay-edit')){ const r = (DB.loans||[]).find(x=>x.id===t.getAttribute('data-loan-repay-edit')); if(r) openLoanRepayModal(r.loanId, r.id); }
+  else if(t.hasAttribute('data-loan-del')) deleteLoanDoc(t.getAttribute('data-loan-del'));
+}, true);
 function budgetHubView(){
   const income = DB.budgetCategories.filter(c=>c.type==='income');
   const expense = DB.budgetCategories.filter(c=>c.type==='expense');
@@ -3417,6 +3602,7 @@ function budgetHubView(){
     <div class="hub-grid">${expense.map(catCard).join('')}</div>
     <button class="btn btn-sm" id="addBudgetCatBtn" style="margin-top:12px;">+ إضافة حقل</button>
   </div>
+  ${loansBudgetCard()}
   <div class="card">
     <h2><span class="dot"></span> 📊 الميزانية العمومية</h2>
     <div style="font-size:12.5px; color:var(--ink-soft); margin-bottom:10px;">جدول شامل لجميع المقبوضات والمدفوعات لفترة معينة، مع الصافي المتبقي (أو العجز).</div>
@@ -3476,6 +3662,9 @@ function budgetOverviewView(period, a, b){
     const t = budgetCategoryTotal(c, from, to);
     return {name:c.name, total:t};
   });
+  { const lp = loansInPeriod(from, to);
+    if(lp.got>0.000001) incRows.push({name:'🏦 قروض استلمناها', total:lp.got});
+    if(lp.paid>0.000001) expRows.push({name:'🏦 تسديد قروض', total:lp.paid}); }
   const totalIncome = incRows.reduce((s,r)=>s+r.total,0);
   const totalExpense = expRows.reduce((s,r)=>s+r.total,0);
   const net = totalIncome - totalExpense;
@@ -3998,21 +4187,52 @@ function paymentFormView(kind, rec, partyId){
 }
 
 /* ---------- Work entry form (يومية عامل: يومية ثابتة + ساعات إضافية + كيلو، أي مزيج) ---------- */
+// معاش شهري: بينحفظ كـ«يومية» مبلغها المعاش، ومعلّمة بالتفاصيل (بلا عمود جديد) — متل برنامج التجارة
+const SALARY_TAG = '💼 معاش شهر ';
+function isSalaryEntry(e){ return !!(e && String(e.details||'').indexOf(SALARY_TAG)===0); }
+function salaryMonthOf(e){ const m = String(e.details||'').slice(SALARY_TAG.length).match(/^(\d{4}-\d{2})/); return m? m[1] : ''; }
+function salaryExtraOf(e){ return String(e.details||'').slice(SALARY_TAG.length).replace(/^\d{4}-\d{2}/,'').replace(/^\s*—\s*/,''); }
+function fmtMonthAr(ym){ if(!ym) return ''; const [y,m] = ym.split('-'); return m+'/'+y; }
+function lastSalaryOf(workerId){ const l = DB.workEntries.filter(e=>!e.deleted && e.workerId===workerId && isSalaryEntry(e)).sort((a,b)=>(b.createdAt||0)-(a.createdAt||0))[0]; return l? Number(l.dailyWage)||0 : 0; }
 let _workEntryDraft = null;
 function workEntryFormView(e, workerId){
   const wk = DB.workers.find(w=>w.id===workerId);
   if(!_workEntryDraft || _workEntryDraft.__editId !== (e?e.id:'new-'+workerId)){
     if(e){ _workEntryDraft = JSON.parse(JSON.stringify(e)); _workEntryDraft.__editId = e.id; }
     else{
+      const wantSal = new URLSearchParams(location.hash.split('?')[1]||'').get('salary')==='1';
       _workEntryDraft = {id:null, workerId, number:nextWorkEntryNumber(), date:todayISO(),
-        dailyWage:0, overtimeHours:0, overtimeRate:0, weightKg:0, kgRate:0, details:'', __editId:'new-'+workerId};
+        dailyWage: wantSal? lastSalaryOf(workerId) : 0, overtimeHours:0, overtimeRate:0, weightKg:0, kgRate:0, details:'', __editId:'new-'+workerId};
+      if(wantSal){ _workEntryDraft.__salary = true; _workEntryDraft.__month = todayISO().slice(0,7); _workEntryDraft.__extra = ''; }
     }
+    if(e && isSalaryEntry(e)){ _workEntryDraft.__salary = true; _workEntryDraft.__month = salaryMonthOf(e) || e.date.slice(0,7); _workEntryDraft.__extra = salaryExtraOf(e); }
   }
   const d = _workEntryDraft;
   const total = computeWorkEntryTotal(d);
+  if(d.__salary) return `
+  <div class="card">
+    <h2><span class="dot"></span> 💼 ${e?'تعديل معاش':'معاش شهري'} ${wk?'— '+escapeHtml(wk.name):''}</h2>
+    ${e? '' : `<div style="display:flex; gap:8px; margin-bottom:10px;"><button type="button" class="btn btn-sm" id="w_mode_daily">يومية</button><button type="button" class="btn btn-sm btn-primary">💼 معاش شهري</button></div>`}
+    <div class="grid grid-2">
+      <div class="field"><label>رقم القيد</label><input type="text" id="w_number" class="num" value="${escapeHtml(d.number)}"></div>
+      <div class="field"><label>الشهر *</label><input type="month" id="w_month" value="${d.__month||''}"></div>
+    </div>
+    <div class="grid grid-2">
+      <div class="field"><label>المعاش الشهري $ *</label><input type="number" id="w_salary" class="num" value="${d.dailyWage||''}"></div>
+      <div class="field"><label>تاريخ الاستحقاق</label><input type="date" id="w_date" value="${d.date}"></div>
+    </div>
+    <div class="field"><label>ملاحظة (اختياري)</label><input type="text" id="w_details" value="${escapeHtml(d.__extra||'')}" placeholder="مثلاً: ناقص يومين غياب"></div>
+    <div style="font-size:12px; color:var(--ink-soft);">المعاش بينزل عحساب العامل كمستحق إلو، ولما تدفعلو بتعمل «دفعة» متل العادة.</div>
+    <div class="totals-box"><div class="row big"><span>المعاش $</span><span class="v" id="wTotal">${fmtMoney(total)}</span></div></div>
+    <div class="action-row" style="margin-top:16px">
+      <button class="btn btn-primary" id="saveWorkEntryBtn">💾 حفظ المعاش</button>
+      <button class="btn" data-nav="#/worker/${workerId}">إلغاء</button>
+    </div>
+  </div>`;
   return `
   <div class="card">
     <h2><span class="dot"></span> ${e?'تعديل يومية':'يومية جديدة'} ${wk?'— '+escapeHtml(wk.name):''}</h2>
+    ${e? '' : `<div style="display:flex; gap:8px; margin-bottom:10px;"><button type="button" class="btn btn-sm btn-primary">يومية</button><button type="button" class="btn btn-sm" id="w_mode_salary">💼 معاش شهري</button></div>`}
     <div class="grid grid-2">
       <div class="field"><label>رقم اليومية</label><input type="text" id="w_number" class="num" value="${escapeHtml(d.number)}"></div>
       <div class="field"><label>التاريخ</label><input type="date" id="w_date" value="${d.date}"></div>
@@ -4047,6 +4267,35 @@ function workEntryFormView(e, workerId){
 function bindWorkEntryFormEvents(){
   const el = document.getElementById('w_number');
   if(!el || !_workEntryDraft) return;
+  const mS = document.getElementById('w_mode_salary'), mD = document.getElementById('w_mode_daily');
+  if(mS) mS.addEventListener('click', ()=>{ Object.assign(_workEntryDraft, {__salary:true, __month: todayISO().slice(0,7), __extra:'', dailyWage: lastSalaryOf(_workEntryDraft.workerId) || 0, overtimeHours:0, overtimeRate:0, weightKg:0, kgRate:0}); render(); });
+  if(mD) mD.addEventListener('click', ()=>{ Object.assign(_workEntryDraft, {__salary:false, dailyWage:0, details:''}); render(); });
+  if(_workEntryDraft.__salary){
+    const refreshS = ()=>{ const t = document.getElementById('wTotal'); if(t) t.textContent = fmtMoney(computeWorkEntryTotal(_workEntryDraft)); };
+    el.addEventListener('input', e=>_workEntryDraft.number=e.target.value);
+    document.getElementById('w_month').addEventListener('input', e=>_workEntryDraft.__month=e.target.value);
+    document.getElementById('w_date').addEventListener('input', e=>_workEntryDraft.date=e.target.value);
+    document.getElementById('w_salary').addEventListener('input', e=>{ _workEntryDraft.dailyWage=Number(e.target.value)||0; refreshS(); });
+    document.getElementById('w_details').addEventListener('input', e=>_workEntryDraft.__extra=e.target.value);
+    document.getElementById('saveWorkEntryBtn').addEventListener('click', async ()=>{
+      const d = _workEntryDraft;
+      if(!d.number){ toast('رقم القيد مطلوب'); return; }
+      if(!/^\d{4}-\d{2}$/.test(d.__month||'')){ toast('اختار الشهر'); return; }
+      if(!(Number(d.dailyWage)>0)){ toast('اكتب المعاش'); return; }
+      const dup = DB.workEntries.find(x=>!x.deleted && x.workerId===d.workerId && x.id!==d.id && isSalaryEntry(x) && salaryMonthOf(x)===d.__month);
+      if(dup && !confirm('في معاش مسجّل لهالعامل عن شهر '+fmtMonthAr(d.__month)+' — بدك تسجّل كمان واحد؟')) return;
+      const details = SALARY_TAG + d.__month + (String(d.__extra||'').trim()? ' — '+String(d.__extra).trim() : '');
+      let savedId;
+      if(d.id){ const idx = DB.workEntries.findIndex(x=>x.id===d.id); const old = DB.workEntries[idx];
+        DB.workEntries[idx] = Object.assign({}, old, {number:d.number, date:d.date||todayISO(), dailyWage:Number(d.dailyWage)||0, overtimeHours:0, overtimeRate:0, weightKg:0, kgRate:0, details}); savedId = d.id; }
+      else { const clean = {id:uid(), createdAt:Date.now(), workerId:d.workerId, number:d.number, date:d.date||todayISO(), dailyWage:Number(d.dailyWage)||0, overtimeHours:0, overtimeRate:0, weightKg:0, kgRate:0, details};
+        DB.workEntries.push(clean); savedId = clean.id; }
+      const ok = await save(KEYS.workEntries, DB.workEntries);
+      toast(ok? 'تم حفظ المعاش ✅' : 'حدث خطأ أثناء الحفظ');
+      _workEntryDraft = null; go(`#/workentry/${savedId}`);
+    });
+    return;
+  }
   const refresh = ()=>{
     const t = document.getElementById('wTotal');
     if(t) t.textContent = fmtMoney(computeWorkEntryTotal(_workEntryDraft));
@@ -4089,7 +4338,9 @@ function workEntryPrintView(e){
   const total = computeWorkEntryTotal(e);
   const readOnly = !!currentCustomerSession || !!currentWorkerSession;
   const lines = [];
-  if(Number(e.dailyWage)>0) lines.push(['يومية ثابتة', fmtMoney(e.dailyWage)]);
+  const sal = isSalaryEntry(e);
+  if(sal) lines.push(['💼 معاش شهر '+fmtMonthAr(salaryMonthOf(e))+(salaryExtraOf(e)? ' — '+escapeHtml(salaryExtraOf(e)) : ''), fmtMoney(e.dailyWage)]);
+  else if(Number(e.dailyWage)>0) lines.push(['يومية ثابتة', fmtMoney(e.dailyWage)]);
   if(Number(e.overtimeHours)>0) lines.push([`ساعات إضافية (${e.overtimeHours} × ${fmtMoney(e.overtimeRate)})`, fmtMoney(e.overtimeHours*e.overtimeRate)]);
   if(Number(e.weightKg)>0) lines.push([`أجرة بالكيلو (${e.weightKg} كغ × ${fmtMoney(e.kgRate)})`, fmtMoney(e.weightKg*e.kgRate)]);
   return `
@@ -4099,7 +4350,7 @@ function workEntryPrintView(e){
     <button class="btn btn-primary" onclick="printWithFilename('WorkEntry-${safeText(e.number)}')">🖨 طباعة</button>
   </div>
   <div class="doc">
-    ${docHead('يومية عمل')}
+    ${docHead(isSalaryEntry(e)? 'معاش شهري' : 'يومية عمل')}
     <div class="doc-info">
       <div class="r"><span>العامل:</span><b>${escapeHtml(wk?wk.name:'')}</b></div>
       <div class="r"><span>رقم الحساب:</span><b class="num">${escapeHtml(wk?wk.accountNumber||'—':'')}</b></div>

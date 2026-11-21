@@ -517,10 +517,10 @@ const KEYS = {customers:'customers', invoices:'invoices', receipts:'receipts', s
   warehouseItems:'warehouseItems', stockIns:'stockIns', stockOuts:'stockOuts',
   customerAccounts:'customerAccounts',
   budgetCategories:'budgetCategories', budgetEntries:'budgetEntries', cashMovements:'cashMovements', dayClosures:'dayClosures', cashierShifts:'cashierShifts',
-  workers:'workers', workEntries:'workEntries', workerPayments:'workerPayments', workerAccounts:'workerAccounts'};
+  workers:'workers', workEntries:'workEntries', workerPayments:'workerPayments', workerAccounts:'workerAccounts', loans:'loans'};
 
 async function loadAll(){
-  const [c,i,r,s,sup,pi,pv,wi,si,so,ca,bc,be,cm,dc,cs,wk,we,wp,wa] = await Promise.all([
+  const [c,i,r,s,sup,pi,pv,wi,si,so,ca,bc,be,cm,dc,cs,wk,we,wp,wa,ln] = await Promise.all([
     loadCustomers(),
     loadSyncedArray(KEYS.invoices, []),
     loadSyncedArray(KEYS.receipts, []),
@@ -542,14 +542,15 @@ async function loadAll(){
     loadSyncedArray(KEYS.workers, []),
     loadSyncedArray(KEYS.workEntries, []),
     loadSyncedArray(KEYS.workerPayments, []),
-    loadSyncedArray(KEYS.workerAccounts, [])
+    loadSyncedArray(KEYS.workerAccounts, []),
+    loadSyncedArray(KEYS.loans, []).catch(()=>[])
   ]);
   return {customers:c, invoices:i, receipts:r, settings:s,
     suppliers:sup, purchaseInvoices:pi, paymentVouchers:pv,
     warehouseItems:wi, stockIns:si, stockOuts:so,
     customerAccounts:ca,
     budgetCategories:bc, budgetEntries:be, cashMovements:cm, dayClosures:dc, cashierShifts:cs,
-    workers:wk, workEntries:we, workerPayments:wp, workerAccounts:wa};
+    workers:wk, workEntries:we, workerPayments:wp, workerAccounts:wa, loans:ln||[]};
 }
 async function loadCustomers(){
   if(supabaseClient && !cloudSessionReady()) return [];
@@ -579,7 +580,7 @@ async function safeGet(key, fallback){
    كل سند نقدي إلو حركة صندوق «مرآة» (note تبدأ بـ [سند]، refSaleId = رقم السند). التعديل/الحذف/الاسترجاع
    بيصحّح الحركة والصندوق تلقائياً. السند الجديد بيروح على صندوق المستخدم الحالي المفتوح. */
 const DOC_MIRROR_TAG = '[سند] ';
-const DOC_BOX_KEYS = { receipts:'receipts', paymentVouchers:'paymentVouchers', workerPayments:'workerPayments', budgetEntries:'budgetEntries' };
+const DOC_BOX_KEYS = { receipts:'receipts', paymentVouchers:'paymentVouchers', workerPayments:'workerPayments', budgetEntries:'budgetEntries', loans:'loans' };
 function isDocMirrorMove(m){ return !!(m && m.refSaleId && String(m.note||'').indexOf(DOC_MIRROR_TAG)===0); }
 function docMethodIsCash(method){ const t = String(method||'').trim(); return !t || /نقد|كاش|cash/i.test(t); }
 // المبلغ الموقّع (+ داخل / − خارج) والعملة لسند معيّن — أو null إذا ما بيأثر عالصندوق
@@ -608,6 +609,10 @@ function docBoxEffectBase(kind, d){
     if(isWhishMethod(d.method)) return { sign:-1, currency:/ل\.ل|LBP/.test(d.method||'')?'LBP':'USD', amt, label:'دفعة عامل (Whish)', whish:true };
     if(!docMethodIsCash(d.method)) return null;
     return { sign:-1, currency:/ل\.ل|LBP/.test(d.method||'')?'LBP':'USD', amt, label:'دفعة عامل' };
+  }
+  if(kind==='loans'){
+    if(d.kind==='repay'){ const ln = (DB.loans||[]).find(x=>x.id===d.loanId); return { sign:-1, currency:'USD', amt, label:'سند دفع قرض #'+(d.number||'')+' — '+((ln && ln.lender) || d.lender || '') }; }
+    return { sign:1, currency:'USD', amt, label:'قرض #'+(d.number||'')+' من '+(d.lender||'') };
   }
   if(kind==='budgetEntries'){
     const c = (DB.budgetCategories||[]).find(x=>x.id===d.categoryId);
@@ -955,7 +960,7 @@ async function waitPendingSyncs(ms){
   while(_pendingSyncs.size && Date.now()-t0 < (ms||15000)){ await Promise.race([Promise.allSettled(Array.from(_pendingSyncs)), new Promise(r=>setTimeout(r, 500))]); }
 }
 
-let DB = {customers:[], invoices:[], receipts:[], settings:{}, suppliers:[], purchaseInvoices:[], paymentVouchers:[], warehouseItems:[], stockIns:[], stockOuts:[], customerAccounts:[], budgetCategories:[], budgetEntries:[], cashMovements:[], dayClosures:[], cashierShifts:[], workers:[], workEntries:[], workerPayments:[], workerAccounts:[]};
+let DB = {customers:[], invoices:[], receipts:[], settings:{}, suppliers:[], purchaseInvoices:[], paymentVouchers:[], warehouseItems:[], stockIns:[], stockOuts:[], customerAccounts:[], budgetCategories:[], budgetEntries:[], cashMovements:[], dayClosures:[], cashierShifts:[], workers:[], workEntries:[], workerPayments:[], workerAccounts:[], loans:[]};
 let authenticated = false;
 async function signOutEverywhere(){
   // مشرف المنصة داخل على مؤسسة زبون: نُغلق المؤسسة ونعود إلى /super مع إبقاء جلسة المشرف
@@ -1253,6 +1258,9 @@ function budgetEntryFromDb(row){
   if(sp.bill) e.bill = sp.bill;
   return e;
 }
+// القروض: kind='loan' (قرض استلمناه) أو 'repay' (دفعة/سند صرف على قرض — loanId)
+function loanFromDb(r){ return { id:r.id, kind:r.kind||'loan', loanId:r.loan_id||null, lender:r.lender||'', amount:Number(r.amount)||0, date:r.date, number:r.number||'', note:r.note||'', extra:r.extra||{}, createdAt:r.created_at||0, deleted:!!r.deleted, deletedAt:r.deleted_at||null }; }
+function loanToDb(l){ return { id:l.id, kind:l.kind||'loan', loan_id:l.loanId||null, lender:l.lender||null, amount:Number(l.amount)||0, date:l.date||null, number:l.number||null, note:l.note||null, extra:l.extra||null, created_at:l.createdAt||Date.now(), deleted:!!l.deleted, deleted_at:l.deletedAt||null }; }
 function budgetEntryToDb(e){
   const note = (e.note||'') + (e.bill? BILL_MARK + JSON.stringify(e.bill) : '');
   return { id:e.id, category_id:e.categoryId||null, amount:Number(e.amount)||0, date:e.date||null, note:note||null, number:e.number||null, created_at:e.createdAt||Date.now(), deleted:!!e.deleted, deleted_at:e.deletedAt||null };
@@ -1470,6 +1478,7 @@ const SUPABASE_TABLES = {
   customerAccounts: {table:'customer_accounts', toDb:customerAccountToDb, fromDb:customerAccountFromDb, label:'حسابات دخول الزبائن'},
   budgetCategories: {table:'budget_categories', toDb:budgetCategoryToDb, fromDb:budgetCategoryFromDb, label:'حقول الميزانية'},
   budgetEntries: {table:'budget_entries', toDb:budgetEntryToDb, fromDb:budgetEntryFromDb, label:'سندات الميزانية'},
+  loans: {table:'loans', toDb:loanToDb, fromDb:loanFromDb, label:'القروض'},
   cashMovements: {table:'cash_movements', toDb:cashMovementToDb, fromDb:cashMovementFromDb, label:'حركات الصندوق'},
   dayClosures: {table:'day_closures', toDb:dayClosureToDb, fromDb:dayClosureFromDb, label:'إقفالات اليومية'},
   cashierShifts: {table:'cashier_shifts', toDb:cashierShiftToDb, fromDb:cashierShiftFromDb, label:'ورديات الكاشير'},
@@ -1785,7 +1794,7 @@ function mergeLocalOnly(key, remote, firstRunMerge){
 // ===== حماية من الحذف الغلط =====
 // الحذف الحقيقي (بكبسة حذف من المستخدم) بيسجّل إذن قصير للجدول. أي حذف تاني جايي من المزامنة
 // (جهاز عندو نسخة ناقصة أو قديمة) ما بيوصل للسيرفر — بيتسجّل بس بـ «la_blocked_del» للتحقيق
-const PROTECTED_DEL_KEYS = new Set(['invoices','receipts','purchaseInvoices','paymentVouchers','warehouseItems','budgetCategories','budgetEntries','cashMovements','dayClosures','cashierShifts','workers','workEntries','workerPayments','customers','suppliers']);
+const PROTECTED_DEL_KEYS = new Set(['loans','invoices','receipts','purchaseInvoices','paymentVouchers','warehouseItems','budgetCategories','budgetEntries','cashMovements','dayClosures','cashierShifts','workers','workEntries','workerPayments','customers','suppliers']);
 const _allowDel = {};
 function allowDelKey(key){ _allowDel[key] = Date.now(); }
 function filterSyncDeletes(key, ids, where){
@@ -5917,6 +5926,14 @@ function render(){
     const qs = new URLSearchParams(location.hash.split('?')[1]||'');
     html += crumbs([['الرئيسية','#/'],['الميزانية','#/budget'],['الميزانية العمومية',null]]) + budgetOverviewView(qs.get('period')||'month', qs.get('a'), qs.get('b'));
 
+  /* ---------- القروض ---------- */
+  } else if(parts[0]==='loans'){
+    html += crumbs([['الرئيسية','#/'],['القروض',null]]) + loansView();
+  } else if(parts[0]==='loan' && parts[1]){
+    const ln = (DB.loans||[]).find(x=>x.id===parts[1] && x.kind!=='repay');
+    if(!ln) html += emptyState('لم يتم العثور على هذا القرض');
+    else html += crumbs([['الرئيسية','#/'],['القروض','#/loans'],[ln.lender||'قرض',null]]) + loanView(ln);
+
   /* ---------- Workers (العمال) ---------- */
   } else if(parts[0]==='workers'){
     html += crumbs([['الرئيسية','#/'],['العمال',null]]) + workersListView();
@@ -6130,6 +6147,12 @@ function hubView(){
       <div class="hub-title">الميزانية</div>
       <div class="hub-sub">${DB.budgetCategories.length} حقل</div>
       <div class="hub-amt" style="color:var(--steel)">مقبوضات ومدفوعات</div>
+    </div>`},
+    {key:'loans', perm:'budget', html:`<div class="hub-card" data-nav="#/loans">
+      <div class="hub-icon">🏦</div>
+      <div class="hub-title">القروض</div>
+      <div class="hub-sub">${loansList().length} قرض</div>
+      <div class="hub-amt owe">${fmtMoney(loansList().reduce((t,l)=>t+Math.max(loanRemain(l),0),0))} باقي علينا</div>
     </div>`}
   ];
   const visibleCards = allCards.filter(c=> c.perm==='__safe__' ? canSeeSafe() : hasPermission(c.perm));
@@ -9981,6 +10004,7 @@ function coaAccountsBuild(){
   (DB.suppliers||[]).filter(s=>!s.deleted).forEach(s=>ensure('supplier', s.id, '401', s.name||'مورد'));
   (DB.workers||[]).filter(w=>!w.deleted).forEach(w=>ensure('worker', w.id, '421', w.name||'عامل'));
   (DB.budgetCategories||[]).filter(c=>!c.auto).forEach(c=>ensure('budget', c.id, c.type==='income'? '758' : '610', c.name||''));
+  loansList().forEach(l=>ensure('loan', l.id, '164', 'قرض '+(l.lender||'')+(l.number? ' #'+l.number : '')));
   // صناديق الموظفين المفتوحة (رصيدها يلي بالدرج هلق)
   // صندوق «admin» هو نفسو الحساب الشخصي (53103) — ما منفتحلو حساب صندوق لحالو
   Array.from(new Set((DB.cashierShifts||[]).filter(s=>s.status==='open' && !s.deleted && !isPersonalShift(s)).map(s=>s.username))).forEach(u=>ensure('drawer', u, '531', 'صندوق الموظف '+u));
@@ -10023,6 +10047,7 @@ function coaBalanceUSD(a){   // موجب = مدين
     case 'stock':    return glDelta(a.code) + (DB.warehouseItems||[]).reduce((t,it)=>{ if(isServiceItem(it) || it.baseItemId) return t; const c = Number(it.costPrice)||0, q = fastStock(it.id); return t + (q>0? q*c : 0); }, 0);
     case 'purchases':return glDelta(a.code) + (DB.purchaseInvoices||[]).filter(i=>!i.deleted).reduce((t,i)=>t+(i.isReturn?-1:1)*computeInvoiceTotal(i).totalUSD, 0);
     case 'sales':    return glDelta(a.code) - (DB.invoices||[]).filter(i=>!i.deleted).reduce((t,i)=>t+computeInvoiceTotal(i).totalUSD, 0);
+    case 'loan': { const l = (DB.loans||[]).find(x=>x.id===a.ref); return glDelta(a.code) - (l? loanRemain(l) : 0); }
     case 'budget': { const c = (DB.budgetCategories||[]).find(x=>x.id===a.ref); const tot = (DB.budgetEntries||[]).filter(e=>!e.deleted && e.categoryId===a.ref).reduce((t,e)=>t+Math.abs(Number(e.amount)||0), 0);
       return glDelta(a.code) + (c && c.type==='income' ? -tot : tot); }
     default: return glDelta(a.code) + acctDelta(a.code);
@@ -11075,6 +11100,211 @@ function bindPeriodFilter(idPrefix, onApply){
     onApply(type, a, b);
   });
 }
+
+/* ===================== 🏦 القروض ===================== */
+function loansList(){ return (DB.loans||[]).filter(x=>!x.deleted && x.kind!=='repay'); }
+function loanRepays(id){ return (DB.loans||[]).filter(x=>!x.deleted && x.kind==='repay' && x.loanId===id).sort((a,b)=> (a.date||'')<(b.date||'')? -1 : (a.date||'')>(b.date||'')? 1 : (a.createdAt||0)-(b.createdAt||0)); }
+function loanPaid(id){ return loanRepays(id).reduce((t,r)=>t+(Number(r.amount)||0), 0); }
+function loanRemain(l){ return (Number(l.amount)||0) - loanPaid(l.id); }
+function nextLoanNumber(kind){ let mx = 0; (DB.loans||[]).forEach(x=>{ if((x.kind||'loan')!==kind) return; const n = parseInt(String(x.number||'').replace(/\D/g,''),10); if(n>mx) mx = n; }); return String(mx+1); }
+function loansInPeriod(from, to){ const o = {got:0, paid:0}; (DB.loans||[]).forEach(x=>{ if(x.deleted || !x.date || x.date<from || x.date>to) return; if(x.kind==='repay') o.paid += Number(x.amount)||0; else o.got += Number(x.amount)||0; }); return o; }
+function loanSrcLabel(id){ const s = paySrcOf(id); return s? s.label : '<span style="color:var(--debit);">⚠️ ما انحدّد</span>'; }
+function loansBudgetCard(){
+  if(!hasPermission('budget')) return '';
+  const L = loansList(); const tot = L.reduce((t,l)=>t+(Number(l.amount)||0),0), rem = L.reduce((t,l)=>t+Math.max(loanRemain(l),0),0);
+  return `<div class="card">
+    <h2><span class="dot"></span> 🏦 القروض</h2>
+    <div class="stats"><div class="stat"><div class="k">مجموع القروض</div><div class="v">${fmtMoney(tot)}</div></div>
+      <div class="stat"><div class="k">المدفوع منها</div><div class="v">${fmtMoney(tot-rem)}</div></div>
+      <div class="stat owe"><div class="k">الباقي علينا</div><div class="v">${fmtMoney(rem)}</div></div></div>
+    <div class="action-row" style="margin-top:10px;"><button class="btn btn-primary" data-nav="#/loans">🏦 فتح القروض</button><button class="btn" data-loan-new="1">+ قرض جديد</button></div>
+  </div>`;
+}
+function loansView(){
+  const all = loansList().sort((a,b)=> (a.date||'')<(b.date||'')? 1 : -1);
+  const showDone = new URLSearchParams(location.hash.split('?')[1]||'').get('all')==='1';
+  const L = showDone? all : all.filter(l=>loanRemain(l)>0.000001);
+  const tot = all.reduce((t,l)=>t+(Number(l.amount)||0),0), rem = all.reduce((t,l)=>t+Math.max(loanRemain(l),0),0);
+  return `
+  <div class="card">
+    <h2><span class="dot"></span> 🏦 القروض</h2>
+    <div class="stats"><div class="stat"><div class="k">مجموع القروض</div><div class="v">${fmtMoney(tot)}</div></div>
+      <div class="stat"><div class="k">المدفوع منها</div><div class="v">${fmtMoney(tot-rem)}</div></div>
+      <div class="stat owe"><div class="k">الباقي علينا</div><div class="v">${fmtMoney(rem)}</div></div></div>
+    <div class="action-row" style="margin-top:12px;">
+      ${hasPermission('budget')? '<button class="btn btn-primary" data-loan-new="1">+ قرض جديد</button>' : ''}
+      <button class="btn" data-nav="#/loans${showDone? '' : '?all=1'}">${showDone? 'بس يلي عليها باقي' : 'اعرض المسدّدة كمان'}</button>
+    </div>
+  </div>
+  <div class="card">
+    ${L.length? `<div class="table-wrap"><table><thead><tr><th>#</th><th>التاريخ</th><th>المُقرض</th><th>المبلغ</th><th>المدفوع</th><th>الباقي</th><th>نزل على</th></tr></thead><tbody>
+      ${L.map(l=>{ const rm = loanRemain(l); return `<tr data-nav="#/loan/${l.id}" style="cursor:pointer;"><td class="num">${escapeHtml(l.number||'')}</td><td class="num">${fmtDate(l.date)}</td><td><b>${escapeHtml(l.lender||'')}</b>${l.note? `<div style="font-size:11.5px; color:var(--ink-soft);">${escapeHtml(l.note)}</div>` : ''}</td>
+        <td class="num">${fmtMoney(l.amount)}</td><td class="num">${fmtMoney(loanPaid(l.id))}</td><td class="num" style="font-weight:800; color:${rm>0.000001? 'var(--debit)' : 'var(--credit)'};">${rm>0.000001? fmtMoney(rm) : '✅ مسدّد'}</td><td style="font-size:12px;">${loanSrcLabel(l.id)}</td></tr>`; }).join('')}
+    </tbody></table></div>` : emptyState(all.length? 'كل القروض مسدّدة ✅' : 'ما في قروض بعد')}
+  </div>
+  ${appFooter()}`;
+}
+function loanView(l){
+  const reps = loanRepays(l.id); let bal = Number(l.amount)||0;
+  const can = hasPermission('budget'), rm = loanRemain(l);
+  const rows = reps.map(r=>{ bal -= Number(r.amount)||0; return `<tr><td class="num">${fmtDate(r.date)}</td><td>💸 سند دفع #${escapeHtml(r.number||'')}${r.note? ' — '+escapeHtml(r.note) : ''}<div class="no-print" style="font-size:11.5px; color:var(--ink-soft);">من: ${loanSrcLabel(r.id)}</div></td><td class="num"></td><td class="num">${fmtMoney(r.amount)}</td><td class="num">${fmtMoney(bal)}</td>
+    <td class="no-print">${can? `<button class="btn btn-sm" data-loan-repay-edit="${r.id}">✏️</button> <button class="btn btn-sm" data-loan-src="${r.id}" title="من وين انصرف">🔁</button> <button class="btn btn-sm btn-danger" data-loan-del="${r.id}">🗑</button>` : ''}</td></tr>`; }).join('');
+  return `
+  <div class="doc-actions no-print">
+    ${can? `<button class="btn btn-primary" data-loan-repay="${l.id}" ${rm>0.000001? '' : 'disabled'}>💸 سند دفع على القرض</button>
+    <button class="btn" data-loan-edit="${l.id}">✏️ تعديل القرض</button>
+    <button class="btn" data-loan-src="${l.id}">🔁 الحساب يلي نزل عليه</button>` : ''}
+    <button class="btn" onclick="printWithFilename('Loan-${escapeHtml(l.number||'')}')">🖨 طباعة</button>
+    ${can? `<button class="btn btn-danger" data-loan-del="${l.id}">🗑 حذف القرض</button>` : ''}
+  </div>
+  <div class="doc">
+    ${docHead('كشف قرض')}
+    <div class="doc-info">
+      <div class="r"><span>المُقرض:</span><b>${escapeHtml(l.lender||'')}</b></div>
+      <div class="r"><span>رقم القرض:</span><b class="num">${escapeHtml(l.number||'')}</b></div>
+      <div class="r"><span>التاريخ:</span><b class="num">${fmtDate(l.date)}</b></div>
+      <div class="r no-print"><span>نزل على:</span><b>${loanSrcLabel(l.id)}</b></div>
+      ${l.note? `<div class="r"><span>ملاحظة:</span><b>${escapeHtml(l.note)}</b></div>` : ''}
+    </div>
+    <div class="stats"><div class="stat"><div class="k">قيمة القرض</div><div class="v">${fmtMoney(l.amount)}</div></div>
+      <div class="stat"><div class="k">المدفوع</div><div class="v">${fmtMoney(loanPaid(l.id))}</div></div>
+      <div class="stat ${rm>0.000001? 'owe' : ''}"><div class="k">الباقي</div><div class="v">${fmtMoney(rm)}</div></div></div>
+    <div class="table-wrap"><table><thead><tr><th>التاريخ</th><th>البيان</th><th>قرض</th><th>دفعة</th><th>الباقي</th><th class="no-print"></th></tr></thead><tbody>
+      <tr><td class="num">${fmtDate(l.date)}</td><td>🏦 استلام القرض من ${escapeHtml(l.lender||'')}</td><td class="num">${fmtMoney(l.amount)}</td><td class="num"></td><td class="num">${fmtMoney(l.amount)}</td><td class="no-print"></td></tr>
+      ${rows}
+    </tbody><tfoot><tr style="font-weight:800; background:var(--paper)"><td colspan="2">الباقي</td><td class="num">${fmtMoney(l.amount)}</td><td class="num">${fmtMoney(loanPaid(l.id))}</td><td class="num">${fmtMoney(rm)}</td><td class="no-print"></td></tr></tfoot></table></div>
+  </div>
+  ${appFooter()}`;
+}
+function openLoanModal(editId){
+  const ed = editId? (DB.loans||[]).find(x=>x.id===editId) : null;
+  const lenders = Array.from(new Set(loansList().map(l=>l.lender).filter(Boolean)));
+  const wrap = document.createElement('div'); wrap.className = 'modal-bg';
+  wrap.innerHTML = `<div class="modal" style="max-width:460px;">
+    <h3>🏦 ${ed? 'تعديل القرض #'+escapeHtml(ed.number||'') : 'قرض جديد'}</h3>
+    <div class="field"><label>مين عطاك القرض؟ *</label><input type="text" id="ln_lender" list="ln_lenders" value="${escapeHtml(ed? ed.lender : '')}" placeholder="اسم الشخص أو البنك"><datalist id="ln_lenders">${lenders.map(n=>`<option value="${escapeHtml(n)}">`).join('')}</datalist></div>
+    <div class="grid grid-2">
+      <div class="field"><label>المبلغ ${primSym()} *</label><input type="number" id="ln_amount" class="num" value="${ed? inPrim(ed.amount) : ''}"></div>
+      <div class="field"><label>التاريخ</label><input type="date" id="ln_date" value="${ed? ed.date : todayISO()}"></div>
+    </div>
+    ${ed? '' : `<div class="field"><label>💰 لوين نزل القرض؟ *</label><select id="ln_t"><option value="">— اختار —</option>${moneyTargetOptions({other:true})}</select>
+      <input type="text" id="ln_other" placeholder="مثلاً: بالبنك" style="display:none; margin-top:6px;"></div>`}
+    <div class="field"><label>ملاحظة</label><input type="text" id="ln_note" value="${escapeHtml(ed? ed.note : '')}" placeholder="مثلاً: لمدة سنة، بلا فايدة..."></div>
+    <div id="ln_err" style="color:var(--debit); font-size:13px; min-height:16px;"></div>
+    <div class="row"><button class="btn" id="ln_x">إلغاء</button><button class="btn btn-primary" id="ln_ok">💾 حفظ</button></div>
+  </div>`;
+  document.body.appendChild(wrap);
+  const t = wrap.querySelector('#ln_t');
+  if(t){ t.value = defaultPaySrc(true); const sync = ()=>{ wrap.querySelector('#ln_other').style.display = t.value==='other'? '' : 'none'; }; t.addEventListener('change', sync); sync(); }
+  wrap.querySelector('#ln_x').addEventListener('click', ()=>wrap.remove());
+  wrap.querySelector('#ln_ok').addEventListener('click', async ()=>{
+    const err = m=>{ wrap.querySelector('#ln_err').textContent = m; };
+    const lender = wrap.querySelector('#ln_lender').value.trim(); if(!lender){ err('اكتب مين عطاك القرض'); return; }
+    const amount = Number(outPrim(wrap.querySelector('#ln_amount').value))||0; if(!(amount>0)){ err('لازم مبلغ أكبر من صفر'); return; }
+    const date = wrap.querySelector('#ln_date').value || todayISO();
+    let note = wrap.querySelector('#ln_note').value.trim();
+    if(ed){
+      if(amount < loanPaid(ed.id) - 0.000001){ err('المبلغ أقل من يلي انقدر دفعتو'); return; }
+      Object.assign(ed, {lender, amount, date, note});
+      const ok = await saveLoansAndMirrors([ed]); wrap.remove(); toast(ok? '✅ انحفظ' : '⚠️ صار خطأ'); render(); return;
+    }
+    const src = t.value; if(!src){ err('حدّد لوين نزل القرض'); return; }
+    if(src==='other'){ const o = wrap.querySelector('#ln_other').value.trim(); if(!o){ err('اكتب لوين نزل'); return; } note = (note? note+' — ' : '')+'نزل على: '+o; }
+    const l = {id:uid(), kind:'loan', lender, amount, date, note, number:nextLoanNumber('loan'), createdAt:Date.now()};
+    _paySrcAsked.add(l.id);
+    DB.loans = [...(DB.loans||[]), l];
+    const ok = await save(KEYS.loans, DB.loans);
+    if(ok && src!=='other') await applyPaySource(KEYS.loans, l.id, src);
+    wrap.remove(); toast(ok? '🏦 انحفظ القرض' : '⚠️ صار خطأ بالحفظ'); go('#/loan/'+l.id);
+  });
+}
+function openLoanRepayModal(loanId, editId){
+  const l = (DB.loans||[]).find(x=>x.id===loanId); if(!l) return;
+  const ed = editId? (DB.loans||[]).find(x=>x.id===editId) : null;
+  const maxUsd = loanRemain(l) + (ed? Number(ed.amount)||0 : 0);
+  const wrap = document.createElement('div'); wrap.className = 'modal-bg';
+  wrap.innerHTML = `<div class="modal" style="max-width:460px;">
+    <h3>💸 ${ed? 'تعديل سند الدفع #'+escapeHtml(ed.number||'') : 'سند دفع على قرض'} — ${escapeHtml(l.lender||'')}</h3>
+    <div style="font-size:13px; margin-bottom:8px;">الباقي على القرض: <b class="num">${fmtMoney(maxUsd)}</b></div>
+    <div class="grid grid-2">
+      <div class="field"><label>المبلغ ${primSym()} *</label><input type="number" id="lr_amount" class="num" value="${ed? inPrim(ed.amount) : ''}"></div>
+      <div class="field"><label>التاريخ</label><input type="date" id="lr_date" value="${ed? ed.date : todayISO()}"></div>
+    </div>
+    ${ed? '' : `<div class="field"><label>💸 من وين دفعت؟ *</label><select id="lr_t"><option value="">— اختار —</option>${moneyTargetOptions({other:true})}</select>
+      <input type="text" id="lr_other" placeholder="مثلاً: من البنك" style="display:none; margin-top:6px;"></div>`}
+    <div class="field"><label>ملاحظة</label><input type="text" id="lr_note" value="${escapeHtml(ed? ed.note : '')}"></div>
+    <div id="lr_err" style="color:var(--debit); font-size:13px; min-height:16px;"></div>
+    <div class="row"><button class="btn" id="lr_x">إلغاء</button><button class="btn btn-primary" id="lr_ok">💾 حفظ</button></div>
+  </div>`;
+  document.body.appendChild(wrap);
+  const t = wrap.querySelector('#lr_t');
+  if(t){ t.value = defaultPaySrc(false); const sync = ()=>{ wrap.querySelector('#lr_other').style.display = t.value==='other'? '' : 'none'; }; t.addEventListener('change', sync); sync(); }
+  wrap.querySelector('#lr_x').addEventListener('click', ()=>wrap.remove());
+  wrap.querySelector('#lr_ok').addEventListener('click', async ()=>{
+    const err = m=>{ wrap.querySelector('#lr_err').textContent = m; };
+    const amount = Number(outPrim(wrap.querySelector('#lr_amount').value))||0; if(!(amount>0)){ err('لازم مبلغ أكبر من صفر'); return; }
+    if(amount > maxUsd + 0.000001){ err('المبلغ أكبر من الباقي على القرض'); return; }
+    const date = wrap.querySelector('#lr_date').value || todayISO();
+    let note = wrap.querySelector('#lr_note').value.trim();
+    if(ed){ Object.assign(ed, {amount, date, note}); const ok = await saveLoansAndMirrors([ed]); wrap.remove(); toast(ok? '✅ انحفظ' : '⚠️ صار خطأ'); render(); return; }
+    const src = t.value; if(!src){ err('حدّد من وين دفعت'); return; }
+    if(src==='other'){ const o = wrap.querySelector('#lr_other').value.trim(); if(!o){ err('اكتب من وين دفعت'); return; } note = (note? note+' — ' : '')+'مدفوع من: '+o; }
+    const r = {id:uid(), kind:'repay', loanId:l.id, lender:l.lender, amount, date, note, number:nextLoanNumber('repay'), createdAt:Date.now()};
+    _paySrcAsked.add(r.id);
+    DB.loans = [...DB.loans, r];
+    const ok = await save(KEYS.loans, DB.loans);
+    if(ok && src!=='other') await applyPaySource(KEYS.loans, r.id, src);
+    wrap.remove(); toast(ok? '💸 انحفظ سند الدفع' : '⚠️ صار خطأ بالحفظ'); render();
+  });
+}
+function openLoanSrcModal(id){
+  const d = (DB.loans||[]).find(x=>x.id===id); if(!d) return;
+  const inc = d.kind!=='repay';
+  const wrap = document.createElement('div'); wrap.className = 'modal-bg';
+  wrap.innerHTML = `<div class="modal" style="max-width:420px;"><h3>${inc? '💰 لوين نزل القرض؟' : '💸 من وين انصرف السند؟'}</h3>
+    <div style="font-size:13px; margin-bottom:8px;">هلق: <b>${loanSrcLabel(id)}</b></div>
+    <select id="ls_t">${moneyTargetOptions({none:true})}</select>
+    <div class="row" style="margin-top:12px;"><button class="btn" id="ls_x">إلغاء</button><button class="btn btn-primary" id="ls_ok">💾 حفظ</button></div></div>`;
+  document.body.appendChild(wrap);
+  wrap.querySelector('#ls_x').addEventListener('click', ()=>wrap.remove());
+  wrap.querySelector('#ls_ok').addEventListener('click', async ()=>{ const v = wrap.querySelector('#ls_t').value; wrap.remove(); await changePaySource(KEYS.loans, id, v); render(); });
+}
+function loanMirrorFix(d){   // تعديل/حذف قرض أو سند: حركة الحساب بتتبعو
+  const m = (DB.cashMovements||[]).find(x=>isDocMirrorMove(x) && x.refSaleId===d.id && !x.deleted); if(!m) return false;
+  const sgn = ['deposit','safe_in','acct_in'].includes(m.type)? 1 : -1;
+  if(d.deleted){ m.deleted = true; m.refSaleId = null; m.note = String(m.note||'').replace(DOC_MIRROR_TAG, '[سند ملغى] ');
+    if(m.shiftId) _shiftAdd(m.shiftId, m.currency, -sgn*Math.abs(Number(m.amount)||0)); return true; }
+  const eff = docBoxEffect(KEYS.loans, d, m.rate || undefined); if(!eff) return false;
+  const old = Math.abs(Number(m.amount)||0); if(Math.abs(old-eff.amt) < 0.000001 && m.date===d.date) return false;
+  if(m.shiftId) _shiftAdd(m.shiftId, m.currency, sgn*(eff.amt-old));
+  m.amount = eff.amt; m.date = d.date || m.date; return true;
+}
+async function saveLoansAndMirrors(docs){
+  const ch = docs.map(loanMirrorFix).some(Boolean);
+  const ok = await save(KEYS.loans, DB.loans);
+  if(ch) await Promise.all([save(KEYS.cashMovements, DB.cashMovements), save(KEYS.cashierShifts, DB.cashierShifts)]);
+  return ok;
+}
+async function deleteLoanDoc(id){
+  const d = (DB.loans||[]).find(x=>x.id===id); if(!d) return;
+  const isLoan = d.kind!=='repay', reps = isLoan? loanRepays(id) : [];
+  if(!confirm(isLoan? 'حذف القرض «'+(d.lender||'')+'»'+(reps.length? ' مع '+reps.length+' سند دفع عليه' : '')+'؟ المصاري بترجع تنشال من الحساب يلي نزلت عليه.' : 'حذف سند الدفع #'+(d.number||'')+'؟ المبلغ بيرجع عالحساب يلي انصرف منو.')) return;
+  const now = Date.now();
+  [d].concat(reps).forEach(x=>{ x.deleted = true; x.deletedAt = now; });
+  await saveLoansAndMirrors([d].concat(reps));
+  toast('🗑 انحذف'); if(isLoan) go('#/loans'); else render();
+}
+document.addEventListener('click', e=>{
+  const t = e.target.closest && e.target.closest('[data-loan-new],[data-loan-edit],[data-loan-repay],[data-loan-repay-edit],[data-loan-src],[data-loan-del]'); if(!t) return;
+  e.preventDefault(); e.stopPropagation();
+  if(!hasPermission('budget')){ toast('ما عندك صلاحية الميزانية'); return; }
+  if(t.hasAttribute('data-loan-new')) openLoanModal();
+  else if(t.hasAttribute('data-loan-edit')) openLoanModal(t.getAttribute('data-loan-edit'));
+  else if(t.hasAttribute('data-loan-repay')) openLoanRepayModal(t.getAttribute('data-loan-repay'));
+  else if(t.hasAttribute('data-loan-repay-edit')){ const r = (DB.loans||[]).find(x=>x.id===t.getAttribute('data-loan-repay-edit')); if(r) openLoanRepayModal(r.loanId, r.id); }
+  else if(t.hasAttribute('data-loan-src')) openLoanSrcModal(t.getAttribute('data-loan-src'));
+  else if(t.hasAttribute('data-loan-del')) deleteLoanDoc(t.getAttribute('data-loan-del'));
+}, true);
 function budgetHubView(){
   const income = DB.budgetCategories.filter(c=>c.type==='income');
   const expense = DB.budgetCategories.filter(c=>c.type==='expense');
@@ -11102,6 +11332,7 @@ function budgetHubView(){
     <div class="hub-grid">${expense.map(catCard).join('')}</div>
     <button class="btn btn-sm" id="addBudgetCatBtn" style="margin-top:12px;">+ إضافة حقل</button>
   </div>
+  ${loansBudgetCard()}
   <div class="card">
     <h2><span class="dot"></span> 📊 الميزانية العمومية</h2>
     <div style="font-size:12.5px; color:var(--ink-soft); margin-bottom:10px;">جدول شامل لجميع المقبوضات والمدفوعات لفترة معينة، مع الصافي المتبقي (أو العجز).</div>
@@ -11191,6 +11422,9 @@ function budgetOverviewView(period, a, b){
     const t = budgetCategoryTotal(c, from, to);
     return {name:c.name, total:t};
   });
+  { const lp = loansInPeriod(from, to);
+    if(lp.got>0.000001) incRows.push({name:'🏦 قروض استلمناها', total:lp.got});
+    if(lp.paid>0.000001) expRows.push({name:'🏦 تسديد قروض', total:lp.paid}); }
   const totalIncome = incRows.reduce((s,r)=>s+r.total,0);
   const totalExpense = expRows.reduce((s,r)=>s+r.total,0);
   const net = totalIncome - totalExpense;
@@ -11845,7 +12079,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-11-19 · 19:10 · v107';
+const APP_TRADE_BUILD = '2026-11-21 · 05:00 · v108';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 // ===== ترجيع حركات ناقصة من ملف (إضافة بس — ما منمحي ولا منغيّر شي موجود) =====
 document.addEventListener('change', async e=>{
