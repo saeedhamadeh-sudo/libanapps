@@ -1873,7 +1873,7 @@ function lebJournalView(qs){
   }
   const lim = 400, shown = list.slice(-lim);
   const body = shown.map(e=>`<tr class="jr-h" ${e.nav? `data-nav="${e.nav}" style="cursor:pointer; background:var(--bg-2);"` : 'style="background:var(--bg-2);"'}><td class="num">${e.no}</td><td class="num">${fmtDate(e.date)}</td><td colspan="4"><b>${escapeHtml(e.doc)}</b> — ${escapeHtml(e.desc)} <span style="font-size:11px; color:var(--ink-soft);">(${JR_KINDS[e.kind]||''})</span></td></tr>`
-    + e.lines.map(l=>`<tr><td></td><td></td><td class="num" style="${l.cr? 'padding-inline-start:28px;' : ''}">${l.a}</td><td style="${l.cr? 'padding-inline-start:28px;' : ''}">${l.cr? 'إلى ' : 'من '}${escapeHtml(jrName(l.a))}</td><td class="num">${l.dr? fmtJ(l.dr) : ''}</td><td class="num">${l.cr? fmtJ(l.cr) : ''}</td></tr>`).join('')).join('');
+    + e.lines.map(l=>`<tr><td></td><td></td><td class="num" style="${l.cr? 'padding-inline-start:28px;' : ''}">${l.a}</td><td style="${l.cr? 'padding-inline-start:28px;' : ''}"><span>${l.cr? 'إلى' : 'من'}</span> ${escapeHtml(jrName(l.a))}</td><td class="num">${l.dr? fmtJ(l.dr) : ''}</td><td class="num">${l.cr? fmtJ(l.cr) : ''}</td></tr>`).join('')).join('');
   return head + actions('Journal') + `<div class="doc">${docHead('دفتر اليومية')}${info}
     ${list.length>lim? `<div class="no-print" style="font-size:12px; color:var(--ink-soft);">عم نعرض آخر ${lim} قيد من ${list.length} — صغّر الفترة لتشوف الكل.</div>` : ''}
     <div class="table-wrap"><table><thead><tr><th>رقم القيد</th><th>التاريخ</th><th>رقم الحساب</th><th>اسم الحساب / البيان</th><th>مدين</th><th>دائن</th></tr></thead>
@@ -2406,7 +2406,7 @@ function lebHealthChecks(){
   else add('ok', 'ميزان المراجعة متوازن', all.length+' قيد، مجموع المدين = مجموع الدائن.');
   // 2) صناديق رصيدها دائن (سالب)
   const neg = Object.keys(B).filter(a=>/^53/.test(a) && B[a] < -tol);
-  neg.forEach(a=>add('bad', 'الصندوق «'+jrName(a)+'» رصيدو سالب', 'الرصيد '+fmtJ(B[a])+': طلع منو مصاري أكتر من يلي فات. غالبًا في قبض ما انسجّل، أو دفعة انسجّلت من الصندوق الغلط، أو إقفال يومية ناقص.', rng(a), 'دفتر الأستاذ '+a));
+  neg.forEach(a=>add('bad', 'صندوق رصيدو سالب: '+jrName(a), 'الرصيد '+fmtJ(B[a])+': طلع منو مصاري أكتر من يلي فات. غالبًا في قبض ما انسجّل، أو دفعة انسجّلت من الصندوق الغلط، أو إقفال يومية ناقص.', rng(a), 'دفتر الأستاذ '+a));
   if(!neg.length) add('ok', 'الصناديق', 'ولا صندوق رصيدو سالب.');
   // 3) الحساب الانتقالي
   const sus = B['47100'] || 0;
@@ -6565,8 +6565,8 @@ function vatSettingsCard(){
   const on = accVatOn(), no = (typeof taxInvNo==='function')? taxInvNo() : '';
   return `<div class="card"><h2><span class="dot"></span> 🧾 الضريبة على القيمة المضافة (TVA)</h2>
     <div class="field" style="max-width:520px;">
-      <label style="display:flex; gap:8px; align-items:center; cursor:pointer;"><input type="radio" name="s_vat_mode" value="0" ${on? '' : 'checked'} style="width:auto;"> المؤسسة <b>مش مسجّلة</b> بالـ TVA</label>
-      <label style="display:flex; gap:8px; align-items:center; cursor:pointer; margin-top:6px;"><input type="radio" name="s_vat_mode" value="1" ${on? 'checked' : ''} style="width:auto;"> المؤسسة <b>مسجّلة</b> بالـ TVA (عندها رقم ضريبي)</label>
+      <label style="display:flex; gap:8px; align-items:center; cursor:pointer;"><input type="radio" name="s_vat_mode" value="0" ${on? '' : 'checked'} style="width:auto;"> <span>المؤسسة مش مسجّلة بالـ TVA</span></label>
+      <label style="display:flex; gap:8px; align-items:center; cursor:pointer; margin-top:6px;"><input type="radio" name="s_vat_mode" value="1" ${on? 'checked' : ''} style="width:auto;"> <span>المؤسسة مسجّلة بالـ TVA (عندها رقم ضريبي)</span></label>
     </div>
     <p style="font-size:12px; color:var(--ink-soft); line-height:1.8;">${on
       ? 'مسجّلة: المبيعات بتنقسم لمبيع + TVA محصّلة، والـ TVA على المشتريات بتنحسم، والفواتير بتطلع «فاتورة ضريبية» فيها الرقم الضريبي وتفصيل الضريبة بالليرة، وتصريح ق2-1 بيتحضّر لحالو.'
