@@ -6434,6 +6434,26 @@ function optionListsManagerCard(){
     </div>
   </div>`;
 }
+function vatSettingsCard(){
+  if(!isPrivilegedUser(currentUser)) return '';
+  const on = accVatOn(), no = (typeof taxInvNo==='function')? taxInvNo() : '';
+  return `<div class="card"><h2><span class="dot"></span> 🧾 الضريبة على القيمة المضافة (TVA)</h2>
+    <div class="field" style="max-width:520px;">
+      <label style="display:flex; gap:8px; align-items:center; cursor:pointer;"><input type="radio" name="s_vat_mode" value="0" ${on? '' : 'checked'} style="width:auto;"> المؤسسة <b>مش مسجّلة</b> بالـ TVA</label>
+      <label style="display:flex; gap:8px; align-items:center; cursor:pointer; margin-top:6px;"><input type="radio" name="s_vat_mode" value="1" ${on? 'checked' : ''} style="width:auto;"> المؤسسة <b>مسجّلة</b> بالـ TVA (عندها رقم ضريبي)</label>
+    </div>
+    <p style="font-size:12px; color:var(--ink-soft); line-height:1.8;">${on
+      ? 'مسجّلة: المبيعات بتنقسم لمبيع + TVA محصّلة، والـ TVA على المشتريات بتنحسم، والفواتير بتطلع «فاتورة ضريبية» فيها الرقم الضريبي وتفصيل الضريبة بالليرة، وتصريح ق2-1 بيتحضّر لحالو.'
+      : 'مش مسجّلة: الفواتير عادية بلا رقم ضريبي ولا تفصيل TVA، وما في تصريح. وإذا اشتريت بضاعة عليها TVA، الضريبة بتنحسب جزء من كلفة البضاعة (لأنك ما فيك تستردّها) — وهيدا الصحيح محاسبيًا.'}</p>
+    ${on? `<div class="grid grid-2"><div class="field"><label>الرقم الضريبي</label><input type="text" id="s_vat_no" class="num" value="${escapeHtml(no)}"></div><div style="align-self:end;"><button class="btn" id="s_vat_save">💾 حفظ الرقم</button></div></div>` : ''}
+  </div>`;
+}
+function bindVatSettings(){
+  document.querySelectorAll('input[name="s_vat_mode"]').forEach(r=>r.addEventListener('change', async ()=>{ const v = r.value==='1';
+    if(!confirm(v? 'تأكيد: المؤسسة مسجّلة بالـ TVA؟ رح تنقسم المبيعات والمشتريات بالقيود وتطلع الفواتير ضريبية.' : 'تأكيد: المؤسسة مش مسجّلة بالـ TVA؟')){ render(); return; }
+    await accSave(a=>{ a.vatRegistered = v; }); _jrCache = null; toast(v? '✅ صارت المؤسسة مسجّلة بالـ TVA' : '✅ المؤسسة مش مسجّلة بالـ TVA'); render(); }));
+  const b = document.getElementById('s_vat_save'); if(b) b.addEventListener('click', async ()=>{ const v = document.getElementById('s_vat_no').value.trim(); await accSave(a=>{ a.finNo = v; }); toast('✅ انحفظ الرقم الضريبي'); render(); });
+}
 function settingsView(){
   const s = DB.settings;
   const lic = licenseStatus();
@@ -6450,7 +6470,7 @@ function settingsView(){
     <button class="btn btn-primary" id="s_licenseActivateBtn">تفعيل</button>
   </div>
   `;
-  return licCard + `<div class="card">
+  return licCard + vatSettingsCard() + `<div class="card">
     <h2><span class="dot"></span> إعدادات عامة</h2>
     <div class="grid grid-2">
       <div class="field"><label>اسم الشركة</label><input type="text" id="s_name" value="${escapeHtml(s.companyName)}"></div>
@@ -7315,6 +7335,7 @@ function bindEvents(){
   if(location.hash.indexOf('#/leb-cc')===0) bindLebCC();
   if(location.hash.indexOf('#/leb-forms')===0) bindLebForms();
   if(document.getElementById('ti_save')) bindTaxInv();
+  if(document.querySelector('input[name="s_vat_mode"]')) bindVatSettings();
   document.querySelectorAll('[data-as-disp]').forEach(b=>b.addEventListener('click', ()=>openAssetDisposeModal(b.getAttribute('data-as-disp'))));
   injectExcelBtn();
   { const jc = document.getElementById('jr_cur'); if(jc) jc.addEventListener('change', ()=>{ try{ localStorage.setItem('la_jr_cur', jc.value); }catch(e){} _jrCache = null; render(); }); }

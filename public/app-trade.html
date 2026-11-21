@@ -8693,7 +8693,8 @@ function posReceiptHtml(inv, currency, totalUSD, rate, customerLabel, received, 
       <div style="font-weight:800; font-size:14px;">${escapeHtml(s.companyName||'')}</div>
       ${s.companyTag? `<div style="font-size:10.5px;">${escapeHtml(s.companyTag)}</div>` : ''}
       <div style="font-size:11px;">${escapeHtml(s.companyPhone||'')}</div>
-      <div style="font-weight:800; font-size:13px; margin-top:4px;">${escapeHtml(inv.docType||'فاتورة بيع')}</div>
+      <div style="font-weight:800; font-size:13px; margin-top:4px;">${escapeHtml(taxInvOn('invoice', inv)? taxInvTitle(inv.docType||'فاتورة بيع') : (inv.docType||'فاتورة بيع'))}</div>
+      ${taxInvOn('invoice', inv) && taxInvNo()? `<div style="font-size:11px;">الرقم الضريبي: <b class="num">${escapeHtml(taxInvNo())}</b></div>` : ''}
       <div style="border-top:1px dashed #000; margin:6px 0;"></div>
     </div>
     <div style="font-size:11px; line-height:1.6;">
@@ -8716,6 +8717,7 @@ function posReceiptHtml(inv, currency, totalUSD, rate, customerLabel, received, 
       <div style="display:flex; justify-content:space-between;"><span>الحسم</span><span class="num">-${fmtMoney(totals.discount)}</span></div>` : ''}
       ${(()=>{ const U = big=>`<div style="display:flex; justify-content:space-between; font-weight:800; font-size:${big};"><span>المجموع $</span><span class="num">${fmtUSD(totals.totalUSD)}</span></div>`, L = big=>`<div style="display:flex; justify-content:space-between; font-weight:800; font-size:${big};"><span>المجموع ${secCurLabel()}</span><span class="num">${fmtLBP(totals.totalLBP)}</span></div>`;
         return primIsSec() ? L('13px') + (hasSecondCur()? U('11.5px') : '') : U('13px') + (hasSecondCur()? L('11.5px') : ''); })()}
+      ${taxInvOn('invoice', inv)? (()=>{ const B = taxInvBreak(inv), Lb = v=>Math.round(v*_rt).toLocaleString('en-US'); return B.length? `<div style="font-size:10.5px; margin-top:4px; border-top:1px dotted #000; padding-top:3px;"><div style="font-weight:800;">TVA بالليرة (سعر ${Math.round(_rt).toLocaleString('en-US')})</div>${B.map(x=>`<div style="display:flex; justify-content:space-between;"><span>${x.rt}%: بدون TVA <span class="num">${Lb(x.base)}</span></span><span>TVA <span class="num">${Lb(x.vat)}</span></span></div>`).join('')}</div>` : ''; })() : ''}
       <div style="font-size:10.5px; margin-top:4px; border:1px dashed #000; padding:4px; text-align:center;">${amountWordsPrim(totals.totalUSD, totals.totalLBP)}</div>
     </div>
     <div style="border-top:1px dashed #000; margin:6px 0;"></div>
@@ -10233,7 +10235,7 @@ function ljEntries(from, to){
   (DB.purchaseInvoices||[]).forEach(pi=>{ if(pi.deleted || !inR(pi.date)) return;
     const t = computeInvoiceTotal(pi), sg = pi.isReturn? -1 : 1, sup = (pi.supplierId && M['supplier:'+pi.supplierId]) || '40100';
     add(pi.date, pi.createdAt, 'مشتريات #'+(pi.number||''), '#/purchase/'+pi.id, (pi.isReturn? 'مرتجع مشتريات #' : 'فاتورة مشتريات #')+(pi.number||''),
-      [{code:'60101', dr:sg*t.net}, {code:'44260', dr:sg*(t.vatAmount||0)}, {code:sup, cr:sg*t.totalUSD}]); });
+      [{code:'60101', dr:sg*(accVatOn()? t.net : t.totalUSD)}, {code:'44260', dr:accVatOn()? sg*(t.vatAmount||0) : 0}, {code:sup, cr:sg*t.totalUSD}]); });
   (DB.paymentVouchers||[]).forEach(v=>{ if(v.deleted || !inR(v.date)) return;
     const u = ljUsd(v.amount, v.method, v.exchangeRate), sup = (v.supplierId && M['supplier:'+v.supplierId]) || '40100';
     add(v.date, v.createdAt, 'سند صرف #'+(v.number||''), '#/voucher/'+v.id, 'سند صرف مورد #'+(v.number||''), [{code:sup, dr:u}, {code:ljCashOf(v.id, v.method), cr:u}]); });
@@ -13574,7 +13576,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-11-22 · 00:20 · v116';
+const APP_TRADE_BUILD = '2026-11-22 · 00:40 · v117';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 // ===== ترجيع حركات ناقصة من ملف (إضافة بس — ما منمحي ولا منغيّر شي موجود) =====
 document.addEventListener('change', async e=>{
@@ -13622,6 +13624,26 @@ function openRestoreRowsModal(j){
     wrap.remove(); toast(ok? '✅ رجع '+n+' سطر' : '⚠️ صار خطأ بالحفظ'); render();
   });
 }
+function vatSettingsCard(){
+  if(!isPrivilegedUser(currentUser)) return '';
+  const on = accVatOn(), no = (typeof taxInvNo==='function')? taxInvNo() : '';
+  return `<div class="card"><h2><span class="dot"></span> 🧾 الضريبة على القيمة المضافة (TVA)</h2>
+    <div class="field" style="max-width:520px;">
+      <label style="display:flex; gap:8px; align-items:center; cursor:pointer;"><input type="radio" name="s_vat_mode" value="0" ${on? '' : 'checked'} style="width:auto;"> المؤسسة <b>مش مسجّلة</b> بالـ TVA</label>
+      <label style="display:flex; gap:8px; align-items:center; cursor:pointer; margin-top:6px;"><input type="radio" name="s_vat_mode" value="1" ${on? 'checked' : ''} style="width:auto;"> المؤسسة <b>مسجّلة</b> بالـ TVA (عندها رقم ضريبي)</label>
+    </div>
+    <p style="font-size:12px; color:var(--ink-soft); line-height:1.8;">${on
+      ? 'مسجّلة: المبيعات بتنقسم لمبيع + TVA محصّلة، والـ TVA على المشتريات بتنحسم، والفواتير بتطلع «فاتورة ضريبية» فيها الرقم الضريبي وتفصيل الضريبة بالليرة، وتصريح ق2-1 بيتحضّر لحالو.'
+      : 'مش مسجّلة: الفواتير عادية بلا رقم ضريبي ولا تفصيل TVA، وما في تصريح. وإذا اشتريت بضاعة عليها TVA، الضريبة بتنحسب جزء من كلفة البضاعة (لأنك ما فيك تستردّها) — وهيدا الصحيح محاسبيًا.'}</p>
+    ${on? `<div class="grid grid-2"><div class="field"><label>الرقم الضريبي</label><input type="text" id="s_vat_no" class="num" value="${escapeHtml(no)}"></div><div style="align-self:end;"><button class="btn" id="s_vat_save">💾 حفظ الرقم</button></div></div>` : ''}
+  </div>`;
+}
+function bindVatSettings(){
+  document.querySelectorAll('input[name="s_vat_mode"]').forEach(r=>r.addEventListener('change', async ()=>{ const v = r.value==='1';
+    if(!confirm(v? 'تأكيد: المؤسسة مسجّلة بالـ TVA؟ رح تنقسم المبيعات والمشتريات بالقيود وتطلع الفواتير ضريبية.' : 'تأكيد: المؤسسة مش مسجّلة بالـ TVA؟')){ render(); return; }
+    await accSave(a=>{ a.vatRegistered = v; }); _jrCache = null; toast(v? '✅ صارت المؤسسة مسجّلة بالـ TVA' : '✅ المؤسسة مش مسجّلة بالـ TVA'); render(); }));
+  const b = document.getElementById('s_vat_save'); if(b) b.addEventListener('click', async ()=>{ const v = document.getElementById('s_vat_no').value.trim(); await accSave(a=>{ a.finNo = v; }); toast('✅ انحفظ الرقم الضريبي'); render(); });
+}
 function settingsView(){
   const s = DB.settings;
   const lic = licenseStatus();
@@ -13667,7 +13689,7 @@ function settingsView(){
       </div>
     </div>` : ''}
   </div>`;
-  return licCard + bizCard + `<div class="card">
+  return licCard + bizCard + vatSettingsCard() + `<div class="card">
     <h2><span class="dot"></span> إعدادات عامة</h2>
     <div class="grid grid-2">
       <div class="field"><label>اسم الشركة</label><input type="text" id="s_name" value="${escapeHtml(s.companyName)}"></div>
@@ -15128,6 +15150,7 @@ function bindEvents(){
   if(location.hash.indexOf('#/leb-cc')===0) bindLebCC();
   if(location.hash.indexOf('#/leb-forms')===0) bindLebForms();
   if(document.getElementById('ti_save')) bindTaxInv();
+  if(document.querySelector('input[name="s_vat_mode"]')) bindVatSettings();
   document.querySelectorAll('[data-as-disp]').forEach(b=>b.addEventListener('click', ()=>openAssetDisposeModal(b.getAttribute('data-as-disp'))));
   injectExcelBtn();
   { const jc = document.getElementById('jr_cur'); if(jc) jc.addEventListener('change', ()=>{ try{ localStorage.setItem('la_jr_cur', jc.value); }catch(e){} _jrCache = null; render(); }); }
