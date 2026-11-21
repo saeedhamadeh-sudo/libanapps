@@ -2759,7 +2759,7 @@ async function gdBackup(env, sid) {
         const inner = t.length > 2 ? t.slice(1, -1) : '';
         if (inner) chunks.push(inner);
         // عدد الأسطر: منعدّ بداية الكائنات بالمستوى الأول بشكل تقريبي عبر الطول — منوقف لما الصفحة أصغر من 5000 سطر
-        const cnt = inner ? (inner.match(/\},\{/g) || []).length + 1 : 0;
+        let cnt = 0; try { cnt = (JSON.parse(t) || []).length; } catch { cnt = inner ? 5000 : 0; }
         if (cnt < 5000) break; off += 5000;
       }
       parts.push(JSON.stringify(tb) + ':[' + chunks.join(',') + ']');
