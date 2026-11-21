@@ -5777,6 +5777,14 @@ function render(){
     bindEvents();
     return;
   }
+  if(parts[1]==='edit' && parts[2] && !(currentUser && currentUser.role==='admin')){
+    const COL = {invoice:'invoices', receipt:'receipts', purchase:'purchases', voucher:'vouchers', workentry:'workEntries', workerpay:'workerPayments'};
+    const doc = COL[parts[0]] && (DB[COL[parts[0]]]||[]).find(x=>x.id===parts[2]);
+    if(doc && doc.date && isClosedDate(doc.date)){
+      root().innerHTML = topbar() + crumbs([['الرئيسية','#/'],['سنة مقفلة',null]]) + emptyState('🔒 هالمستند تاريخو بسنة مالية مقفلة ('+String(doc.date).slice(0,4)+') — ما بينعدّل إلا إذا صاحب المؤسسة فتح السنة من «🏛 المحاسبة ← السنة المالية».');
+      bindEvents(); return;
+    }
+  }
   let html = topbar();
   if(parts.length===0){
     html += crumbs([['الرئيسية',null]]) + hubView();
@@ -5886,6 +5894,22 @@ function render(){
     html += crumbs([['الرئيسية','#/'],['القيود',null]]) + journalLbView(new URLSearchParams(location.hash.split('?')[1]||''));
   } else if(parts[0]==='pl' && hasPermission('reports')){
     html += crumbs([['الرئيسية','#/'],['كشف الإيرادات والأعباء',null]]) + plView(new URLSearchParams(location.hash.split('?')[1]||''));
+  } else if(parts[0]==='acc' && hasPermission('reports')){
+    html += crumbs([['الرئيسية','#/'],['المحاسبة',null]]) + accHubView();
+  } else if(parts[0]==='leb-bs' && hasPermission('reports')){
+    html += crumbs([['الرئيسية','#/'],['المحاسبة','#/acc'],['الميزانية العمومية',null]]) + lebBSView(new URLSearchParams(location.hash.split('?')[1]||''));
+  } else if(parts[0]==='leb-year' && hasPermission('reports')){
+    html += crumbs([['الرئيسية','#/'],['المحاسبة','#/acc'],['السنة المالية',null]]) + lebYearView();
+  } else if(parts[0]==='leb-vat' && hasPermission('reports')){
+    html += crumbs([['الرئيسية','#/'],['المحاسبة','#/acc'],['TVA',null]]) + lebVatView(new URLSearchParams(location.hash.split('?')[1]||''));
+  } else if(parts[0]==='leb-assets' && hasPermission('reports')){
+    html += crumbs([['الرئيسية','#/'],['المحاسبة','#/acc'],['الأصول الثابتة',null]]) + lebAssetsView();
+  } else if(parts[0]==='leb-fx' && hasPermission('reports')){
+    html += crumbs([['الرئيسية','#/'],['المحاسبة','#/acc'],['صرف العملات',null]]) + lebFxView();
+  } else if(parts[0]==='leb-bank' && hasPermission('reports')){
+    html += crumbs([['الرئيسية','#/'],['المحاسبة','#/acc'],['تسوية المصرف',null]]) + lebBankView(new URLSearchParams(location.hash.split('?')[1]||''));
+  } else if(parts[0]==='leb-nssf' && hasPermission('reports')){
+    html += crumbs([['الرئيسية','#/'],['المحاسبة','#/acc'],['الضمان الاجتماعي',null]]) + lebNssfView(new URLSearchParams(location.hash.split('?')[1]||''));
   } else if(parts[0]==='leb-journal' && hasPermission('reports')){
     html += crumbs([['الرئيسية','#/'],['القيود',null]]) + lebJournalView(new URLSearchParams(location.hash.split('?')[1]||''));
   } else if(parts[0]==='leb-pl' && hasPermission('reports')){
@@ -6097,6 +6121,12 @@ function hubView(){
       <div class="hub-title">لوحة الحسابات</div>
       <div class="hub-sub">الفئات السبعة — حسابات وقيود</div>
       <div class="hub-amt" style="color:var(--steel)">افتح الشجرة</div>
+    </div>`},
+    {key:'acc', perm:'reports', html:`<div class="hub-card" data-nav="#/acc">
+      <div class="hub-icon">🏛</div>
+      <div class="hub-title">المحاسبة</div>
+      <div class="hub-sub">الميزانية العمومية، TVA، الأصول، الضمان…</div>
+      <div class="hub-amt" style="color:var(--steel)">النظام المحاسبي اللبناني</div>
     </div>`},
     {key:'lebJournal', perm:'reports', html:`<div class="hub-card" data-nav="#/leb-journal">
       <div class="hub-icon">📖</div>
@@ -9985,7 +10015,8 @@ const COA_DEFAULT_GROUPS = [
   {code:'370', name:'البضائع'},
   {code:'401', name:'الموردون'}, {code:'411', name:'الزبائن'}, {code:'421', name:'المستخدمون — الأجور المستحقة'},
   {code:'442', name:'الدولة — الضريبة على القيمة المضافة'}, {code:'471', name:'حسابات انتقالية / معلّقة'},
-  {code:'164', name:'القروض والديون المماثلة'}, {code:'408', name:'موردو المصاريف — فواتير غير مدفوعة'}, {code:'471', name:'حسابات قيد التسوية'},
+{code:'120', name:'نتيجة الدورة — ربح'}, {code:'129', name:'نتيجة الدورة — خسارة'}, {code:'213', name:'الإنشاءات'}, {code:'281', name:'استهلاكات الأصول الثابتة المادية'}, {code:'431', name:'الضمان الاجتماعي'}, {code:'442', name:'الدولة — الضريبة على القيمة المضافة'}, {code:'645', name:'أعباء الضمان الاجتماعي'}, {code:'666', name:'خسائر الصرف'}, {code:'681', name:'مخصصات الاستهلاكات'}, {code:'766', name:'أرباح الصرف'},
+    {code:'164', name:'القروض والديون المماثلة'}, {code:'408', name:'موردو المصاريف — فواتير غير مدفوعة'}, {code:'471', name:'حسابات قيد التسوية'},
   {code:'512', name:'المصارف'}, {code:'516', name:'المحافظ الإلكترونية'}, {code:'531', name:'الصندوق'}, {code:'641', name:'أعباء المستخدمين — رواتب وأجور'},
   {code:'601', name:'مشتريات البضائع'}, {code:'603', name:'تغيّر المخزون'}, {code:'610', name:'المصاريف التشغيلية'}, {code:'618', name:'مصاريف الضيافة'}, {code:'641', name:'رواتب وأجور المستخدمين'},
   {code:'701', name:'مبيعات البضائع'}, {code:'758', name:'إيرادات أخرى'}
@@ -10010,7 +10041,28 @@ const COA_FIXED = [   // حسابات ثابتة بأرقام معروفة
   {code:'40800', name:'موردو مصاريف — فواتير على الحساب', group:'408', kind:'jr_only'},
   {code:'47100', name:'حركات صندوق يدوية قيد التسوية', group:'471', kind:'jr_only'},
   {code:'53199', name:'صناديق موظفين (مسكّرة)', group:'531', kind:'jr_only'},
-  {code:'64101', name:'رواتب وأجور العمال', group:'641', kind:'jr_only'}
+  {code:'64101', name:'رواتب وأجور العمال', group:'641', kind:'jr_only'},
+  {code:'10100', name:'رأس المال', group:'101', kind:'jr_only'},
+  {code:'12001', name:'نتيجة الدورة — ربح', group:'120', kind:'jr_only'},
+  {code:'12900', name:'نتيجة الدورة — خسارة', group:'129', kind:'jr_only'},
+  {code:'21301', name:'إنشاءات وديكور وتحسينات', group:'213', kind:'jr_only'},
+  {code:'21501', name:'معدات وآلات', group:'215', kind:'jr_only'},
+  {code:'21801', name:'أثاث ومفروشات', group:'218', kind:'jr_only'},
+  {code:'21820', name:'سيارات وآليات نقل', group:'218', kind:'jr_only'},
+  {code:'21830', name:'أجهزة كمبيوتر ومعلوماتية', group:'218', kind:'jr_only'},
+  {code:'28130', name:'استهلاكات الإنشاءات والتحسينات', group:'281', kind:'jr_only'},
+  {code:'28150', name:'استهلاكات المعدات والآلات', group:'281', kind:'jr_only'},
+  {code:'28180', name:'استهلاكات الأثاث', group:'281', kind:'jr_only'},
+  {code:'28182', name:'استهلاكات السيارات', group:'281', kind:'jr_only'},
+  {code:'28183', name:'استهلاكات أجهزة الكمبيوتر', group:'281', kind:'jr_only'},
+  {code:'43100', name:'الصندوق الوطني للضمان الاجتماعي', group:'431', kind:'jr_only'},
+  {code:'44260', name:'TVA مدفوعة على المشتريات (قابلة للاسترداد)', group:'442', kind:'jr_only'},
+  {code:'44270', name:'TVA محصّلة على المبيعات', group:'442', kind:'jr_only'},
+  {code:'47200', name:'حساب وسيط — صرف عملات', group:'471', kind:'jr_only'},
+  {code:'64510', name:'اشتراكات الضمان الاجتماعي (حصة صاحب العمل)', group:'645', kind:'jr_only'},
+  {code:'66600', name:'خسائر فروقات الصرف', group:'666', kind:'jr_only'},
+  {code:'68110', name:'مخصصات استهلاك الأصول الثابتة', group:'681', kind:'jr_only'},
+  {code:'76600', name:'أرباح فروقات الصرف', group:'766', kind:'jr_only'}
 ];
 function coaReg(){
   const r = (DB.settings.coa && typeof DB.settings.coa==='object') ? DB.settings.coa : {};
@@ -10311,56 +10363,121 @@ function jrInvSaleUSD(inv){
   return roundAmt(t);
 }
 // كل القيود (مرتبة بالتاريخ) — كل قيد: {date, at, kind, doc, desc, nav, lines:[{a, dr, cr}]}
+function accCfg(){ const a = (DB.settings.acc && typeof DB.settings.acc==='object')? DB.settings.acc : {}; return a; }
+async function accSave(mut){ const a = Object.assign({}, accCfg()); mut(a); DB.settings.acc = a; _jrCache = null; return await save(KEYS.settings, DB.settings); }
+function accVatOn(){ return !!accCfg().vatRegistered; }
+function accClosedYears(){ return (accCfg().closed||[]).map(x=>String(x.year)); }
+function isClosedDate(d){ return !!d && accClosedYears().includes(String(d).slice(0,4)); }
+const ASSET_CATS = [
+  {k:'build', n:'إنشاءات وديكور وتحسينات', a:'21301', d:'28130', y:20},
+  {k:'equip', n:'معدات وآلات', a:'21501', d:'28150', y:5},
+  {k:'furn', n:'أثاث ومفروشات', a:'21801', d:'28180', y:5},
+  {k:'car', n:'سيارات وآليات نقل', a:'21820', d:'28182', y:5},
+  {k:'it', n:'أجهزة كمبيوتر ومعلوماتية', a:'21830', d:'28183', y:3}
+];
+function assetCat(k){ return ASSET_CATS.find(c=>c.k===k) || ASSET_CATS[1]; }
+function monthEnd(ym){ const [y,m] = ym.split('-').map(Number); const d = new Date(Date.UTC(y, m, 0)); return d.toISOString().slice(0,10); }
+function addMonths(ym, n){ const [y,m] = ym.split('-').map(Number); const d = new Date(Date.UTC(y, m-1+n, 1)); return d.toISOString().slice(0,7); }
+// استهلاك شهري ثابت: من الشهر يلي بعد الشراء لحد آخر العمر أو هالشهر
+function assetDepSchedule(as){
+  const cost = Number(as.cost)||0, salv = Number(as.salvage)||0, months = Math.max(1, Math.round((Number(as.years)||assetCat(as.cat).y)*12));
+  const per = (cost - salv) / months; const out = []; if(!(per>0) || !as.date) return out;
+  const nowYm = todayISO().slice(0,7), stopYm = as.disposed? String(as.disposed).slice(0,7) : null;
+  let ym = addMonths(as.date.slice(0,7), 1);
+  for(let k=0; k<months; k++, ym = addMonths(ym, 1)){ if(ym>nowYm || (stopYm && ym>stopYm)) break; out.push({ym, date:monthEnd(ym), amt:per}); }
+  return out;
+}
+const NSSF_DEF = {sick:8, fam:6, eos:8.5, ee:3, ceilSick:120000000, ceilFam:18000000};
+function nssfCfg(){ return Object.assign({}, NSSF_DEF, accCfg().nssf||{}); }
+function nssfFor(e){   // اشتراكات الضمان على معاش شهري لعامل مسجّل
+  const c = nssfCfg(); if(!c.on || !isSalaryEntry(e) || !(c.workers||[]).includes(e.workerId)) return null;
+  const r = curRate(), sal = computeWorkEntryTotal(e), salL = sal*r;
+  const sick = Math.min(salL, c.ceilSick)/r * c.sick/100, fam = Math.min(salL, c.ceilFam)/r * c.fam/100, eos = sal * c.eos/100, ee = Math.min(salL, c.ceilSick)/r * c.ee/100;
+  return {sal, sick, fam, eos, er: sick+fam+eos, ee};
+}
+let _jrCache = null, _jrCacheAt = 0;
 function journalEntriesAll(){
-  const M = jrAcctMap(), out = [];
-  const add = (date, at, kind, doc, desc, nav, dr, cr, v)=>{ v = roundAmt(Math.abs(Number(v)||0)); if(!(v>0) || !dr || !cr) return; out.push({date:date||'', at:at||0, kind, doc, desc, nav, lines:[{a:String(dr), dr:v, cr:0},{a:String(cr), dr:0, cr:v}]}); };
+  if(_jrCache && Date.now()-_jrCacheAt < 1500) return _jrCache;
+  _jrCache = journalEntriesBuild(); _jrCacheAt = Date.now(); return _jrCache;
+}
+// كل القيود (مرتبة بالتاريخ) — كل قيد: {key, date, at, kind, doc, desc, nav, lines:[{a, dr, cr}]}
+function journalEntriesBuild(){
+  const M = jrAcctMap(), out = [], vatOn = accVatOn();
+  const addL = (key, date, at, kind, doc, desc, nav, lines)=>{ lines = lines.filter(l=>l.a && (l.dr>0.0000001 || l.cr>0.0000001)).map(l=>({a:String(l.a), dr:roundAmt(l.dr||0), cr:roundAmt(l.cr||0)}));
+    if(lines.length<2) return; out.push({key, date:date||'', at:at||0, kind, doc, desc, nav, lines}); };
+  const add = (date, at, kind, doc, desc, nav, dr, cr, v, key)=>{ v = Math.abs(Number(v)||0); if(!(v>0) || !dr || !cr) return; addL(key||(kind+':'+doc+':'+at), date, at, kind, doc, desc, nav, [{a:dr, dr:v, cr:0},{a:cr, dr:0, cr:v}]); };
   const cust = id=> (id && M['customer:'+id]) || '41100';
-  DB.invoices.forEach(i=>{ if(i.deleted) return; add(i.date, i.createdAt, 'sale', 'فاتورة #'+(i.number||''), (i.docType||'فاتورة مبيع'), '#/invoice/'+i.id, cust(i.customerId), '70101', jrInvSaleUSD(i)); });
+  // قيد الأرصدة الافتتاحية
+  const op = accCfg().opening;
+  if(op && op.date && Array.isArray(op.lines) && op.lines.length){
+    const L = op.lines.map(l=>({a:l.a, dr:Number(l.dr)||0, cr:Number(l.cr)||0})); const d = L.reduce((t,l)=>t+l.dr-l.cr, 0);
+    if(Math.abs(d)>0.000001) L.push({a:'10100', dr:d<0? -d : 0, cr:d>0? d : 0});
+    addL('opening', op.date, 0, 'opening', 'قيد افتتاحي', 'الأرصدة الافتتاحية', '#/leb-year', L);
+  }
+  DB.invoices.forEach(i=>{ if(i.deleted) return; const tot = jrInvSaleUSD(i); if(!(tot>0)) return;
+    if(!vatOn){ add(i.date, i.createdAt, 'sale', 'فاتورة #'+(i.number||''), (i.docType||'فاتورة مبيع'), '#/invoice/'+i.id, cust(i.customerId), '70101', tot, 'inv:'+i.id); return; }
+    // الأسعار شاملة TVA: منفصل الضريبة عن المبيع حسب نسبة كل منتج
+    const f = posDiscFactor(i); let vat = 0;
+    (i.items||[]).forEach(it=>{ const q = Number(it.qty)||0; if(!q) return; const line = (Number(it.total)||0)*(Math.max(0, q-invItemReturnedQty(it))/q)*f;
+      const w = it.productId && DB.warehouseItems.find(x=>x.id===it.productId); const rt = w? itemVatRate(w) : settingsVatRate(); vat += line - line/(1+rt/100); });
+    addL('inv:'+i.id, i.date, i.createdAt, 'sale', 'فاتورة #'+(i.number||''), (i.docType||'فاتورة مبيع'), '#/invoice/'+i.id, [{a:cust(i.customerId), dr:tot},{a:'70101', cr:tot-vat},{a:'44270', cr:vat}]); });
   DB.receipts.forEach(r=>{ if(r.deleted) return; const usd = Math.abs(receiptAmountUSD(r));
     const cash = isWhishMethod(r.method)? '51601' : (r.shiftId? jrShiftAcct(r.shiftId, M) : (jrMirrorAcct(r.id, M) || (docMethodIsCash(r.method)? '53101' : '47100')));
-    if(isPosRefundReceipt(r)) add(r.date, r.createdAt, 'refund', 'إيصال #'+(r.number||''), 'رد مبلغ لزبون — '+(r.details||''), '#/receipt/'+r.id, cust(r.customerId), cash, usd);
-    else add(r.date, r.createdAt, 'receipt', 'إيصال #'+(r.number||''), 'قبض من زبون'+(r.details? ' — '+r.details : ''), '#/receipt/'+r.id, cash, cust(r.customerId), usd); });
-  DB.purchaseInvoices.forEach(i=>{ if(i.deleted) return; const sup = M['supplier:'+i.supplierId] || '40100'; const v = computeInvoiceTotal(i).totalUSD;
-    if(i.isReturn) add(i.date, i.createdAt, 'purchase', 'مرتجع مشتريات #'+(i.number||''), 'مرتجع مشتريات', '#/purchase/'+i.id, sup, '60101', v);
-    else add(i.date, i.createdAt, 'purchase', 'فاتورة مشتريات #'+(i.number||''), 'مشتريات بضائع', '#/purchase/'+i.id, '60101', sup, v); });
+    if(isPosRefundReceipt(r)) add(r.date, r.createdAt, 'refund', 'إيصال #'+(r.number||''), 'رد مبلغ لزبون — '+(r.details||''), '#/receipt/'+r.id, cust(r.customerId), cash, usd, 'rec:'+r.id);
+    else add(r.date, r.createdAt, 'receipt', 'إيصال #'+(r.number||''), 'قبض من زبون'+(r.details? ' — '+r.details : ''), '#/receipt/'+r.id, cash, cust(r.customerId), usd, 'rec:'+r.id); });
+  DB.purchaseInvoices.forEach(i=>{ if(i.deleted) return; const sup = M['supplier:'+i.supplierId] || '40100'; const t = computeInvoiceTotal(i); const v = t.totalUSD, vat = vatOn? t.vatAmount : 0;
+    const L = [{a:'60101', dr:v-vat},{a:'44260', dr:vat},{a:sup, cr:v}];
+    if(i.isReturn) addL('pur:'+i.id, i.date, i.createdAt, 'purchase', 'مرتجع مشتريات #'+(i.number||''), 'مرتجع مشتريات', '#/purchase/'+i.id, L.map(l=>({a:l.a, dr:l.cr||0, cr:l.dr||0})));
+    else addL('pur:'+i.id, i.date, i.createdAt, 'purchase', 'فاتورة مشتريات #'+(i.number||''), 'مشتريات بضائع', '#/purchase/'+i.id, L); });
   DB.paymentVouchers.forEach(v=>{ if(v.deleted) return; const sup = M['supplier:'+v.supplierId] || '40100';
     const cash = isWhishMethod(v.method)? '51601' : (jrMirrorAcct(v.id, M) || (docMethodIsCash(v.method)? '53101' : '47100'));
-    add(v.date, v.createdAt, 'voucher', 'سند صرف #'+(v.number||''), 'دفعة لمورد'+(v.details? ' — '+v.details : ''), '#/voucher/'+v.id, sup, cash, v.amount); });
-  DB.workEntries.forEach(e=>{ if(e.deleted) return; add(e.date, e.createdAt, 'wage', (isSalaryEntry(e)? 'معاش #' : 'يومية #')+(e.number||''), isSalaryEntry(e)? 'معاش شهر '+fmtMonthAr(salaryMonthOf(e)) : 'يومية عمل', '#/workentry/'+e.id, '64101', M['worker:'+e.workerId] || '42100', computeWorkEntryTotal(e)); });
+    add(v.date, v.createdAt, 'voucher', 'سند صرف #'+(v.number||''), 'دفعة لمورد'+(v.details? ' — '+v.details : ''), '#/voucher/'+v.id, sup, cash, v.amount, 'vou:'+v.id); });
+  DB.workEntries.forEach(e=>{ if(e.deleted) return; const wa = M['worker:'+e.workerId] || '42100';
+    add(e.date, e.createdAt, 'wage', (isSalaryEntry(e)? 'معاش #' : 'يومية #')+(e.number||''), isSalaryEntry(e)? 'معاش شهر '+fmtMonthAr(salaryMonthOf(e)) : 'يومية عمل', '#/workentry/'+e.id, '64101', wa, computeWorkEntryTotal(e), 'we:'+e.id);
+    const n = nssfFor(e); if(n){
+      addL('nssf:'+e.id, e.date, (e.createdAt||0)+1, 'nssf', 'ضمان — معاش #'+(e.number||''), 'اشتراكات الضمان الاجتماعي — حصة صاحب العمل', '#/leb-nssf', [{a:'64510', dr:n.er},{a:'43100', cr:n.er}]);
+      if(n.ee>0) addL('nssfe:'+e.id, e.date, (e.createdAt||0)+2, 'nssf', 'ضمان — معاش #'+(e.number||''), 'حصة الأجير من الضمان (3%)', '#/leb-nssf', [{a:wa, dr:n.ee},{a:'43100', cr:n.ee}]); } });
   DB.workerPayments.forEach(p=>{ if(p.deleted) return; const cash = isWhishMethod(p.method)? '51601' : (jrMirrorAcct(p.id, M) || (docMethodIsCash(p.method)? '53101' : '47100'));
-    add(p.date, p.createdAt, 'workerpay', 'دفعة عامل #'+(p.number||''), 'دفعة أجرة', '#/workerpay/'+p.id, M['worker:'+p.workerId] || '42100', cash, p.amount); });
+    add(p.date, p.createdAt, 'workerpay', 'دفعة عامل #'+(p.number||''), 'دفعة أجرة', '#/workerpay/'+p.id, M['worker:'+p.workerId] || '42100', cash, p.amount, 'wp:'+p.id); });
   (DB.budgetEntries||[]).forEach(e=>{ if(e.deleted) return; const c = (DB.budgetCategories||[]).find(x=>x.id===e.categoryId); if(!c || c.auto) return;
     const ac = M['budget:'+c.id]; if(!ac) return; const inc = c.type==='income';
     if(e.bill && e.bill.onAccount){
-      add(e.date, e.createdAt, 'expense', 'فاتورة مصاريف #'+(e.number||''), c.name+' — على الحساب', '#/budget-bill/'+e.id, ac, '40800', e.amount);
+      add(e.date, e.createdAt, 'expense', 'فاتورة مصاريف #'+(e.number||''), c.name+' — على الحساب', '#/budget-bill/'+e.id, ac, '40800', e.amount, 'be:'+e.id);
       (e.bill.payments||[]).forEach(pm=>{ const mv = DB.cashMovements.find(x=>x.id===pm.moveId); if(mv && mv.deleted) return;
         const cash = mv? (mv.type==='safe_out'? (mv.currency==='USD'? '53102' : '53101') : mv.type==='acct_out'? (moneyAcctOf(mv)||'47100') : mv.shiftId? jrShiftAcct(mv.shiftId, M) : '53101') : '53101';
-        add(pm.date || e.date, pm.at || e.createdAt, 'expense', 'دفعة فاتورة #'+(e.number||''), c.name, '#/budget-bill/'+e.id, '40800', cash, pm.usd); });
+        add(pm.date || e.date, pm.at || e.createdAt, 'expense', 'دفعة فاتورة #'+(e.number||''), c.name, '#/budget-bill/'+e.id, '40800', cash, pm.usd, 'bp:'+(pm.id||pm.moveId)); });
       return; }
     const cash = jrMirrorAcct(e.id, M) || '47100';
-    if(inc) add(e.date, e.createdAt, 'income', 'سند قبض #'+(e.number||''), c.name+(e.note? ' — '+e.note : ''), '#/budget-category/'+c.id, cash, ac, e.amount);
-    else add(e.date, e.createdAt, 'expense', 'سند صرف #'+(e.number||''), c.name+(e.note? ' — '+e.note : ''), e.bill? '#/budget-bill/'+e.id : '#/budget-category/'+c.id, ac, cash, e.amount); });
+    if(inc) add(e.date, e.createdAt, 'income', 'سند قبض #'+(e.number||''), c.name+(e.note? ' — '+e.note : ''), '#/budget-category/'+c.id, cash, ac, e.amount, 'be:'+e.id);
+    else add(e.date, e.createdAt, 'expense', 'سند صرف #'+(e.number||''), c.name+(e.note? ' — '+e.note : ''), e.bill? '#/budget-bill/'+e.id : '#/budget-category/'+c.id, ac, cash, e.amount, 'be:'+e.id); });
   (DB.loans||[]).forEach(l=>{ if(l.deleted) return; const loanId = l.kind==='repay'? l.loanId : l.id; const la = M['loan:'+loanId] || '16400'; const cash = jrMirrorAcct(l.id, M) || '47100';
-    if(l.kind==='repay') add(l.date, l.createdAt, 'loan', 'سند دفع قرض #'+(l.number||''), 'تسديد قرض — '+(l.lender||''), '#/loan/'+loanId, la, cash, l.amount);
-    else add(l.date, l.createdAt, 'loan', 'قرض #'+(l.number||''), 'استلام قرض من '+(l.lender||''), '#/loan/'+l.id, cash, la, l.amount); });
-  DB.stockOuts.forEach(o=>{ if(!isHospOut(o)) return; add(o.date, o.createdAt, 'hosp', 'ضيافة', 'ضيافة من الستوك — '+String(o.note||'').replace(HOSP_NOTE+' — ',''), null, '61801', '37001', hospCostUSD(o)); });
+    if(l.kind==='repay') add(l.date, l.createdAt, 'loan', 'سند دفع قرض #'+(l.number||''), 'تسديد قرض — '+(l.lender||''), '#/loan/'+loanId, la, cash, l.amount, 'ln:'+l.id);
+    else add(l.date, l.createdAt, 'loan', 'قرض #'+(l.number||''), 'استلام قرض من '+(l.lender||''), '#/loan/'+l.id, cash, la, l.amount, 'ln:'+l.id); });
+  DB.stockOuts.forEach(o=>{ if(!isHospOut(o)) return; add(o.date, o.createdAt, 'hosp', 'ضيافة', 'ضيافة من الستوك — '+String(o.note||'').replace(HOSP_NOTE+' — ',''), null, '61801', '37001', hospCostUSD(o), 'hosp:'+o.id); });
+  (accCfg().assets||[]).forEach(as=>{ const c = assetCat(as.cat); assetDepSchedule(as).forEach(x=>add(x.date, Date.parse(x.date+'T23:00:00'), 'dep', 'استهلاك '+fmtMonthAr(x.ym), 'استهلاك شهري — '+(as.name||''), '#/leb-assets', '68110', c.d, x.amt, 'dep:'+as.id+':'+x.ym)); });
   const r = curRate();
   (DB.cashMovements||[]).forEach(m=>{ if(m.deleted || isDocMirrorMove(m)) return; const v = m.currency==='LBP'? Math.abs(Number(m.amount)||0)/r : Math.abs(Number(m.amount)||0);
-    const main = m.currency==='USD'? '53102' : '53101';
-    if(m.type==='gl'){ const g = glInfo(m)||{}; if(g.dr && g.cr) add(m.date, m.createdAt, 'gl', 'قيد يدوي', g.desc||'قيد محاسبي', null, g.dr, g.cr, v); return; }
-    if(m.type==='shift_close' && m.shiftId) add(m.date, m.createdAt, 'transfer', 'إقفال صندوق', 'تحويل من صندوق الموظف للصندوق الأساسي', null, main, jrShiftAcct(m.shiftId, M), v);
-    else if(m.type==='safe_in') add(m.date, m.createdAt, 'cash', 'إيداع بالصندوق', String(m.note||'').slice(0,60), null, main, '47100', v);
-    else if(m.type==='safe_out') add(m.date, m.createdAt, 'cash', 'سحب من الصندوق', String(m.note||'').slice(0,60), null, '47100', main, v);
-    else if(m.type==='owner_pay') add(m.date, m.createdAt, 'cash', 'دفع من حساب صاحب المؤسسة', String(m.note||'').slice(0,60), null, '47100', '10801', v);
+    const main = m.currency==='USD'? '53102' : '53101', k = 'cm:'+m.id;
+    if(m.type==='gl'){ const g = glInfo(m)||{}; if(g.dr && g.cr) add(m.date, m.createdAt, 'gl', 'قيد يدوي', g.desc||'قيد محاسبي', null, g.dr, g.cr, v, k); return; }
+    if(m.type==='shift_close' && m.shiftId) add(m.date, m.createdAt, 'transfer', 'إقفال صندوق', 'تحويل من صندوق الموظف للصندوق الأساسي', null, main, jrShiftAcct(m.shiftId, M), v, k);
+    else if(m.type==='safe_in') add(m.date, m.createdAt, 'cash', 'إيداع بالصندوق', String(m.note||'').slice(0,60), null, main, '47100', v, k);
+    else if(m.type==='safe_out') add(m.date, m.createdAt, 'cash', 'سحب من الصندوق', String(m.note||'').slice(0,60), null, '47100', main, v, k);
+    else if(m.type==='owner_pay') add(m.date, m.createdAt, 'cash', 'دفع من حساب صاحب المؤسسة', String(m.note||'').slice(0,60), null, '47100', '10801', v, k);
     else if((m.type==='deposit' || m.type==='withdraw') && m.shiftId){ const d = jrShiftAcct(m.shiftId, M);
-      if(m.type==='deposit') add(m.date, m.createdAt, 'cash', 'إيداع بصندوق', String(m.note||'').slice(0,60), null, d, '47100', v);
-      else add(m.date, m.createdAt, 'cash', 'سحب من صندوق', String(m.note||'').slice(0,60), null, '47100', d, v); }
+      if(m.type==='deposit') add(m.date, m.createdAt, 'cash', 'إيداع بصندوق', String(m.note||'').slice(0,60), null, d, '47100', v, k);
+      else add(m.date, m.createdAt, 'cash', 'سحب من صندوق', String(m.note||'').slice(0,60), null, '47100', d, v, k); }
   });
+  // إقفال السنوات المقفلة: حسابات الفئتين 6 و7 بتتصفّر بحساب نتيجة الدورة (12)
+  accClosedYears().sort().forEach(y=>{ const S = {};
+    out.forEach(e=>{ if(String(e.date).slice(0,4)!==y) return; e.lines.forEach(l=>{ if(l.a[0]==='6' || l.a[0]==='7') S[l.a] = (S[l.a]||0) + l.dr - l.cr; }); });
+    const L = []; let res = 0; Object.keys(S).forEach(a=>{ const b = S[a]; if(Math.abs(b)<0.000001) return; L.push({a, dr:b<0? -b : 0, cr:b>0? b : 0}); res += b; });
+    if(!L.length) return; L.push({a:res>0? '12900' : '12001', dr:res>0? res : 0, cr:res<0? -res : 0});
+    addL('close:'+y, y+'-12-31', Date.parse(y+'-12-31T23:59:59'), 'closing', 'قيد إقفال '+y, 'إقفال حسابات الأعباء والإيرادات بنتيجة الدورة', '#/leb-year', L); });
   out.sort((a,b)=> a.date<b.date? -1 : a.date>b.date? 1 : (a.at||0)-(b.at||0));
   out.forEach((e,i)=>{ e.no = i+1; });
   return out;
 }
-const JR_KINDS = {sale:'مبيعات', receipt:'مقبوضات', refund:'ردود', purchase:'مشتريات', voucher:'دفعات موردين', wage:'أجور ومعاشات', workerpay:'دفعات عمال', expense:'مصاريف', income:'إيرادات أخرى', loan:'قروض', hosp:'ضيافة', gl:'قيود يدوية', transfer:'تحويلات صناديق', cash:'حركات صندوق'};
+const JR_KINDS = {opening:'قيد افتتاحي', closing:'إقفال السنة', dep:'استهلاكات', nssf:'ضمان اجتماعي', sale:'مبيعات', receipt:'مقبوضات', refund:'ردود', purchase:'مشتريات', voucher:'دفعات موردين', wage:'أجور ومعاشات', workerpay:'دفعات عمال', expense:'مصاريف', income:'إيرادات أخرى', loan:'قروض', hosp:'ضيافة', gl:'قيود يدوية', transfer:'تحويلات صناديق', cash:'حركات صندوق'};
 function jrName(code){ const a = coaFind(code); if(a) return a.name; const g = coaGroups().find(x=>x.code===String(code).slice(0,3)); return g? g.name : ''; }
 function jrPeriodParams(qs){ const period = qs.get('period')||'month', a = qs.get('a')||todayISO().slice(0,7), b = qs.get('b')||''; const r = computePeriodRange(period, a, b); return {period, a, b, from:r.from, to:r.to}; }
 function lebJournalView(qs){
@@ -10476,6 +10593,322 @@ function lebPLView(qs){
   </div>
   ${appFooter()}`;
 }
+
+/* ===================== 🏛 المحاسبة اللبنانية: ميزانية، سنة مالية، TVA، أصول، صرف، مصرف، ضمان ===================== */
+function postGl(dr, cr, cur, amt, desc, date){
+  const m = {id:uid(), createdAt:Date.now(), type:'gl', currency:cur, amount:Math.abs(Number(amt)||0), note:GL_TAG+JSON.stringify({dr:String(dr), cr:String(cr), desc, by:currentUser&&currentUser.username}), refSaleId:null, date:date||todayISO(), shiftId:null};
+  DB.cashMovements.push(m); _jrCache = null; return m;
+}
+// أرصدة كل الحسابات حتى تاريخ (مدين موجب)
+function jrBalances(toDate, fromDate){
+  const B = {}; journalEntriesAll().forEach(e=>{ if(e.date>toDate || (fromDate && e.date<fromDate)) return; e.lines.forEach(l=>{ B[l.a] = (B[l.a]||0) + l.dr - l.cr; }); }); return B;
+}
+function accHubView(){
+  const tiles = [
+    ['#/leb-pl','📊','كشف الإيرادات والأعباء','حساب النتيجة: الفئة 6 مقابل 7'],
+    ['#/leb-bs','🏛','الميزانية العمومية','الأصول مقابل الخصوم ورأس المال'],
+    ['#/leb-journal','📖','القيود','دفتر اليومية، الأستاذ، ميزان المراجعة'],
+    ['#/leb-year','🗓','السنة المالية','أرصدة افتتاحية وإقفال السنة'],
+    ['#/leb-vat','🧾','TVA','الضريبة على القيمة المضافة وتصريح فصلي'],
+    ['#/leb-assets','🏗','الأصول الثابتة','معدات، سيارات، ديكور واستهلاكها'],
+    ['#/leb-fx','💱','صرف العملات','ليرة ↔ دولار مع فروقات الصرف'],
+    ['#/leb-bank','🏦','تسوية المصرف','مطابقة كشف البنك مع الحساب'],
+    ['#/leb-nssf','🛡','الضمان الاجتماعي','اشتراكات الضمان على المعاشات'],
+    ['#/coa','📚','لوحة الحسابات','الفئات السبعة']
+  ];
+  return `<div class="card"><h2><span class="dot"></span> 🏛 المحاسبة — النظام المحاسبي اللبناني</h2>
+    <p style="font-size:12.5px; color:var(--ink-soft);">كل الكشوفات محسوبة من القيود (مدين = دائن). اختار شو بدك:</p></div>
+    <div class="hub-grid">${tiles.map(t=>`<div class="hub-card" data-nav="${t[0]}"><div class="hub-icon">${t[1]}</div><div class="hub-title">${t[2]}</div><div class="hub-sub">${t[3]}</div></div>`).join('')}</div>${appFooter()}`;
+}
+/* ---------- 🏛 الميزانية العمومية ---------- */
+function lebBSView(qs){
+  const at = qs.get('at') || todayISO();
+  const B = jrBalances(at);
+  const fy = at.slice(0,4);
+  // نتيجة الدورة (السنة الحالية غير المقفلة + أي سنة سابقة مش مقفلة)
+  let result = 0; Object.keys(B).forEach(a=>{ if(a[0]==='6' || a[0]==='7') result -= B[a]; });
+  const A = [], L = [];
+  Object.keys(B).sort().forEach(a=>{ const b = B[a]; if(Math.abs(b)<0.005 || a[0]==='6' || a[0]==='7') return;
+    const c = a[0], row = {a, n:jrName(a), v:b};
+    if(c==='1') L.push(Object.assign(row, {v:-b}));
+    else if(c==='2' || c==='3') A.push(row);          // الاستهلاكات (28) بتطلع بالسالب تحت الأصول
+    else if(c==='4' || c==='5'){ if(b>0) A.push(row); else L.push(Object.assign(row, {v:-b})); }
+  });
+  const SEC_A = [['2','الأصول الثابتة'],['3','المخزون'],['4','الذمم المدينة (زبائن ومدينون)'],['5','الأموال الجاهزة (صناديق ومصارف)']];
+  const SEC_L = [['1','الأموال الخاصة والديون طويلة الأجل'],['4','الديون قصيرة الأجل (موردون، عمال، ضرائب، ضمان)'],['5','حسابات مالية دائنة']];
+  const block = (rows, secs)=> secs.map(([c,n])=>{ const rs = rows.filter(x=>x.a[0]===c); if(!rs.length) return ''; const t = rs.reduce((x,r)=>x+r.v,0);
+    return `<tr style="background:var(--bg-2); font-weight:700;"><td colspan="2">${c} — ${n}</td><td class="num">${fmtMoney(t)}</td></tr>`+rs.map(r=>`<tr data-nav="#/leb-journal?m=g&acc=${r.a}&period=range&a=2000-01-01&b=${at}" style="cursor:pointer;"><td class="num">${r.a}</td><td>${escapeHtml(r.n)}</td><td class="num">${fmtMoney(r.v)}</td></tr>`).join(''); }).join('');
+  const totA = A.reduce((t,r)=>t+r.v,0), totL = L.reduce((t,r)=>t+r.v,0) + result;
+  const ok = Math.abs(totA-totL) < 0.05;
+  return `<div class="card no-print"><h2><span class="dot"></span> 🏛 الميزانية العمومية</h2>
+    <p style="font-size:12.5px; color:var(--ink-soft);">المركز المالي بتاريخ معيّن: شو بتملك (الأصول) مقابل شو عليك ومين موّل (الخصوم والأموال الخاصة).</p>
+    <div class="grid grid-2"><div class="field"><label>بتاريخ</label><input type="date" id="bs_at" value="${at}"></div></div></div>
+  <div class="doc-actions no-print"><button class="btn btn-primary" onclick="printWithFilename('Balance-Sheet-${at}')">🖨 طباعة</button></div>
+  <div class="doc">${docHead('الميزانية العمومية')}
+    <div class="doc-info"><div class="r"><span>بتاريخ:</span><b class="num">${fmtDate(at)}</b></div></div>
+    <div class="grid grid-2" style="gap:14px; align-items:start;">
+      <div><div style="font-weight:800; margin-bottom:6px;">الأصول</div><table><tbody>${block(A, SEC_A) || '<tr><td>—</td></tr>'}</tbody><tfoot><tr style="font-weight:800; background:var(--paper)"><td colspan="2">مجموع الأصول</td><td class="num">${fmtMoney(totA)}</td></tr></tfoot></table></div>
+      <div><div style="font-weight:800; margin-bottom:6px;">الخصوم والأموال الخاصة</div><table><tbody>${block(L, SEC_L)}
+        <tr style="font-weight:700;"><td class="num">${result>=0? '12' : '129'}</td><td>نتيجة الدورة (${result>=0? 'ربح' : 'خسارة'}) — غير مقفلة</td><td class="num" style="color:${result>=0? 'var(--credit)' : 'var(--debit)'};">${fmtMoney(result)}</td></tr></tbody>
+        <tfoot><tr style="font-weight:800; background:var(--paper)"><td colspan="2">مجموع الخصوم</td><td class="num">${fmtMoney(totL)}</td></tr></tfoot></table></div>
+    </div>
+    <div style="margin-top:8px; font-weight:700; color:${ok? 'var(--credit)' : 'var(--debit)'};">${ok? '✅ الميزانية متوازنة (الأصول = الخصوم)' : '⚠️ في فرق '+fmtMoney(totA-totL)+' — شوف ميزان المراجعة'}</div>
+    <div style="font-size:11.5px; color:var(--ink-soft); margin-top:6px; line-height:1.7;">المخزون (37) هون هو حركات القيود بس (ضيافة…). القيمة الفعلية للبضاعة بالمستودع: <b class="num">${fmtMoney(typeof warehouseStockValueUSD==='function'? warehouseStockValueUSD() : 0)}</b>.</div>
+  </div>${appFooter()}`;
+}
+/* ---------- 🗓 السنة المالية: أرصدة افتتاحية + إقفال ---------- */
+function lebYearView(){
+  const c = accCfg(), op = c.opening || {date:'', lines:[]}, closed = c.closed || [];
+  const years = Array.from(new Set(journalEntriesAll().map(e=>String(e.date).slice(0,4)).filter(Boolean))).sort();
+  const can = isPrivilegedUser(currentUser);
+  const res = y=>{ let r = 0; journalEntriesAll().forEach(e=>{ if(String(e.date).slice(0,4)!==y || e.kind==='closing') return; e.lines.forEach(l=>{ if(l.a[0]==='6'||l.a[0]==='7') r -= l.dr - l.cr; }); }); return r; };
+  const opTot = op.lines.reduce((t,l)=>t+(Number(l.dr)||0)-(Number(l.cr)||0), 0);
+  return `<div class="card"><h2><span class="dot"></span> 🗓 الأرصدة الافتتاحية</h2>
+    <p style="font-size:12.5px; color:var(--ink-soft); line-height:1.7;">إذا بلّشت تستعمل البرنامج وكان عندك أرصدة من قبل (مصاري بالصندوق أو بالبنك، ديون إلك أو عليك، معدات، رأس مال…) حطّها هون بتاريخ البداية. الفرق بين المدين والدائن بينزل لحالو على رأس المال (10100).</p>
+    <div class="grid grid-2"><div class="field"><label>تاريخ الأرصدة الافتتاحية</label><input type="date" id="op_date" value="${escapeHtml(op.date||'')}" ${can? '' : 'disabled'}></div></div>
+    <div class="table-wrap"><table><thead><tr><th>الحساب</th><th>مدين</th><th>دائن</th><th></th></tr></thead><tbody id="op_rows">
+      ${op.lines.map((l,i)=>`<tr><td><span class="num">${escapeHtml(l.a)}</span> ${escapeHtml(jrName(l.a))}</td><td class="num">${Number(l.dr)? fmtMoney(l.dr) : ''}</td><td class="num">${Number(l.cr)? fmtMoney(l.cr) : ''}</td><td>${can? `<button class="btn btn-sm btn-danger" data-op-del="${i}">🗑</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="4">ما في أرصدة افتتاحية</td></tr>'}
+    </tbody><tfoot><tr style="font-weight:800;"><td>الفرق → رأس المال 10100</td><td colspan="3" class="num">${fmtMoney(Math.abs(opTot))} ${opTot>0? '(دائن)' : opTot<0? '(مدين)' : ''}</td></tr></tfoot></table></div>
+    ${can? `<div class="grid grid-3" style="margin-top:10px;">
+      <div class="field"><label>الحساب</label><select id="op_a">${coaAccounts().filter(a=>a.code[0]<'6').map(a=>`<option value="${a.code}">${a.code} — ${escapeHtml(a.name)}</option>`).join('')}</select></div>
+      <div class="field"><label>المبلغ ${primSym()}</label><input type="number" id="op_amt" class="num"></div>
+      <div class="field"><label>الجهة</label><select id="op_side"><option value="dr">مدين (إلي / عندي)</option><option value="cr">دائن (عليّ)</option></select></div>
+    </div><button class="btn btn-primary" id="op_add">➕ زيد رصيد</button>` : ''}
+  </div>
+  <div class="card"><h2><span class="dot"></span> 🔒 إقفال السنة المالية</h2>
+    <p style="font-size:12.5px; color:var(--ink-soft); line-height:1.7;">إقفال السنة بيصفّر حسابات الأعباء (6) والإيرادات (7) بنتيجة الدورة (12 ربح / 129 خسارة) بتاريخ 31/12، وبيقفل المستندات يلي تاريخها بهالسنة: ما حدا بيقدر يعدّلها أو يمحيها إلا صاحب المؤسسة بعد ما يفتح السنة.</p>
+    <div class="table-wrap"><table><thead><tr><th>السنة</th><th>النتيجة</th><th>الحالة</th><th></th></tr></thead><tbody>
+      ${years.map(y=>{ const cl = closed.find(x=>String(x.year)===y), r = res(y);
+        return `<tr><td class="num"><b>${y}</b></td><td class="num" style="color:${r>=0? 'var(--credit)' : 'var(--debit)'};">${r>=0? 'ربح ' : 'خسارة '}${fmtMoney(Math.abs(r))}</td>
+        <td>${cl? '🔒 مقفلة — '+escapeHtml(cl.by||'')+' '+fmtDate(new Date(cl.at).toISOString().slice(0,10)) : '🟢 مفتوحة'}</td>
+        <td>${can? (cl? `<button class="btn btn-sm" data-fy-open="${y}">🔓 فتح</button>` : (y<todayISO().slice(0,4)? `<button class="btn btn-sm btn-primary" data-fy-close="${y}">🔒 إقفال ${y}</button>` : '<span style="font-size:12px; color:var(--ink-soft);">بتنقفل بعد 31/12</span>')) : ''}</td></tr>`; }).join('') || '<tr><td colspan="4">ما في سنوات</td></tr>'}
+    </tbody></table></div></div>${appFooter()}`;
+}
+function bindLebYear(){
+  const d = document.getElementById('op_date'); if(d) d.addEventListener('change', ()=>accSave(a=>{ a.opening = Object.assign({lines:[]}, a.opening||{}, {date:d.value}); }).then(()=>render()));
+  const ad = document.getElementById('op_add'); if(ad) ad.addEventListener('click', async ()=>{
+    const v = Number(outPrim(document.getElementById('op_amt').value))||0; if(!(v>0)){ toast('اكتب المبلغ'); return; }
+    const acct = document.getElementById('op_a').value, side = document.getElementById('op_side').value;
+    await accSave(a=>{ const o = Object.assign({date:todayISO(), lines:[]}, a.opening||{}); if(!o.date) o.date = todayISO(); o.lines = (o.lines||[]).concat([{a:acct, dr:side==='dr'? v : 0, cr:side==='cr'? v : 0}]); a.opening = o; });
+    toast('✅ انزاد'); render(); });
+  document.querySelectorAll('[data-op-del]').forEach(b=>b.addEventListener('click', async ()=>{ const i = +b.getAttribute('data-op-del'); await accSave(a=>{ const o = Object.assign({}, a.opening); o.lines = o.lines.filter((_,k)=>k!==i); a.opening = o; }); render(); }));
+  document.querySelectorAll('[data-fy-close]').forEach(b=>b.addEventListener('click', async ()=>{ const y = b.getAttribute('data-fy-close');
+    if(!confirm('إقفال سنة '+y+'؟ المستندات يلي تاريخها بـ '+y+' ما عاد فيها تتعدّل.')) return;
+    await accSave(a=>{ a.closed = (a.closed||[]).filter(x=>String(x.year)!==y).concat([{year:y, at:Date.now(), by:currentUser&&currentUser.username}]); }); toast('🔒 انقفلت سنة '+y); render(); }));
+  document.querySelectorAll('[data-fy-open]').forEach(b=>b.addEventListener('click', async ()=>{ const y = b.getAttribute('data-fy-open');
+    if(!confirm('فتح سنة '+y+' من جديد؟')) return; await accSave(a=>{ a.closed = (a.closed||[]).filter(x=>String(x.year)!==y); }); toast('🔓 انفتحت سنة '+y); render(); }));
+}
+/* ---------- 🧾 TVA ---------- */
+function lebVatView(qs){
+  const y = qs.get('y') || todayISO().slice(0,4), q = Number(qs.get('q') || Math.floor((Number(todayISO().slice(5,7))-1)/3)+1);
+  const from = y+'-'+String((q-1)*3+1).padStart(2,'0')+'-01', to = monthEnd(y+'-'+String(q*3).padStart(2,'0'));
+  const on = accVatOn();
+  const E = journalEntriesAll().filter(e=>e.date>=from && e.date<=to);
+  let out = 0, inp = 0, salesNet = 0, purNet = 0, salesExempt = 0;
+  E.forEach(e=>e.lines.forEach(l=>{ if(l.a==='44270') out += l.cr - l.dr; if(l.a==='44260') inp += l.dr - l.cr; if(l.a==='70101') salesNet += l.cr - l.dr; if(l.a==='60101') purNet += l.dr - l.cr; }));
+  const net = out - inp;
+  return `<div class="card no-print"><h2><span class="dot"></span> 🧾 الضريبة على القيمة المضافة (TVA)</h2>
+    <label style="display:flex; gap:8px; align-items:center; font-weight:700;"><input type="checkbox" id="vat_on" ${on? 'checked' : ''} ${isPrivilegedUser(currentUser)? '' : 'disabled'} style="width:auto;"> المؤسسة مسجّلة بالـ TVA (أسعار البيع شاملة الضريبة)</label>
+    <p style="font-size:12.5px; color:var(--ink-soft); line-height:1.7;">لما تكون مسجّل: كل فاتورة مبيع بتنقسم لمبيع صافي (701) + TVA محصّلة (4427) حسب نسبة كل منتج (الافتراضي ${settingsVatRate()}%، ومنتج نسبتو 0% معفى). وفواتير المشتريات يلي عليها TVA بتنزل الضريبة على 4426 (قابلة للاسترداد).</p>
+    <div class="grid grid-2"><div class="field"><label>السنة</label><input type="number" id="vat_y" class="num" value="${y}"></div>
+      <div class="field"><label>الفصل</label><select id="vat_q">${[1,2,3,4].map(i=>`<option value="${i}" ${i===q? 'selected' : ''}>الفصل ${i} (${['كانون الثاني – آذار','نيسان – حزيران','تموز – أيلول','تشرين الأول – كانون الأول'][i-1]})</option>`).join('')}</select></div></div></div>
+  <div class="doc-actions no-print"><button class="btn btn-primary" onclick="printWithFilename('TVA-${y}-Q${q}')">🖨 طباعة التصريح</button></div>
+  <div class="doc">${docHead('تصريح الضريبة على القيمة المضافة')}
+    <div class="doc-info"><div class="r"><span>الفترة:</span><b class="num">الفصل ${q} / ${y} (${fmtDate(from)} – ${fmtDate(to)})</b></div>${DB.settings.companyVatNo? `<div class="r"><span>الرقم الضريبي:</span><b class="num">${escapeHtml(DB.settings.companyVatNo)}</b></div>` : ''}</div>
+    ${on? '' : '<div style="color:var(--debit); font-weight:700; margin:8px 0;">⚠️ المؤسسة مش معلّمة «مسجّلة بالـ TVA» — المبيعات مش مقسومة. علّم الخيار فوق.</div>'}
+    <table><tbody>
+      <tr><td>المبيعات الصافية (بدون TVA) — 701</td><td class="num">${fmtMoney(salesNet)}</td></tr>
+      <tr><td><b>TVA المحصّلة على المبيعات — 4427</b></td><td class="num"><b>${fmtMoney(out)}</b></td></tr>
+      <tr><td>المشتريات الصافية — 601</td><td class="num">${fmtMoney(purNet)}</td></tr>
+      <tr><td><b>TVA المدفوعة على المشتريات (قابلة للحسم) — 4426</b></td><td class="num"><b>${fmtMoney(inp)}</b></td></tr>
+      <tr style="font-weight:800; background:var(--paper)"><td>${net>=0? 'الضريبة المتوجّبة للدفع' : 'رصيد دائن لصالح المؤسسة (يُدوّر)'}</td><td class="num" style="color:${net>=0? 'var(--debit)' : 'var(--credit)'};">${fmtMoney(Math.abs(net))}</td></tr>
+    </tbody></table>
+    ${isPrivilegedUser(currentUser) && net>0.005? `<div class="no-print" style="margin-top:10px;"><button class="btn" id="vat_pay">💸 سجّل دفع الضريبة (قيد: 4427 / 4426 ← الصندوق)</button></div>` : ''}
+  </div>${appFooter()}`;
+}
+function bindLebVat(){
+  const on = document.getElementById('vat_on'); if(on) on.addEventListener('change', async ()=>{ await accSave(a=>{ a.vatRegistered = on.checked; }); toast(on.checked? '✅ صارت المؤسسة مسجّلة بالـ TVA' : 'تشال التسجيل'); render(); });
+  const go2 = ()=>go('#/leb-vat?y='+document.getElementById('vat_y').value+'&q='+document.getElementById('vat_q').value);
+  ['vat_y','vat_q'].forEach(id=>{ const el = document.getElementById(id); if(el) el.addEventListener('change', go2); });
+  const pay = document.getElementById('vat_pay'); if(pay) pay.addEventListener('click', ()=>openAccPayModal('دفع TVA للدولة', (src, amt, date)=>{ const qs = new URLSearchParams(location.hash.split('?')[1]||'');
+    // التصفية: 4427 مدين بالمحصّل، 4426 دائن بالمدفوع، والفرق من الصندوق
+    postGl('44270', src, curOf(src), amt, 'دفع TVA للدولة', date); }));
+}
+function curOf(code){ return code==='53102'? 'USD' : code==='53101'? 'LBP' : (primIsSec()? 'LBP' : 'USD'); }
+function cashAcctOptions(){ return coaAccounts().filter(a=>/^5/.test(a.code)).map(a=>`<option value="${a.code}">${a.code} — ${escapeHtml(a.name)}</option>`).join(''); }
+function openAccPayModal(title, onOk, preAmtUSD){
+  const wrap = document.createElement('div'); wrap.className = 'modal-bg';
+  wrap.innerHTML = `<div class="modal" style="max-width:440px;"><h3>${escapeHtml(title)}</h3>
+    <div class="field"><label>من وين دفعت؟</label><select id="ap_src">${cashAcctOptions()}</select></div>
+    <div class="grid grid-2"><div class="field"><label>المبلغ (بعملة الحساب)</label><input type="number" id="ap_amt" class="num" value="${preAmtUSD? Math.round(preAmtUSD*curRate()) : ''}"></div>
+    <div class="field"><label>التاريخ</label><input type="date" id="ap_date" value="${todayISO()}"></div></div>
+    <div style="font-size:12px; color:var(--ink-soft);">بالصندوق بالليرة اكتب المبلغ بالليرة، وبالدولار بالدولار.</div>
+    <div class="row" style="margin-top:12px;"><button class="btn" id="ap_x">إلغاء</button><button class="btn btn-primary" id="ap_ok">💾 تسجيل</button></div></div>`;
+  document.body.appendChild(wrap);
+  const src = wrap.querySelector('#ap_src'), amt = wrap.querySelector('#ap_amt');
+  src.addEventListener('change', ()=>{ if(preAmtUSD) amt.value = curOf(src.value)==='USD'? (Math.round(preAmtUSD*100)/100) : Math.round(preAmtUSD*curRate()); });
+  wrap.querySelector('#ap_x').addEventListener('click', ()=>wrap.remove());
+  wrap.querySelector('#ap_ok').addEventListener('click', async ()=>{ const v = Number(amt.value)||0; if(!(v>0)){ toast('اكتب المبلغ'); return; }
+    onOk(src.value, v, wrap.querySelector('#ap_date').value || todayISO()); const ok = await save(KEYS.cashMovements, DB.cashMovements); wrap.remove(); toast(ok? '✅ انسجّل القيد' : '⚠️ صار خطأ'); render(); });
+}
+/* ---------- 🏗 الأصول الثابتة ---------- */
+function lebAssetsView(){
+  const L = accCfg().assets || [], can = isPrivilegedUser(currentUser) || canPostGl();
+  const rows = L.map(as=>{ const sch = assetDepSchedule(as), acc = sch.reduce((t,x)=>t+x.amt,0), nb = (Number(as.cost)||0) - acc, c = assetCat(as.cat);
+    return `<tr><td><b>${escapeHtml(as.name)}</b><div style="font-size:11.5px; color:var(--ink-soft);">${escapeHtml(c.n)} — ${c.a}</div></td><td class="num">${fmtDate(as.date)}</td><td class="num">${fmtMoney(as.cost)}</td><td class="num">${as.years||c.y} سنين</td><td class="num">${fmtMoney(((Number(as.cost)||0)-(Number(as.salvage)||0))/Math.max(1,(Number(as.years)||c.y)*12))}</td><td class="num">${fmtMoney(acc)}</td><td class="num"><b>${fmtMoney(nb)}</b></td>
+      <td class="no-print">${can? `<button class="btn btn-sm btn-danger" data-as-del="${as.id}">🗑</button>` : ''}</td></tr>`; }).join('');
+  const tot = L.reduce((t,a)=>t+(Number(a.cost)||0),0), dep = L.reduce((t,a)=>t+assetDepSchedule(a).reduce((x,y)=>x+y.amt,0),0);
+  return `<div class="card no-print"><h2><span class="dot"></span> 🏗 الأصول الثابتة والاستهلاكات</h2>
+    <p style="font-size:12.5px; color:var(--ink-soft); line-height:1.7;">سجّل المعدات والسيارات والديكور يلي اشتريتها. الشراء بينزل قيد (الأصل 2x مدين ← الصندوق دائن)، وكل آخر شهر البرنامج بيعمل لحالو قيد استهلاك (6811 مدين ← 28x دائن) بالطريقة الثابتة لحد ما يخلص عمر الأصل.</p>
+    ${can? '<button class="btn btn-primary" id="as_new">➕ أصل جديد</button>' : ''}</div>
+  <div class="doc-actions no-print"><button class="btn" onclick="printWithFilename('Fixed-Assets')">🖨 طباعة</button></div>
+  <div class="doc">${docHead('سجل الأصول الثابتة')}
+    <div class="stats"><div class="stat"><div class="k">كلفة الأصول</div><div class="v">${fmtMoney(tot)}</div></div><div class="stat"><div class="k">مجموع الاستهلاكات</div><div class="v">${fmtMoney(dep)}</div></div><div class="stat"><div class="k">القيمة الدفترية الصافية</div><div class="v">${fmtMoney(tot-dep)}</div></div></div>
+    <div class="table-wrap"><table><thead><tr><th>الأصل</th><th>تاريخ الشراء</th><th>الكلفة</th><th>العمر</th><th>استهلاك شهري</th><th>الاستهلاك المتراكم</th><th>القيمة الصافية</th><th class="no-print"></th></tr></thead><tbody>${rows || '<tr><td colspan="8">ما في أصول مسجّلة</td></tr>'}</tbody></table></div>
+  </div>${appFooter()}`;
+}
+function openAssetModal(){
+  const wrap = document.createElement('div'); wrap.className = 'modal-bg';
+  wrap.innerHTML = `<div class="modal" style="max-width:480px;"><h3>🏗 أصل ثابت جديد</h3>
+    <div class="field"><label>الاسم *</label><input type="text" id="as_name" placeholder="مثلاً: براد عرض، ماكينة قهوة، فان"></div>
+    <div class="grid grid-2"><div class="field"><label>النوع</label><select id="as_cat">${ASSET_CATS.map(c=>`<option value="${c.k}" ${c.k==='equip'? 'selected' : ''}>${c.n} (${c.y} سنين)</option>`).join('')}</select></div>
+      <div class="field"><label>تاريخ الشراء</label><input type="date" id="as_date" value="${todayISO()}"></div></div>
+    <div class="grid grid-3"><div class="field"><label>الكلفة ${primSym()} *</label><input type="number" id="as_cost" class="num"></div>
+      <div class="field"><label>العمر (سنين)</label><input type="number" id="as_years" class="num" value="5"></div>
+      <div class="field"><label>قيمة الخردة ${primSym()}</label><input type="number" id="as_salv" class="num" value="0"></div></div>
+    <div class="field"><label>كيف اندفع؟</label><select id="as_src"><option value="">— ما بدي قيد شراء (كان موجود من قبل / بالأرصدة الافتتاحية)</option>${cashAcctOptions()}<option value="10801">10801 — دفع من حساب صاحب المؤسسة</option>${coaAccounts().filter(a=>a.kind==='supplier').map(a=>`<option value="${a.code}">${a.code} — ${escapeHtml(a.name)} (على الحساب)</option>`).join('')}</select></div>
+    <div class="row" style="margin-top:12px;"><button class="btn" id="as_x">إلغاء</button><button class="btn btn-primary" id="as_ok">💾 حفظ</button></div></div>`;
+  document.body.appendChild(wrap);
+  const cat = wrap.querySelector('#as_cat'); cat.addEventListener('change', ()=>{ wrap.querySelector('#as_years').value = assetCat(cat.value).y; });
+  wrap.querySelector('#as_x').addEventListener('click', ()=>wrap.remove());
+  wrap.querySelector('#as_ok').addEventListener('click', async ()=>{
+    const name = wrap.querySelector('#as_name').value.trim(), cost = Number(outPrim(wrap.querySelector('#as_cost').value))||0;
+    if(!name || !(cost>0)){ toast('الاسم والكلفة مطلوبين'); return; }
+    const as = {id:uid(), name, cat:cat.value, date:wrap.querySelector('#as_date').value||todayISO(), cost, years:Number(wrap.querySelector('#as_years').value)||assetCat(cat.value).y, salvage:Number(outPrim(wrap.querySelector('#as_salv').value))||0};
+    const src = wrap.querySelector('#as_src').value;
+    if(src){ const cur = curOf(src); const g = postGl(assetCat(as.cat).a, src, cur, cur==='USD'? cost : Math.round(cost*curRate()), 'شراء أصل ثابت — '+name, as.date); as.glId = g.id; await save(KEYS.cashMovements, DB.cashMovements); }
+    await accSave(a=>{ a.assets = (a.assets||[]).concat([as]); });
+    wrap.remove(); toast('🏗 انسجّل الأصل'); render();
+  });
+}
+function bindLebAssets(){
+  const n = document.getElementById('as_new'); if(n) n.addEventListener('click', openAssetModal);
+  document.querySelectorAll('[data-as-del]').forEach(b=>b.addEventListener('click', async ()=>{ const id = b.getAttribute('data-as-del'); const as = (accCfg().assets||[]).find(x=>x.id===id); if(!as) return;
+    if(!confirm('حذف «'+as.name+'»؟ قيد الشراء والاستهلاكات بينشالوا.')) return;
+    if(as.glId){ const m = DB.cashMovements.find(x=>x.id===as.glId); if(m){ m.deleted = true; await save(KEYS.cashMovements, DB.cashMovements); } }
+    await accSave(a=>{ a.assets = (a.assets||[]).filter(x=>x.id!==id); }); render(); }));
+}
+/* ---------- 💱 صرف العملات ---------- */
+function lebFxView(){
+  const E = journalEntriesAll(); let loss = 0, gain = 0;
+  E.forEach(e=>e.lines.forEach(l=>{ if(l.a==='66600') loss += l.dr - l.cr; if(l.a==='76600') gain += l.cr - l.dr; }));
+  const ops = (DB.cashMovements||[]).filter(m=>!m.deleted && m.type==='gl' && (glInfo(m)||{}).fx).sort((a,b)=>(b.createdAt||0)-(a.createdAt||0)).slice(0,60);
+  return `<div class="card no-print"><h2><span class="dot"></span> 💱 صرف العملات وفروقات الصرف</h2>
+    <p style="font-size:12.5px; color:var(--ink-soft); line-height:1.7;">لما تصرّف ليرة لدولار (أو العكس) بسعر غير سعر البرنامج (${fmtNum(curRate())})، الفرق بينزل لحالو: خسارة صرف (666) أو ربح صرف (766).</p>
+    ${canPostGl() || isPrivilegedUser(currentUser)? '<button class="btn btn-primary" id="fx_new">💱 عملية صرف</button>' : ''}</div>
+  <div class="card"><div class="stats"><div class="stat owe"><div class="k">خسائر الصرف (666)</div><div class="v">${fmtMoney(loss)}</div></div><div class="stat"><div class="k">أرباح الصرف (766)</div><div class="v">${fmtMoney(gain)}</div></div></div>
+    <div class="table-wrap" style="margin-top:10px;"><table><thead><tr><th>التاريخ</th><th>العملية</th><th>المبلغ</th></tr></thead><tbody>
+    ${ops.map(m=>{ const g = glInfo(m)||{}; return `<tr><td class="num">${fmtDate(m.date)}</td><td>${escapeHtml(g.desc||'')}</td><td class="num">${m.currency==='LBP'? fmtNum(m.amount)+' ل.ل' : '$'+m.amount}</td></tr>`; }).join('') || '<tr><td colspan="3">ما في عمليات صرف</td></tr>'}</tbody></table></div></div>${appFooter()}`;
+}
+function openFxModal(){
+  const wrap = document.createElement('div'); wrap.className = 'modal-bg';
+  wrap.innerHTML = `<div class="modal" style="max-width:460px;"><h3>💱 عملية صرف</h3>
+    <div class="field"><label>الاتجاه</label><select id="fx_dir"><option value="l2u">ليرة ← دولار (بعت ليرة، أخدت دولار)</option><option value="u2l">دولار ← ليرة (بعت دولار، أخدت ليرة)</option></select></div>
+    <div class="grid grid-2"><div class="field"><label>من حساب</label><select id="fx_from">${cashAcctOptions()}</select></div><div class="field"><label>لحساب</label><select id="fx_to">${cashAcctOptions()}</select></div></div>
+    <div class="grid grid-2"><div class="field"><label id="fx_l1">المبلغ يلي طلع (ليرة)</label><input type="number" id="fx_out" class="num"></div><div class="field"><label id="fx_l2">المبلغ يلي فات (دولار)</label><input type="number" id="fx_in" class="num"></div></div>
+    <div class="field"><label>التاريخ</label><input type="date" id="fx_date" value="${todayISO()}"></div>
+    <div id="fx_info" style="font-size:13px; min-height:18px;"></div>
+    <div class="row" style="margin-top:12px;"><button class="btn" id="fx_x">إلغاء</button><button class="btn btn-primary" id="fx_ok">💾 تسجيل</button></div></div>`;
+  document.body.appendChild(wrap);
+  const $ = id=>wrap.querySelector('#'+id), r = curRate();
+  const sync = ()=>{ const l2u = $('fx_dir').value==='l2u'; $('fx_from').value = l2u? '53101' : '53102'; $('fx_to').value = l2u? '53102' : '53101'; $('fx_l1').textContent = 'المبلغ يلي طلع ('+(l2u? 'ليرة' : 'دولار')+')'; $('fx_l2').textContent = 'المبلغ يلي فات ('+(l2u? 'دولار' : 'ليرة')+')'; info(); };
+  const info = ()=>{ const l2u = $('fx_dir').value==='l2u', o = Number($('fx_out').value)||0, i = Number($('fx_in').value)||0; if(!o || !i){ $('fx_info').textContent = ''; return; }
+    const outUsd = l2u? o/r : o, inUsd = l2u? i : i/r, d = outUsd - inUsd;
+    $('fx_info').innerHTML = 'سعر العملية: <b class="num">'+fmtNum(Math.round(l2u? o/i : i/o))+'</b> — '+(Math.abs(d)<0.005? 'بلا فرق' : d>0? '<span style="color:var(--debit)">خسارة صرف '+fmtMoney(d)+'</span>' : '<span style="color:var(--credit)">ربح صرف '+fmtMoney(-d)+'</span>'); };
+  $('fx_dir').addEventListener('change', sync); ['fx_out','fx_in'].forEach(id=>$(id).addEventListener('input', info)); sync();
+  $('fx_x').addEventListener('click', ()=>wrap.remove());
+  $('fx_ok').addEventListener('click', async ()=>{ const l2u = $('fx_dir').value==='l2u', o = Number($('fx_out').value)||0, i = Number($('fx_in').value)||0, date = $('fx_date').value||todayISO();
+    if(!(o>0) || !(i>0)){ toast('اكتب المبلغين'); return; }
+    const from = $('fx_from').value, to = $('fx_to').value, outCur = l2u? 'LBP' : 'USD', inCur = l2u? 'USD' : 'LBP';
+    const outUsd = l2u? o/r : o, inUsd = l2u? i : i/r, d = outUsd - inUsd;
+    const tag = (m, desc)=>{ const g = glInfo(m)||{}; g.fx = 1; g.desc = desc; m.note = GL_TAG+JSON.stringify(g); };
+    tag(postGl('47200', from, outCur, o, '', date), 'صرف عملات — طلع '+(l2u? fmtNum(o)+' ل.ل' : '$'+o));
+    tag(postGl(to, '47200', inCur, i, '', date), 'صرف عملات — فات '+(l2u? '$'+i : fmtNum(i)+' ل.ل'));
+    if(Math.abs(d)>=0.005){ if(d>0) tag(postGl('66600', '47200', 'USD', Math.round(d*100)/100, '', date), 'خسارة صرف'); else tag(postGl('47200', '76600', 'USD', Math.round(-d*100)/100, '', date), 'ربح صرف'); }
+    const ok = await save(KEYS.cashMovements, DB.cashMovements); wrap.remove(); toast(ok? '💱 انسجّلت عملية الصرف' : '⚠️ صار خطأ'); render(); });
+}
+/* ---------- 🏦 تسوية المصرف ---------- */
+function lebBankView(qs){
+  const banks = coaAccounts().filter(a=>/^512/.test(a.code));
+  const code = qs.get('acc') || (banks[0] && banks[0].code) || '';
+  if(!banks.length) return `<div class="card"><h2><span class="dot"></span> 🏦 تسوية حساب المصرف</h2>${emptyState('ما في حساب مصرف. افتح حساب جديد بلوحة الحسابات تحت المجموعة 512 (المصارف)، واستعملو بالإيصالات والسندات.')}<div class="action-row"><button class="btn btn-primary" data-nav="#/coa">📚 لوحة الحسابات</button></div></div>${appFooter()}`;
+  const R = (accCfg().recon||{})[code] || {keys:{}, stmtBal:'', stmtDate:''};
+  const lines = []; journalEntriesAll().forEach(e=>e.lines.forEach((l,i)=>{ if(l.a===code) lines.push({e, l, k:e.key+'#'+i}); }));
+  const book = lines.reduce((t,x)=>t+x.l.dr-x.l.cr, 0), rec = lines.filter(x=>R.keys[x.k]).reduce((t,x)=>t+x.l.dr-x.l.cr, 0);
+  const stmt = R.stmtBal===''? null : Number(R.stmtBal);
+  const pending = lines.filter(x=>!R.keys[x.k]);
+  return `<div class="card no-print"><h2><span class="dot"></span> 🏦 تسوية حساب المصرف</h2>
+    <p style="font-size:12.5px; color:var(--ink-soft); line-height:1.7;">علّم ✓ على كل حركة بتلاقيها بكشف البنك، واكتب رصيد كشف البنك. البرنامج بيقلّك إذا الحساب مطابق، وشو الحركات يلي بعدها مش ظاهرة بالبنك.</p>
+    <div class="grid grid-3"><div class="field"><label>الحساب</label><select id="bk_acc">${banks.map(b=>`<option value="${b.code}" ${b.code===code? 'selected' : ''}>${b.code} — ${escapeHtml(b.name)}</option>`).join('')}</select></div>
+      <div class="field"><label>رصيد كشف البنك ${primSym()}</label><input type="number" id="bk_bal" class="num" value="${stmt===null? '' : inPrim(stmt)}"></div>
+      <div class="field"><label>تاريخ الكشف</label><input type="date" id="bk_date" value="${escapeHtml(R.stmtDate||'')}"></div></div></div>
+  <div class="card"><div class="stats"><div class="stat"><div class="k">رصيد الدفاتر</div><div class="v">${fmtMoney(book)}</div></div>
+    <div class="stat"><div class="k">المطابَق مع البنك</div><div class="v">${fmtMoney(rec)}</div></div>
+    <div class="stat ${stmt!==null && Math.abs(stmt-rec)>0.005? 'owe' : ''}"><div class="k">الفرق مع كشف البنك</div><div class="v">${stmt===null? '—' : fmtMoney(stmt-rec)}</div></div></div>
+    ${stmt!==null? `<div style="margin:8px 0; font-weight:700; color:${Math.abs(stmt-rec)<0.005? 'var(--credit)' : 'var(--debit)'};">${Math.abs(stmt-rec)<0.005? '✅ الحساب مطابق مع كشف البنك' : '⚠️ في فرق — شوف إذا في حركة بالبنك مش مسجّلة عندك (عمولات، فوائد…) أو حركة معلّمة غلط'}</div>` : ''}
+    <div style="font-size:12.5px; margin:6px 0;">حركات مش مطابقة بعد: <b class="num">${pending.length}</b> (${fmtMoney(book-rec)})</div>
+    <div class="table-wrap"><table><thead><tr><th>✓</th><th>التاريخ</th><th>البيان</th><th>داخل</th><th>طالع</th></tr></thead><tbody>
+      ${lines.slice().reverse().map(x=>`<tr><td><input type="checkbox" data-bk="${escapeHtml(x.k)}" ${R.keys[x.k]? 'checked' : ''} style="width:auto;"></td><td class="num">${fmtDate(x.e.date)}</td><td>${escapeHtml(x.e.doc)} — ${escapeHtml(x.e.desc)}</td><td class="num">${x.l.dr? fmtMoney(x.l.dr) : ''}</td><td class="num">${x.l.cr? fmtMoney(x.l.cr) : ''}</td></tr>`).join('') || '<tr><td colspan="5">ما في حركات على هالحساب</td></tr>'}
+    </tbody></table></div></div>${appFooter()}`;
+}
+function bindLebBank(){
+  const acc = document.getElementById('bk_acc'); if(!acc) return; const code = acc.value;
+  acc.addEventListener('change', ()=>go('#/leb-bank?acc='+acc.value));
+  const upd = mut=>accSave(a=>{ const R = Object.assign({}, a.recon||{}); R[code] = Object.assign({keys:{}, stmtBal:'', stmtDate:''}, R[code]||{}); R[code].keys = Object.assign({}, R[code].keys); mut(R[code]); a.recon = R; });
+  document.getElementById('bk_bal').addEventListener('change', e=>upd(r=>{ r.stmtBal = e.target.value===''? '' : Number(outPrim(e.target.value))||0; }).then(()=>render()));
+  document.getElementById('bk_date').addEventListener('change', e=>upd(r=>{ r.stmtDate = e.target.value; }));
+  document.querySelectorAll('[data-bk]').forEach(cb=>cb.addEventListener('change', ()=>upd(r=>{ if(cb.checked) r.keys[cb.getAttribute('data-bk')] = 1; else delete r.keys[cb.getAttribute('data-bk')]; }).then(()=>render())));
+}
+/* ---------- 🛡 الضمان الاجتماعي ---------- */
+function lebNssfView(qs){
+  const c = nssfCfg(), ym = qs.get('m') || todayISO().slice(0,7), can = isPrivilegedUser(currentUser);
+  const E = DB.workEntries.filter(e=>!e.deleted && isSalaryEntry(e) && salaryMonthOf(e)===ym && (c.workers||[]).includes(e.workerId));
+  let T = {sal:0, sick:0, fam:0, eos:0, er:0, ee:0};
+  const rows = E.map(e=>{ const n = nssfFor(e) || {sal:computeWorkEntryTotal(e), sick:0, fam:0, eos:0, er:0, ee:0}; Object.keys(T).forEach(k=>T[k] += n[k]||0); const w = DB.workers.find(x=>x.id===e.workerId);
+    return `<tr><td>${escapeHtml(w? w.name : '')}</td><td class="num">${fmtMoney(n.sal)}</td><td class="num">${fmtMoney(n.sick)}</td><td class="num">${fmtMoney(n.fam)}</td><td class="num">${fmtMoney(n.eos)}</td><td class="num"><b>${fmtMoney(n.er)}</b></td><td class="num">${fmtMoney(n.ee)}</td></tr>`; }).join('');
+  let owed = 0; journalEntriesAll().forEach(e=>e.lines.forEach(l=>{ if(l.a==='43100') owed += l.cr - l.dr; }));
+  return `<div class="card no-print"><h2><span class="dot"></span> 🛡 الضمان الاجتماعي</h2>
+    <label style="display:flex; gap:8px; align-items:center; font-weight:700;"><input type="checkbox" id="ns_on" ${c.on? 'checked' : ''} ${can? '' : 'disabled'} style="width:auto;"> احسب اشتراكات الضمان على المعاشات الشهرية</label>
+    <p style="font-size:12.5px; color:var(--ink-soft); line-height:1.7;">النسب (قابلة للتعديل): صاحب العمل — مرض وأمومة ${c.sick}% (سقف ${fmtNum(c.ceilSick)} ل.ل)، تعويضات عائلية ${c.fam}% (سقف ${fmtNum(c.ceilFam)} ل.ل)، تعويض نهاية الخدمة ${c.eos}%؛ الأجير ${c.ee}% مرض وأمومة. بتنحسب بس على «💼 المعاش الشهري» للعمال المعلّمين تحت.</p>
+    ${can? `<div class="grid grid-3">
+      <div class="field"><label>مرض وأمومة %</label><input type="number" step="0.1" id="ns_sick" class="num" value="${c.sick}"></div>
+      <div class="field"><label>تعويضات عائلية %</label><input type="number" step="0.1" id="ns_fam" class="num" value="${c.fam}"></div>
+      <div class="field"><label>نهاية الخدمة %</label><input type="number" step="0.1" id="ns_eos" class="num" value="${c.eos}"></div>
+      <div class="field"><label>حصة الأجير %</label><input type="number" step="0.1" id="ns_ee" class="num" value="${c.ee}"></div>
+      <div class="field"><label>سقف مرض وأمومة (ل.ل)</label><input type="number" id="ns_cs" class="num" value="${c.ceilSick}"></div>
+      <div class="field"><label>سقف التعويضات العائلية (ل.ل)</label><input type="number" id="ns_cf" class="num" value="${c.ceilFam}"></div></div>
+    <div class="field"><label>العمال المسجّلين بالضمان</label><div style="display:flex; flex-wrap:wrap; gap:10px;">${DB.workers.filter(w=>!w.deleted).map(w=>`<label style="display:flex; gap:6px; align-items:center;"><input type="checkbox" data-ns-w="${w.id}" ${(c.workers||[]).includes(w.id)? 'checked' : ''} style="width:auto;"> ${escapeHtml(w.name)}</label>`).join('') || 'ما في عمال'}</div></div>
+    <button class="btn btn-primary" id="ns_save">💾 حفظ الإعدادات</button>` : ''}
+    <div class="grid grid-2" style="margin-top:12px;"><div class="field"><label>الشهر</label><input type="month" id="ns_m" value="${ym}"></div></div></div>
+  <div class="doc-actions no-print"><button class="btn btn-primary" onclick="printWithFilename('NSSF-${ym}')">🖨 طباعة</button>${can && owed>0.005? `<button class="btn" id="ns_pay">💸 دفع للضمان (الرصيد المستحق ${fmtMoney(owed)})</button>` : ''}</div>
+  <div class="doc">${docHead('بيان اشتراكات الضمان الاجتماعي')}
+    <div class="doc-info"><div class="r"><span>الشهر:</span><b class="num">${fmtMonthAr(ym)}</b></div><div class="r"><span>المستحق للضمان (43100) لليوم:</span><b class="num">${fmtMoney(owed)}</b></div></div>
+    <div class="table-wrap"><table><thead><tr><th>العامل</th><th>المعاش</th><th>مرض وأمومة</th><th>تعويضات عائلية</th><th>نهاية خدمة</th><th>مجموع صاحب العمل</th><th>حصة الأجير</th></tr></thead>
+    <tbody>${rows || '<tr><td colspan="7">ما في معاشات لعمال مسجّلين بهالشهر</td></tr>'}</tbody>
+    <tfoot><tr style="font-weight:800; background:var(--paper)"><td>المجموع</td><td class="num">${fmtMoney(T.sal)}</td><td class="num">${fmtMoney(T.sick)}</td><td class="num">${fmtMoney(T.fam)}</td><td class="num">${fmtMoney(T.eos)}</td><td class="num">${fmtMoney(T.er)}</td><td class="num">${fmtMoney(T.ee)}</td></tr></tfoot></table></div>
+    <div style="font-size:11.5px; color:var(--ink-soft); margin-top:6px;">القيود: حصة صاحب العمل 6451 ← 431، وحصة الأجير بتنقص من حساب العامل (421) ← 431. المجموع المطلوب دفعو للضمان عن الشهر: <b class="num">${fmtMoney(T.er+T.ee)}</b></div>
+  </div>${appFooter()}`;
+}
+function bindLebNssf(){
+  const on = document.getElementById('ns_on'); if(on) on.addEventListener('change', ()=>accSave(a=>{ a.nssf = Object.assign({}, a.nssf||{}, {on:on.checked}); }).then(()=>render()));
+  const m = document.getElementById('ns_m'); if(m) m.addEventListener('change', ()=>go('#/leb-nssf?m='+m.value));
+  const sv = document.getElementById('ns_save'); if(sv) sv.addEventListener('click', async ()=>{ const n = id=>Number(document.getElementById(id).value)||0;
+    const ws = Array.from(document.querySelectorAll('[data-ns-w]:checked')).map(x=>x.getAttribute('data-ns-w'));
+    await accSave(a=>{ a.nssf = Object.assign({}, a.nssf||{}, {sick:n('ns_sick'), fam:n('ns_fam'), eos:n('ns_eos'), ee:n('ns_ee'), ceilSick:n('ns_cs'), ceilFam:n('ns_cf'), workers:ws}); }); toast('✅ انحفظت إعدادات الضمان'); render(); });
+  const pay = document.getElementById('ns_pay'); if(pay) pay.addEventListener('click', ()=>{ let owed = 0; journalEntriesAll().forEach(e=>e.lines.forEach(l=>{ if(l.a==='43100') owed += l.cr - l.dr; }));
+    openAccPayModal('دفع اشتراكات الضمان', (src, amt, date)=>postGl('43100', src, curOf(src), amt, 'دفع اشتراكات الضمان الاجتماعي', date), owed); });
+}
+
 function coaView(){
   const accs = coaAccounts(), groups = coaGroups();
   const bal = new Map(accs.map(a=>[a.code, coaBalanceUSD(a)]));
@@ -12494,7 +12927,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-11-21 · 06:10 · v109';
+const APP_TRADE_BUILD = '2026-11-21 · 22:30 · v110';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 // ===== ترجيع حركات ناقصة من ملف (إضافة بس — ما منمحي ولا منغيّر شي موجود) =====
 document.addEventListener('change', async e=>{
@@ -14039,6 +14472,13 @@ function bindEvents(){
     go(`#/budget-category/${parts[1]}?period=${type}&a=${encodeURIComponent(a)}&b=${encodeURIComponent(b||'')}`);
   });
   if(document.getElementById('lj_type')) bindLebJournal();
+  { const bs = document.getElementById('bs_at'); if(bs) bs.addEventListener('change', ()=>go('#/leb-bs?at='+bs.value)); }
+  if(document.getElementById('op_rows')) bindLebYear();
+  if(document.getElementById('vat_y')) bindLebVat();
+  if(location.hash.indexOf('#/leb-assets')===0) bindLebAssets();
+  { const fx = document.getElementById('fx_new'); if(fx) fx.addEventListener('click', openFxModal); }
+  if(document.getElementById('bk_acc')) bindLebBank();
+  if(document.getElementById('ns_m')) bindLebNssf();
   bindPeriodFilter('pl', (type,a,b)=>{ go(`#/leb-pl?period=${type}&a=${encodeURIComponent(a)}&b=${encodeURIComponent(b||'')}`); });
   bindPeriodFilter('bo', (type,a,b)=>{
     go(`#/budget-overview?period=${type}&a=${encodeURIComponent(a)}&b=${encodeURIComponent(b||'')}`);
