@@ -1,5 +1,14 @@
 /* LibanApps — ترجمة برامج المحاسبة (التجاري والصناعي) للإنكليزي + زر عربي/EN */
 window.ACC_EN = {
+"دليل الاستخدام": "User guide",
+"شرح البرنامج والمحاسبة": "How the program and accounting work",
+"عربي · English · Français": "Arabic · English · Français",
+"شرح كامل للمحاسب — عربي، English، Français": "Complete guide for the accountant — Arabic, English, French",
+"شرح قسم المحاسبة للمحاسب ولصاحب المؤسسة: الإعداد، القيود، الكشوفات، الضرائب، الرواتب، الإقفال وملف المحاسب. الدليل جزء من ملفات البرنامج وبينحمّل لما تفتحو بس، وما بينحفظ مع الداتا.": "The accounting section explained for the accountant and the business owner: setup, entries, statements, taxes, payroll, closing and the accountant pack. The guide is part of the program files and loads only when opened; it is not saved with the data.",
+"ما قدرنا نحمّل الدليل — تأكّد من الإنترنت أو حدّث البرنامج.": "Could not load the guide — check the internet connection or update the program.",
+"مشتريات بدون ضريبة أو من غير مسجّلين": "Purchases without VAT or from unregistered suppliers",
+"ضريبة الرواتب وقسائم الرواتب": "Salary tax and payslips",
+"{n}–{n}، {n}، {n}، +{n} يوم وسقف الدين": "{n}–{n}, {n}, {n}, +{n} days and credit limits",
 "كل عملية بالبرنامج (فاتورة، إيصال، مشتريات، سند صرف، أجور، مصاريف، قروض، إقفال صندوق…) بتطلع هون قيد مزدوج: مدين = دائن، بأرقام لوحة الحسابات اللبنانية.": "Every transaction in the program (invoice, receipt, purchase, payment voucher, wages, expenses, loans, cash-box closing…) appears here as a double entry: debit = credit, using the Lebanese chart of accounts numbers.",
 "عملة البرنامج": "Program currency",
 "عم نعرض آخر {n} قيد من {n} — صغّر الفترة لتشوف الكل.": "Showing the latest {n} entries of {n} — narrow the period to see all.",
@@ -2933,6 +2942,15 @@ window.ACC_EN = {
 };
 /* Français — même clés arabes que ACC_EN */
 window.ACC_FR = {
+"دليل الاستخدام": "Guide d'utilisation",
+"شرح البرنامج والمحاسبة": "Fonctionnement du programme et de la comptabilité",
+"عربي · English · Français": "Arabe · English · Français",
+"شرح كامل للمحاسب — عربي، English، Français": "Guide complet pour le comptable — arabe, anglais, français",
+"شرح قسم المحاسبة للمحاسب ولصاحب المؤسسة: الإعداد، القيود، الكشوفات، الضرائب، الرواتب، الإقفال وملف المحاسب. الدليل جزء من ملفات البرنامج وبينحمّل لما تفتحو بس، وما بينحفظ مع الداتا.": "La section comptable expliquée au comptable et au chef d'entreprise : paramétrage, écritures, états, taxes, paie, clôture et dossier du comptable. Le guide fait partie des fichiers du programme, se charge uniquement à l'ouverture et n'est pas enregistré avec les données.",
+"ما قدرنا نحمّل الدليل — تأكّد من الإنترنت أو حدّث البرنامج.": "Impossible de charger le guide — vérifiez la connexion Internet ou mettez à jour le programme.",
+"مشتريات بدون ضريبة أو من غير مسجّلين": "Achats sans TVA ou auprès de fournisseurs non assujettis",
+"ضريبة الرواتب وقسائم الرواتب": "Impôt sur les salaires et bulletins de paie",
+"{n}–{n}، {n}، {n}، +{n} يوم وسقف الدين": "{n}–{n}, {n}, {n}, +{n} jours et plafonds de crédit",
 "كل عملية بالبرنامج (فاتورة، إيصال، مشتريات، سند صرف، أجور، مصاريف، قروض، إقفال صندوق…) بتطلع هون قيد مزدوج: مدين = دائن، بأرقام لوحة الحسابات اللبنانية.": "Chaque opération du programme (facture, reçu, achat, bon de paiement, salaires, dépenses, emprunts, clôture de caisse…) apparaît ici en partie double : débit = crédit, avec les numéros du plan comptable libanais.",
 "عملة البرنامج": "Devise du programme",
 "عم نعرض آخر {n} قيد من {n} — صغّر الفترة لتشوف الكل.": "Affichage des {n} dernières écritures sur {n} — réduisez la période pour tout voir.",
