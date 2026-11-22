@@ -1912,6 +1912,7 @@ function pcgAll(){
 }
 function pcgCustomMap(){ const m = {}; (pcgStore().accounts||[]).forEach(a=>{ if(a && a.code) m[a.code] = a.name; }); return m; }
 function pcgNameOf(code){ const a = pcgAll().get(String(code)); return a? a.name : ''; }
+function pcgTr(n){ try{ const l = localStorage.getItem('la_acc_lang'); if(l && l!=='ar' && window.ACC_I18N){ const t = ACC_I18N.t(n, l); if(t && !/[\u0600-\u06FF]/.test(t)) return t; } }catch(e){} return n; }
 function pcgPostable(){ return Array.from(pcgAll().values()).filter(a=>a.code.length>=4).sort((a,b)=>a.code<b.code? -1 : 1); }
 function pcgChildCode(parent, all){
   parent = String(parent); const step = parent.length<=1? 1 : parent.length===2? 1 : 2;
@@ -1975,7 +1976,7 @@ function openPcgSubModal(parent){
     <div style="font-size:13.5px; margin-bottom:8px;">تحت: <b class="num">${parent}</b> — <b>${escapeHtml(String(parent).length===1? (COA_CLASSES.find(c=>c.c===parent)||{}).n||'' : pcgNameOf(parent))}</b></div>
     <div class="grid grid-2"><div class="field"><label>رقم الحساب</label><input type="text" id="ps_code" class="num" value="${code0||''}"></div>
       <div class="field"><label>اسم الحساب *</label><input type="text" id="ps_name" placeholder="${String(parent).indexOf('615')===0? 'مثلاً: شركة الصيانة X' : String(parent).indexOf('641')===0? 'مثلاً: راتب أحمد' : 'اسم الحساب'}"></div></div>
-    <div style="font-size:12px; color:var(--ink-soft);">الرقم لازم يبلّش بـ <b class="num">${parent}</b> وما يكون مستعمل. ${String(parent).length===2? 'تحت حساب رئيسي بتنفتح مجموعة (3 أرقام)، وتحتها بتفتح الحسابات يلي بتقيّد عليها.' : 'فيك تقيّد عليه مباشرة، وتفتح تحتو كمان.'}</div>
+    <div style="font-size:12px; color:var(--ink-soft);">${String(parent).length===2? 'الرقم لازم يبلّش بـ '+parent+' وما يكون مستعمل. تحت حساب رئيسي بتنفتح مجموعة (3 أرقام)، وتحتها بتفتح الحسابات يلي بتقيّد عليها.' : 'الرقم لازم يبلّش بـ '+parent+' وما يكون مستعمل. فيك تقيّد عليه مباشرة، وتفتح تحتو كمان.'}</div>
     <div id="ps_err" style="color:var(--debit); font-size:13px; min-height:16px;"></div>
     <div class="row"><button class="btn" id="ps_x">إلغاء</button><button class="btn btn-primary" id="ps_ok">💾 فتح الحساب</button></div></div>`;
   document.body.appendChild(wrap);
@@ -1996,11 +1997,11 @@ function openGlVoucherModal(pre){
   pre = pre || {};
   const accs = pcgPostable();
   const lines0 = pre.lines && pre.lines.length? pre.lines : [{a:pre.to||'', dr:'', cr:''}, {a:pre.from||'', dr:'', cr:''}];
-  const lbl = c=> c? c+' — '+(pcgNameOf(c)||jrName(c)||'') : '';
+  const lbl = c=> c? c+' — '+pcgTr(pcgNameOf(c)||jrName(c)||'') : '';
   const curSel = glVoucherCurOptions(pre.cur);
   const wrap = document.createElement('div'); wrap.className = 'modal-bg';
   wrap.innerHTML = `<div class="modal" style="max-width:760px;"><h3>${pre.editRef? '✏️ تعديل قيد' : '🔁 قيد محاسبي'}</h3>
-    <datalist id="gv_accs">${accs.map(a=>`<option value="${escapeHtml(a.code+' — '+a.name)}">`).join('')}</datalist>
+    <datalist id="gv_accs" data-noi18n>${accs.map(a=>`<option value="${escapeHtml(a.code+' — '+pcgTr(a.name))}">`).join('')}</datalist>
     <div class="grid grid-2"><div class="field"><label>التاريخ</label><input type="date" id="gv_date" value="${pre.date||todayISO()}"></div>
       <div class="field"><label>البيان</label><input type="text" id="gv_desc" value="${escapeHtml(pre.desc||'')}" placeholder="مثلاً: إيجار المحل عن شهر 11"></div></div>
     ${curSel? `<div class="field" style="max-width:220px;"><label>العملة</label><select id="gv_cur">${curSel}</select></div>` : ''}
@@ -2650,7 +2651,7 @@ function exportDocXlsx(name){
   xlDownload(xlWorkbook([{name:'Report', rows:xlRowsFromDoc(doc)}]), (name||'report')+'.xlsx');
 }
 /* ===================== 📘 دليل الاستخدام: ملفات ثابتة (/assets/guide) بتنحمّل بس لما ينفتح التبويب — مش داتا، فما بتكبّر النسخة الاحتياطية ===================== */
-const GUIDE_VER = '2026-11-23';
+const GUIDE_VER = '2026-11-23b';
 // قائمة ملفات الدليل — مكتوبة حرفيًا لحتى تنزل مع تحديثات النسخة المحلية (offline)
 const GUIDE_FILES = [
   '/assets/guide/guide-ar.js',
@@ -2665,6 +2666,12 @@ const GUIDE_FILES = [
   '/assets/guide/img/bs-ar.webp',
   '/assets/guide/img/bs-en.webp',
   '/assets/guide/img/bs-fr.webp',
+  '/assets/guide/img/coa-ar.webp',
+  '/assets/guide/img/coa-en.webp',
+  '/assets/guide/img/coa-fr.webp',
+  '/assets/guide/img/coa_sub-ar.webp',
+  '/assets/guide/img/coa_sub-en.webp',
+  '/assets/guide/img/coa_sub-fr.webp',
   '/assets/guide/img/health-ar.webp',
   '/assets/guide/img/health-en.webp',
   '/assets/guide/img/health-fr.webp',
@@ -2692,6 +2699,9 @@ const GUIDE_FILES = [
   '/assets/guide/img/vatform-ar.webp',
   '/assets/guide/img/vatform-en.webp',
   '/assets/guide/img/vatform-fr.webp',
+  '/assets/guide/img/voucher-ar.webp',
+  '/assets/guide/img/voucher-en.webp',
+  '/assets/guide/img/voucher-fr.webp',
   '/assets/guide/img/year-ar.webp',
   '/assets/guide/img/year-en.webp',
   '/assets/guide/img/year-fr.webp'

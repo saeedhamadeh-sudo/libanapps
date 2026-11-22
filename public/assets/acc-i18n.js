@@ -1,5 +1,7 @@
 /* LibanApps — ترجمة برامج المحاسبة (التجاري والصناعي) للإنكليزي + زر عربي/EN */
 window.ACC_EN = {
+"متوازن": "balanced",
+"فرق {n}": "Difference {n}",
 "الفئة {n}": "Class {n}",
 "حسابات الأموال الدائمة": "Permanent capital accounts",
 "حسابات الأصول الثابتة": "Fixed asset accounts",
@@ -3315,6 +3317,8 @@ window.ACC_EN = {
 };
 /* Français — même clés arabes que ACC_EN */
 window.ACC_FR = {
+"متوازن": "équilibrée",
+"فرق {n}": "Écart {n}",
 "الفئة {n}": "Classe {n}",
 "حسابات الأموال الدائمة": "Comptes de capitaux permanents",
 "حسابات الأصول الثابتة": "Comptes d'immobilisations",
