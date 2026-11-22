@@ -1739,6 +1739,7 @@ function alAccounts(){
   party(DB.customers, '411', 'customer'); party(DB.suppliers, '401', 'supplier'); party(DB.workers, '421', 'worker');
   let ni = 0, ne = 0; (DB.budgetCategories||[]).filter(c=>!c.key).forEach(c=>{ const code = c.type==='income'? '758'+String(++ni).padStart(2,'0') : '610'+String(++ne).padStart(2,'0'); map['budget:'+c.id] = code; L.push({code, name:c.name||'', kind:'budget', ref:c.id}); });
   let nl = 0; (DB.loans||[]).filter(x=>!x.deleted && x.kind!=='repay').sort((a,b)=>(a.createdAt||0)-(b.createdAt||0)).forEach(l=>{ const code = '164'+String(++nl).padStart(2,'0'); map['loan:'+l.id] = code; L.push({code, name:'قرض — '+(l.lender||''), kind:'loan', ref:l.id}); });
+  pcgMergeInto(L, used);
   L.sort((a,b)=>a.code<b.code? -1 : 1); L.map_ = map;
   _alAcc = L; _alAccAt = Date.now(); return L;
 }
@@ -1801,7 +1802,259 @@ function journalEntriesBuild(){
   (accCfg().assets||[]).forEach(as=>{ const c = assetCat(as.cat); assetDepSchedule(as).forEach(x=>add(x.date, Date.parse(x.date+'T23:00:00'), 'dep', 'استهلاك '+fmtMonthAr(x.ym), 'استهلاك شهري — '+(as.name||''), '#/leb-assets', '68110', c.d, x.amt, 'dep:'+as.id+':'+x.ym)); });
   return out;
 }
-function openGlEntryModal(){
+/* ===================== 📚 التصميم المحاسبي اللبناني — الأساس الكامل (الفئات 1–7) =====================
+   رقمين = حساب رئيسي، 3 أرقام = مجموعة، 5 أرقام = حساب فرعي جاهز للقيد. المحاسب بيفتح تحت أي حساب قد ما بدو. */
+const LEB_PCG = [
+['10','رأس المال والاحتياطيات'],['101','رأس المال'],['10100','رأس المال'],['104','علاوات الإصدار والدمج'],['10400','علاوات إصدار'],['105','فروقات إعادة التقييم'],['10500','فروقات إعادة التقييم'],
+['106','الاحتياطيات'],['10610','احتياطي قانوني'],['10620','احتياطي نظامي'],['10680','احتياطيات أخرى'],['108','حساب صاحب المؤسسة (المستثمر)'],['10801','حساب صاحب المؤسسة'],['109','رأس مال مكتتب غير مدفوع'],
+['11','النتائج المدوّرة'],['110','نتائج مدوّرة — ربح'],['11000','أرباح مدوّرة'],['119','نتائج مدوّرة — خسارة'],['11900','خسائر مدوّرة'],
+['12','نتيجة الدورة'],['120','نتيجة الدورة — ربح'],['12001','نتيجة الدورة — ربح'],['129','نتيجة الدورة — خسارة'],['12900','نتيجة الدورة — خسارة'],
+['13','إعانات التوظيف'],['131','إعانات توظيف مقبوضة'],['13100','إعانات توظيف'],
+['14','مؤونات قانونية'],['145','مؤونات خاصة'],
+['15','مؤونات لمواجهة الأخطار والأعباء'],['151','مؤونات للأخطار'],['15100','مؤونات للأخطار'],['155','مؤونة تعويض نهاية الخدمة'],['15500','مؤونة تعويض نهاية الخدمة'],['158','مؤونات أعباء أخرى'],
+['16','القروض والديون المماثلة'],['161','قروض سندية'],['164','قروض من المصارف ومؤسسات التسليف'],['165','ودائع وكفالات مقبوضة'],['16500','ودائع وكفالات مقبوضة'],['167','قروض وديون مرتبطة'],['168','قروض وديون أخرى'],['16800','قروض أخرى'],
+['17','ديون مرتبطة بمساهمات'],['18','حسابات الارتباط بين الفروع'],['181','حسابات الارتباط'],
+['20','الأصول الثابتة غير المادية'],['201','مصاريف التأسيس'],['20100','مصاريف التأسيس'],['203','مصاريف الأبحاث والتطوير'],['205','براءات وتراخيص وعلامات وبرامج'],['20500','برامج كمبيوتر وتراخيص'],['207','الخلو والمتجر (فروغ)'],['20700','الخلو'],['208','أصول غير مادية أخرى'],
+['21','الأصول الثابتة المادية'],['211','الأراضي'],['21100','أراضي'],['212','تجهيز الأراضي'],['213','الإنشاءات'],['21301','إنشاءات وديكور وتحسينات'],['214','إنشاءات على أراضي الغير'],
+['215','المعدات والآلات الصناعية'],['21501','معدات وآلات'],['21502','عدّة وأدوات'],['218','أصول ثابتة مادية أخرى'],['21801','أثاث ومفروشات'],['21810','تجهيزات وتركيبات عامة'],['21820','سيارات وآليات نقل'],['21830','أجهزة كمبيوتر ومعلوماتية'],['21840','معدات مكتب'],
+['23','أصول ثابتة قيد التنفيذ'],['231','أصول مادية قيد التنفيذ'],['23100','أشغال قيد التنفيذ'],['237','دفعات على حساب أصول ثابتة'],
+['26','المساهمات والديون المرتبطة بها'],['261','سندات مساهمة'],['27','أصول ثابتة مالية أخرى'],['271','سندات مجمّدة'],['274','قروض ممنوحة'],['275','ودائع وكفالات مدفوعة'],['27500','ودائع وكفالات مدفوعة (تأمينات)'],
+['28','استهلاكات الأصول الثابتة'],['280','استهلاكات الأصول غير المادية'],['28050','استهلاكات البرامج والتراخيص'],['281','استهلاكات الأصول المادية'],['28130','استهلاكات الإنشاءات والتحسينات'],['28150','استهلاكات المعدات والآلات'],['28180','استهلاكات الأثاث'],['28181','استهلاكات التجهيزات والتركيبات'],['28182','استهلاكات السيارات'],['28183','استهلاكات أجهزة الكمبيوتر'],['28184','استهلاكات معدات المكتب'],
+['29','مؤونات هبوط قيمة الأصول الثابتة'],['291','مؤونات هبوط قيمة الأصول المادية'],
+['31','المواد الأولية'],['310','مواد أولية'],['31000','مواد أولية'],['32','مواد ولوازم مستهلكة'],['321','مواد مستهلكة'],['32100','مواد ولوازم مستهلكة'],['326','مواد التوضيب'],['32600','مواد التوضيب'],
+['33','إنتاج قيد التنفيذ'],['331','منتجات قيد التنفيذ'],['33100','منتجات قيد التنفيذ'],['34','خدمات قيد التنفيذ'],['341','دراسات وخدمات قيد التنفيذ'],
+['35','مخزون المنتجات'],['351','منتجات وسيطة'],['355','منتجات تامة الصنع'],['35500','منتجات تامة الصنع'],['37','مخزون البضائع'],['370','البضائع'],['37001','مخزون البضائع'],
+['39','مؤونات هبوط قيمة المخزون'],['391','مؤونات هبوط قيمة المواد'],['397','مؤونات هبوط قيمة البضائع'],
+['40','الموردون والحسابات الملحقة'],['401','الموردون'],['403','أوراق الدفع'],['40310','شيكات صادرة (أوراق دفع)'],['404','موردو الأصول الثابتة'],['40400','موردو الأصول الثابتة'],['408','موردون — فواتير لم تصل'],['40800','موردو مصاريف — فواتير على الحساب'],['409','موردون مدينون (دفعات مقدّمة)'],['40900','دفعات مقدّمة للموردين'],
+['41','الزبائن والحسابات الملحقة'],['411','الزبائن'],['41100','زبائن نقديون (نقطة البيع)'],['413','أوراق القبض'],['41300','أوراق القبض'],['416','زبائن مشكوك بتحصيلهم'],['41600','زبائن مشكوك بتحصيلهم'],['418','زبائن — فواتير لم تصدر'],['419','زبائن دائنون (دفعات مقبوضة سلفًا)'],['41900','دفعات مقبوضة من الزبائن'],
+['42','المستخدمون والحسابات الملحقة'],['421','المستخدمون — أجور مستحقة'],['425','سلفات للمستخدمين'],['42500','سلفات على الرواتب'],['428','أعباء مستخدمين مستحقة'],
+['43','الضمان الاجتماعي والهيئات الاجتماعية'],['431','الصندوق الوطني للضمان الاجتماعي'],['43100','الصندوق الوطني للضمان الاجتماعي'],['438','هيئات اجتماعية أخرى'],
+['44','الدولة والهيئات العامة'],['441','الدولة — إعانات مستحقة'],['442','الدولة — ضرائب ورسوم'],['44210','ضريبة الرواتب المقتطعة'],['44220','ضريبة الدخل المستحقة'],['44230','ضرائب مقتطعة من الغير (غير المقيمين)'],
+['44260','TVA على المشتريات (قابلة للاسترداد)'],['44270','TVA على المبيعات (محصّلة)'],['44280','TVA مستحقة الدفع للدولة'],['44290','TVA — رصيد دائن مدوّر'],['447','ضرائب ورسوم أخرى'],['44700','رسوم بلدية وطوابع'],['448','الدولة — أعباء مستحقة'],
+['45','الشركاء والشركات الشقيقة'],['455','الشركاء — حسابات جارية'],['45500','حساب جاري الشركاء'],['457','الشركاء — أنصبة أرباح مستحقة'],
+['46','مدينون ودائنون آخرون'],['462','مدينو بيع الأصول الثابتة'],['467','حسابات مدينة ودائنة أخرى'],['46700','مدينون ودائنون آخرون'],['468','أعباء مستحقة وإيرادات للقبض'],['46860','أعباء مستحقة الدفع'],['46870','إيرادات مستحقة القبض'],
+['47','حسابات انتقالية أو معلّقة'],['471','حسابات انتقالية'],['47100','حساب انتقالي — حركات بلا مقابل محدّد'],['472','حسابات وسيطة'],['47200','حساب وسيط — صرف عملات'],['476','فروقات تحويل — أصول'],['477','فروقات تحويل — خصوم'],
+['48','حسابات التسوية'],['481','أعباء موزّعة على عدة دورات'],['486','أعباء مدفوعة سلفًا'],['48600','أعباء مدفوعة سلفًا'],['487','إيرادات مقبوضة سلفًا'],['48700','إيرادات مقبوضة سلفًا'],
+['49','مؤونات هبوط قيمة حسابات الغير'],['491','مؤونات الزبائن'],['49100','مؤونة ديون مشكوك بتحصيلها'],
+['50','توظيفات مالية مؤقتة'],['503','أسهم'],['506','سندات'],['508','توظيفات أخرى'],
+['51','المصارف والمؤسسات المالية'],['511','قيم برسم التحصيل'],['51130','شيكات برسم التحصيل'],['512','المصارف'],['51201','المصرف (شيكات وحوالات)'],['514','الحسابات الجارية البريدية'],['516','المحافظ الإلكترونية وشركات تحويل الأموال'],['51601','Whish'],['518','فوائد مستحقة'],['519','تسهيلات مصرفية (حساب مدين)'],['51900','تسهيلات مصرفية'],
+['53','الصندوق'],['531','الصندوق'],['53101','الصندوق الأساسي — ليرة لبنانية'],['53102','الصندوق الأساسي — دولار'],['53103','حساب شخصي (صندوق المدير)'],['532','صناديق فرعية'],
+['54','سلفات وتأمينات نقدية'],['541','سلفات مستديمة'],['58','تحويلات داخلية'],['581','أموال قيد التحويل'],['58100','أموال قيد التحويل'],['59','مؤونات هبوط قيمة التوظيفات المالية'],
+['60','المشتريات المستهلكة'],['601','مشتريات البضائع'],['60101','مشتريات البضائع'],['602','مشتريات المواد الأولية'],['60200','مشتريات مواد أولية'],['603','تغيّر المخزون'],['60310','تغيّر مخزون المواد'],['60370','تغيّر مخزون البضائع'],
+['604','مشتريات دراسات وخدمات'],['605','مشتريات معدات وأشغال'],['606','مشتريات غير مخزّنة (لوازم ومحروقات)'],['60610','ماء'],['60620','كهرباء'],['60630','محروقات ومازوت'],['60640','لوازم مكتبية وقرطاسية'],['60650','لوازم صيانة صغيرة'],['60660','مواد تنظيف'],
+['607','مشتريات أخرى'],['608','مصاريف ملحقة بالمشتريات'],['60800','نقل وجمرك على المشتريات'],['609','حسومات مكتسبة على المشتريات'],['60900','حسومات مكتسبة'],
+['61','الأعباء الخارجية'],['610','المصاريف التشغيلية'],['611','مقاولات من الباطن'],['61100','مقاولات من الباطن'],['612','الإيجارات'],['61201','إيجار المحل / المكتب'],['61202','إيجار المستودع'],['61203','إيجار معدات وآليات'],['61204','إيجار سكن'],
+['613','أعباء إيجارية ومشتركة'],['61300','رسوم البناية والاشتراكات'],['614','أعباء ملحقة بالإيجار'],['615','الصيانة والتصليحات'],['61501','صيانة الأبنية'],['61502','صيانة المعدات والآلات'],['61503','صيانة السيارات'],['61504','صيانة الكمبيوتر والبرامج'],
+['616','أقساط التأمين'],['61601','تأمين المحل والبضائع'],['61602','تأمين السيارات'],['61603','تأمين صحي للمستخدمين'],['617','دراسات وأبحاث'],['618','أعباء خارجية متفرقة'],['61801','مصاريف الضيافة'],['61802','وثائق واشتراكات'],['61803','مولّد كهرباء (اشتراك)'],
+['62','أعباء خارجية أخرى'],['621','مستخدمون من خارج المؤسسة'],['62100','عمال مياومة من الخارج'],['622','أتعاب وعمولات'],['62201','أتعاب المحاسب'],['62202','أتعاب المحامي'],['62203','عمولات الوسطاء'],
+['623','الإعلان والدعاية'],['62301','إعلانات ودعاية'],['62302','إعلانات على مواقع التواصل'],['62303','هدايا للزبائن'],['624','النقل والشحن'],['62401','نقل البضائع والشحن'],['62402','نقل المستخدمين'],
+['625','التنقلات والسفر والاستقبالات'],['62501','سفر وتنقلات'],['62502','مصاريف استقبال'],['626','البريد والاتصالات'],['62601','هاتف وإنترنت'],['62602','بريد'],['627','الخدمات المصرفية'],['62701','عمولات ومصاريف مصرفية'],['62702','عمولات تحويل الأموال'],
+['628','أعباء خارجية أخرى متفرقة'],['62801','اشتراكات وبرامج'],['62802','تنظيف وحراسة'],
+['63','الضرائب والرسوم والمدفوعات المماثلة'],['631','ضرائب ورسوم على الرواتب'],['635','ضرائب ورسوم أخرى'],['63501','رسوم بلدية'],['63502','رسوم الميكانيك والتسجيل'],['63503','طوابع ورسوم'],['63504','رسوم غرفة التجارة'],['637','ضرائب ورسوم خارجية'],
+['64','أعباء المستخدمين'],['641','رواتب وأجور المستخدمين'],['64101','رواتب وأجور العمال'],['64102','رواتب الإدارة'],['64103','بدل نقل'],['64104','ساعات إضافية ومكافآت'],['644','أجور صاحب المؤسسة'],['645','أعباء الضمان الاجتماعي'],['64510','اشتراكات الضمان الاجتماعي (حصة صاحب العمل)'],['647','أعباء اجتماعية أخرى'],['64700','تعويضات نهاية الخدمة'],['648','أعباء مستخدمين أخرى'],
+['65','أعباء أخرى للإدارة الجارية'],['651','إتاوات وتراخيص'],['654','خسائر على ديون غير قابلة للتحصيل'],['65400','ديون معدومة'],['658','أعباء متفرقة للإدارة الجارية'],['65800','أعباء متفرقة'],
+['66','الأعباء المالية'],['661','الفوائد المدينة'],['66100','فوائد القروض'],['665','حسومات ممنوحة للزبائن'],['66500','حسومات ممنوحة'],['666','خسائر فروقات الصرف'],['66600','خسائر فروقات الصرف'],['668','أعباء مالية أخرى'],
+['67','أعباء خارجة عن الاستثمار'],['671','أعباء استثنائية على عمليات الإدارة'],['67100','غرامات وعقوبات'],['675','القيمة الدفترية للأصول المتنازل عنها'],['67500','القيمة الدفترية للأصول المتنازل عنها'],['678','أعباء استثنائية أخرى'],['67800','أعباء استثنائية أخرى'],
+['68','مخصصات الاستهلاكات والمؤونات'],['681','مخصصات الاستهلاكات والمؤونات — الاستثمار'],['68110','مخصصات استهلاك الأصول الثابتة'],['68150','مخصصات مؤونات الأخطار والأعباء'],['68170','مخصصات مؤونة الديون المشكوك بتحصيلها'],['686','مخصصات مالية'],['687','مخصصات استثنائية'],
+['69','ضريبة الدخل على الأرباح'],['695','ضريبة الدخل'],['69500','ضريبة الدخل على الأرباح'],
+['70','المبيعات'],['701','مبيعات البضائع'],['70101','مبيعات البضائع'],['702','مبيعات المنتجات التامة'],['70200','مبيعات منتجات مصنّعة'],['704','الأشغال'],['70400','أشغال منفّذة'],['706','تقديم الخدمات'],['70600','خدمات'],['708','إيرادات النشاطات الملحقة'],['70800','إيرادات ملحقة'],['709','حسومات ممنوحة على المبيعات'],['70900','حسومات ممنوحة على المبيعات'],
+['71','الإنتاج المخزّن'],['713','تغيّر مخزون المنتجات'],['72','الإنتاج المثبّت'],['721','أصول منتجة للمؤسسة'],['74','إعانات الاستثمار'],['741','إعانات استثمار مقبوضة'],
+['75','إيرادات أخرى للإدارة الجارية'],['752','إيرادات العقارات'],['75200','إيرادات إيجار'],['758','إيرادات متفرقة للإدارة الجارية'],['75800','إيرادات متفرقة'],
+['76','الإيرادات المالية'],['761','إيرادات المساهمات'],['763','فوائد دائنة'],['76300','فوائد دائنة'],['765','حسومات مكتسبة'],['76500','حسومات مكتسبة'],['766','أرباح فروقات الصرف'],['76600','أرباح فروقات الصرف'],['768','إيرادات مالية أخرى'],
+['77','إيرادات خارجة عن الاستثمار'],['771','إيرادات استثنائية على عمليات الإدارة'],['77100','إيرادات استثنائية'],['775','إيرادات التنازل عن الأصول'],['77500','إيرادات التنازل عن الأصول'],['778','إيرادات استثنائية أخرى'],
+['78','استردادات الاستهلاكات والمؤونات'],['781','استردادات — الاستثمار'],['78170','استرداد مؤونة ديون'],['786','استردادات مالية'],['787','استردادات استثنائية'],
+['79','تحويل الأعباء'],['791','تحويل أعباء الاستثمار'],['79100','تحويل أعباء']
+];
+const LEB_PCG_MAP = (()=>{ const m = {}; LEB_PCG.forEach(([c,n])=>{ m[c] = n; }); return m; })();
+function pcgIsHeading(code){ return String(code).length<=3; }
+function pcgParentOf(code){ code = String(code); for(let l = code.length-1; l>=2; l--){ const p = code.slice(0,l); if(LEB_PCG_MAP[p] || pcgCustomMap()[p]) return p; } return code.slice(0,1); }
+/* ---- تخزين الحسابات يلي بيفتحها المحاسب (الصناعيين: إعدادات المحاسبة coa) ---- */
+const COA_CLASSES = [
+  {c:'1', n:'حسابات الأموال الدائمة'}, {c:'2', n:'حسابات الأصول الثابتة'}, {c:'3', n:'حسابات المخزون والإنتاج قيد التنفيذ'},
+  {c:'4', n:'حسابات الذمم (الغير)'}, {c:'5', n:'الحسابات المالية'}, {c:'6', n:'حسابات الأعباء (المصاريف)'}, {c:'7', n:'حسابات الإيرادات'}
+];
+function pcgStore(){ const c = accCfg().coa || {}; return { accounts:c.accounts||[], names:c.names||{} }; }
+async function pcgSaveCoa(mut){ const r = await accSave(a=>{ const c = Object.assign({accounts:[], names:{}}, a.coa||{}); c.accounts = (c.accounts||[]).slice(); c.names = Object.assign({}, c.names||{}); mut(c); a.coa = c; }); _alAcc = null; _jrCache = null; return r; }
+async function pcgAddCustom(a){ return pcgSaveCoa(c=>{ c.accounts.push({code:a.code, name:a.name, parent:a.parent, by:currentUser&&currentUser.username, at:Date.now()}); }); }
+async function pcgRename(code, name){ return pcgSaveCoa(c=>{ c.names[code] = name; c.accounts.forEach(x=>{ if(x.code===code) x.name = name; }); }); }
+async function pcgDeleteCustom(code){ return pcgSaveCoa(c=>{ c.accounts = c.accounts.filter(x=>x.code!==code); delete c.names[code]; }); }
+function pcgMergeInto(L, used){   // بيزيد على حسابات البرنامج: يلي فتحها المحاسب + حسابات الأساس الجاهزة للقيد
+  const st = pcgStore();
+  (st.accounts||[]).forEach(a=>{ if(a && a.code && !used.has(a.code)){ used.add(a.code); L.push({code:a.code, name:a.name, kind:'custom'}); } });
+  LEB_PCG.forEach(([c,n])=>{ if(c.length>=4 && !used.has(c)){ used.add(c); L.push({code:c, name:n, kind:'std'}); } });
+  L.forEach(a=>{ const n = st.names[a.code]; if(n && !['customer','supplier','worker','budget','loan'].includes(a.kind)) a.name = n; });
+}
+/* ---- القيد الحر (الصناعيين: قيود بأسطر بالدولار) ---- */
+function glVoucherCurOptions(){ return ''; }
+function glLinkedIds(){ const s = new Set(); (accCfg().assets||[]).forEach(x=>{ if(x.glId) s.add(x.glId); }); (accCfg().recurring||[]).forEach(x=>{ if(x.glId) s.add(x.glId); }); return s; }
+async function glSaveVoucher(L, o){
+  const id0 = o.editRef? String(o.editRef).slice(2) : null;
+  const ok = await accSave(a=>{ const old = id0? (a.gl||[]).find(x=>x.id===id0) : null;
+    const g = {id:id0||uid(), at:old? (old.at||Date.now()) : Date.now(), date:o.date, desc:o.desc||'', lines:L.map(l=>({a:l.a, dr:Number(l.dr)||0, cr:Number(l.cr)||0})), by:(old&&old.by)||(currentUser&&currentUser.username)};
+    if(id0){ g.ed = currentUser&&currentUser.username; if(old) a.glDel = (a.glDel||[]).concat([Object.assign({}, old, {replacedAt:Date.now(), replacedBy:g.ed})]).slice(-500); }
+    a.gl = (a.gl||[]).filter(x=>x.id!==id0).concat([g]); });
+  _jrCache = null; return {ok:ok!==false};
+}
+function glRefOfEntry(e){ const k = String(e.key||''); if(k.indexOf('gl:')!==0) return null; const id = k.slice(3); const g = (accCfg().gl||[]).find(x=>x.id===id); if(!g || g.fx || glLinkedIds().has(id)) return null; return 'g:'+id; }
+function glVoucherGet(ref){ const g = (accCfg().gl||[]).find(x=>x.id===String(ref).slice(2)); if(!g) return null;
+  const lines = Array.isArray(g.lines)? g.lines.map(l=>({a:l.a, dr:l.dr||'', cr:l.cr||''})) : [{a:g.dr, dr:g.amt, cr:''}, {a:g.cr, dr:'', cr:g.amt}];
+  return {lines, date:g.date, desc:g.desc||''}; }
+async function glDeleteVoucher(ref){ const id = String(ref).slice(2); const r = await accSave(a=>{ const old = (a.gl||[]).find(x=>x.id===id); if(old) a.glDel = (a.glDel||[]).concat([Object.assign({}, old, {deletedAt:Date.now(), deletedBy:currentUser&&currentUser.username})]).slice(-500); a.gl = (a.gl||[]).filter(x=>x.id!==id); }); _jrCache = null; return r; }
+/* ---- شجرة التصميم المحاسبي: كل الحسابات (الأساس + حسابات البرنامج + يلي فتحها المحاسب) ---- */
+function pcgNameOverrides(){ return pcgStore().names || {}; }
+function pcgAll(){
+  const M = new Map(), ov = pcgNameOverrides();
+  LEB_PCG.forEach(([c,n])=>M.set(c, {code:c, name:n, src:'pcg'}));
+  (pcgStore().accounts||[]).forEach(a=>{ if(a && a.code) M.set(String(a.code), {code:String(a.code), name:a.name||'', src:'custom'}); });
+  coaAccounts().forEach(a=>{ if(!a || !a.code || !/^\d+$/.test(String(a.code))) return; const o = M.get(a.code); M.set(a.code, {code:a.code, name:a.name || (o&&o.name) || '', src: o? o.src : 'app', kind:a.kind}); });
+  Object.keys(ov).forEach(c=>{ const o = M.get(c); if(o && o.src!=='app') o.name = ov[c]; else if(o && !['customer','supplier','worker','budget','loan','drawer'].includes(o.kind)) o.name = ov[c]; });
+  return M;
+}
+function pcgCustomMap(){ const m = {}; (pcgStore().accounts||[]).forEach(a=>{ if(a && a.code) m[a.code] = a.name; }); return m; }
+function pcgNameOf(code){ const a = pcgAll().get(String(code)); return a? a.name : ''; }
+function pcgPostable(){ return Array.from(pcgAll().values()).filter(a=>a.code.length>=4).sort((a,b)=>a.code<b.code? -1 : 1); }
+function pcgChildCode(parent, all){
+  parent = String(parent); const step = parent.length<=1? 1 : parent.length===2? 1 : 2;
+  for(let i = 1; i < Math.pow(10, step); i++){ const c = parent + String(i).padStart(step, '0'); if(!all.has(c)) return c; }
+  return null;
+}
+function pcgBalances(){   // رصيد كل حساب من القيود (مدين − دائن)
+  const B = {}; journalEntriesAll().forEach(e=>e.lines.forEach(l=>{ B[l.a] = (B[l.a]||0) + l.dr - l.cr; })); return B;
+}
+function pcgTreeView(qs){
+  const all = pcgAll(), B = pcgBalances(), q = (qs.get('q')||'').trim(), hideZero = qs.get('z')==='1';
+  Object.keys(B).forEach(c=>{ if(!all.has(c)) all.set(c, {code:c, name:jrName(c)||'', src:'jr'}); });
+  const codes = Array.from(all.keys()).sort();
+  const sumOf = c=>{ let s = 0; Object.keys(B).forEach(k=>{ if(k.indexOf(c)===0) s += B[k]; }); return s; };
+  const has = c=> Object.keys(B).some(k=>k.indexOf(c)===0 && Math.abs(B[k])>0.004);
+  const canEdit = canPostGl();
+  const nq = s=> String(s||'').toLowerCase();
+  const match = a=> !q || a.code.indexOf(q)===0 || nq(a.name).includes(nq(q));
+  const fb = v=> Math.abs(v)<0.005? '<span style="color:var(--ink-soft);">—</span>' : `<span class="num" style="color:${v>0? 'var(--credit)' : 'var(--debit)'};">${fmtJ(Math.abs(v))} <small>${v>0? 'مدين' : 'دائن'}</small></span>`;
+  const row = a=>{ const d = a.code.length<=2? 0 : a.code.length===3? 1 : 2 + Math.max(0, Math.floor((a.code.length-5)/2)); const head = a.code.length<=3;
+    return `<div class="pcg-row" style="display:flex; align-items:center; gap:8px; padding:5px 8px; padding-inline-start:${8+d*18}px; border-bottom:1px dashed var(--line); ${a.code.length===2? 'background:var(--bg-2); font-weight:800;' : head? 'font-weight:700;' : ''}">
+      <span class="num" style="min-width:${head? 42 : 70}px; color:var(--steel);">${a.code}</span>
+      <span style="flex:1; cursor:pointer;" data-nav="#/leb-journal?m=g&acc=${a.code}&period=year&a=${todayISO().slice(0,4)}">${escapeHtml(a.name||'')}${a.src==='custom'? ' <span style="font-size:10.5px; color:var(--gold, #9a7a3c);">●</span>' : ''}</span>
+      <span style="white-space:nowrap;">${fb(head? sumOf(a.code) : sumOf(a.code))}</span>
+      ${canEdit? `<span class="no-print" style="white-space:nowrap;"><button class="btn btn-sm" data-pcg-sub="${a.code}" title="فتح حساب فرعي">➕</button>${a.code.length>=2? `<button class="btn btn-sm" data-pcg-ren="${a.code}" title="تعديل الاسم">✎</button>` : ''}${a.src==='custom' && !has(a.code) && !codes.some(c=>c!==a.code && c.indexOf(a.code)===0)? `<button class="btn btn-sm btn-danger" data-pcg-del="${a.code}" title="حذف">🗑</button>` : ''}</span>` : ''}
+    </div>`; };
+  const body = COA_CLASSES.map(cl=>{
+    const list = codes.filter(c=>c[0]===cl.c).map(c=>all.get(c)).filter(a=>a && (!hideZero || a.code.length<=2 || has(a.code)));
+    const shown = q? list.filter(a=>match(a) || list.some(x=>match(x) && x.code.indexOf(a.code)===0 && x.code!==a.code)) : list;
+    if(q && !shown.length) return '';
+    return `<details ${q? 'open' : ''} style="border:1px solid var(--line); border-radius:10px; padding:8px 10px; margin-bottom:8px;">
+      <summary style="cursor:pointer; font-weight:800; display:flex; justify-content:space-between; gap:8px;"><span>الفئة ${cl.c} — ${escapeHtml(cl.n)}</span><span>${fb(sumOf(cl.c))}</span></summary>
+      ${canEdit? `<div class="no-print" style="margin:6px 0;"><button class="btn btn-sm" data-pcg-sub="${cl.c}">➕ حساب رئيسي بالفئة ${cl.c}</button></div>` : ''}
+      ${shown.map(row).join('')}
+    </details>`; }).join('');
+  return `<div class="card no-print">
+    <h2><span class="dot"></span> 📚 التصميم المحاسبي — لوحة الحسابات</h2>
+    <p style="font-size:12.5px; color:var(--ink-soft); line-height:1.7;">كل حسابات النظام المحاسبي اللبناني (الفئات 1 لـ 7): الحسابات الرئيسية (رقمين)، المجموعات (3 أرقام) والحسابات الفرعية. اكبس ➕ حد أي حساب لتفتح تحتو حساب فرعي قد ما بدك (مثلاً تحت 615 الصيانة: شركة صيانة لكل وحدة، أو تحت 641 الرواتب: حساب لكل موظف). ● = حساب فتحتو إنت. اكبس على الاسم لتشوف دفتر الأستاذ.</p>
+    <div class="action-row" style="margin-bottom:8px;">
+      <input type="text" id="pcg_q" placeholder="🔍 رقم الحساب أو الاسم" value="${escapeHtml(q)}" style="flex:1; min-width:180px;">
+      <label style="display:flex; align-items:center; gap:6px; font-size:13px;"><input type="checkbox" id="pcg_z" ${hideZero? 'checked' : ''} style="width:auto;"> بس الحسابات يلي فيها حركة</label>
+      ${canEdit? '<button class="btn btn-primary" id="pcg_gl">➕ قيد محاسبي</button>' : ''}
+    </div>
+  </div>
+  <div class="card">${body}</div>${appFooter()}`;
+}
+function bindPcgTree(){
+  const go2 = ()=>{ const q = (document.getElementById('pcg_q')||{}).value||'', z = (document.getElementById('pcg_z')||{}).checked? '1' : ''; go('#/coa?'+new URLSearchParams(Object.assign({}, q? {q} : {}, z? {z} : {})).toString()); };
+  const qi = document.getElementById('pcg_q'); if(qi){ qi.addEventListener('keydown', e=>{ if(e.key==='Enter') go2(); }); qi.addEventListener('change', go2); }
+  const zi = document.getElementById('pcg_z'); if(zi) zi.addEventListener('change', go2);
+  const g = document.getElementById('pcg_gl'); if(g) g.addEventListener('click', ()=>openGlVoucherModal());
+  document.querySelectorAll('[data-pcg-sub]').forEach(b=>b.addEventListener('click', e=>{ e.stopPropagation(); openPcgSubModal(b.getAttribute('data-pcg-sub')); }));
+  document.querySelectorAll('[data-pcg-ren]').forEach(b=>b.addEventListener('click', async e=>{ e.stopPropagation(); const c = b.getAttribute('data-pcg-ren'); const n = prompt('اسم الحساب '+c, pcgNameOf(c)); if(n==null || !n.trim()) return; await pcgRename(c, n.trim()); toast('✅ تعدّل الاسم'); render(); }));
+  document.querySelectorAll('[data-pcg-del]').forEach(b=>b.addEventListener('click', async e=>{ e.stopPropagation(); const c = b.getAttribute('data-pcg-del'); if(!confirm('حذف الحساب '+c+' — '+pcgNameOf(c)+'؟ (ما فيه ولا حركة)')) return; await pcgDeleteCustom(c); toast('انحذف الحساب'); render(); }));
+}
+function openPcgSubModal(parent){
+  if(!canPostGl()){ toast('ما عندك صلاحية'); return; }
+  const all = pcgAll(); const code0 = pcgChildCode(parent, all);
+  const wrap = document.createElement('div'); wrap.className = 'modal-bg';
+  wrap.innerHTML = `<div class="modal" style="max-width:460px;"><h3>➕ فتح حساب ${String(parent).length<=1? 'رئيسي' : 'فرعي'}</h3>
+    <div style="font-size:13.5px; margin-bottom:8px;">تحت: <b class="num">${parent}</b> — <b>${escapeHtml(String(parent).length===1? (COA_CLASSES.find(c=>c.c===parent)||{}).n||'' : pcgNameOf(parent))}</b></div>
+    <div class="grid grid-2"><div class="field"><label>رقم الحساب</label><input type="text" id="ps_code" class="num" value="${code0||''}"></div>
+      <div class="field"><label>اسم الحساب *</label><input type="text" id="ps_name" placeholder="${String(parent).indexOf('615')===0? 'مثلاً: شركة الصيانة X' : String(parent).indexOf('641')===0? 'مثلاً: راتب أحمد' : 'اسم الحساب'}"></div></div>
+    <div style="font-size:12px; color:var(--ink-soft);">الرقم لازم يبلّش بـ <b class="num">${parent}</b> وما يكون مستعمل. ${String(parent).length===2? 'تحت حساب رئيسي بتنفتح مجموعة (3 أرقام)، وتحتها بتفتح الحسابات يلي بتقيّد عليها.' : 'فيك تقيّد عليه مباشرة، وتفتح تحتو كمان.'}</div>
+    <div id="ps_err" style="color:var(--debit); font-size:13px; min-height:16px;"></div>
+    <div class="row"><button class="btn" id="ps_x">إلغاء</button><button class="btn btn-primary" id="ps_ok">💾 فتح الحساب</button></div></div>`;
+  document.body.appendChild(wrap);
+  const $ = q=>wrap.querySelector(q); $('#ps_name').focus();
+  $('#ps_x').addEventListener('click', ()=>wrap.remove());
+  $('#ps_ok').addEventListener('click', async ()=>{
+    const code = $('#ps_code').value.trim(), name = $('#ps_name').value.trim(), err = t=>{ $('#ps_err').textContent = t; };
+    if(!name) return err('اكتب اسم الحساب');
+    if(!/^\d+$/.test(code) || code.indexOf(String(parent))!==0 || code.length<=String(parent).length) return err('الرقم لازم يبلّش بـ '+parent+' ويكون أطول منو');
+    if(code.length>12) return err('الرقم طويل كتير');
+    if(pcgAll().has(code)) return err('هالرقم مستعمل');
+    await pcgAddCustom({code, name, parent:String(parent)}); wrap.remove(); toast('✅ انفتح الحساب '+code); render();
+  });
+}
+/* ---- قيد محاسبي حر: أكتر من سطر، من أي حساب لأي حساب ---- */
+function openGlVoucherModal(pre){
+  if(!canPostGl()){ toast('ما عندك صلاحية القيود المحاسبية'); return; }
+  pre = pre || {};
+  const accs = pcgPostable();
+  const lines0 = pre.lines && pre.lines.length? pre.lines : [{a:pre.to||'', dr:'', cr:''}, {a:pre.from||'', dr:'', cr:''}];
+  const lbl = c=> c? c+' — '+(pcgNameOf(c)||jrName(c)||'') : '';
+  const curSel = glVoucherCurOptions(pre.cur);
+  const wrap = document.createElement('div'); wrap.className = 'modal-bg';
+  wrap.innerHTML = `<div class="modal" style="max-width:760px;"><h3>${pre.editRef? '✏️ تعديل قيد' : '🔁 قيد محاسبي'}</h3>
+    <datalist id="gv_accs">${accs.map(a=>`<option value="${escapeHtml(a.code+' — '+a.name)}">`).join('')}</datalist>
+    <div class="grid grid-2"><div class="field"><label>التاريخ</label><input type="date" id="gv_date" value="${pre.date||todayISO()}"></div>
+      <div class="field"><label>البيان</label><input type="text" id="gv_desc" value="${escapeHtml(pre.desc||'')}" placeholder="مثلاً: إيجار المحل عن شهر 11"></div></div>
+    ${curSel? `<div class="field" style="max-width:220px;"><label>العملة</label><select id="gv_cur">${curSel}</select></div>` : ''}
+    <div class="table-scroll"><table id="gv_t" style="font-size:13.5px;"><thead><tr><th style="min-width:260px;">الحساب (من الفئات 1–7)</th><th>مدين (من)</th><th>دائن (إلى)</th><th></th></tr></thead><tbody></tbody>
+      <tfoot><tr style="font-weight:800;"><td>المجموع <span id="gv_diff" style="font-weight:700; margin-inline-start:8px;"></span></td><td class="num" id="gv_td"></td><td class="num" id="gv_tc"></td><td></td></tr></tfoot></table></div>
+    <button class="btn btn-sm" id="gv_add">➕ سطر</button>
+    <div style="font-size:12px; color:var(--ink-soft); margin-top:6px; line-height:1.7;">اختار أي حساب من التصميم المحاسبي. المدين = «من» (المصروف، الصندوق يلي فات عليه…)، الدائن = «إلى» (الصندوق يلي طلع منو، المورد…). القيد لازم يكون متوازن: مجموع المدين = مجموع الدائن. إذا الحساب مش موجود، افتحو من 📚 التصميم المحاسبي.</div>
+    <div id="gv_err" style="color:var(--debit); font-size:13px; min-height:18px;"></div>
+    <div class="row"><button class="btn" id="gv_x">إلغاء</button><button class="btn btn-primary" id="gv_ok">💾 حفظ القيد</button></div></div>`;
+  document.body.appendChild(wrap);
+  const $ = q=>wrap.querySelector(q), tb = $('#gv_t tbody');
+  const addRow = l=>{ const tr = document.createElement('tr');
+    tr.innerHTML = `<td><input type="text" class="gv-a" list="gv_accs" value="${escapeHtml(lbl(l.a))}" placeholder="اكتب الرقم أو الاسم" style="width:100%;"></td>
+      <td><input type="number" class="gv-dr num" value="${l.dr||''}" step="any" style="width:120px;"></td><td><input type="number" class="gv-cr num" value="${l.cr||''}" step="any" style="width:120px;"></td>
+      <td><button class="btn btn-sm" title="حذف السطر">✕</button></td>`;
+    tr.querySelector('button').addEventListener('click', ()=>{ if(tb.children.length>2){ tr.remove(); tot(); } });
+    tr.querySelectorAll('input').forEach(i=>i.addEventListener('input', tot)); tb.appendChild(tr); };
+  const read = ()=> Array.from(tb.children).map(tr=>{ const v = tr.querySelector('.gv-a').value.trim(); const m = v.match(/^(\d+)/);
+    return {raw:v, a:m? m[1] : '', dr:Number(tr.querySelector('.gv-dr').value)||0, cr:Number(tr.querySelector('.gv-cr').value)||0}; });
+  const tot = ()=>{ const L = read(), d = L.reduce((t,l)=>t+l.dr,0), c = L.reduce((t,l)=>t+l.cr,0); $('#gv_td').textContent = fmtNum(d); $('#gv_tc').textContent = fmtNum(c);
+    const df = Math.round((d-c)*100)/100; $('#gv_diff').innerHTML = df? `<span style="color:var(--debit);">فرق ${fmtNum(Math.abs(df))}</span>` : (d? '<span style="color:var(--credit);">✓ متوازن</span>' : ''); };
+  lines0.forEach(addRow); tot();
+  $('#gv_add').addEventListener('click', ()=>addRow({a:'', dr:'', cr:''}));
+  $('#gv_x').addEventListener('click', ()=>wrap.remove());
+  $('#gv_ok').addEventListener('click', async ()=>{
+    const err = t=>{ $('#gv_err').textContent = t; };
+    const L = read().filter(l=>l.raw || l.dr || l.cr), all = pcgAll();
+    for(const l of L){ if(!l.a || !all.has(l.a)) return err('الحساب «'+(l.raw||'')+'» مش موجود — اختارو من اللائحة أو افتحو من التصميم المحاسبي');
+      if(l.a.length<=3) return err('الحساب '+l.a+' عنوان مجموعة — اختار حساب تحتو أو افتح حساب فرعي');
+      if(l.dr<0 || l.cr<0 || (l.dr && l.cr) || (!l.dr && !l.cr)) return err('كل سطر يا مدين يا دائن (مبلغ واحد أكبر من صفر)'); }
+    if(L.length<2) return err('القيد بدو سطرين على الأقل');
+    const d = L.reduce((t,l)=>t+l.dr,0), c = L.reduce((t,l)=>t+l.cr,0);
+    if(Math.abs(d-c)>0.005) return err('القيد مش متوازن: المدين '+fmtNum(d)+' والدائن '+fmtNum(c));
+    const date = $('#gv_date').value || todayISO(); if(lockBlocks(date)) return;
+    if(pre.editRef && pre.date && lockBlocks(pre.date)) return;
+    const cur = $('#gv_cur')? $('#gv_cur').value : '';
+    const r = await glSaveVoucher(L.map(l=>({a:l.a, dr:l.dr, cr:l.cr})), {date, desc:$('#gv_desc').value.trim(), cur, editRef:pre.editRef||null});
+    if(r && r.error) return err(r.error);
+    _jrCache = null; wrap.remove(); toast(r && r.ok===false? '⚠️ صار خطأ بالحفظ' : '✅ انحفظ القيد'); render();
+  });
+}
+function glEditBtns(e){ if(e.kind!=='gl' || !canPostGl()) return ''; const ref = glRefOfEntry(e); if(!ref) return '';
+  return ` <span class="no-print" style="white-space:nowrap;"><button class="btn btn-sm" data-glv-edit="${escapeHtml(ref)}" title="تعديل القيد">✏️</button><button class="btn btn-sm btn-danger" data-glv-del="${escapeHtml(ref)}" title="حذف القيد">🗑</button></span>`; }
+document.addEventListener('click', async ev=>{
+  const be = ev.target.closest && ev.target.closest('[data-glv-edit]'), bd = ev.target.closest && ev.target.closest('[data-glv-del]');
+  if(!be && !bd) return; ev.preventDefault(); ev.stopPropagation();
+  const ref = (be||bd).getAttribute(be? 'data-glv-edit' : 'data-glv-del'); const v = glVoucherGet(ref); if(!v){ toast('ما لقينا القيد'); return; }
+  if(lockBlocks(v.date)) return;
+  if(be) return openGlVoucherModal(Object.assign({}, v, {editRef:ref}));
+  if(!confirm('حذف هالقيد؟ ('+(v.desc||'قيد يدوي')+')')) return;
+  const r = await glDeleteVoucher(ref); _jrCache = null; toast(r===false? '⚠️ صار خطأ' : 'انحذف القيد'); render();
+}, true);
+function openGlEntryModal(){ return openGlVoucherModal(); }
+function openGlEntryModalOld(){
   const opts = alAccounts().map(a=>`<option value="${a.code}">${a.code} — ${escapeHtml(a.name)}</option>`).join('');
   const wrap = document.createElement('div'); wrap.className = 'modal-bg';
   wrap.innerHTML = `<div class="modal" style="max-width:480px;"><h3>➕ قيد يدوي</h3>
@@ -1819,7 +2072,7 @@ function openGlEntryModal(){
 }
 
 const JR_KINDS = {recurring:'قيود دورية', asset:'بيع أصول', cheque:'شيكات', paytax:'ضريبة الرواتب', opening:'قيد افتتاحي', closing:'إقفال السنة', dep:'استهلاكات', nssf:'ضمان اجتماعي', sale:'مبيعات', receipt:'مقبوضات', purchase:'مشتريات', voucher:'دفعات موردين', wage:'أجور ومعاشات', workerpay:'دفعات عمال', expense:'مصاريف', income:'إيرادات أخرى', loan:'قروض', gl:'قيود يدوية'};
-function jrName(code){ const a = alAccounts().find(x=>x.code===String(code)); if(a) return a.name; return AL_GROUPS[String(code).slice(0,3)] || AL_GROUPS[String(code)[0]] || ''; }
+function jrName(code){ const a = alAccounts().find(x=>x.code===String(code)); if(a) return a.name; if(LEB_PCG_MAP[String(code)]) return (pcgStore().names||{})[String(code)] || LEB_PCG_MAP[String(code)]; return AL_GROUPS[String(code).slice(0,3)] || AL_GROUPS[String(code)[0]] || ''; }
 function jrPeriodParams(qs){ const period = qs.get('period')||'month', a = qs.get('a')||todayISO().slice(0,7), b = qs.get('b')||''; const r = computePeriodRange(period, a, b); return {period, a, b, from:r.from, to:r.to}; }
 function lebJournalView(qs){
   const P = jrPeriodParams(qs), kind = qs.get('k')||'', acc = (qs.get('acc')||'').trim(), mode = qs.get('m')||'j';
@@ -1872,7 +2125,7 @@ function lebJournalView(qs){
       <tfoot><tr style="font-weight:800; background:var(--paper)"><td colspan="5">رصيد آخر المدة (${bal>=0? 'مدين' : 'دائن'})</td><td class="num">${fmtJ(Math.abs(bal))}</td></tr></tfoot></table></div></div>${appFooter()}`;
   }
   const lim = 400, shown = list.slice(-lim);
-  const body = shown.map(e=>`<tr class="jr-h" ${e.nav? `data-nav="${e.nav}" style="cursor:pointer; background:var(--bg-2);"` : 'style="background:var(--bg-2);"'}><td class="num">${e.no}</td><td class="num">${fmtDate(e.date)}</td><td colspan="4"><b>${escapeHtml(e.doc)}</b> — ${escapeHtml(e.desc)} <span style="font-size:11px; color:var(--ink-soft);">(${JR_KINDS[e.kind]||''})</span></td></tr>`
+  const body = shown.map(e=>`<tr class="jr-h" ${e.nav? `data-nav="${e.nav}" style="cursor:pointer; background:var(--bg-2);"` : 'style="background:var(--bg-2);"'}><td class="num">${e.no}</td><td class="num">${fmtDate(e.date)}</td><td colspan="4"><b>${escapeHtml(e.doc)}</b> — ${escapeHtml(e.desc)} <span style="font-size:11px; color:var(--ink-soft);">(${JR_KINDS[e.kind]||''})</span>${glEditBtns(e)}</td></tr>`
     + e.lines.map(l=>`<tr><td></td><td></td><td class="num" style="${l.cr? 'padding-inline-start:28px;' : ''}">${l.a}</td><td style="${l.cr? 'padding-inline-start:28px;' : ''}"><span>${l.cr? 'إلى' : 'من'}</span> ${escapeHtml(jrName(l.a))}</td><td class="num">${l.dr? fmtJ(l.dr) : ''}</td><td class="num">${l.cr? fmtJ(l.cr) : ''}</td></tr>`).join('')).join('');
   return head + actions('Journal') + `<div class="doc">${docHead('دفتر اليومية')}${info}
     ${list.length>lim? `<div class="no-print" style="font-size:12px; color:var(--ink-soft);">عم نعرض آخر ${lim} قيد من ${list.length} — صغّر الفترة لتشوف الكل.</div>` : ''}
@@ -1963,6 +2216,7 @@ function accHubView(){
     ['#/leb-year','🗓','السنة المالية','أرصدة افتتاحية، إقفال الأشهر والسنة'],
     ['#/leb-pack','📦','ملف المحاسب السنوي','كل كشوفات السنة بملف Excel واحد'],
     ['#/leb-health','🩺','فحص الدفاتر','مشاكل لازم تتصلّح قبل المحاسب'],
+    ['#/coa','📚','التصميم المحاسبي','كل الحسابات 1–7، فتح حسابات فرعية وقيد حر'],
     ['#/guide','📘','دليل الاستخدام','شرح كامل للمحاسب — عربي، English، Français'],
     ['#/leb-audit','🕵️','سجل المحذوفات','كل شي انحذف، إيمتى ومين'],
     ['#/leb-vat','🧾','TVA','الضريبة على القيمة المضافة وتصريح فصلي'],
@@ -3862,7 +4116,7 @@ function routeRequiredPermission(routeKey){
     warehouse:'warehouse', 'warehouse-print':'warehouse', 'warehouse-item':'warehouse', stockout:'warehouse', stockin:'warehouse',
     orders:'orders', order:'orders', 'order-map':'orders',
     budget:'budget', 'budget-category':'budget', 'budget-overview':'budget',
-    acc:'budget', 'leb-journal':'budget', 'leb-pl':'budget', 'leb-bs':'budget', 'leb-year':'budget', 'leb-vat':'budget', 'leb-assets':'budget', 'leb-fx':'budget', 'leb-bank':'budget', 'leb-nssf':'budget', 'leb-cf':'budget', 'leb-audit':'budget', 'leb-payroll':'budget', 'leb-payslip':'budget', 'leb-cheques':'budget', 'leb-aging':'budget', 'leb-recurring':'budget', 'leb-cc':'budget', 'leb-forms':'budget', 'leb-pack':'budget', 'leb-health':'budget',
+    acc:'budget', 'leb-journal':'budget', 'leb-pl':'budget', 'leb-bs':'budget', 'leb-year':'budget', 'leb-vat':'budget', 'leb-assets':'budget', 'leb-fx':'budget', 'leb-bank':'budget', 'leb-nssf':'budget', 'leb-cf':'budget', 'leb-audit':'budget', 'leb-payroll':'budget', 'leb-payslip':'budget', 'leb-cheques':'budget', 'leb-aging':'budget', 'leb-recurring':'budget', 'leb-cc':'budget', 'leb-forms':'budget', 'leb-pack':'budget', 'leb-health':'budget', coa:'budget',
     settings:'__admin__', trash:'__admin__', 'customer-accounts':'__admin__', 'worker-accounts':'__admin__'
   };
   return map[routeKey] || null;
@@ -4187,6 +4441,8 @@ function render(){
     html += crumbs([['الرئيسية','#/'],['المحاسبة','#/acc'],['أعمار الديون',null]]) + lebAgingView(new URLSearchParams(location.hash.split('?')[1]||''));
   } else if(parts[0]==='leb-year'){
     html += crumbs([['الرئيسية','#/'],['المحاسبة','#/acc'],['السنة المالية',null]]) + lebYearView();
+  } else if(parts[0]==='coa'){
+    html += crumbs([['الرئيسية','#/'],['المحاسبة','#/acc'],['التصميم المحاسبي',null]]) + pcgTreeView(new URLSearchParams(location.hash.split('?')[1]||''));
   } else if(parts[0]==='guide'){
     html += crumbs([['الرئيسية','#/'],['دليل الاستخدام',null]]) + guideView(new URLSearchParams(location.hash.split('?')[1]||''));
   } else if(parts[0]==='leb-health'){
@@ -7539,6 +7795,7 @@ function bindEvents(){
   if(location.hash.indexOf('#/leb-forms')===0) bindLebForms();
   if(location.hash.indexOf('#/leb-pack')===0) bindLebPack();
   if(location.hash.indexOf('#/guide')===0) bindGuide();
+  if(location.hash.indexOf('#/coa')===0 && !/^#\/coa-/.test(location.hash)) bindPcgTree();
   if(document.getElementById('ti_save')) bindTaxInv();
   if(document.querySelector('input[name="s_vat_mode"]')) bindVatSettings();
   document.querySelectorAll('[data-as-disp]').forEach(b=>b.addEventListener('click', ()=>openAssetDisposeModal(b.getAttribute('data-as-disp'))));
