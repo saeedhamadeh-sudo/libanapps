@@ -3,7 +3,7 @@
    النص: [عربي, English, Français] */
 window.MOTOR_GUIDE = [
   /* ================= للجميع ================= */
-  { id: 'start', who: ['all'], ic: '👋',
+  { id: 'start', who: ['all'], ic: '👋', img: ['login'],
     t: ['البدء والدخول', 'Getting started', 'Premiers pas'],
     p: ['هذا الدليل مخصّص لعملك أنت، ويظهر فيه فقط ما يخصّ صلاحياتك في البرنامج.', 'This guide covers only what your account can do.', 'Ce guide ne couvre que ce que votre compte peut faire.'],
     s: [
@@ -14,7 +14,7 @@ window.MOTOR_GUIDE = [
       ['على الهاتف: افتح البرنامج من المتصفح ثم اختر «إضافة إلى الشاشة الرئيسية» ليصبح مثل التطبيق.', 'On a phone: open it in the browser, then choose “Add to Home screen” to use it like an app.', 'Sur téléphone : ouvrez-le dans le navigateur puis « Ajouter à l’écran d’accueil ».'],
       ['عند انتهاء العمل اضغط «خروج» في أعلى الشاشة، خصوصاً إذا كان الهاتف أو الكمبيوتر يستعمله غيرك.', 'When you finish, tap “Log out”, especially on a shared phone or computer.', 'À la fin, appuyez sur « Déconnexion », surtout sur un appareil partagé.']
     ] },
-  { id: 'find', who: ['all'], ic: '🔎',
+  { id: 'find', who: ['all'], ic: '🔎', img: ['c-pay-list'],
     t: ['البحث عن زبون', 'Finding a customer', 'Trouver un client'],
     s: [
       ['في خانة البحث اكتب جزءاً من الاسم، أو رقم الزبون، أو رقم الباركود، أو رقم العداد، أو رقم العلبة.', 'In the search box type part of the name, the customer number, barcode, meter number or box number.', 'Tapez une partie du nom, le numéro client, le code-barres, le numéro de compteur ou de boîtier.'],
@@ -23,7 +23,7 @@ window.MOTOR_GUIDE = [
       ['زر «📷 مسح الباركود» يفتح الكاميرا: وجّهها نحو ملصق الباركود على العداد فيُفتح الزبون مباشرة. إذا لم تعمل الكاميرا اكتب الرقم يدوياً ثم اضغط Enter.', '“📷 Scan” opens the camera: point it at the meter’s barcode label to open the customer. If it fails, type the code and press Enter.', '« 📷 Scanner » ouvre la caméra ; visez l’étiquette du compteur. Sinon tapez le code puis Entrée.'],
       ['الزبون «المقطوع» يظهر بعلامة مختلفة، والزبون الذي عليه حسم تظهر بجانب اسمه علامة 🏷️.', 'Cut-off customers are marked, and customers with a discount show 🏷️ next to their name.', 'Les clients coupés sont signalés ; ceux avec remise affichent 🏷️.']
     ] },
-  { id: 'custpage', who: ['all'], ic: '👤',
+  { id: 'custpage', who: ['all'], ic: '👤', img: ['c-pay-form'],
     t: ['صفحة الزبون', 'The customer page', 'La fiche client'],
     s: [
       ['تعرض الصفحة: الاسم، الرقم، الباركود، العلبة، المنطقة، رقم الهاتف، نوع الاشتراك، الرصيد المستحق، وآخر عداد.', 'It shows name, number, barcode, box, area, phone, plan, balance due and the last reading.', 'Elle affiche nom, numéro, code-barres, boîtier, zone, téléphone, formule, solde et dernier relevé.'],
@@ -33,7 +33,7 @@ window.MOTOR_GUIDE = [
     ] },
 
   /* ================= موظف أخذ العداد ================= */
-  { id: 'read', who: ['reader'], ic: '📷',
+  { id: 'read', who: ['reader'], ic: '📷', img: ['r-read-list', 'r-read-form'],
     t: ['أخذ العداد خطوة بخطوة', 'Reading a meter, step by step', 'Relever un compteur, étape par étape'],
     p: ['من تبويب «📷 أخذ العداد». في أعلى الصفحة يظهر التقدّم: كم زبوناً أُخذ عداده من أصل كل الزبائن في هذه الدورة.', 'From the “📷 Read meter” tab. The top shows progress: how many meters are done out of all customers this cycle.', 'Depuis l’onglet « 📷 Relevé ». En haut : combien de compteurs sont relevés ce cycle.'],
     s: [
@@ -51,7 +51,7 @@ window.MOTOR_GUIDE = [
       ['إذا كان العداد مكسوراً أو لا يمكن الوصول إليه، اكتب ملاحظة على الزبون بدلاً من وضع رقم تقريبي.', 'If the meter is broken or unreachable, write a note instead of guessing a number.', 'Compteur cassé ou inaccessible : écrivez une note plutôt que d’estimer.'],
       ['يتم حساب المسافة بينك وبين موقع الزبون المحفوظ؛ خذ العداد وأنت بجانبه.', 'Your distance from the saved customer location is recorded; read the meter while standing next to it.', 'La distance jusqu’au client est enregistrée ; relevez sur place.']
     ] },
-  { id: 'window', who: ['reader'], ic: '🗓️',
+  { id: 'window', who: ['reader'], ic: '🗓️', img: ['r-read-list'],
     t: ['فترة أخذ العداد', 'Reading period', 'Période de relevé'],
     s: [
       ['المدير يحدّد لكل شهر من أي تاريخ إلى أي تاريخ يُسمح بأخذ العدادات، ويظهر ذلك في أعلى صفحة «أخذ العداد».', 'The manager sets, for each month, the dates when readings are allowed; they appear at the top of “Read meter”.', 'Le gérant fixe les dates de relevé de chaque mois ; elles s’affichent en haut de « Relevé ».'],
@@ -66,7 +66,7 @@ window.MOTOR_GUIDE = [
     ] },
 
   /* ================= الجابي ================= */
-  { id: 'collect', who: ['collector'], ic: '💵',
+  { id: 'collect', who: ['collector'], ic: '💵', img: ['c-pay-list', 'c-pay-form'],
     t: ['القبض من الزبون', 'Collecting a payment', 'Encaisser un paiement'],
     p: ['من تبويب «💵 القبض». القائمة تعرض الزبائن الذين عليهم مبالغ، الأعلى أولاً.', 'From the “💵 Collect” tab. The list shows customers who owe money, highest first.', 'Onglet « 💵 Encaisser » : les clients débiteurs, du plus élevé au plus faible.'],
     s: [
@@ -82,7 +82,7 @@ window.MOTOR_GUIDE = [
       ['لا تقبض مرتين لنفس الدفعة. إذا لم تظهر رسالة «تم القبض ✓» افتح كشف حساب الزبون للتأكد قبل المحاولة مرة ثانية.', 'Never record the same payment twice. If you didn’t see “Payment recorded ✓”, check the customer statement before retrying.', 'N’enregistrez jamais deux fois. Sans « Paiement enregistré ✓ », vérifiez le relevé avant de réessayer.'],
       ['النقود التي تقبضها تدخل صندوقك أنت حتى تسلّمها للمدير.', 'Cash you collect stays in your own box until you hand it to the manager.', 'L’argent encaissé reste dans votre caisse jusqu’à sa remise au gérant.']
     ] },
-  { id: 'mybox', who: ['collector'], ic: '🧾',
+  { id: 'mybox', who: ['collector'], ic: '🧾', img: ['c-box'],
     t: ['صندوقي وإقفال الصندوق', 'My cash box and closing it', 'Ma caisse et sa clôture'],
     s: [
       ['من تبويب «🧾 كشف حساب الصندوق» ترى كل الإيصالات التي قبضتها منذ آخر إقفال، والمبلغ الموجود معك (نقداً وWhish).', 'In “🧾 Cash box statement” you see every receipt since your last closing and the amount you hold (cash and Whish).', 'Dans « 🧾 Relevé de caisse » : vos reçus depuis la dernière clôture et le montant détenu.'],
@@ -93,7 +93,7 @@ window.MOTOR_GUIDE = [
     k: [
       ['إذا كان المال الذي معك لا يطابق الرقم، لا تُقفل — أخبر المدير أولاً.', 'If your cash doesn’t match the figure, don’t close — tell the manager first.', 'Si l’argent ne correspond pas, ne clôturez pas — prévenez le gérant.']
     ] },
-  { id: 'unpaid', who: ['collector', 'reader'], ic: '⏳',
+  { id: 'unpaid', who: ['collector', 'reader'], ic: '⏳', img: ['c-unpaid'],
     t: ['الزبائن الذين لم يدفعوا بعد', 'Customers who have not paid', 'Clients n’ayant pas payé'],
     s: [
       ['تبويب «⏳ الزبائن الذين لم يدفعوا بعد» يعرض كل من عليه دين مع عدد الأشهر والمبلغ.', '“⏳ Customers who have not paid yet” lists everyone who owes, with months and amount.', '« ⏳ Clients n’ayant pas payé » liste les débiteurs avec mois et montant.'],
@@ -114,14 +114,14 @@ window.MOTOR_GUIDE = [
     ] },
 
   /* ================= المدير والمدير الأساسي ================= */
-  { id: 'adm_home', who: ['admin'], ic: '🏠',
+  { id: 'adm_home', who: ['admin'], ic: '🏠', img: ['a-home'],
     t: ['الصفحة الرئيسية للمدير', 'Manager home page', 'Accueil du gérant'],
     s: [
       ['تعرض المربعات مجمّعة: العمل اليومي، الزبائن والفواتير، الصندوق والمالية، المخزون والموردون، التقارير، والإدارة.', 'Tiles are grouped: daily work, customers & bills, cash & finance, stock & suppliers, reports and administration.', 'Tuiles groupées : quotidien, clients et factures, caisse, stock, rapports, administration.'],
       ['تعرض الأرقام: الصندوق، رصيد Whish، المقبوض اليوم وهذا الشهر، وعدد الإشعارات غير المرسلة.', 'Figures shown: cash box, Whish balance, collected today and this month, unsent notices.', 'Chiffres : caisse, solde Whish, encaissé du jour et du mois, avis non envoyés.'],
       ['الرقم الأحمر على المربع يعني أن هناك عملاً ينتظرك (فواتير لم تُرسل، طلبات صيانة، سلة المحذوفات).', 'A red badge on a tile means work is waiting (unsent bills, maintenance requests, recycle bin).', 'Une pastille rouge signale du travail en attente.']
     ] },
-  { id: 'adm_cust', who: ['admin'], ic: '👥',
+  { id: 'adm_cust', who: ['admin'], ic: '👥', img: ['a-customers', 'a-custpage'],
     t: ['إدارة الزبائن', 'Managing customers', 'Gérer les clients'],
     s: [
       ['من «👥 الزبائن» أضف زبوناً جديداً: الاسم، الهاتف، الاشتراك، العلبة، المنطقة، الجابي المسؤول، والعداد الأولي أو الرصيد الافتتاحي. الباركود يُعطى تلقائياً.', 'In “👥 Customers” add a customer: name, phone, plan, box, area, collector, initial reading or opening balance. A barcode is assigned automatically.', 'Dans « 👥 Clients » ajoutez nom, téléphone, formule, boîtier, zone, encaisseur, relevé initial ou solde d’ouverture. Code-barres automatique.'],
@@ -131,7 +131,7 @@ window.MOTOR_GUIDE = [
       ['«⚡ عداد مقطوع»: عدد كيلوات شهري لا يُحسب على الزبون. مثال: الاستهلاك 240 والمقطوع 150 فيُحسب 90 فقط.', '“⚡ Monthly allowance”: kWh not billed each month. Example: 240 used, 150 allowance → 90 billed.', '« ⚡ Forfait » : kWh non facturés chaque mois. Ex. 240 consommés, 150 de forfait → 90 facturés.'],
       ['«🔔 تذكير بالدفع» يرسل للزبون رسالة بالأشهر والمبلغ المستحق، ويمكن إرساله أكثر من مرة.', '“🔔 Payment reminder” sends the months and amount due; it can be sent again.', '« 🔔 Rappel » envoie les mois et le montant dû ; renvoyable.']
     ] },
-  { id: 'adm_read', who: ['admin'], ic: '🔢',
+  { id: 'adm_read', who: ['admin'], ic: '🔢', img: ['a-month'],
     t: ['العدادات: الأخذ والتعديل والإلغاء', 'Readings: take, edit, cancel', 'Relevés : saisir, corriger, annuler'],
     s: [
       ['المدير يستطيع أخذ العداد في أي وقت، حتى خارج فترة أخذ العدادات، ويستطيع أخذ عداد الدورة التالية أو قراءة «تصفية حساب».', 'Managers can read any time, even outside the period, including next cycle or a settlement reading.', 'Le gérant peut relever à tout moment, y compris le cycle suivant ou un relevé de solde.'],
@@ -161,7 +161,7 @@ window.MOTOR_GUIDE = [
       ['إلغاء إيصال أو فاتورة: من كشف حساب الزبون، زر الإلغاء. يرجع الرصيد ويذهب السطر إلى سلة المحذوفات.', 'Cancel a receipt or bill from the customer statement; the balance is restored and the line goes to the recycle bin.', 'Annulez un reçu ou une facture depuis le relevé ; solde rétabli, ligne à la corbeille.'],
       ['«🧾 فاتورة مبيعات وإيصال قبض»: بيع قطع من المخزون لزبون مع قبض ثمنها أو تسجيلها ديناً عليه.', '“🧾 Sales invoice & receipt”: sell stock items to a customer, paid now or added to their balance.', '« 🧾 Facture de vente » : vendre du stock, payé ou à crédit.']
     ] },
-  { id: 'adm_disc', who: ['admin'], ic: '🏷️',
+  { id: 'adm_disc', who: ['admin'], ic: '🏷️', img: ['a-disc'],
     t: ['الحسومات', 'Discounts', 'Remises'],
     s: [
       ['من «🏷️ الحسومات» حسم دائم لزبون: مبلغ ثابت أو نسبة مئوية تُطبّق على كل فاتورة جديدة. حسم 100% يجعل حسابه صفراً.', 'In “🏷️ Discounts” a permanent discount: fixed amount or percentage on every new bill. 100% makes the account zero.', 'Remise permanente : montant ou pourcentage sur chaque facture. 100 % = compte à zéro.'],
@@ -174,7 +174,7 @@ window.MOTOR_GUIDE = [
       ['انقل الزبون إلى الديون المعدومة من صفحته؛ يخرج من لوائح الديون العادية.', 'Move a customer to bad debt from their page; they leave the normal debt lists.', 'Passez un client en créance douteuse ; il quitte les listes de dettes.'],
       ['من «📉 زبائن الديون المعدومة» أنشئ مخطط تقسيط (عدد الدفعات والمبالغ) وأضف حسماً إذا لزم. الجباة يستطيعون رؤية هذه الحسابات والقبض منها.', 'In “📉 Bad-debt customers” create an installment plan and add a discount if needed. Collectors can see and collect.', 'Créez un plan d’échéances et une remise si besoin ; les encaisseurs peuvent encaisser.']
     ] },
-  { id: 'adm_boxes', who: ['admin'], ic: '💰',
+  { id: 'adm_boxes', who: ['admin'], ic: '💰', img: ['a-box'],
     t: ['الصناديق والاستلام من الجباة', 'Cash boxes and receiving from collectors', 'Caisses et remises des encaisseurs'],
     s: [
       ['كل جابي له صندوق؛ عندما يُقفل صندوقه ويختارك، ينتقل المبلغ إلى صندوقك.', 'Each collector has a box; when they close it to you, the amount moves into your box.', 'Chaque encaisseur a une caisse ; à sa clôture vers vous, le montant passe dans la vôtre.'],
@@ -192,7 +192,7 @@ window.MOTOR_GUIDE = [
       ['«🛡️ التأمينات»: مبالغ التأمين التي يدفعها الزبون عند توصيل خط جديد.', '“🛡️ Deposits”: deposits customers pay for a new connection.', '« 🛡️ Cautions » : cautions pour nouveau branchement.'],
       ['«🔧 طلبات الصيانة»: الطلبات التي ترسلها الزبائن عبر واتساب؛ غيّر حالتها عند إنجازها.', '“🔧 Maintenance requests”: requests sent by customers on WhatsApp; update their status when done.', '« 🔧 Maintenance » : demandes WhatsApp ; changez l’état une fois faites.']
     ] },
-  { id: 'adm_staff', who: ['admin'], ic: '🧑‍🔧',
+  { id: 'adm_staff', who: ['admin'], ic: '🧑‍🔧', img: ['a-staff'],
     t: ['الموظفون والصلاحيات', 'Staff and permissions', 'Personnel et droits'],
     s: [
       ['من «🧑‍🔧 الموظفون» أضف موظفاً واختر نوعه: مدير، جابي (قبض + قطع)، موظف أخذ عداد، أو صلاحيات مخصّصة.', 'In “🧑‍🔧 Staff” add a member and choose: manager, collector (collect + cut), meter reader, or custom.', 'Ajoutez un employé : gérant, encaisseur, releveur ou personnalisé.'],

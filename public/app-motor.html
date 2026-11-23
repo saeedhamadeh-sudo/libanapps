@@ -3158,7 +3158,8 @@ VIEWS.dash=async function(main){
       stat(t('st_whish_today'), money(d.whish_today),mine?'cstmt':'whish')+
       stat(t('st_month'), money(d.collected_month),mine?'cstmt':'report')+
       (d.my_cash_in_hand!=null?stat(t('st_hand'), money(d.my_cash_in_hand)):'')+
-    '</div>'+(ME.role==='collector'&&can('read')?windowNote():'');
+    '</div>'+(ME.role==='collector'&&can('read')?windowNote():'')+
+    '<div class="la-foot" dir="ltr" style="text-align:center;color:#94a3b8;font-size:12px;line-height:1.7;margin:28px 0 8px">Copyright © LibanApps<br>Saeed Hmadeh — <a href="tel:+9613044010" style="color:inherit">+961 3 044 010</a></div>';
   if($('#dwa',main)){ waBind($('#dwa',main)); if(waKey()){ waRefresh(); waStartPoll(); } }
   $$('[data-sbe]',main).forEach(function(b){ b.addEventListener('click',function(e){ e.stopPropagation(); var k=b.dataset.sbe;
     setBalance(k,null,k==='cash'?t('st_cash_box'):'Whish',k==='cash'?n2(d.cash_box):n2(d.whish_box),function(){ go('dash'); }); }); });
@@ -5850,7 +5851,7 @@ function reportRows(d){
 var GUIDE_P=null;
 VIEWS.guide=async function(main){
   main.innerHTML='<div class="card muted">'+esc(t('loading'))+'</div>';
-  if(!window.MOTOR_GUIDE){ GUIDE_P=GUIDE_P||new Promise(function(ok,no){ var sc=document.createElement('script'); sc.src='/assets/motor-guide.js?v=2'; sc.onload=ok; sc.onerror=no; document.head.appendChild(sc); });
+  if(!window.MOTOR_GUIDE){ GUIDE_P=GUIDE_P||new Promise(function(ok,no){ var sc=document.createElement('script'); sc.src='/assets/motor-guide.js?v=3'; sc.onload=ok; sc.onerror=no; document.head.appendChild(sc); });
     try{ await GUIDE_P; }catch(e){ GUIDE_P=null; main.innerHTML='<div class="card err">'+esc(t('e_network')||'Network error')+'</div>'; return; } }
   var li=LI[LANG]||0, adm=isAdmin(), mn=!!(ME&&ME.is_main), roles={all:1};
   if(adm){ roles.admin=1; if(mn) roles.main=1; } else { if(can('read')) roles.reader=1; if(can('collect')) roles.collector=1; if(can('cut')) roles.cut=1; if(!roles.reader&&!roles.collector) roles.collector=1; }
@@ -5859,18 +5860,21 @@ VIEWS.guide=async function(main){
   function tx(a){ return a?(a[li]||a[0]):''; }
   function sec(g,i){ return '<details class="card gd" id="gd-'+g.id+'"'+(i<2?' open':'')+' style="margin-bottom:10px"><summary style="cursor:pointer;font-weight:800;font-size:17px;list-style:none;display:flex;gap:10px;align-items:center"><span style="font-size:22px">'+g.ic+'</span><span>'+esc(tx(g.t))+'</span><span class="sp"></span><span class="muted" style="font-size:13px">▾</span></summary>'+
     (g.p?'<p class="muted" style="margin:10px 0 4px;line-height:1.8">'+esc(tx(g.p))+'</p>':'')+
+    (g.img?'<div style="display:flex;flex-wrap:wrap;gap:12px;justify-content:center;margin:12px 0 4px">'+g.img.map(function(n){ var dk=/^a-/.test(n);
+      return '<img src="/assets/motor-guide/'+n+'.jpg?v=1" alt="" loading="lazy" data-gimg="1" style="cursor:zoom-in;border:1px solid #e2e8f0;border-radius:14px;box-shadow:0 4px 14px rgba(15,23,42,.08);'+(dk?'width:100%;max-width:760px':'width:46%;max-width:240px')+'">'; }).join('')+'</div>':'')+
     '<ol style="margin:10px 0 0;padding-inline-start:22px;line-height:1.9">'+g.s.map(function(x){ return '<li style="margin-bottom:6px">'+esc(tx(x))+'</li>'; }).join('')+'</ol>'+
     (g.k?'<div style="margin-top:10px;background:#fff7ed;border:1px solid #fdba74;border-radius:12px;padding:10px 14px"><b>⚠️ '+esc(t('g_tips'))+'</b><ul style="margin:6px 0 0;padding-inline-start:20px;line-height:1.8">'+g.k.map(function(x){ return '<li>'+esc(tx(x))+'</li>'; }).join('')+'</ul></div>':'')+'</details>'; }
   main.innerHTML='<div class="card"><div class="row" style="align-items:center"><h2 style="margin:0">📘 '+esc(t('nav_guide'))+'</h2><span class="sp"></span><span class="chip on">'+esc(t('g_for',{r:rname}))+'</span></div>'+
     '<div class="row" style="margin-top:10px"><input id="gq" type="search" placeholder="'+esc(t('g_search'))+'" style="flex:1 1 220px"><button class="btn ghost sm" id="gall">'+esc(t('g_open_all'))+'</button><button class="btn ghost sm" id="gnone">'+esc(t('g_close_all'))+'</button><button class="btn alt sm" id="gpr">🖨️ '+esc(t('print'))+'</button></div>'+
     '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px">'+L.map(function(g){ return '<a href="#" class="chip gray" data-gj="'+g.id+'" style="text-decoration:none">'+g.ic+' '+esc(tx(g.t))+'</a>'; }).join('')+'</div></div>'+
     '<div id="gl">'+L.map(sec).join('')+'</div>';
+  main.addEventListener('click',function(e){ var im=e.target.closest('[data-gimg]'); if(im){ lightbox(im.src); return; } });
   main.addEventListener('click',function(e){ var j=e.target.closest('[data-gj]'); if(!j) return; e.preventDefault(); var d=$('#gd-'+j.dataset.gj,main); if(d){ d.open=true; d.scrollIntoView({behavior:'smooth',block:'start'}); } });
   $('#gall',main).addEventListener('click',function(){ $$('details.gd',main).forEach(function(d){ d.open=true; }); });
   $('#gnone',main).addEventListener('click',function(){ $$('details.gd',main).forEach(function(d){ d.open=false; }); });
   $('#gq',main).addEventListener('input',function(){ var q=normS(this.value); $$('details.gd',main).forEach(function(d){ var hit=!q||normS(d.textContent).indexOf(q)>=0; d.style.display=hit?'':'none'; if(q&&hit) d.open=true; }); });
   $('#gpr',main).addEventListener('click',function(){ printA4('<h2 style="margin:0 0 4px">📘 '+esc(t('nav_guide'))+' — '+esc(SITE.name||'')+'</h2><div style="margin-bottom:10px">'+esc(t('g_for',{r:rname}))+'</div>'+
-    L.map(function(g){ return '<h3 style="margin:14px 0 4px">'+g.ic+' '+esc(tx(g.t))+'</h3>'+(g.p?'<p>'+esc(tx(g.p))+'</p>':'')+'<ol>'+g.s.map(function(x){ return '<li>'+esc(tx(x))+'</li>'; }).join('')+'</ol>'+(g.k?'<p><b>⚠️ '+esc(t('g_tips'))+':</b></p><ul>'+g.k.map(function(x){ return '<li>'+esc(tx(x))+'</li>'; }).join('')+'</ul>':''); }).join('')); });
+    L.map(function(g){ return '<h3 style="margin:14px 0 4px">'+g.ic+' '+esc(tx(g.t))+'</h3>'+(g.p?'<p>'+esc(tx(g.p))+'</p>':'')+(g.img?'<div style="display:flex;gap:10px;flex-wrap:wrap;margin:6px 0">'+g.img.map(function(n){ return '<img src="/assets/motor-guide/'+n+'.jpg?v=1" style="'+(/^a-/.test(n)?'width:100%':'width:30%')+';border:1px solid #ddd;border-radius:8px">'; }).join('')+'</div>':'')+'<ol>'+g.s.map(function(x){ return '<li>'+esc(tx(x))+'</li>'; }).join('')+'</ol>'+(g.k?'<p><b>⚠️ '+esc(t('g_tips'))+':</b></p><ul>'+g.k.map(function(x){ return '<li>'+esc(tx(x))+'</li>'; }).join('')+'</ul>':''); }).join('')); });
 };
 VIEWS.report=async function(main){
   if(!RF.period) RF.period=SITE.bill_period;
