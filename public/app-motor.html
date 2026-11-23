@@ -2414,6 +2414,8 @@ Object.assign(D,{
  edit_amount:['تعديل المبلغ','Edit amount','Modifier le montant'],
  void_reading:['إلغاء القراءة','Cancel reading','Annuler le relevé'],
  kf_btn:['عداد مقطوع','Monthly allowance','Forfait mensuel'],
+ mp_del:['إلغاء','Remove','Supprimer'],
+ mp_del_q:['إلغاء تسعيرة شهر {m}؟\n\nالفواتير التي صدرت لهذا الشهر تبقى بسعرها كما هي. العدادات الجديدة لهذا الشهر ستطلب تسعيرة من جديد، ورسائل قيمة الفاتورة تُقفل حتى تُحدَّد.','Remove the price for {m}?\n\nBills already issued for this month keep their price. New readings for this month will ask for a price again, and bill messages are locked until it is set.','Supprimer le prix de {m} ?\n\nLes factures déjà émises gardent leur prix. Les nouveaux relevés redemanderont un prix.'],
  nav_guide:['دليل الاستخدام','User guide','Guide d’utilisation'],
  g_for:['دليل خاص بك: {r}','Your guide: {r}','Votre guide : {r}'],
  g_search:['ابحث في الدليل…','Search the guide…','Rechercher dans le guide…'],
@@ -3244,10 +3246,13 @@ async function monthPriceCard(box){
     (!has?'<div class="lic" style="margin-bottom:10px">⚠️ '+esc(t('mp_need',{m:monthName(cur,true)}))+'</div>':'')+
     (adm?'<div class="row" style="gap:8px;flex-wrap:wrap;align-items:flex-end"><div><label>'+esc(t('mp_month'))+'</label><input type="month" id="mpp" value="'+esc(cur)+'"></div>'+
       '<div><label>'+esc(t('kwh_price'))+' ('+esc(sym(mainCur()))+')</label><input id="mpx" inputmode="decimal" style="max-width:160px"></div><button class="btn" id="mps">💾 '+esc(t('mp_save'))+'</button></div>':'')+
-    '<div class="tw" style="margin-top:12px"><table><thead><tr><th>'+esc(t('mp_month'))+'</th><th>'+esc(t('kwh_price'))+'</th><th>'+esc(t('mp_invoices'))+'</th><th>'+esc(t('mp_pending'))+'</th><th>'+esc(t('by'))+'</th><th>'+esc(t('date'))+'</th></tr></thead><tbody>'+
+    '<div class="tw" style="margin-top:12px"><table><thead><tr><th>'+esc(t('mp_month'))+'</th><th>'+esc(t('kwh_price'))+'</th><th>'+esc(t('mp_invoices'))+'</th><th>'+esc(t('mp_pending'))+'</th><th>'+esc(t('by'))+'</th><th>'+esc(t('date'))+'</th>'+(adm?'<th></th>':'')+'</tr></thead><tbody>'+
     ((d.rows||[]).map(function(r){ return '<tr><td><b>'+esc(monthName(r.period,true))+'</b></td><td class="num"><b>'+esc(fmtN(r.price,4).replace(/\.?0+$/,''))+'</b> '+esc(sym(mainCur()))+'</td><td class="num">'+esc(fmtN(r.invoices,0))+'</td>'+
-      '<td class="num">'+(r.pending?'<span class="chip warn">📤 '+esc(fmtN(r.pending,0))+'</span>':'<span class="chip on">✅</span>')+'</td><td>'+esc(r.by||'')+'</td><td class="num">'+esc(dt(r.at))+'</td></tr>'; }).join('')||
-      '<tr><td colspan="6" class="muted">'+esc(t('no_results'))+'</td></tr>')+'</tbody></table></div>';
+      '<td class="num">'+(r.pending?'<span class="chip warn">📤 '+esc(fmtN(r.pending,0))+'</span>':'<span class="chip on">✅</span>')+'</td><td>'+esc(r.by||'')+'</td><td class="num">'+esc(dt(r.at))+'</td>'+(adm?'<td><button class="btn danger sm" data-mpdel="'+esc(r.period)+'" title="'+esc(t('mp_del'))+'">🗑️ '+esc(t('mp_del'))+'</button></td>':'')+'</tr>'; }).join('')||
+      '<tr><td colspan="7" class="muted">'+esc(t('no_results'))+'</td></tr>')+'</tbody></table></div>';
+  $$('[data-mpdel]',box).forEach(function(b){ b.addEventListener('click',async function(){ var per=b.dataset.mpdel;
+    if(!(await confirmBox(t('mp_del_q',{m:monthName(per,true)})))) return;
+    busy(b,true); try{ await call('motor_month_price_delete',{p_period:per}); await loadMonthPrices(true); toast(t('saved'),'s'); monthPriceCard(box); }catch(e){ toast(errText(e),'e'); busy(b,false); } }); });
   var mp=$('#mpp',box);
   function fill(){ var r=(d.rows||[]).filter(function(x){ return x.period===mp.value; })[0]; $('#mpx',box).value=r?String(Number(r.price)):''; }
   if(mp){ mp.addEventListener('change',fill); fill();
