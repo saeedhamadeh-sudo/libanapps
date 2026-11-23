@@ -1,5 +1,6 @@
 /* LibanApps — ترجمة برامج المحاسبة (التجاري والصناعي) للإنكليزي + زر عربي/EN */
 window.ACC_EN = {
+  "ما في حساب بهالرقم أو الاسم": "No account with this number or name",
   "🔁 التكرار": "🔁 Repeat",
   "مرة وحدة": "One time",
   "كل شهر (إيجار، رواتب…)": "Every month (rent, salaries…)",
@@ -4274,6 +4275,7 @@ window.ACC_EN = {
 };
 /* Français — même clés arabes que ACC_EN */
 window.ACC_FR = {
+  "ما في حساب بهالرقم أو الاسم": "Aucun compte avec ce numéro ou ce nom",
   "🔁 التكرار": "🔁 Répétition",
   "مرة وحدة": "Une seule fois",
   "كل شهر (إيجار، رواتب…)": "Chaque mois (loyer, salaires…)",
