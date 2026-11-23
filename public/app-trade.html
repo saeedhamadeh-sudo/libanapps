@@ -11134,16 +11134,19 @@ function lebPLView(qs){
   const hasPrev = codes.some(c=>Math.abs(S0[c]||0)>0.000001);
   const td = v=>`<td class="num">${fmtJ(v)}</td>`, tdp = v=> hasPrev? `<td class="num" style="color:var(--ink-soft);">${fmtJ(v)}</td>` : '';
   const nav = c=>`data-nav="#/leb-journal?m=g&acc=${offC(c)}&period=${P.period}&a=${encodeURIComponent(P.a)}&b=${encodeURIComponent(P.b)}" style="cursor:pointer;"`;
+  const det = qs.get('d')==='1', DT = {};   // تفصيل: كل قيد على كل حساب
+  if(det) journalEntriesAll().forEach(e=>{ if(e.date<P.from || e.date>P.to || e.kind==='closing') return; e.lines.forEach(l=>{ const c = l.a[0]; if(c!=='6' && c!=='7') return; (DT[l.a] = DT[l.a] || []).push({date:e.date, no:e.no, t:(e.doc||'')+(l.n || e.desc? ' — '+(l.n || e.desc) : ''), v:(c==='6'? 1 : -1)*(l.dr - l.cr)}); }); });
+  const detRows = c=> !det? '' : (DT[c]||[]).sort((a,b)=>a.date<b.date? -1 : 1).map(x=>`<tr style="font-size:12px; color:var(--ink-soft);"><td></td><td style="padding-inline-start:22px;">${fmtDate(x.date)} · #${x.no||''} · ${escapeHtml(x.t)}</td><td class="num">${fmtJ(x.v)}</td>${hasPrev? '<td></td>' : ''}</tr>`).join('');
   const table = (list, title, t, t0)=>{ const G = {}; list.forEach(x=>{ const g2 = offC(x.c).slice(0,2); (G[g2] = G[g2] || []).push(x); });
     return `<table><thead><tr><th>الحساب</th><th>البيان</th><th>هالفترة</th>${hasPrev? '<th>نفس الفترة السنة الماضية</th>' : ''}</tr></thead><tbody>
-    ${Object.keys(G).sort().map(g=>`<tr style="background:var(--bg-2); font-weight:700;"><td class="num">${g}</td><td colspan="${hasPrev? 3 : 2}">${LEB_PCG_MAP[g]||PL_NAMES[g]||''}</td></tr>`+G[g].map(x=>`<tr ${nav(x.c)}><td class="num">${offC(x.c)}</td><td>${escapeHtml(x.n)}</td>${td(x.v)}${tdp(x.v0)}</tr>`).join('')).join('') || `<tr><td colspan="4">—</td></tr>`}
+    ${Object.keys(G).sort().map(g=>`<tr style="background:var(--bg-2); font-weight:700;"><td class="num">${g}</td><td colspan="${hasPrev? 3 : 2}">${LEB_PCG_MAP[g]||PL_NAMES[g]||''}</td></tr>`+G[g].map(x=>`<tr ${nav(x.c)}><td class="num">${offC(x.c)}</td><td>${escapeHtml(x.n)}${det && (DT[x.c]||[]).length>1? ` <small style="color:var(--ink-soft);">(${(DT[x.c]||[]).length} قيود)</small>` : ''}</td>${td(x.v)}${tdp(x.v0)}</tr>`+detRows(x.c)).join('')).join('') || `<tr><td colspan="4">—</td></tr>`}
     </tbody><tfoot><tr style="font-weight:800; background:var(--paper)"><td colspan="2">${title}</td>${td(t)}${tdp(t0)}</tr></tfoot></table>`; };
   return `<div class="card no-print">
     <h2><span class="dot"></span> 📊 كشف الإيرادات والأعباء</h2>
-    <p style="font-size:12.5px; color:var(--ink-soft); line-height:1.7;">حساب النتيجة حسب النظام المحاسبي اللبناني: الأعباء (الفئة 6) مقابل الإيرادات (الفئة 7)، مع مقارنة بنفس الفترة من السنة الماضية. اكبس على أي حساب لتشوف قيودو.</p>
+    <p style="font-size:12.5px; color:var(--ink-soft); line-height:1.7;">حساب النتيجة حسب النظام المحاسبي اللبناني: الأعباء (الفئة 6) مقابل الإيرادات (الفئة 7)، مع مقارنة بنفس الفترة من السنة الماضية. كل حساب بيطلع بسطر واحد فيه مجموع كل القيود عليه بالفترة؛ «📋 مع تفصيل القيود» بيبيّن كل قيد تحت حسابو. اكبس على أي حساب لتشوف دفتر الأستاذ تبعو.</p>
     ${periodFilterHtml('pl', P.period, P.a, P.b)}${jrCurSel()}
   </div>
-  <div class="doc-actions no-print"><button class="btn btn-primary" onclick="printWithFilename('Income-Statement-${P.from}-${P.to}')">🖨 طباعة</button><button class="btn" data-nav="#/leb-journal?m=t&period=${P.period}&a=${encodeURIComponent(P.a)}&b=${encodeURIComponent(P.b)}">⚖️ ميزان المراجعة</button></div>
+  <div class="doc-actions no-print"><button class="btn btn-primary" onclick="printWithFilename('Income-Statement-${P.from}-${P.to}')">🖨 طباعة</button><button class="btn" data-nav="#/leb-journal?m=t&period=${P.period}&a=${encodeURIComponent(P.a)}&b=${encodeURIComponent(P.b)}">⚖️ ميزان المراجعة</button><button class="btn ${det? 'btn-primary' : ''}" data-nav="#/leb-pl?period=${P.period}&a=${encodeURIComponent(P.a)}&b=${encodeURIComponent(P.b)}${det? '' : '&d=1'}">${det? '📊 المجاميع بس' : '📋 مع تفصيل القيود'}</button></div>
   <div class="doc">
     ${docHead('كشف الإيرادات والأعباء (حساب النتيجة)')}
     <div class="doc-info"><div class="r"><span>من تاريخ:</span><b class="num">${fmtDate(P.from)}</b></div><div class="r"><span>إلى تاريخ:</span><b class="num">${fmtDate(P.to)}</b></div>${_jrCur==='lbp'? '<div class="r"><span>العملة:</span><b>ليرة لبنانية (بسعر كل مستند)</b></div>' : ''}</div>
@@ -14279,7 +14282,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-11-23 · 16:30 · v132';
+const APP_TRADE_BUILD = '2026-11-23 · 16:50 · v133';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 // ===== ترجيع حركات ناقصة من ملف (إضافة بس — ما منمحي ولا منغيّر شي موجود) =====
 document.addEventListener('change', async e=>{

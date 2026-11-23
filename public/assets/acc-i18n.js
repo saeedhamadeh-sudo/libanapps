@@ -1,5 +1,9 @@
 /* LibanApps — ترجمة برامج المحاسبة (التجاري والصناعي) للإنكليزي + زر عربي/EN */
 window.ACC_EN = {
+  "📋 مع تفصيل القيود": "📋 With entry details",
+  "📊 المجاميع بس": "📊 Totals only",
+  "({n} قيود)": "({n} entries)",
+  "حساب النتيجة حسب النظام المحاسبي اللبناني: الأعباء (الفئة 6) مقابل الإيرادات (الفئة 7)، مع مقارنة بنفس الفترة من السنة الماضية. كل حساب بيطلع بسطر واحد فيه مجموع كل القيود عليه بالفترة؛ «📋 مع تفصيل القيود» بيبيّن كل قيد تحت حسابو. اكبس على أي حساب لتشوف دفتر الأستاذ تبعو.": "Income statement under the Lebanese accounting system: charges (class 6) against income (class 7), compared with the same period last year. Each account shows on one line with the total of all its entries in the period; “📋 With entry details” lists every entry under its account. Click any account to open its ledger.",
   "ما في حساب بهالرقم أو الاسم": "No account with this number or name",
   "🔁 التكرار": "🔁 Repeat",
   "مرة وحدة": "One time",
@@ -4275,6 +4279,10 @@ window.ACC_EN = {
 };
 /* Français — même clés arabes que ACC_EN */
 window.ACC_FR = {
+  "📋 مع تفصيل القيود": "📋 Avec le détail des écritures",
+  "📊 المجاميع بس": "📊 Totaux seulement",
+  "({n} قيود)": "({n} écritures)",
+  "حساب النتيجة حسب النظام المحاسبي اللبناني: الأعباء (الفئة 6) مقابل الإيرادات (الفئة 7)، مع مقارنة بنفس الفترة من السنة الماضية. كل حساب بيطلع بسطر واحد فيه مجموع كل القيود عليه بالفترة؛ «📋 مع تفصيل القيود» بيبيّن كل قيد تحت حسابو. اكبس على أي حساب لتشوف دفتر الأستاذ تبعو.": "Compte de résultat selon le système comptable libanais : charges (classe 6) face aux produits (classe 7), comparés à la même période de l'an dernier. Chaque compte figure sur une ligne avec le total de ses écritures de la période ; « 📋 Avec le détail des écritures » affiche chaque écriture sous son compte. Cliquez sur un compte pour ouvrir son grand livre.",
   "ما في حساب بهالرقم أو الاسم": "Aucun compte avec ce numéro ou ce nom",
   "🔁 التكرار": "🔁 Répétition",
   "مرة وحدة": "Une seule fois",
