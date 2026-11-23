@@ -131,6 +131,33 @@ class DataEngine {
     return { sql: '0', p: [] };
   }
   // ---------- صلاحية الكتابة (نفس app_can_write) ----------
+  auditPrune(days){ try{ this.store.run('DELETE FROM audit WHERE at < ?', Date.now() - (days || 400) * 86400000); }catch(e){} }
+  auditList(b){
+    b = b || {}; const where = ['at >= ?'], p = [Date.now() - Math.min(400, Math.max(1, Number(b.days) || 7)) * 86400000];
+    if(b.product && PRODUCTS.includes(b.product)){ where.push('substr(tbl, 1, ?) = ?'); p.push(b.product.length + 1, b.product + '_'); }
+    if(b.t && /^[a-z_]+$/.test(b.t)){ where.push('tbl = ?'); p.push((b.product || 'trade') + '_' + b.t); }
+    if(['i', 'u', 'd', 'r'].includes(b.op)){ where.push('op = ?'); p.push(b.op); }
+    if(b.q){ where.push('(before LIKE ? OR after LIKE ? OR who LIKE ?)'); const k = '%' + String(b.q) + '%'; p.push(k, k, k); }
+    const rows = this.store.all("SELECT rowid AS id, at, tbl, pk, op, who, before, after FROM audit WHERE " + where.join(' AND ') + ' ORDER BY at DESC LIMIT ?', ...p, Math.min(2000, Number(b.limit) || 500));
+    const pick = j => { if(!j) return null; try{ const o = JSON.parse(j); const r = {}; ['number','date','type','currency','amount','total','note','name','status','deleted','shift_id','method'].forEach(k => { if(o[k] !== undefined && o[k] !== null && o[k] !== '') r[k] = typeof o[k] === 'string' ? o[k].slice(0, 160) : o[k]; }); return r; }catch(e){ return null; } };
+    return { rows: rows.map(r => ({ id: r.id, at: r.at, tbl: r.tbl, pk: r.pk, op: r.op, who: r.who, before: pick(r.before), after: pick(r.after) })) };
+  }
+  auditRestore(id){
+    const a = this.store.get('SELECT rowid AS id, * FROM audit WHERE rowid = ?', Number(id));
+    if(!a) return { error: 'ما لقينا السطر بالسجل' };
+    if(!a.before) return { error: 'هيدي إضافة — ما في نسخة قبلها لترجع' };
+    const cur = this.store.get('SELECT data FROM rows WHERE tbl=? AND pk=?', a.tbl, a.pk);
+    if(a.op === 'd' && cur) return { error: 'السطر رجع موجود — ما في شي لنرجّعو' };
+    this.store.tx(() => {
+      this._audit(a.tbl, a.pk, 'r', 'استرجاع من السجل', cur ? cur.data : null, a.before);
+      this.store.run('INSERT INTO rows(tbl,pk,data,updated_at) VALUES(?,?,?,?) ON CONFLICT(tbl,pk) DO UPDATE SET data=excluded.data, updated_at=excluded.updated_at', a.tbl, a.pk, a.before, Date.now());
+    });
+    return { ok: true };
+  }
+  // سجل التعديلات: كل إضافة/تعديل/حذف بينحفظ مع مين وإيمتى — حتى ما يضيع شي ونقدر نعرف شو صار ونرجّعو
+  _who(tbl, sid){ try{ const { product } = splitTbl(tbl); const s = this.session(sid, product); if(!s) return ''; const u = this.store.get("SELECT data FROM rows WHERE tbl=? AND pk=?", product + '_app_users', String(s.account_id)); let n = ''; try{ n = u ? (JSON.parse(u.data).username || '') : ''; }catch(e){} return (n || s.account_id || '') + '|' + (s.kind || ''); }catch(e){ return ''; } }
+  _audit(tbl, pk, op, who, before, after){ const { t } = splitTbl(tbl); if(ACCOUNT_TABLES.includes(t)) return;
+    try{ this.store.run('INSERT INTO audit(at,tbl,pk,op,who,before,after) VALUES(?,?,?,?,?,?,?)', Date.now(), tbl, String(pk), op, who || '', before || null, after || null); }catch(e){} }
   canWrite(tbl, sid){
     const { product, t } = splitTbl(tbl);
     const s = this.session(sid, product);
@@ -204,7 +231,7 @@ class DataEngine {
     if(q.op === 'upsert' || q.op === 'insert'){
       const list = Array.isArray(q.rows) ? q.rows : [q.rows];
       const { t } = splitTbl(tbl);
-      const now = Date.now(), out = [];
+      const now = Date.now(), out = [], who = this._who(tbl, sid);
       this.store.tx(() => {
         for(const raw of list){
           if(!raw || typeof raw !== 'object') continue;
@@ -213,8 +240,10 @@ class DataEngine {
           if(ACCOUNT_TABLES.includes(t)) this._protectSecrets(tbl, t, pk, row);
           const old = this.store.get('SELECT data FROM rows WHERE tbl=? AND pk=?', tbl, pk);
           const merged = old ? Object.assign(JSON.parse(old.data), row) : row;
+          const mj = JSON.stringify(merged);
+          if(!old) this._audit(tbl, pk, 'i', who, null, mj); else if(old.data !== mj) this._audit(tbl, pk, 'u', who, old.data, mj);
           this.store.run('INSERT INTO rows(tbl,pk,data,updated_at) VALUES(?,?,?,?) ON CONFLICT(tbl,pk) DO UPDATE SET data=excluded.data, updated_at=excluded.updated_at',
-            tbl, pk, JSON.stringify(merged), now);
+            tbl, pk, mj, now);
           out.push(merged);
         }
       });
@@ -223,10 +252,11 @@ class DataEngine {
 
     if(q.op === 'update'){
       const sel = this.store.all('SELECT pk, data FROM rows WHERE ' + where.join(' AND '), ...params);
-      const { t } = splitTbl(tbl);
+      const { t } = splitTbl(tbl), who = this._who(tbl, sid);
       this.store.tx(() => {
         for(const r of sel){
           const row = Object.assign(JSON.parse(r.data), q.values || {});
+          if(JSON.stringify(row) !== r.data) this._audit(tbl, r.pk, 'u', who, r.data, JSON.stringify(row));
           if(ACCOUNT_TABLES.includes(t)) this._protectSecrets(tbl, t, r.pk, row);
           this.store.run('UPDATE rows SET data=?, updated_at=? WHERE tbl=? AND pk=?', JSON.stringify(row), Date.now(), tbl, r.pk);
         }
@@ -236,9 +266,10 @@ class DataEngine {
 
     if(q.op === 'delete'){
       const { t } = splitTbl(tbl);
-      const sel = this.store.all('SELECT pk FROM rows WHERE ' + where.join(' AND '), ...params);
+      const sel = this.store.all('SELECT pk, data FROM rows WHERE ' + where.join(' AND '), ...params), who = this._who(tbl, sid);
       this.store.tx(() => {
         for(const r of sel){
+          this._audit(tbl, r.pk, 'd', who, r.data, null);
           this.store.run('DELETE FROM rows WHERE tbl=? AND pk=?', tbl, r.pk);
           if(ACCOUNT_TABLES.includes(t)) this.store.run('DELETE FROM secrets WHERE tbl=? AND id=?', tbl, r.pk);
         }

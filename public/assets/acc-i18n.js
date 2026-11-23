@@ -1,5 +1,8 @@
 /* LibanApps — ترجمة برامج المحاسبة (التجاري والصناعي) للإنكليزي + زر عربي/EN */
 window.ACC_EN = {
+  "تعديل الحركة": "Edit movement",
+  "افتح المستند لتعدّلو": "Open the document to edit it",
+  "⏳ عم نحفظ…": "⏳ Saving…",
   "📋 مع تفصيل القيود": "📋 With entry details",
   "📊 المجاميع بس": "📊 Totals only",
   "({n} قيود)": "({n} entries)",
@@ -4279,6 +4282,9 @@ window.ACC_EN = {
 };
 /* Français — même clés arabes que ACC_EN */
 window.ACC_FR = {
+  "تعديل الحركة": "Modifier le mouvement",
+  "افتح المستند لتعدّلو": "Ouvrir le document pour le modifier",
+  "⏳ عم نحفظ…": "⏳ Enregistrement…",
   "📋 مع تفصيل القيود": "📋 Avec le détail des écritures",
   "📊 المجاميع بس": "📊 Totaux seulement",
   "({n} قيود)": "({n} écritures)",

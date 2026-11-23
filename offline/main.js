@@ -34,6 +34,12 @@ function createWindow(hidden){
     shell.openExternal(url);
     return { action: 'deny' };
   });
+  // صفحة فيها عمليات ما انحفظت بعد وبدها تتسكّر أو تنتقل: منسأل
+  win.webContents.on('will-prevent-unload', e => {
+    const c = dialog.showMessageBoxSync(win, { type: 'warning', buttons: ['استنى', 'كمّل على كل حال'], defaultId: 0, cancelId: 0, title: 'LibanApps',
+      message: 'في عمليات بعدها ما انحفظت عالسيرفر.', detail: 'استنى ثواني لتخلص، وبعدين كمّل.' });
+    if(c === 1) e.preventDefault();
+  });
   win.on('close', e => {
     if(quitting) return;
     e.preventDefault(); win.hide();
@@ -151,9 +157,18 @@ app.on('before-quit', e => {
   quitting = true;
   if(!srv || app._closing) return;
   e.preventDefault(); app._closing = true;
+  // أول شي: كل نافذة مفتوحة بتخلّص رفع عملياتها للسيرفر (قبل ما يسكّر)
+  const flushAll = Promise.all(BrowserWindow.getAllWindows().map(w => Promise.race([
+    w.webContents.executeJavaScript('window.laFlushBeforeQuit ? window.laFlushBeforeQuit() : 0', true).catch(() => 0),
+    new Promise(r => setTimeout(() => r(-1), 20000))]))).catch(() => []);
+  flushAll.then(left => {
+  const n = (left || []).filter(x => x > 0).reduce((t, x) => t + x, 0);
+  if(n > 0 && dialog.showMessageBoxSync({ type: 'warning', buttons: ['استنى وما تسكّر', 'سكّر على كل حال'], defaultId: 0, cancelId: 0, title: 'LibanApps',
+      message: 'في ' + n + ' عملية بعدها ما انحفظت عالسيرفر.', detail: 'إذا سكّرت هلق ممكن تضيع. استنى شوي وجرّب مرة تانية.' }) === 0){ app._closing = false; quitting = false; return; }
   const last = srv.store.kvGet('backup_last', null);
   const need = !last || Date.now() - last.at > 6 * 3600000;
   Promise.race([need ? srv.backup.run('on-quit') : Promise.resolve(), new Promise(r => setTimeout(r, 20000))])
     .finally(async () => { try{ await srv.stop(); }catch(x){} app.exit(0); });
+  });
 });
 app.on('window-all-closed', () => { /* بيضل شغّال بجنب الساعة */ });

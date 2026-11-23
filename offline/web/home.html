@@ -74,6 +74,7 @@ body.remote .remote-note{ display:block; }
     <button data-t="users">المستخدمين</button>
     <button data-t="remote">الوصول من برّا</button>
     <button data-t="backup">النسخ الاحتياطي</button>
+    <button data-t="audit">سجل التعديلات</button>
     <button data-t="import">نقل من السحابة</button>
     <button data-t="update" id="tabUpdate">التحديث</button>
   </nav>
@@ -207,6 +208,22 @@ body.remote .remote-note{ display:block; }
     <div class="msg" id="b_rmsg"></div>
   </section>
 
+  <!-- ===== سجل التعديلات ===== -->
+  <section class="panel" id="p_audit">
+    <h3>سجل التعديلات</h3>
+    <p class="help">كل عملية بتنحفظ على هالكمبيوتر (إضافة، تعديل، حذف) بتتسجّل هون مع اسم المستخدم والوقت، من كل الأجهزة. إذا شي «اختفى» بتلاقيه هون، وبكبسة <b>رجّع</b> بيرجع متل ما كان. بعدها اعمل تحديث (F5) للبرنامج على الأجهزة.</p>
+    <div class="row">
+      <div class="f" style="flex:0 1 140px"><label>البرنامج</label><select id="a_prod"><option value="trade">التجارة</option><option value="alum">الألمنيوم</option></select></div>
+      <div class="f" style="flex:0 1 200px"><label>القسم</label><select id="a_t"><option value="">الكل</option><option value="cash_movements">الصندوق (حركات)</option><option value="cashier_shifts">صناديق الموظفين</option><option value="invoices">الفواتير</option><option value="receipts">الإيصالات</option><option value="payment_vouchers">سندات الصرف</option><option value="purchase_invoices">فواتير المشتريات</option><option value="budget_entries">المصاريف</option><option value="day_closures">إقفال اليومية</option><option value="warehouse_items">المستودع</option><option value="stock_ins">إدخال بضاعة</option><option value="stock_outs">إخراج بضاعة</option><option value="customers">الزباين</option><option value="suppliers">الموردين</option><option value="app_settings">الإعدادات</option></select></div>
+      <div class="f" style="flex:0 1 150px"><label>نوع العملية</label><select id="a_op"><option value="">الكل</option><option value="i">إضافة</option><option value="u">تعديل</option><option value="d">حذف</option><option value="r">استرجاع</option></select></div>
+      <div class="f" style="flex:0 1 110px"><label>آخر كم يوم</label><input id="a_days" type="number" min="1" max="400" value="3"></div>
+      <div class="f"><label>بحث (اسم مستخدم، مبلغ، ملاحظة…)</label><input id="a_q"></div>
+      <button class="btn" id="a_go">اعرض</button>
+    </div>
+    <div class="msg" id="a_msg"></div>
+    <div style="overflow:auto"><table><thead><tr><th>الوقت</th><th>المستخدم</th><th>العملية</th><th>القسم</th><th>قبل</th><th>بعد</th><th></th></tr></thead><tbody id="a_list"></tbody></table></div>
+  </section>
+
   <!-- ===== التحديث ===== -->
   <section class="panel" id="p_update">
     <h3>تحديث البرامج</h3>
@@ -278,10 +295,28 @@ body.remote .remote-note{ display:block; }
   function showTab(t){
     document.querySelectorAll('#tabs button').forEach(function(b){ b.classList.toggle('on', b.dataset.t === t); });
     document.querySelectorAll('section.panel').forEach(function(p){ p.classList.toggle('on', p.id === 'p_' + t); });
-    ({ license: loadLicense, users: loadUsers, remote: function(){ loadTunnel(); loadMirror(); }, backup: loadBackup, import: function(){}, update: loadUpdate })[t]();
+    ({ license: loadLicense, users: loadUsers, remote: function(){ loadTunnel(); loadMirror(); }, backup: loadBackup, audit: loadAudit, import: function(){}, update: loadUpdate })[t]();
     try{ history.replaceState(null, '', '#' + t); }catch(e){}
   }
   document.querySelectorAll('#tabs button').forEach(function(b){ b.onclick = function(){ showTab(b.dataset.t); }; });
+
+  // ---------- سجل التعديلات ----------
+  var A_OP = { i: '➕ إضافة', u: '✏️ تعديل', d: '🗑 حذف', r: '↩️ استرجاع' };
+  var A_T = { cash_movements: 'الصندوق', cashier_shifts: 'صندوق موظف', invoices: 'فاتورة', receipts: 'إيصال', payment_vouchers: 'سند صرف', purchase_invoices: 'فاتورة مشتريات', budget_entries: 'مصروف', day_closures: 'إقفال يومية', warehouse_items: 'صنف', stock_ins: 'إدخال بضاعة', stock_outs: 'إخراج بضاعة', customers: 'زبون', suppliers: 'مورد', app_settings: 'الإعدادات' };
+  function aSum(o){ if(!o) return '—'; var p = []; if(o.deleted) p.push('<b style="color:var(--bad)">ملغى</b>'); if(o.number != null) p.push('#' + esc(o.number)); if(o.date) p.push(esc(o.date)); if(o.type) p.push(esc(o.type));
+    if(o.amount != null) p.push('<b>' + esc(o.amount) + (o.currency ? ' ' + esc(o.currency) : '') + '</b>'); if(o.total != null) p.push('<b>' + esc(o.total) + '</b>'); if(o.name) p.push(esc(o.name)); if(o.note) p.push(esc(String(o.note).replace(/^\[GL\]\{.*$/, 'قيد محاسبي').slice(0, 90))); return p.join(' · ') || '…'; }
+  function loadAudit(){
+    msg('a_msg', '');
+    return api('/audit', { product: $('a_prod').value, t: $('a_t').value, op: $('a_op').value, days: $('a_days').value, q: $('a_q').value.trim() }).then(function(j){
+      var R = j.rows || [];
+      $('a_list').innerHTML = R.length ? R.map(function(r){ var t = r.tbl.replace(/^(trade|alum)_/, '');
+        return '<tr><td class="mono" style="white-space:nowrap">' + fmtDate(r.at) + '</td><td>' + esc(String(r.who || '').split('|')[0]) + '</td><td style="white-space:nowrap">' + (A_OP[r.op] || r.op) + '</td><td>' + esc(A_T[t] || t) + '</td><td style="font-size:12.5px">' + aSum(r.before) + '</td><td style="font-size:12.5px">' + aSum(r.after) + '</td><td>' + (r.before && (r.op === 'd' || r.op === 'u') ? '<button class="btn sec" data-ar="' + r.id + '">رجّع</button>' : '') + '</td></tr>'; }).join('')
+        : '<tr><td colspan="7" style="color:var(--soft)">ما في شي بهالفترة</td></tr>';
+      document.querySelectorAll('[data-ar]').forEach(function(b){ b.onclick = function(){ if(!confirm('رجّع هالسطر متل ما كان قبل هالعملية؟')) return; busy(b, true);
+        api('/audit/restore', { id: Number(b.getAttribute('data-ar')) }).then(function(){ msg('a_msg', '✅ رجع. اعمل تحديث (F5) للبرنامج على الأجهزة لتشوفو.', true); loadAudit(); }).catch(function(e){ msg('a_msg', e.message); busy(b, false); }); }; });
+    }).catch(function(e){ msg('a_msg', e.message); });
+  }
+  $('a_go').onclick = loadAudit;
 
   // ---------- التفعيل ----------
   function renderLicense(s){

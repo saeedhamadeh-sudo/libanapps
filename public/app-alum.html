@@ -1218,6 +1218,15 @@ async function handleBackupImportFile(inputEl){
   catch(e){ toast('حدث خطأ: الملف ليس نسخة احتياطية صالحة'); }
   inputEl.value='';
 }
+/* ===== ممنوع يسكّر قبل ما تنحفظ كل العمليات عالسيرفر ===== */
+function laUnsynced(){ let n = _pendingSyncs.size; try{ if(typeof obCount==='function') n += obCount(); }catch(e){} return n; }
+window.addEventListener('beforeunload', e=>{
+  if(!laUnsynced()) return;
+  try{ if(typeof flushOutbox==='function') flushOutbox(); }catch(x){}
+  e.preventDefault(); e.returnValue = 'في عمليات بعدها ما انحفظت — استنى ثواني قبل ما تسكّر'; return e.returnValue;
+});
+document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='hidden'){ try{ if(typeof flushOutbox==='function' && obCount()) flushOutbox(); }catch(e){} } });
+window.laFlushBeforeQuit = async ()=>{ try{ await waitPendingSyncs(15000); }catch(e){} try{ if(typeof flushOutbox==='function' && obCount()) await flushOutbox(); }catch(e){} return laUnsynced(); };
 window.addEventListener('beforeunload', ()=>{
   if(DB.settings && DB.settings.autoBackupOnClose && !(window.laIntStatus && window._laGdOn)){
     try{ downloadBackupFile(); }catch(e){ /* best-effort */ }
@@ -2228,6 +2237,15 @@ function openGlVoucherModal(pre){
     _jrCache = null; wrap.remove(); toast(r && r.ok===false? '⚠️ صار خطأ بالحفظ' : '✅ انحفظ القيد'); render();
   });
 }
+function ledEditBtn(e){   // كشف الحساب: كل قيد فيك تعدّلو — القيد اليدوي هون، حركة الصندوق هون، وغيرها بيفتح المستند
+  if(!e || (typeof canPostGl==='function' && !canPostGl())) return '';
+  if(e.kind==='gl' && glRefOfEntry(e)) return glEditBtns(e);
+  const k = String(e.key||'');
+  if(k.indexOf('cm:')===0 && typeof moveEditable==='function'){ const m = (DB.cashMovements||[]).find(x=>x.id===k.slice(3)); if(m && moveEditable(m)) return ` <button class="btn btn-sm no-print" data-led-move="${escapeHtml(m.id)}" title="تعديل الحركة">✏️</button>`; }
+  if(e.nav) return ` <button class="btn btn-sm no-print" data-led-nav="${escapeHtml(e.nav)}" title="افتح المستند لتعدّلو">✏️</button>`;
+  return ''; }
+document.addEventListener('click', ev=>{ const b = ev.target.closest && ev.target.closest('[data-led-move],[data-led-nav]'); if(!b) return; ev.preventDefault(); ev.stopPropagation();
+  if(b.hasAttribute('data-led-move')){ if(typeof openMoveEditModal==='function') openMoveEditModal(b.getAttribute('data-led-move')); } else go(b.getAttribute('data-led-nav')); }, true);
 function glEditBtns(e){ if(e.kind!=='gl' || !canPostGl()) return ''; const ref = glRefOfEntry(e); if(!ref) return '';
   return ` <span class="no-print" style="white-space:nowrap;"><button class="btn btn-sm" data-glv-copy="${escapeHtml(ref)}" title="كرّر هالقيد بتاريخ جديد">⧉</button><button class="btn btn-sm" data-glv-edit="${escapeHtml(ref)}" title="تعديل القيد">✏️</button><button class="btn btn-sm btn-danger" data-glv-del="${escapeHtml(ref)}" title="حذف القيد">🗑</button></span>`; }
 document.addEventListener('click', async ev=>{
@@ -2306,7 +2324,7 @@ function lebJournalView(qs){
     all.forEach(e=>{ if(kind && e.kind!==kind) return; e.lines.forEach(l=>{ if(!jrAccMatch(l.a, acc)) return; if(e.date<P.from) open += l.dr - l.cr; else if(e.date<=P.to) rows.push({e, l}); }); });
     let bal = open;
     const body = rows.map(({e,l})=>{ bal += l.dr - l.cr; const other = e.lines.find(x=>x!==l);
-      return `<tr ${e.nav? `data-nav="${e.nav}" style="cursor:pointer;"` : ''}><td class="num">${fmtDate(e.date)}</td><td class="num">${e.no}</td><td>${escapeHtml(e.doc)} — ${escapeHtml(l.n || e.desc)}<div style="font-size:11px; color:var(--ink-soft);">مقابل: ${escapeHtml(other? offC(other.a)+' '+jrName(other.a) : '')}</div></td><td class="num">${l.dr? fmtJ(l.dr) : ''}</td><td class="num">${l.cr? fmtJ(l.cr) : ''}</td><td class="num">${fmtJ(bal)}</td></tr>`; }).join('');
+      return `<tr ${e.nav? `data-nav="${e.nav}" style="cursor:pointer;"` : ''}><td class="num">${fmtDate(e.date)}</td><td class="num">${e.no}</td><td>${escapeHtml(e.doc)} — ${escapeHtml(l.n || e.desc)}${ledEditBtn(e)}<div style="font-size:11px; color:var(--ink-soft);">مقابل: ${escapeHtml(other? offC(other.a)+' '+jrName(other.a) : '')}</div></td><td class="num">${l.dr? fmtJ(l.dr) : ''}</td><td class="num">${l.cr? fmtJ(l.cr) : ''}</td><td class="num">${fmtJ(bal)}</td></tr>`; }).join('');
     return head + actions('Ledger-'+acc) + `<div class="doc">${docHead('دفتر الأستاذ — '+acc+' '+jrNameD(acc))}${info}
       <div class="table-wrap"><table><thead><tr><th>التاريخ</th><th>رقم القيد</th><th>البيان</th><th>مدين</th><th>دائن</th><th>الرصيد</th></tr></thead><tbody>
       <tr style="background:var(--bg-2);"><td colspan="5">رصيد أول المدة</td><td class="num">${fmtJ(open)}</td></tr>${body}</tbody>

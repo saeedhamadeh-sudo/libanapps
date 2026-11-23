@@ -36,6 +36,7 @@ function start(opts){
   const store = new Store(path.join(dataDir, 'libanapps.db'));
   const license = new License(store);
   const engine = new DataEngine(store, { clientId: () => license.clientId(), access: p => license.access(p) });
+  engine.auditPrune(400);
   const backup = new Backup(store, license, { backupDir: opts.backupDir || path.join(dataDir, 'backups'), tmpDir: path.join(dataDir, 'tmp') });
   const tunnel = new Tunnel(store, { port, cloudflaredPath: opts.cloudflaredPath });
   const importJobs = {};
@@ -162,6 +163,8 @@ function start(opts){
         return json(res, await backup.restore(buf, decodeURIComponent(String(req.headers['x-la-pass'] || ''))));
       }
       case '/counts': return json(res, store.counts());
+      case '/audit': return json(res, engine.auditList(body));
+      case '/audit/restore': return json(res, engine.auditRestore(body.id));
       case '/update': return json(res, updater.status());
       case '/update/check': await updater.check(); return json(res, updater.status());
       case '/update/apply': return json(res, await updater.apply());

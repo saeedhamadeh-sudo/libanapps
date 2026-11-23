@@ -33,6 +33,9 @@ CREATE TABLE IF NOT EXISTS sessions (
 );
 CREATE TABLE IF NOT EXISTS login_attempts (product TEXT, username TEXT, at INTEGER);
 CREATE TABLE IF NOT EXISTS kv (k TEXT PRIMARY KEY, v TEXT);
+CREATE TABLE IF NOT EXISTS audit (at INTEGER NOT NULL, tbl TEXT NOT NULL, pk TEXT NOT NULL, op TEXT NOT NULL, who TEXT, before TEXT, after TEXT);
+CREATE INDEX IF NOT EXISTS audit_at ON audit(at);
+CREATE INDEX IF NOT EXISTS audit_pk ON audit(tbl, pk);
 `;
 
 class Store {
