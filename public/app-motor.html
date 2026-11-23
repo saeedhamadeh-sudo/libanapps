@@ -2408,6 +2408,11 @@ Object.assign(D,{
  edit_amount:['تعديل المبلغ','Edit amount','Modifier le montant'],
  void_reading:['إلغاء القراءة','Cancel reading','Annuler le relevé'],
  kf_btn:['عداد مقطوع','Monthly allowance','Forfait mensuel'],
+ nav_guide:['دليل الاستخدام','User guide','Guide d’utilisation'],
+ g_for:['دليل خاص بك: {r}','Your guide: {r}','Votre guide : {r}'],
+ g_search:['ابحث في الدليل…','Search the guide…','Rechercher dans le guide…'],
+ g_tips:['انتبه','Important','Important'], g_open_all:['فتح الكل','Expand all','Tout ouvrir'], g_close_all:['إغلاق الكل','Collapse all','Tout fermer'],
+ g_r_main:['المدير الأساسي','Main manager','Gérant principal'], g_r_admin:['المدير','Manager','Gérant'], g_r_collector:['الجابي','Collector','Encaisseur'], g_r_reader:['موظف أخذ العداد','Meter reader','Releveur'],
  rs_trunc:['هذه النسخة ناقصة (جدول فيه 5000 سطر بالضبط) — لا يمكن الاسترجاع منها. استعمل «إضافة الناقص من نسخة».','This backup is truncated (a table has exactly 5000 rows) — cannot restore from it. Use “Add missing from a backup”.','Sauvegarde tronquée — restauration impossible.'],
  bk_add:['إضافة الناقص من نسخة','Add missing from a backup','Ajouter les manquants'],
  bk_add_d:['تُضاف فقط الفواتير والإيصالات والحركات غير الموجودة حالياً. لا يُمسح ولا يُعدّل أي شيء موجود، ولا تتغيّر أرصدة الزبائن.','Only invoices, receipts and moves that are missing are added. Nothing existing is deleted or changed; balances stay the same.','Seules les lignes manquantes sont ajoutées. Rien n’est supprimé ni modifié.'],
@@ -2979,7 +2984,8 @@ var TABS=[
   {id:'staff',k:'nav_staff',i:'🧑‍🔧',admin:true},
   {id:'trash',k:'nav_trash',i:'🗑️',admin:true},
   {id:'plans',k:'nav_plans',i:'⚡',admin:true},
-  {id:'settings',k:'nav_settings',i:'⚙️'}
+  {id:'settings',k:'nav_settings',i:'⚙️'},
+  {id:'guide',k:'nav_guide',i:'📘'}
 ];
 var WA_PENDING=0, WA_INV=0;
 function visibleTabs(){ return TABS.filter(function(x){ return (!x.admin||isAdmin())&&(!x.main||(ME&&ME.is_main))&&(!x.p||x.p.split('|').some(function(q){ return can(q); })); }); }
@@ -3085,6 +3091,7 @@ VIEWS.trash=function(m){ return TRASH_VIEW(m); };
 var HOME_SVG='<svg viewBox="0 0 64 64" aria-hidden="true"><path d="M14 28v28h36V28L32 12z" fill="#fde68a"/><path d="M8 30L32 8l24 22" fill="none" stroke="#ef4444" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round"/><rect x="27" y="38" width="10" height="18" rx="2" fill="#b45309"/><rect x="17" y="33" width="7.5" height="7.5" rx="1.5" fill="#38bdf8"/><rect x="39.5" y="33" width="7.5" height="7.5" rx="1.5" fill="#38bdf8"/></svg>';
 var SK='#f2b98a';   // لون البشرة
 var HM_IC={
+ guide:'<path d="M8 10c8-4 16-4 24 2v44c-8-6-16-6-24-2z" fill="#2563eb"/><path d="M56 10c-8-4-16-4-24 2v44c8-6 16-6 24-2z" fill="#3b82f6"/><path d="M13 18c5-2 10-2 15 1M13 26c5-2 10-2 15 1M13 34c5-2 10-2 15 1M36 19c5-3 10-3 15-1M36 27c5-3 10-3 15-1M36 35c5-3 10-3 15-1" fill="none" stroke="#dbeafe" stroke-width="2.2" stroke-linecap="round"/><circle cx="48" cy="48" r="11" fill="#facc15"/><path d="M48 43v1M48 47v6" stroke="#1e3a5f" stroke-width="3" stroke-linecap="round"/>',
  read:'<rect x="10" y="4" width="44" height="56" rx="9" fill="#1e3a5f"/><rect x="15" y="9" width="34" height="27" rx="6" fill="#e0f2fe"/><path d="M20 31a12 12 0 0 1 24 0" fill="none" stroke="#e2e8f0" stroke-width="5"/><path d="M20 31a12 12 0 0 1 6-10.4" fill="none" stroke="#22c55e" stroke-width="5"/><path d="M26 20.6a12 12 0 0 1 12 0" fill="none" stroke="#facc15" stroke-width="5"/><path d="M38 20.6A12 12 0 0 1 44 31" fill="none" stroke="#ef4444" stroke-width="5"/><path d="M32 31l6-8" stroke="#0f172a" stroke-width="2.6" stroke-linecap="round"/><circle cx="32" cy="31" r="2.8" fill="#0f172a"/><rect x="16" y="41" width="32" height="10" rx="2.5" fill="#0f172a"/><rect x="19" y="43.5" width="5" height="5" rx="1" fill="#4ade80"/><rect x="26" y="43.5" width="5" height="5" rx="1" fill="#4ade80"/><rect x="33" y="43.5" width="5" height="5" rx="1" fill="#4ade80"/><rect x="40" y="43.5" width="5" height="5" rx="1" fill="#facc15"/><path d="M34 52.5l-3.5 5h3l-1.5 3.5 5-5.5h-3l1.5-3z" fill="#facc15"/>',
  pay:'<rect x="5" y="15" width="42" height="25" rx="4" fill="#15803d" transform="rotate(-9 26 27)"/><rect x="9" y="20" width="44" height="26" rx="4" fill="#22c55e"/><rect x="12" y="23" width="38" height="20" rx="3" fill="none" stroke="#bbf7d0" stroke-width="1.5"/><circle cx="31" cy="33" r="7.5" fill="#bbf7d0"/><path d="M33.6 30.2c-.6-.8-1.6-1.2-2.6-1.2-1.6 0-2.6.8-2.6 2 0 2.8 5.6 1.5 5.6 4.3 0 1.3-1.1 2.1-2.8 2.1-1.2 0-2.4-.5-3-1.4M31 27.6v1.4M31 37.3v1.4" fill="none" stroke="#15803d" stroke-width="1.7" stroke-linecap="round"/><ellipse cx="49" cy="54" rx="10" ry="4.5" fill="#a16207"/><rect x="39" y="47" width="20" height="7" fill="#ca8a04"/><ellipse cx="49" cy="47" rx="10" ry="4.5" fill="#facc15"/><ellipse cx="49" cy="47" rx="5" ry="2" fill="#fde047"/>',
  sales:'<path d="M12 4h32v54l-5.3-3.4-5.4 3.4-5.3-3.4-5.4 3.4-5.3-3.4-5.3 3.4z" fill="#fff" stroke="#cbd5e1" stroke-width="2" stroke-linejoin="round"/><rect x="17" y="11" width="22" height="4" rx="2" fill="#f59e0b"/><rect x="17" y="20" width="15" height="2.6" rx="1.3" fill="#94a3b8"/><rect x="34" y="20" width="5" height="2.6" rx="1.3" fill="#94a3b8"/><rect x="17" y="27" width="12" height="2.6" rx="1.3" fill="#94a3b8"/><rect x="34" y="27" width="5" height="2.6" rx="1.3" fill="#94a3b8"/><rect x="17" y="34" width="14" height="2.6" rx="1.3" fill="#94a3b8"/><rect x="34" y="34" width="5" height="2.6" rx="1.3" fill="#94a3b8"/><rect x="17" y="42" width="22" height="4.5" rx="2.2" fill="#1e3a5f"/><path d="M38 33h12.5l8 8-12 12-8.5-8.5z" fill="#f97316"/><circle cx="46" cy="38.5" r="2.2" fill="#fff"/>',
@@ -3120,7 +3127,7 @@ var HM_IC={
 };
 var HM_GROUPS=[['hm_g_daily',['read','pay','sales','switch','unpaid','maint']],['hm_g_cust',['customers','baddebt','month','cstmt','collst','bills','wa']],
  ['hm_g_money',['cash','adash','whish','journal','expenses','salaries','disc']],['hm_g_stock',['stock','suppliers','insurance']],
- ['hm_g_acct',['bsheet','coa']],['hm_g_reports',['report','finrep','map']],['hm_g_admin',['staff','plans','trash','settings']]];
+ ['hm_g_acct',['bsheet','coa']],['hm_g_reports',['report','finrep','map']],['hm_g_admin',['staff','plans','trash','settings','guide']]];
 function homeTiles(badges){ var vis={}; visibleTabs().forEach(function(x){ vis[x.id]=x; });
   if(vis.maint) setTimeout(function(){ call('motor_maint_list').then(function(L){ var n=(L||[]).filter(function(m){ return m.status!=='done'; }).length, el=document.querySelector('.hm-t[data-go=maint]');
     if(n&&el&&!el.querySelector('.hm-b')) el.insertAdjacentHTML('afterbegin','<span class="hm-b">'+n+'</span>'); }).catch(function(){}); },50);
@@ -5839,6 +5846,32 @@ function reportRows(d){
   return [H].concat(d.rows.map(function(r){ return [r.code,r.name,r.barcode,r.box,r.area,r.plan||'',r.collector||'',r.is_active?t('active'):t('inactive'),
     r.prev_value==null?'':n2(r.prev_value),r.cur_value==null?'':n2(r.cur_value),r.kwh==null?'':n2(r.kwh),n2(r.balance_start),n2(r.invoiced),n2(r.other),n2(r.paid),n2(r.paid_whish),n2(r.balance_end),n2(r.balance_now)]; }));
 }
+/* دليل الاستخدام — بيتحمّل من /assets/motor-guide.js وبيعرض بس الأقسام اللي بتخصّ صلاحيات المستخدم */
+var GUIDE_P=null;
+VIEWS.guide=async function(main){
+  main.innerHTML='<div class="card muted">'+esc(t('loading'))+'</div>';
+  if(!window.MOTOR_GUIDE){ GUIDE_P=GUIDE_P||new Promise(function(ok,no){ var sc=document.createElement('script'); sc.src='/assets/motor-guide.js?v=2'; sc.onload=ok; sc.onerror=no; document.head.appendChild(sc); });
+    try{ await GUIDE_P; }catch(e){ GUIDE_P=null; main.innerHTML='<div class="card err">'+esc(t('e_network')||'Network error')+'</div>'; return; } }
+  var li=LI[LANG]||0, adm=isAdmin(), mn=!!(ME&&ME.is_main), roles={all:1};
+  if(adm){ roles.admin=1; if(mn) roles.main=1; } else { if(can('read')) roles.reader=1; if(can('collect')) roles.collector=1; if(can('cut')) roles.cut=1; if(!roles.reader&&!roles.collector) roles.collector=1; }
+  var rname=adm?t(mn?'g_r_main':'g_r_admin'):[roles.collector&&can('collect')?t('g_r_collector'):'',roles.reader?t('g_r_reader'):''].filter(Boolean).join(' + ')||t('g_r_collector');
+  var L=window.MOTOR_GUIDE.filter(function(g){ return g.who.some(function(w){ return roles[w]; }); });
+  function tx(a){ return a?(a[li]||a[0]):''; }
+  function sec(g,i){ return '<details class="card gd" id="gd-'+g.id+'"'+(i<2?' open':'')+' style="margin-bottom:10px"><summary style="cursor:pointer;font-weight:800;font-size:17px;list-style:none;display:flex;gap:10px;align-items:center"><span style="font-size:22px">'+g.ic+'</span><span>'+esc(tx(g.t))+'</span><span class="sp"></span><span class="muted" style="font-size:13px">▾</span></summary>'+
+    (g.p?'<p class="muted" style="margin:10px 0 4px;line-height:1.8">'+esc(tx(g.p))+'</p>':'')+
+    '<ol style="margin:10px 0 0;padding-inline-start:22px;line-height:1.9">'+g.s.map(function(x){ return '<li style="margin-bottom:6px">'+esc(tx(x))+'</li>'; }).join('')+'</ol>'+
+    (g.k?'<div style="margin-top:10px;background:#fff7ed;border:1px solid #fdba74;border-radius:12px;padding:10px 14px"><b>⚠️ '+esc(t('g_tips'))+'</b><ul style="margin:6px 0 0;padding-inline-start:20px;line-height:1.8">'+g.k.map(function(x){ return '<li>'+esc(tx(x))+'</li>'; }).join('')+'</ul></div>':'')+'</details>'; }
+  main.innerHTML='<div class="card"><div class="row" style="align-items:center"><h2 style="margin:0">📘 '+esc(t('nav_guide'))+'</h2><span class="sp"></span><span class="chip on">'+esc(t('g_for',{r:rname}))+'</span></div>'+
+    '<div class="row" style="margin-top:10px"><input id="gq" type="search" placeholder="'+esc(t('g_search'))+'" style="flex:1 1 220px"><button class="btn ghost sm" id="gall">'+esc(t('g_open_all'))+'</button><button class="btn ghost sm" id="gnone">'+esc(t('g_close_all'))+'</button><button class="btn alt sm" id="gpr">🖨️ '+esc(t('print'))+'</button></div>'+
+    '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px">'+L.map(function(g){ return '<a href="#" class="chip gray" data-gj="'+g.id+'" style="text-decoration:none">'+g.ic+' '+esc(tx(g.t))+'</a>'; }).join('')+'</div></div>'+
+    '<div id="gl">'+L.map(sec).join('')+'</div>';
+  main.addEventListener('click',function(e){ var j=e.target.closest('[data-gj]'); if(!j) return; e.preventDefault(); var d=$('#gd-'+j.dataset.gj,main); if(d){ d.open=true; d.scrollIntoView({behavior:'smooth',block:'start'}); } });
+  $('#gall',main).addEventListener('click',function(){ $$('details.gd',main).forEach(function(d){ d.open=true; }); });
+  $('#gnone',main).addEventListener('click',function(){ $$('details.gd',main).forEach(function(d){ d.open=false; }); });
+  $('#gq',main).addEventListener('input',function(){ var q=normS(this.value); $$('details.gd',main).forEach(function(d){ var hit=!q||normS(d.textContent).indexOf(q)>=0; d.style.display=hit?'':'none'; if(q&&hit) d.open=true; }); });
+  $('#gpr',main).addEventListener('click',function(){ printA4('<h2 style="margin:0 0 4px">📘 '+esc(t('nav_guide'))+' — '+esc(SITE.name||'')+'</h2><div style="margin-bottom:10px">'+esc(t('g_for',{r:rname}))+'</div>'+
+    L.map(function(g){ return '<h3 style="margin:14px 0 4px">'+g.ic+' '+esc(tx(g.t))+'</h3>'+(g.p?'<p>'+esc(tx(g.p))+'</p>':'')+'<ol>'+g.s.map(function(x){ return '<li>'+esc(tx(x))+'</li>'; }).join('')+'</ol>'+(g.k?'<p><b>⚠️ '+esc(t('g_tips'))+':</b></p><ul>'+g.k.map(function(x){ return '<li>'+esc(tx(x))+'</li>'; }).join('')+'</ul>':''); }).join('')); });
+};
 VIEWS.report=async function(main){
   if(!RF.period) RF.period=SITE.bill_period;
   var d=await call('motor_month_report',{p_period:RF.period});
