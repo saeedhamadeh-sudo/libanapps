@@ -831,10 +831,11 @@ function openMoveEditModal(mid){
     <div style="font-size:13.5px; line-height:1.8; margin-bottom:8px;">${escapeHtml(stripUserOfNote(m.note))}<br>
       ${fmtDate(m.date)} · ${dir==='in'? 'دخلت على' : 'انصرفت من'}: <b>${escapeHtml(moveWhereLabel(m))}</b>${userOfNote(m.note)? ' · الموظف: <b>'+escapeHtml(userOfNote(m.note))+'</b>' : ''}</div>
     <div class="field"><label>المبلغ (${cur==='USD'? '$' : escapeHtml(secCurLabel())})</label><input type="number" id="me_amt" class="num" step="any" value="${a}" ${amtLock? 'disabled' : ''} style="font-size:18px;"></div>
+    <div class="field"><label>التاريخ</label><input type="date" id="me_date" value="${escapeHtml(m.date||todayISO())}" ${amtLock? 'disabled' : ''}></div>
     ${amtLock? `<div style="font-size:12px; color:var(--ink-soft); margin:-4px 0 8px;">${escapeHtml(amtLock)}</div>` : ''}
     <div class="field"><label>${dir==='in'? 'لوين دخلت فعلياً؟' : 'من وين انصرفت فعلياً؟'}</label>
       <select id="me_t" style="font-size:15px; padding:9px;"><option value="">— نفس المحل (${escapeHtml(moveWhereLabel(m))}) —</option>${moneyTargetOptions({out:true})}</select></div>
-    ${(m.editLog||[]).length? `<div style="font-size:11.5px; color:var(--ink-soft); margin-bottom:6px;">تعديلات سابقة: ${(m.editLog||[]).map(x=>escapeHtml((x.by||'')+' '+fmtNum(x.from)+' ← '+fmtNum(x.to))).join(' · ')}</div>` : ''}
+    ${(m.editLog||[]).length? `<div style="font-size:11.5px; color:var(--ink-soft); margin-bottom:6px;">تعديلات سابقة: ${(m.editLog||[]).map(x=>escapeHtml((x.by||'')+' '+(x.fromDate? fmtDate(x.fromDate)+' ← '+fmtDate(x.toDate) : fmtNum(x.from)+' ← '+fmtNum(x.to)))).join(' · ')}</div>` : ''}
     <div id="me_err" style="color:var(--debit); font-size:13px; min-height:16px;"></div>
     <div class="row" style="justify-content:space-between;">${amtLock? '<span></span>' : '<button class="btn btn-danger" id="me_del">🗑 إلغاء الحركة</button>'}
       <span style="display:flex; gap:8px;"><button class="btn" id="me_x">رجوع</button><button class="btn btn-primary" id="me_ok">✅ حفظ</button></span></div></div>`;
@@ -851,10 +852,14 @@ function openMoveEditModal(mid){
     _jrCache = null; wrap.remove(); toast('✅ انلغت الحركة'); render();
   });
   $('#me_ok').addEventListener('click', async ()=>{
-    const t = $('#me_t').value, na = amtLock? a : Number($('#me_amt').value);
+    const t = $('#me_t').value, na = amtLock? a : Number($('#me_amt').value), nd = amtLock? m.date : (($('#me_date') && $('#me_date').value) || m.date);
     if(!amtLock && !(na>0)) return err('اكتب مبلغ أكبر من صفر');
-    const amtChanged = !amtLock && Math.abs(na - a) > 0.0001, placeChanged = !!t && !(t===moveTargetOf(m) && t!=='drawer');
-    if(!amtChanged && !placeChanged) return err('ما غيّرت شي');
+    const amtChanged = !amtLock && Math.abs(na - a) > 0.0001, placeChanged = !!t && !(t===moveTargetOf(m) && t!=='drawer'), dateChanged = !!nd && nd!==m.date;
+    if(!amtChanged && !placeChanged && !dateChanged) return err('ما غيّرت شي');
+    if(dateChanged && lockBlocks(nd)) return;
+    if(dateChanged){   // الطرف التاني من نفس العملية (نفس المبلغ والعملة والوقت) بيمشي معها بالتاريخ
+      [m].concat((DB.cashMovements||[]).filter(x=>x!==m && !x.deleted && x.date===m.date && x.currency===m.currency && Math.abs(Math.abs(Number(x.amount)||0) - a) < 0.0001 && Math.abs((x.createdAt||0) - (m.createdAt||0)) < 3000 && moveEditable(x)))
+        .forEach(x=>{ x.editLog = (x.editLog||[]).concat([{at:Date.now(), by, fromDate:x.date, toDate:nd}]); x.date = nd; }); }
     if(t==='drawer' && !currentUserShift()) return err('ما عندك صندوق مفتوح');
     if(lockBlocks(m.date)) return;
     if(amtChanged){ const diff = na - a;
@@ -9041,6 +9046,7 @@ function openCashMovementModal(type, currency, shift){
     <div class="field"><label>${type==='deposit'? 'من وين إجت المصاري؟' : 'لوين راحت المصاري؟'} *</label>
       <select id="cm_t"><option value="">— اختار —</option>${moneyTargetOptions({drawer:false, other:true})}</select></div>
     <div class="field"><label>ملاحظة</label><input type="text" id="cm_note" value=""></div>
+    <div class="field"><label>التاريخ</label><input type="date" id="cm_date" value="${todayISO()}"></div>
     <div class="row">
       <button class="btn" id="cm_cancel">إلغاء</button>
       <button class="btn btn-primary" id="cm_save">حفظ</button>
@@ -9054,13 +9060,14 @@ function openCashMovementModal(type, currency, shift){
     const t = wrap.querySelector('#cm_t').value;
     if(!t){ toast(type==='deposit'? 'اختار من وين إجت المصاري' : 'اختار لوين راحت المصاري'); return; }
     let note = wrap.querySelector('#cm_note').value.trim();
+    const date = (wrap.querySelector('#cm_date') && wrap.querySelector('#cm_date').value) || todayISO(); if(typeof lockBlocks==='function' && lockBlocks(date)) return;
     if(t!=='other') note = (type==='deposit'? 'من: ' : 'إلى: ')+moneyTargetLabel(t)+(note? ' — '+note : '');
-    if(t!=='other') pushMoneyMove(t, type==='deposit'? 'out' : 'in', currency, amount, {label:(type==='deposit'? 'إلى صندوق ' : 'من صندوق ')+shift.username+(note? ' — '+note : '')});
+    if(t!=='other') pushMoneyMove(t, type==='deposit'? 'out' : 'in', currency, amount, {label:(type==='deposit'? 'إلى صندوق ' : 'من صندوق ')+shift.username+(note? ' — '+note : ''), date});
     const now = Date.now();
     const signedAmount = type==='withdraw'? -amount : amount;
     if(currency==='USD') shift.cashUSD = (shift.cashUSD||0) + signedAmount;
     else shift.cashLBP = (shift.cashLBP||0) + signedAmount;
-    DB.cashMovements.push({id:uid(), createdAt:now, type, currency, amount, note:(note?note+' — ':'')+shift.username, refSaleId:null, date:todayISO(), shiftId:shift.id});
+    DB.cashMovements.push({id:uid(), createdAt:now, type, currency, amount, note:(note?note+' — ':'')+shift.username, refSaleId:null, date, shiftId:shift.id});
     await Promise.all([save(KEYS.cashierShifts, DB.cashierShifts), save(KEYS.cashMovements, DB.cashMovements)]);
     wrap.remove();
     toast('تم الحفظ');
@@ -12757,6 +12764,7 @@ function openWhishWithdrawModal(){
     <div class="field" style="margin-top:8px;"><label>لوين راحت المصاري؟ *</label>
       <select id="ww_t"><option value="">— اختار —</option>${canUseSafe()? `<option value="main">💵 كاش عالصندوق الأساسي</option>` : ''}${moneyTargetOptions({main:false, whish:false, other:true})}</select></div>
     <div class="field"><label>ملاحظة *</label><input type="text" id="ww_note" placeholder="مثلاً: سحبت من محل Whish"></div>
+    <div class="field"><label>التاريخ</label><input type="date" id="ww_date" value="${todayISO()}"></div>
     <div id="ww_err" style="color:var(--debit); font-size:13px; min-height:18px;"></div>
     <div class="row"><button class="btn" id="ww_cancel">إلغاء</button><button class="btn btn-primary" id="ww_ok">✅ حفظ</button></div>
   </div>`;
@@ -12772,11 +12780,12 @@ function openWhishWithdrawModal(){
     if(!t){ $('#ww_err').textContent = 'اختار لوين راحت المصاري'; return; }
     if(!note){ $('#ww_err').textContent = 'اكتب ملاحظة'; return; }
     if(t==='drawer' && !currentUserShift()){ $('#ww_err').textContent = 'ما عندك صندوق مفتوح'; return; }
+    const date = ($('#ww_date') && $('#ww_date').value) || todayISO(); if(typeof lockBlocks==='function' && lockBlocks(date)) return;
     if(t==='main'){
-      pushMoneyMove(WHISH_CODE, 'out', cur, amt, {label:'سحب Whish كاش إلى: '+MAIN_BOX_NAME+' — '+note+' '+WHISH_TO_MAIN});
+      pushMoneyMove(WHISH_CODE, 'out', cur, amt, {label:'سحب Whish كاش إلى: '+MAIN_BOX_NAME+' — '+note+' '+WHISH_TO_MAIN, date});
     } else {
-      pushMoneyMove(WHISH_CODE, 'out', cur, amt, {label:'سحب Whish إلى: '+(t==='other'? 'غير' : moneyTargetLabel(t))+' — '+note});
-      if(t!=='other') pushMoneyMove(t, 'in', cur, amt, {label:'من: Whish — '+note});
+      pushMoneyMove(WHISH_CODE, 'out', cur, amt, {label:'سحب Whish إلى: '+(t==='other'? 'غير' : moneyTargetLabel(t))+' — '+note, date});
+      if(t!=='other') pushMoneyMove(t, 'in', cur, amt, {label:'من: Whish — '+note, date});
     }
     const ok = (await Promise.all([save(KEYS.cashMovements, DB.cashMovements)].concat((t==='drawer' || t==='53103')? [save(KEYS.cashierShifts, DB.cashierShifts)] : []))).every(Boolean);
     wrap.remove(); toast(ok? 'تم السحب من Whish ✅' : 'حدث خطأ أثناء الحفظ'); render();
@@ -12794,6 +12803,7 @@ function openSafeMoveModal(type){
     <div class="field" style="margin-top:8px;"><label>${type==='safe_in'? 'من وين إجت المصاري؟' : 'لوين راحت المصاري؟'} *</label>
       <select id="sm_t"><option value="">— اختار —</option>${moneyTargetOptions({main:false, other:true})}</select></div>
     <div class="field"><label>ملاحظة (مين / ليش) *</label><input type="text" id="sm_note"></div>
+    <div class="field"><label>التاريخ</label><input type="date" id="sm_date" value="${todayISO()}"></div>
     <div id="sm_err" style="color:var(--debit); font-size:13px; min-height:18px;"></div>
     <div class="row"><button class="btn" id="sm_cancel">إلغاء</button><button class="btn btn-primary" id="sm_ok">✅ حفظ</button></div>
   </div>`;
@@ -12808,10 +12818,11 @@ function openSafeMoveModal(type){
     if(!t){ $('#sm_err').textContent = type==='safe_in'? 'اختار من وين إجت المصاري' : 'اختار لوين راحت المصاري'; return; }
     if(!note){ $('#sm_err').textContent = 'اكتب ملاحظة'; return; }
     if(t==='drawer' && !currentUserShift()){ $('#sm_err').textContent = 'ما عندك صندوق مفتوح'; return; }
+    const date = ($('#sm_date') && $('#sm_date').value) || todayISO(); if(typeof lockBlocks==='function' && lockBlocks(date)) return;
     const lbl = (type==='safe_in'? 'من: ' : 'إلى: ')+moneyTargetLabel(t)+' — '+note;
-    DB.cashMovements.push({id:uid(), createdAt:Date.now(), type, currency:cur, amount:amt, note:lbl+' — '+currentUser.username, refSaleId:null, date:todayISO(), shiftId:null});
+    DB.cashMovements.push({id:uid(), createdAt:Date.now(), type, currency:cur, amount:amt, note:lbl+' — '+currentUser.username, refSaleId:null, date, shiftId:null});
     // الطرف التاني: يلي طلع من الصندوق الأساسي بيدخل عالحساب، ويلي دخل عليه طالع من الحساب
-    if(t!=='other') pushMoneyMove(t, type==='safe_in'? 'out' : 'in', cur, amt, {label:(type==='safe_in'? 'إلى: ' : 'من: ')+MAIN_BOX_NAME+' — '+note});
+    if(t!=='other') pushMoneyMove(t, type==='safe_in'? 'out' : 'in', cur, amt, {label:(type==='safe_in'? 'إلى: ' : 'من: ')+MAIN_BOX_NAME+' — '+note, date});
     const ok = (await Promise.all([save(KEYS.cashMovements, DB.cashMovements)].concat((t==='drawer' || t==='53103')? [save(KEYS.cashierShifts, DB.cashierShifts)] : []))).every(Boolean);
     wrap.remove(); toast(ok? 'تم ✅' : 'حدث خطأ أثناء الحفظ'); render();
   });
@@ -14300,7 +14311,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-11-23 · 17:30 · v134';
+const APP_TRADE_BUILD = '2026-11-23 · 17:45 · v135';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 // ===== ترجيع حركات ناقصة من ملف (إضافة بس — ما منمحي ولا منغيّر شي موجود) =====
 document.addEventListener('change', async e=>{
