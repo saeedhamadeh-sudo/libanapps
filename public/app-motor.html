@@ -1691,7 +1691,13 @@ var D={
  fr_title:['التقرير المالي لشهر {m}','Financial report — {m}','Rapport financier — {m}'], fr_income:['الواردات','Income','Recettes'], fr_exp:['النفقات','Expenses','Dépenses'], fr_bal:['الرصيد','Balance','Solde'], fr_total:['المجموع','Total','Total'],
  fr_coll:['الجباية المحصلة لشهر {m}','Collections for {m}','Encaissements — {m}'], fr_prev:['رصيد شهر {m}','{m} balance','Solde {m}'], fr_month:['رصيد شهر {m}','{m} result','Résultat {m}'], fr_deficit:['(عجز)','(deficit)','(déficit)'],
  fr_cur:['الرصيد الحالي {d}','Current balance {d}','Solde actuel {d}'], fr_open:['أرصدة افتتاحية في {d}','Opening balances on {d}','Soldes d’ouverture au {d}'], fr_ins:['صندوق تأمينات المشتركين','Subscribers’ deposits fund','Fonds des cautions'],
- fr_stock:['مخزون {n}','{n} stock','Stock {n}'], fr_sign:['إدارة {s}','{s} management','Direction {s}'],
+ fr_stock:['مخزون {n}','{n} stock','Stock {n}'],
+ fr_r_lines:['قيمة تأسيس خطوط جديدة وبيع قطع كهربائية','New lines setup and electrical parts sales','Raccordements et vente de pièces électriques'],
+ fr_r_fuel:['مشتريات مازوت ( برميل)','Diesel purchases ( barrels)','Achats de gasoil ( barils)'], fr_r_maint:['صيانة للمولد','Generator maintenance','Entretien du générateur'],
+ fr_r_gen:['شراء مولد مستعمل','Used generator purchase','Achat d’un générateur d’occasion'], fr_r_parts:['مشتريات قطع كهربائية','Electrical parts purchases','Achats de pièces électriques'],
+ fr_r_rent:['ايجار ارض المولدات لشهر {m}','Generator land rent — {m}','Loyer du terrain — {m}'], fr_r_admin:['مصاريف إدارية','Administrative expenses','Frais administratifs'],
+ fr_r_staff:['اتعاب جباة وموظفين','Collectors and staff fees','Honoraires encaisseurs et personnel'],
+ fr_r_fuel_stock:['مخزون المازوت','Diesel stock','Stock de gasoil'], fr_r_barrel:['برميل','barrels','barils'], fr_r_ins_box:['صندوق التأمينات المشتركين','Subscribers’ deposits fund','Fonds des cautions des abonnés'], fr_sign:['إدارة {s}','{s} management','Direction {s}'],
  fr_auto:['🔄 تعبئة تلقائية من البرنامج','🔄 Auto-fill from the app','🔄 Remplir automatiquement'], fr_auto_q:['سيتم استبدال محتوى التقرير بالأرقام المحسوبة من البرنامج. متابعة؟','The report will be replaced with the figures calculated by the app. Continue?','Le rapport sera remplacé par les chiffres calculés. Continuer ?'],
  fr_add:['+ إضافة سطر','+ Add row','+ Ajouter une ligne'], fr_saved:['محفوظ — {b} · {d}','Saved — {b} · {d}','Enregistré — {b} · {d}'], fr_unsaved:['غير محفوظ — الأرقام محسوبة تلقائياً من البرنامج','Not saved — figures calculated by the app','Non enregistré — chiffres calculés'],
  fr_hint:['كل ما في التقرير قابل للتعديل: العناوين والأسطر والمبالغ. عند الحفظ يُعتمد «الرصيد الحالي» كرصيد سابق في تقرير الشهر التالي. الشعار المستخدم هو شعار المولد المرفوع في الإعدادات.','Everything in the report is editable: titles, rows and amounts. When saved, the “current balance” becomes the previous balance of next month’s report. The logo is the one uploaded in settings.','Tout est modifiable. Une fois enregistré, le « solde actuel » devient le solde antérieur du mois suivant. Le logo est celui des paramètres.'],
@@ -6234,13 +6240,23 @@ function frToday(){ var d=new Date(), per=d.getFullYear()+'-'+String(d.getMonth(
 function frAuto(a,per){
   var prv=frPrev(per), nx=frNext(per), pb=a.prev_balance!=null?n2(a.prev_balance):0;
   return { title:t('fr_title',{m:monthName(per,true)}),
-    income:[{l:t('fr_coll',{m:monthName(prv,false)+' '+prv.slice(0,4)}),a:n2(a.collections)}],
-    expenses:(a.expenses||[]).map(function(x){ return {l:x.label,a:n2(x.amount)}; }),
+    income:[{l:t('fr_coll',{m:monthName(prv,false)+' '+prv.slice(0,4)}),a:n2(a.collections)},{l:t('fr_r_lines'),a:0}],
+    expenses:frExpTpl(a.expenses,per),
     prev_label:t('fr_prev',{m:monthName(prv,false)}), prev_balance:pb, month_label:t('fr_month',{m:monthName(per,false)}),
     cur_label:t('fr_cur',{d:frLastDay(per)+' '+monthName(per,true)}),
     open_title:t('fr_open',{d:'1 '+monthName(nx,true)}),
-    opening:(a.stock||[]).map(function(x){ return {l:t('fr_stock',{n:x.name}),v:fmtN(x.qty)}; }).concat([{l:t('fr_ins'),v:money(a.insurance)}]),
+    opening:[{l:t('fr_r_fuel_stock'),v:t('fr_r_barrel')},{l:t('fr_r_ins_box'),v:money(a.insurance)}],
     sign:t('fr_sign',{s:SITE.name||''}), date:frToday() };
+}
+// أسطر التقرير الثابتة (متل التقرير اللي بينشر) — المصاريف المسجّلة بالبرنامج بتنحط بالسطر المناسب، والباقي بينزاد تحت
+function frExpTpl(list,per){
+  var R=[{k:/مازوت|ديزل|diesel|fuel|gasoil/i,l:t('fr_r_fuel')},{k:/صيان|maint|entretien/i,l:t('fr_r_maint')},{k:/شراء مولد|مولد مستعمل|generator/i,l:t('fr_r_gen')},
+    {k:/قطع|كهرب|parts|pièces/i,l:t('fr_r_parts')},{k:/[اإ]يجار|rent|loyer/i,l:t('fr_r_rent',{m:monthName(per,false)})},{k:/[اإ]دار|admin/i,l:t('fr_r_admin')},
+    {k:/[اأ]تعاب|معاش|راتب|رواتب|salar|salaire|جاب|موظف/i,l:t('fr_r_staff')}].map(function(r){ return {k:r.k,l:r.l,a:0}; });
+  var extra=[];
+  (list||[]).forEach(function(x){ var hit=null; for(var i=0;i<R.length;i++){ if(R[i].k.test(String(x.label||''))){ hit=R[i]; break; } }
+    if(hit) hit.a=Math.round((hit.a+n2(x.amount))*100)/100; else extra.push({l:x.label,a:n2(x.amount)}); });
+  return R.map(function(r){ return {l:r.l,a:r.a}; }).concat(extra);
 }
 function frTotals(doc){ var i=0,e=0; doc.income.forEach(function(x){ i+=n2(x.a); }); doc.expenses.forEach(function(x){ e+=n2(x.a); });
   var m=Math.round((i-e)*100)/100; return {inc:i,exp:e,month:m,cur:Math.round((n2(doc.prev_balance)+m)*100)/100}; }
