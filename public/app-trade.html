@@ -821,7 +821,7 @@ function moveWhereLabel(m){ const t = moveTargetOf(m); if(t==='main') return '�
   if(t==='drawer'){ const sh = (DB.cashierShifts||[]).find(x=>x.id===m.shiftId); return '💵 صندوق '+(sh? sh.username : ''); } const c = coaFind(t); return t+' '+(c? c.name : ''); }
 function openMoveEditModal(mid){
   const m = (DB.cashMovements||[]).find(x=>x.id===mid); if(!moveEditable(m)) return;
-  if(!canUseSafe()){ toast('ما عندك صلاحية'); return; }
+  if(!hasPermission('move_edit')){ toast('ما عندك صلاحية تعديل حركات الصندوق'); return; }
   const dir = ['safe_in','acct_in','deposit'].includes(m.type)? 'in' : 'out';
   const a = Math.abs(Number(m.amount)||0), cur = m.currency;
   const doc = moveDocOf(m), sh = m.shiftId? (DB.cashierShifts||[]).find(x=>x.id===m.shiftId) : null, shClosed = !!(m.shiftId && (!sh || sh.status!=='open'));
@@ -839,7 +839,7 @@ function openMoveEditModal(mid){
     <div id="me_err" style="color:var(--debit); font-size:13px; min-height:16px;"></div>
     <div class="row" style="justify-content:space-between;">${amtLock? '<span></span>' : '<button class="btn btn-danger" id="me_del">🗑 إلغاء الحركة</button>'}
       <span style="display:flex; gap:8px;"><button class="btn" id="me_x">رجوع</button><button class="btn btn-primary" id="me_ok">✅ حفظ</button></span></div></div>`;
-  document.body.appendChild(wrap);
+  document.body.appendChild(wrap); lockDateInputs(wrap);
   const $ = q=>wrap.querySelector(q), err = x=>{ $('#me_err').textContent = x; };
   $('#me_x').addEventListener('click', ()=>wrap.remove());
   const by = currentUser? currentUser.username : '';
@@ -4807,14 +4807,24 @@ const PERMISSION_EXTRAS = [
   {key:'safe_view',     group:'الصندوق الأساسي',     label:'رؤية الصندوق الأساسي ورصيدها وحركاتها'},
   {key:'safe_withdraw', group:'الصندوق الأساسي',     label:'السحب من الصندوق الأساسي والدفع منها (سندات صرف ومصاريف) والإيداع فيها'},
   {key:'gl_entries',    group:'المحاسبة',    label:'لوحة الحسابات: فتح حسابات وقيود من حساب إلى حساب'},
+  {key:'acc_view',       group:'المحاسبة',    label:'المحاسبة: دفتر اليومية ودفتر الأستاذ وميزان المراجعة والتصميم المحاسبي'},
+  {key:'acc_statements', group:'المحاسبة',    label:'حساب النتيجة والميزانية العمومية والتدفقات النقدية وأعمار الديون'},
+  {key:'acc_tax',        group:'المحاسبة',    label:'TVA ونماذج المالية والضمان والرواتب'},
+  {key:'acc_tools',      group:'المحاسبة',    label:'أدوات المحاسب: الأصول، الشيكات، المصرف، صرف العملات، القيود الدورية، الجرد، فحص الدفاتر، ملف المحاسب، سجل المحذوفات'},
+  {key:'acc_year',       group:'المحاسبة',    label:'السنة المالية: الأرصدة الافتتاحية وإقفال الأشهر والسنة'},
+  {key:'move_edit',      group:'الصندوق الأساسي', label:'تعديل وإلغاء حركات الصندوق'},
+  {key:'backdate',       group:'عام',        label:'تسجيل عمليات بتاريخ غير اليوم وتغيير تاريخ الحركات'},
   {key:'owner_pay',     group:'المحاسبة',    label:'الدفع من حساب صاحب المؤسسة (سندات صرف ومصاريف)'},
   {key:'edit_docs',     group:'عام',        label:'تعديل الفواتير والإيصالات والسندات وبيانات الزبائن والموردين بعد حفظها'},
   {key:'delete',        group:'عام',        label:'الحذف (فواتير، إيصالات، سندات، زبائن، موردون، منتجات...)'}
 ];
-const PERMS_V2 = 'v2';
+const PERMS_V2 = 'v2', PERMS_V3 = 'v3';
+// صلاحيات المحاسبة التفصيلية (v3): الموظف القديم يلي كان عندو «التقارير» بيضل يشوف المحاسبة متل قبل، لحد ما ADMIN يعدّلو
 // الموظفون القدامى (قبل الصلاحيات التفصيلية) يحتفظون بما كان مسموحاً لهم — ما عدا قيمة المخزون والتكلفة
 function effectivePermissions(u){
-  const p = (u && u.permissions) || [];
+  const p0 = (u && u.permissions) || [];
+  let p = p0;
+  if(!p0.includes(PERMS_V3)){ const o = new Set(p0); if(p0.includes('reports')) ['acc_view','acc_statements','acc_tax','acc_tools','acc_year'].forEach(k=>o.add(k)); if(p0.includes('safe_withdraw')){ o.add('move_edit'); o.add('backdate'); } p = Array.from(o); }
   if(p.includes(PERMS_V2)) return p;
   const out = new Set(p);
   if(p.includes('pos')){ ['reports','pos_discount','pos_credit','pos_returns','cash_moves','pos_free_item'].forEach(k=>out.add(k)); }
@@ -4822,6 +4832,8 @@ function effectivePermissions(u){
   out.add('edit_docs'); out.add('delete');
   return Array.from(out);
 }
+const ACC_ROUTE_PERM = {'acc':'acc_view','leb-journal':'acc_view','coa':'acc_view','coa-account':'acc_view','ledger-lb':'acc_view','leb-pl':'acc_statements','leb-bs':'acc_statements','leb-cf':'acc_statements','pl':'acc_statements','leb-cc':'acc_statements','leb-aging':'acc_statements','leb-vat':'acc_tax','leb-forms':'acc_tax','leb-nssf':'acc_tax','leb-payroll':'acc_tax','leb-payslip':'acc_tax','leb-assets':'acc_tools','leb-cheques':'acc_tools','leb-bank':'acc_tools','leb-fx':'acc_tools','leb-recurring':'acc_tools','leb-stock':'acc_tools','leb-health':'acc_tools','leb-pack':'acc_tools','leb-audit':'acc_tools','leb-year':'acc_year'};
+function accRouteOk(r){ const p = ACC_ROUTE_PERM[r]; return !p || hasPermission(p); }
 function permissionLabel(k){ const m = PERMISSION_MODULES.find(x=>x.key===k) || PERMISSION_EXTRAS.find(x=>x.key===k); return m? m.label : k; }
 let currentUser = null;
 let _expiryAlertShownThisSession = false;
@@ -5924,61 +5936,61 @@ function render(){
     html += crumbs([['الرئيسية','#/'],['كشف حساب Whish',null]]) + whishStatementView();
   } else if(parts[0]==='safe' && canSeeSafe()){
     html += crumbs([['الرئيسية','#/'],['الصندوق الأساسي',null]]) + safeView();
-  } else if(parts[0]==='coa'){
+  } else if(parts[0]==='coa' && accRouteOk('coa')){
     html += crumbs([['الرئيسية','#/'],['التصميم المحاسبي',null]]) + pcgTreeView(new URLSearchParams(location.hash.split('?')[1]||''));
-  } else if(parts[0]==='coa-account' && parts[1]){
+  } else if(parts[0]==='coa-account' && parts[1] && accRouteOk('coa-account')){
     html += crumbs([['الرئيسية','#/'],['لوحة الحسابات','#/coa'],[parts[1],null]]) + coaAccountView(parts[1]);
   } else if(parts[0]==='shift-closes' && (isPrivilegedUser(currentUser) || hasPermission('reports'))){
     html += crumbs([['الرئيسية','#/'],['سجل إقفال الصناديق',null]]) + shiftClosesView();
-  } else if(parts[0]==='ledger-lb' && hasPermission('reports')){
+  } else if(parts[0]==='ledger-lb' && accRouteOk('ledger-lb')){
     html += crumbs([['الرئيسية','#/'],['القيود',null]]) + journalLbView(new URLSearchParams(location.hash.split('?')[1]||''));
-  } else if(parts[0]==='pl' && hasPermission('reports')){
+  } else if(parts[0]==='pl' && accRouteOk('pl')){
     html += crumbs([['الرئيسية','#/'],['كشف الإيرادات والأعباء',null]]) + plView(new URLSearchParams(location.hash.split('?')[1]||''));
-  } else if(parts[0]==='acc' && hasPermission('reports')){
+  } else if(parts[0]==='acc' && accRouteOk('acc')){
     html += crumbs([['الرئيسية','#/'],['المحاسبة',null]]) + accHubView();
-  } else if(parts[0]==='leb-bs' && hasPermission('reports')){
+  } else if(parts[0]==='leb-bs' && accRouteOk('leb-bs')){
     html += crumbs([['الرئيسية','#/'],['المحاسبة','#/acc'],['الميزانية العمومية',null]]) + lebBSView(new URLSearchParams(location.hash.split('?')[1]||''));
-  } else if(parts[0]==='leb-cf' && hasPermission('reports')){
+  } else if(parts[0]==='leb-cf' && accRouteOk('leb-cf')){
     html += crumbs([['الرئيسية','#/'],['المحاسبة','#/acc'],['جدول التدفقات النقدية',null]]) + lebCFView(new URLSearchParams(location.hash.split('?')[1]||''));
-  } else if(parts[0]==='leb-stock' && hasPermission('reports')){
+  } else if(parts[0]==='leb-stock' && accRouteOk('leb-stock')){
     html += crumbs([['الرئيسية','#/'],['المحاسبة','#/acc'],['المخزون والجرد',null]]) + lebStockView();
-  } else if(parts[0]==='leb-audit' && hasPermission('reports')){
+  } else if(parts[0]==='leb-audit' && accRouteOk('leb-audit')){
     html += crumbs([['الرئيسية','#/'],['المحاسبة','#/acc'],['سجل المحذوفات',null]]) + lebAuditView();
-  } else if(parts[0]==='leb-payroll' && hasPermission('reports')){
+  } else if(parts[0]==='leb-payroll' && accRouteOk('leb-payroll')){
     html += crumbs([['الرئيسية','#/'],['المحاسبة','#/acc'],['الرواتب',null]]) + lebPayrollView(new URLSearchParams(location.hash.split('?')[1]||''));
-  } else if(parts[0]==='leb-payslip' && parts[1] && hasPermission('reports')){
+  } else if(parts[0]==='leb-payslip' && parts[1] && accRouteOk('leb-payslip')){
     html += crumbs([['الرئيسية','#/'],['المحاسبة','#/acc'],['الرواتب','#/leb-payroll'],['قسيمة راتب',null]]) + lebPayslipView(parts[1]);
-  } else if(parts[0]==='leb-cheques' && hasPermission('reports')){
+  } else if(parts[0]==='leb-cheques' && accRouteOk('leb-cheques')){
     html += crumbs([['الرئيسية','#/'],['المحاسبة','#/acc'],['الشيكات',null]]) + lebChequesView(new URLSearchParams(location.hash.split('?')[1]||''));
-  } else if(parts[0]==='leb-recurring' && hasPermission('reports')){
+  } else if(parts[0]==='leb-recurring' && accRouteOk('leb-recurring')){
     html += crumbs([['الرئيسية','#/'],['المحاسبة','#/acc'],['القيود الدورية',null]]) + lebRecurringView();
-  } else if(parts[0]==='leb-cc' && hasPermission('reports')){
+  } else if(parts[0]==='leb-cc' && accRouteOk('leb-cc')){
     html += crumbs([['الرئيسية','#/'],['المحاسبة','#/acc'],['مراكز الكلفة',null]]) + lebCCView(new URLSearchParams(location.hash.split('?')[1]||''));
-  } else if(parts[0]==='leb-aging' && hasPermission('reports')){
+  } else if(parts[0]==='leb-aging' && accRouteOk('leb-aging')){
     html += crumbs([['الرئيسية','#/'],['المحاسبة','#/acc'],['أعمار الديون',null]]) + lebAgingView(new URLSearchParams(location.hash.split('?')[1]||''));
-  } else if(parts[0]==='leb-year' && hasPermission('reports')){
+  } else if(parts[0]==='leb-year' && accRouteOk('leb-year')){
     html += crumbs([['الرئيسية','#/'],['المحاسبة','#/acc'],['السنة المالية',null]]) + lebYearView();
   } else if(parts[0]==='guide'){
     html += crumbs([['الرئيسية','#/'],['دليل الاستخدام',null]]) + guideView(new URLSearchParams(location.hash.split('?')[1]||''));
-  } else if(parts[0]==='leb-health' && hasPermission('reports')){
+  } else if(parts[0]==='leb-health' && accRouteOk('leb-health')){
     html += crumbs([['الرئيسية','#/'],['المحاسبة','#/acc'],['فحص الدفاتر',null]]) + lebHealthView();
-  } else if(parts[0]==='leb-pack' && hasPermission('reports')){
+  } else if(parts[0]==='leb-pack' && accRouteOk('leb-pack')){
     html += crumbs([['الرئيسية','#/'],['المحاسبة','#/acc'],['ملف المحاسب السنوي',null]]) + lebPackView();
-  } else if(parts[0]==='leb-forms' && hasPermission('reports')){
+  } else if(parts[0]==='leb-forms' && accRouteOk('leb-forms')){
     html += crumbs([['الرئيسية','#/'],['المحاسبة','#/acc'],['نماذج المالية',null]]) + lebFormsView(new URLSearchParams(location.hash.split('?')[1]||''));
-  } else if(parts[0]==='leb-vat' && hasPermission('reports')){
+  } else if(parts[0]==='leb-vat' && accRouteOk('leb-vat')){
     html += crumbs([['الرئيسية','#/'],['المحاسبة','#/acc'],['TVA',null]]) + lebVatView(new URLSearchParams(location.hash.split('?')[1]||''));
-  } else if(parts[0]==='leb-assets' && hasPermission('reports')){
+  } else if(parts[0]==='leb-assets' && accRouteOk('leb-assets')){
     html += crumbs([['الرئيسية','#/'],['المحاسبة','#/acc'],['الأصول الثابتة',null]]) + lebAssetsView();
-  } else if(parts[0]==='leb-fx' && hasPermission('reports')){
+  } else if(parts[0]==='leb-fx' && accRouteOk('leb-fx')){
     html += crumbs([['الرئيسية','#/'],['المحاسبة','#/acc'],['صرف العملات',null]]) + lebFxView();
-  } else if(parts[0]==='leb-bank' && hasPermission('reports')){
+  } else if(parts[0]==='leb-bank' && accRouteOk('leb-bank')){
     html += crumbs([['الرئيسية','#/'],['المحاسبة','#/acc'],['تسوية المصرف',null]]) + lebBankView(new URLSearchParams(location.hash.split('?')[1]||''));
-  } else if(parts[0]==='leb-nssf' && hasPermission('reports')){
+  } else if(parts[0]==='leb-nssf' && accRouteOk('leb-nssf')){
     html += crumbs([['الرئيسية','#/'],['المحاسبة','#/acc'],['الضمان الاجتماعي',null]]) + lebNssfView(new URLSearchParams(location.hash.split('?')[1]||''));
-  } else if(parts[0]==='leb-journal' && hasPermission('reports')){
+  } else if(parts[0]==='leb-journal' && accRouteOk('leb-journal')){
     html += crumbs([['الرئيسية','#/'],['القيود',null]]) + lebJournalView(new URLSearchParams(location.hash.split('?')[1]||''));
-  } else if(parts[0]==='leb-pl' && hasPermission('reports')){
+  } else if(parts[0]==='leb-pl' && accRouteOk('leb-pl')){
     html += crumbs([['الرئيسية','#/'],['كشف الإيرادات والأعباء',null]]) + lebPLView(new URLSearchParams(location.hash.split('?')[1]||''));
   } else if(parts[0]==='journal'){
     const qs = new URLSearchParams(location.hash.split('?')[1]||'');
@@ -6182,13 +6194,13 @@ function hubView(){
       <div class="hub-sub">كل قبض وصرف عبر Whish</div>
       <div class="hub-amt num" style="color:#a3174a">${(()=>{ const w = whishBalanceParts(); return fmtNum(Math.round(w.lbp))+' '+secCurLabel()+(Math.abs(w.usd)>=0.005? ' + $'+w.usd.toFixed(2) : ''); })()}</div>
     </div>`}] : []),
-    {key:'coa', perm:'reports', html:`<div class="hub-card" data-nav="#/coa">
+    {key:'coa', perm:'acc_view', html:`<div class="hub-card" data-nav="#/coa">
       <div class="hub-icon">📚</div>
       <div class="hub-title">لوحة الحسابات</div>
       <div class="hub-sub">الفئات السبعة — حسابات وقيود</div>
       <div class="hub-amt" style="color:var(--steel)">افتح الشجرة</div>
     </div>`},
-    {key:'acc', perm:'reports', html:`<div class="hub-card" data-nav="#/acc">
+    {key:'acc', perm:'acc_view', html:`<div class="hub-card" data-nav="#/acc">
       <div class="hub-icon">🏛</div>
       <div class="hub-title">المحاسبة</div>
       <div class="hub-sub">الميزانية العمومية، TVA، الأصول، الضمان…</div>
@@ -9052,7 +9064,7 @@ function openCashMovementModal(type, currency, shift){
       <button class="btn btn-primary" id="cm_save">حفظ</button>
     </div>
   </div>`;
-  document.body.appendChild(wrap);
+  document.body.appendChild(wrap); lockDateInputs(wrap);
   wrap.querySelector('#cm_cancel').addEventListener('click', ()=>wrap.remove());
   wrap.querySelector('#cm_save').addEventListener('click', async ()=>{
     const amount = Number(wrap.querySelector('#cm_amount').value);
@@ -10478,7 +10490,7 @@ function openGlVoucherModal(pre){
     <div style="font-size:12px; color:var(--ink-soft); margin-top:6px; line-height:1.7;">اختار أي حساب من التصميم المحاسبي. المدين = «من» (المصروف، الصندوق يلي فات عليه…)، الدائن = «إلى» (الصندوق يلي طلع منو، المورد…). آخر سطر بيتعبّى لحالو بالفرق ليسكّر القيد؛ إذا بدك تقسم الفرق على أكتر من حساب، حط أول مبلغ واكبس ⚖️ على السطر التاني. فيك تكتب شرح لكل سطر لحالو.</div>
     <div id="gv_err" style="color:var(--debit); font-size:13px; min-height:18px;"></div>
     <div class="row"><button class="btn" id="gv_x">إلغاء</button><button class="btn btn-primary" id="gv_ok">💾 حفظ القيد</button></div></div>`;
-  document.body.appendChild(wrap);
+  document.body.appendChild(wrap); lockDateInputs(wrap);
   const $ = q=>wrap.querySelector(q), tb = $('#gv_t tbody');
   /* بحث الحسابات: رقم ← الحسابات يلي بتبلّش فيه (6 = كل الفئة 6، 62 = 62…)؛ كلام ← الاسم */
   const pop = document.createElement('div'); pop.className = 'gv-pop'; pop.setAttribute('data-noi18n', '');
@@ -10545,11 +10557,12 @@ function openGlVoucherModal(pre){
     _jrCache = null; wrap.remove(); toast(r && r.ok===false? '⚠️ صار خطأ بالحفظ' : '✅ انحفظ القيد'); render();
   });
 }
+function lockDateInputs(w){ if(!currentUser || isPrivilegedUser(currentUser) || hasPermission('backdate')) return; w.querySelectorAll('#sm_date,#ww_date,#cm_date,#me_date,#gv_date').forEach(i=>{ i.disabled = true; i.title = 'ما عندك صلاحية تغيير التاريخ'; }); }
 function ledEditBtn(e){   // كشف الحساب: كل قيد فيك تعدّلو — القيد اليدوي هون، حركة الصندوق هون، وغيرها بيفتح المستند
-  if(!e || (typeof canPostGl==='function' && !canPostGl())) return '';
-  if(e.kind==='gl' && glRefOfEntry(e)) return glEditBtns(e);
+  if(!e) return '';
+  if(e.kind==='gl'){ return glRefOfEntry(e) && canPostGl()? glEditBtns(e) : ''; }
   const k = String(e.key||'');
-  if(k.indexOf('cm:')===0 && typeof moveEditable==='function'){ const m = (DB.cashMovements||[]).find(x=>x.id===k.slice(3)); if(m && moveEditable(m)) return ` <button class="btn btn-sm no-print" data-led-move="${escapeHtml(m.id)}" title="تعديل الحركة">✏️</button>`; }
+  if(k.indexOf('cm:')===0 && typeof moveEditable==='function'){ const m = (DB.cashMovements||[]).find(x=>x.id===k.slice(3)); if(m && moveEditable(m) && hasPermission('move_edit')) return ` <button class="btn btn-sm no-print" data-led-move="${escapeHtml(m.id)}" title="تعديل الحركة">✏️</button>`; }
   if(e.nav) return ` <button class="btn btn-sm no-print" data-led-nav="${escapeHtml(e.nav)}" title="افتح المستند لتعدّلو">✏️</button>`;
   return ''; }
 document.addEventListener('click', ev=>{ const b = ev.target.closest && ev.target.closest('[data-led-move],[data-led-nav]'); if(!b) return; ev.preventDefault(); ev.stopPropagation();
@@ -11233,7 +11246,7 @@ function accHubView(){
   ];
   return `<div class="card"><h2><span class="dot"></span> 🏛 المحاسبة — النظام المحاسبي اللبناني</h2>
     <p style="font-size:12.5px; color:var(--ink-soft);">كل الكشوفات محسوبة من القيود (مدين = دائن). اختار شو بدك:</p></div>
-    <div class="hub-grid">${tiles.map(t=>`<div class="hub-card" data-nav="${t[0]}"><div class="hub-icon">${t[1]}</div><div class="hub-title">${t[2]}</div><div class="hub-sub">${t[3]}</div></div>`).join('')}</div>${appFooter()}`;
+    <div class="hub-grid">${tiles.filter(t=>accRouteOk(t[0].slice(2).split('?')[0])).map(t=>`<div class="hub-card" data-nav="${t[0]}"><div class="hub-icon">${t[1]}</div><div class="hub-title">${t[2]}</div><div class="hub-sub">${t[3]}</div></div>`).join('')}</div>${appFooter()}`;
 }
 /* ---------- 🏛 الميزانية العمومية ---------- */
 function lebBSView(qs){
@@ -12768,7 +12781,7 @@ function openWhishWithdrawModal(){
     <div id="ww_err" style="color:var(--debit); font-size:13px; min-height:18px;"></div>
     <div class="row"><button class="btn" id="ww_cancel">إلغاء</button><button class="btn btn-primary" id="ww_ok">✅ حفظ</button></div>
   </div>`;
-  document.body.appendChild(wrap);
+  document.body.appendChild(wrap); lockDateInputs(wrap);
   const $ = q=>wrap.querySelector(q);
   setTimeout(()=>$('#ww_amt').focus(), 50);
   $('#ww_cancel').addEventListener('click', ()=>wrap.remove());
@@ -12807,7 +12820,7 @@ function openSafeMoveModal(type){
     <div id="sm_err" style="color:var(--debit); font-size:13px; min-height:18px;"></div>
     <div class="row"><button class="btn" id="sm_cancel">إلغاء</button><button class="btn btn-primary" id="sm_ok">✅ حفظ</button></div>
   </div>`;
-  document.body.appendChild(wrap);
+  document.body.appendChild(wrap); lockDateInputs(wrap);
   const $ = q=>wrap.querySelector(q);
   setTimeout(()=>$('#sm_amt').focus(), 50);
   $('#sm_cancel').addEventListener('click', ()=>wrap.remove());
@@ -14311,7 +14324,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-11-23 · 17:45 · v135';
+const APP_TRADE_BUILD = '2026-11-23 · 18:10 · v136';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 // ===== ترجيع حركات ناقصة من ملف (إضافة بس — ما منمحي ولا منغيّر شي موجود) =====
 document.addEventListener('change', async e=>{
@@ -16079,7 +16092,7 @@ function openUserModal(user){
     const dupPhone = phone && (DB.settings.users||[]).find(u=> u.phone && normPhoneLB(u.phone)===phone && (!user || u.id!==user.id));
     if(dupPhone){ toast('رقم الواتساب هذا مسجّل للمستخدم «'+dupPhone.username+'»'); return; }
     if(isNew){
-      const perms = [...Array.from(wrap.querySelectorAll('.user-perm-chk:checked')).map(c=>c.value), PERMS_V2];
+      const perms = [...Array.from(wrap.querySelectorAll('.user-perm-chk:checked')).map(c=>c.value), PERMS_V2, PERMS_V3];
       const nu = {id:uid(), username, password, role:'custom', permissions:perms, phone};
       DB.settings.users = [...(DB.settings.users||[]), nu];
     } else {
@@ -16087,7 +16100,7 @@ function openUserModal(user){
       const passwordChanged = user.password !== password;
       user.username = username; user.password = password; user.phone = phone;
       if(!isPriv){
-        user.permissions = [...Array.from(wrap.querySelectorAll('.user-perm-chk:checked')).map(c=>c.value), PERMS_V2];
+        user.permissions = [...Array.from(wrap.querySelectorAll('.user-perm-chk:checked')).map(c=>c.value), PERMS_V2, PERMS_V3];
       }
       const isSelf = currentUser && currentUser.id===user.id;
       if(isSelf) currentUser = user;

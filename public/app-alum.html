@@ -2170,7 +2170,7 @@ function openGlVoucherModal(pre){
     <div style="font-size:12px; color:var(--ink-soft); margin-top:6px; line-height:1.7;">اختار أي حساب من التصميم المحاسبي. المدين = «من» (المصروف، الصندوق يلي فات عليه…)، الدائن = «إلى» (الصندوق يلي طلع منو، المورد…). آخر سطر بيتعبّى لحالو بالفرق ليسكّر القيد؛ إذا بدك تقسم الفرق على أكتر من حساب، حط أول مبلغ واكبس ⚖️ على السطر التاني. فيك تكتب شرح لكل سطر لحالو.</div>
     <div id="gv_err" style="color:var(--debit); font-size:13px; min-height:18px;"></div>
     <div class="row"><button class="btn" id="gv_x">إلغاء</button><button class="btn btn-primary" id="gv_ok">💾 حفظ القيد</button></div></div>`;
-  document.body.appendChild(wrap);
+  document.body.appendChild(wrap); lockDateInputs(wrap);
   const $ = q=>wrap.querySelector(q), tb = $('#gv_t tbody');
   /* بحث الحسابات: رقم ← الحسابات يلي بتبلّش فيه (6 = كل الفئة 6، 62 = 62…)؛ كلام ← الاسم */
   const pop = document.createElement('div'); pop.className = 'gv-pop'; pop.setAttribute('data-noi18n', '');
@@ -2237,9 +2237,10 @@ function openGlVoucherModal(pre){
     _jrCache = null; wrap.remove(); toast(r && r.ok===false? '⚠️ صار خطأ بالحفظ' : '✅ انحفظ القيد'); render();
   });
 }
+function lockDateInputs(w){ if(!currentUser || isPrivilegedUser(currentUser) || true) return; w.querySelectorAll('#sm_date,#ww_date,#cm_date,#me_date,#gv_date').forEach(i=>{ i.disabled = true; i.title = 'ما عندك صلاحية تغيير التاريخ'; }); }
 function ledEditBtn(e){   // كشف الحساب: كل قيد فيك تعدّلو — القيد اليدوي هون، حركة الصندوق هون، وغيرها بيفتح المستند
-  if(!e || (typeof canPostGl==='function' && !canPostGl())) return '';
-  if(e.kind==='gl' && glRefOfEntry(e)) return glEditBtns(e);
+  if(!e) return '';
+  if(e.kind==='gl'){ return glRefOfEntry(e) && canPostGl()? glEditBtns(e) : ''; }
   const k = String(e.key||'');
   if(k.indexOf('cm:')===0 && typeof moveEditable==='function'){ const m = (DB.cashMovements||[]).find(x=>x.id===k.slice(3)); if(m && moveEditable(m)) return ` <button class="btn btn-sm no-print" data-led-move="${escapeHtml(m.id)}" title="تعديل الحركة">✏️</button>`; }
   if(e.nav) return ` <button class="btn btn-sm no-print" data-led-nav="${escapeHtml(e.nav)}" title="افتح المستند لتعدّلو">✏️</button>`;
@@ -2438,7 +2439,7 @@ function accHubView(){
   ];
   return `<div class="card"><h2><span class="dot"></span> 🏛 المحاسبة — النظام المحاسبي اللبناني</h2>
     <p style="font-size:12.5px; color:var(--ink-soft);">كل الكشوفات محسوبة من القيود (مدين = دائن). اختار شو بدك:</p></div>
-    <div class="hub-grid">${tiles.map(t=>`<div class="hub-card" data-nav="${t[0]}"><div class="hub-icon">${t[1]}</div><div class="hub-title">${t[2]}</div><div class="hub-sub">${t[3]}</div></div>`).join('')}</div>${appFooter()}`;
+    <div class="hub-grid">${tiles.filter(t=>{ const p = routeRequiredPermission(t[0].slice(2).split('?')[0]); return !p || hasPermission(p); }).map(t=>`<div class="hub-card" data-nav="${t[0]}"><div class="hub-icon">${t[1]}</div><div class="hub-title">${t[2]}</div><div class="hub-sub">${t[3]}</div></div>`).join('')}</div>${appFooter()}`;
 }
 /* ---------- 🏛 الميزانية العمومية ---------- */
 function lebBSView(qs){
@@ -3448,7 +3449,12 @@ const PERMISSION_MODULES = [
   {key:'quotes', label:'عروض أسعار'},
   {key:'warehouse', label:'المستودع'},
   {key:'orders', label:'إنشاء طلبية'},
-  {key:'budget', label:'الميزانية'}
+  {key:'budget', label:'الميزانية'},
+  {key:'acc_view', label:'المحاسبة: دفتر اليومية ودفتر الأستاذ وميزان المراجعة والتصميم المحاسبي'},
+  {key:'acc_statements', label:'حساب النتيجة والميزانية العمومية والتدفقات النقدية وأعمار الديون'},
+  {key:'acc_tax', label:'TVA ونماذج المالية والضمان والرواتب'},
+  {key:'acc_tools', label:'أدوات المحاسب: الأصول، الشيكات، المصرف، صرف العملات، القيود الدورية، فحص الدفاتر، ملف المحاسب، سجل المحذوفات'},
+  {key:'acc_year', label:'السنة المالية: الأرصدة الافتتاحية وإقفال الأشهر والسنة'}
 ];
 let currentUser = null;
 let currentCustomerSession = null;
@@ -3458,7 +3464,9 @@ function isPrivilegedUser(u){ return u && (u.role==='admin' || u.role==='superus
 function hasPermission(moduleKey){
   if(!currentUser) return false;
   if(isPrivilegedUser(currentUser)) return true;
-  return (currentUser.permissions||[]).includes(moduleKey);
+  const p = currentUser.permissions||[];
+  if(/^acc_/.test(moduleKey) && !p.includes('v3')) return p.includes('budget');   // الموظف القديم: المحاسبة متل قبل (مع الميزانية) لحد ما ADMIN يعدّلو
+  return p.includes(moduleKey);
 }
 const SUPERADMIN_DEFAULT_PASSWORD = '';
 function migrateUsers(){
@@ -4335,7 +4343,7 @@ function routeRequiredPermission(routeKey){
     warehouse:'warehouse', 'warehouse-print':'warehouse', 'warehouse-item':'warehouse', stockout:'warehouse', stockin:'warehouse',
     orders:'orders', order:'orders', 'order-map':'orders',
     budget:'budget', 'budget-category':'budget', 'budget-overview':'budget',
-    acc:'budget', 'leb-journal':'budget', 'leb-pl':'budget', 'leb-bs':'budget', 'leb-year':'budget', 'leb-vat':'budget', 'leb-assets':'budget', 'leb-fx':'budget', 'leb-bank':'budget', 'leb-nssf':'budget', 'leb-cf':'budget', 'leb-audit':'budget', 'leb-payroll':'budget', 'leb-payslip':'budget', 'leb-cheques':'budget', 'leb-aging':'budget', 'leb-recurring':'budget', 'leb-cc':'budget', 'leb-forms':'budget', 'leb-pack':'budget', 'leb-health':'budget', coa:'budget',
+    acc:'acc_view', 'leb-journal':'acc_view', coa:'acc_view', 'coa-account':'acc_view', 'ledger-lb':'acc_view', 'leb-pl':'acc_statements', 'leb-bs':'acc_statements', 'leb-cf':'acc_statements', pl:'acc_statements', 'leb-cc':'acc_statements', 'leb-aging':'acc_statements', 'leb-vat':'acc_tax', 'leb-forms':'acc_tax', 'leb-nssf':'acc_tax', 'leb-payroll':'acc_tax', 'leb-payslip':'acc_tax', 'leb-assets':'acc_tools', 'leb-cheques':'acc_tools', 'leb-bank':'acc_tools', 'leb-fx':'acc_tools', 'leb-recurring':'acc_tools', 'leb-stock':'acc_tools', 'leb-health':'acc_tools', 'leb-pack':'acc_tools', 'leb-audit':'acc_tools', 'leb-year':'acc_year',
     settings:'__admin__', trash:'__admin__', 'customer-accounts':'__admin__', 'worker-accounts':'__admin__'
   };
   return map[routeKey] || null;
@@ -4778,7 +4786,7 @@ function hubView(){
       <div class="hub-sub">${DB.budgetCategories.length} حقل</div>
       <div class="hub-amt" style="color:var(--steel)">مقبوضات ومدفوعات</div>
     </div>`},
-    {perm:'budget', html:`<div class="hub-card" data-nav="#/acc">
+    {perm:'acc_view', html:`<div class="hub-card" data-nav="#/acc">
       <div class="hub-icon">🏛</div>
       <div class="hub-title">المحاسبة</div>
       <div class="hub-sub">القيود، الميزانية العمومية، TVA، الأصول، الضمان…</div>
@@ -8296,7 +8304,7 @@ function openUserModal(user){
   const wrap = document.createElement('div');
   wrap.className='modal-bg';
   const permsHtml = PERMISSION_MODULES.map(m=>{
-    const checked = user && (user.permissions||[]).includes(m.key) ? 'checked' : '';
+    const up = (user && user.permissions)||[], checked = user && (up.includes(m.key) || (/^acc_/.test(m.key) && !up.includes('v3') && up.includes('budget'))) ? 'checked' : '';
     return `<label style="display:flex; align-items:center; gap:8px; margin-bottom:8px; cursor:pointer; font-weight:600; font-size:13.5px;">
       <input type="checkbox" class="user-perm-chk" value="${m.key}" ${checked} style="width:auto;"> ${m.label}
     </label>`;
@@ -8334,7 +8342,7 @@ function openUserModal(user){
     const dupPhone = phone && (DB.settings.users||[]).find(u=> u.phone && normPhoneLB(u.phone)===phone && (!user || u.id!==user.id));
     if(dupPhone){ toast('رقم الواتساب هذا مسجّل للمستخدم «'+dupPhone.username+'»'); return; }
     if(isNew){
-      const perms = Array.from(wrap.querySelectorAll('.user-perm-chk:checked')).map(c=>c.value);
+      const perms = Array.from(wrap.querySelectorAll('.user-perm-chk:checked')).map(c=>c.value).concat(['v3']);
       const nu = {id:uid(), username, password, role:'custom', permissions:perms, phone};
       DB.settings.users = [...(DB.settings.users||[]), nu];
     } else {
@@ -8342,7 +8350,7 @@ function openUserModal(user){
       const passwordChanged = user.password !== password;
       user.username = username; user.password = password; user.phone = phone;
       if(!isPriv){
-        user.permissions = Array.from(wrap.querySelectorAll('.user-perm-chk:checked')).map(c=>c.value);
+        user.permissions = Array.from(wrap.querySelectorAll('.user-perm-chk:checked')).map(c=>c.value).concat(['v3']);
       }
       const isSelf = currentUser && currentUser.id===user.id;
       if(isSelf) currentUser = user;

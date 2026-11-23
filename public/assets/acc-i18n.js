@@ -1,5 +1,15 @@
 /* LibanApps — ترجمة برامج المحاسبة (التجاري والصناعي) للإنكليزي + زر عربي/EN */
 window.ACC_EN = {
+  "المحاسبة: دفتر اليومية ودفتر الأستاذ وميزان المراجعة والتصميم المحاسبي": "Accounting: journal, ledger, trial balance and chart of accounts",
+  "حساب النتيجة والميزانية العمومية والتدفقات النقدية وأعمار الديون": "Income statement, balance sheet, cash flow and debt aging",
+  "TVA ونماذج المالية والضمان والرواتب": "VAT, tax forms, NSSF and payroll",
+  "أدوات المحاسب: الأصول، الشيكات، المصرف، صرف العملات، القيود الدورية، الجرد، فحص الدفاتر، ملف المحاسب، سجل المحذوفات": "Accountant tools: assets, cheques, bank, currency exchange, recurring entries, stock count, books check, accountant pack, deletions log",
+  "أدوات المحاسب: الأصول، الشيكات، المصرف، صرف العملات، القيود الدورية، فحص الدفاتر، ملف المحاسب، سجل المحذوفات": "Accountant tools: assets, cheques, bank, currency exchange, recurring entries, books check, accountant pack, deletions log",
+  "السنة المالية: الأرصدة الافتتاحية وإقفال الأشهر والسنة": "Financial year: opening balances, month and year closing",
+  "تعديل وإلغاء حركات الصندوق": "Edit and cancel cash box movements",
+  "تسجيل عمليات بتاريخ غير اليوم وتغيير تاريخ الحركات": "Record operations on a date other than today and change movement dates",
+  "ما عندك صلاحية تغيير التاريخ": "You are not allowed to change the date",
+  "ما عندك صلاحية تعديل حركات الصندوق": "You are not allowed to edit cash box movements",
   "تعديل الحركة": "Edit movement",
   "افتح المستند لتعدّلو": "Open the document to edit it",
   "⏳ عم نحفظ…": "⏳ Saving…",
@@ -4282,6 +4292,16 @@ window.ACC_EN = {
 };
 /* Français — même clés arabes que ACC_EN */
 window.ACC_FR = {
+  "المحاسبة: دفتر اليومية ودفتر الأستاذ وميزان المراجعة والتصميم المحاسبي": "Comptabilité : journal, grand livre, balance et plan comptable",
+  "حساب النتيجة والميزانية العمومية والتدفقات النقدية وأعمار الديون": "Compte de résultat, bilan, flux de trésorerie et balance âgée",
+  "TVA ونماذج المالية والضمان والرواتب": "TVA, formulaires fiscaux, CNSS et paie",
+  "أدوات المحاسب: الأصول، الشيكات، المصرف، صرف العملات، القيود الدورية، الجرد، فحص الدفاتر، ملف المحاسب، سجل المحذوفات": "Outils du comptable : immobilisations, chèques, banque, change, écritures périodiques, inventaire, contrôle des livres, dossier comptable, journal des suppressions",
+  "أدوات المحاسب: الأصول، الشيكات، المصرف، صرف العملات، القيود الدورية، فحص الدفاتر، ملف المحاسب، سجل المحذوفات": "Outils du comptable : immobilisations, chèques, banque, change, écritures périodiques, contrôle des livres, dossier comptable, journal des suppressions",
+  "السنة المالية: الأرصدة الافتتاحية وإقفال الأشهر والسنة": "Exercice : soldes d'ouverture, clôture des mois et de l'année",
+  "تعديل وإلغاء حركات الصندوق": "Modifier et annuler les mouvements de caisse",
+  "تسجيل عمليات بتاريخ غير اليوم وتغيير تاريخ الحركات": "Saisir des opérations à une autre date qu'aujourd'hui et modifier les dates",
+  "ما عندك صلاحية تغيير التاريخ": "Vous n'avez pas le droit de modifier la date",
+  "ما عندك صلاحية تعديل حركات الصندوق": "Vous n'avez pas le droit de modifier les mouvements de caisse",
   "تعديل الحركة": "Modifier le mouvement",
   "افتح المستند لتعدّلو": "Ouvrir le document pour le modifier",
   "⏳ عم نحفظ…": "⏳ Enregistrement…",
