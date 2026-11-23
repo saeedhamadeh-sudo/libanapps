@@ -1,5 +1,10 @@
 /* LibanApps — ترجمة برامج المحاسبة (التجاري والصناعي) للإنكليزي + زر عربي/EN */
 window.ACC_EN = {
+  "شرح هالسطر": "Line description",
+  "حط بهالسطر الفرق يلي بيسكّر القيد": "Put the balancing difference on this line",
+  "حذف السطر": "Delete line",
+  "الشرح": "Description",
+  "اختار أي حساب من التصميم المحاسبي. المدين = «من» (المصروف، الصندوق يلي فات عليه…)، الدائن = «إلى» (الصندوق يلي طلع منو، المورد…). آخر سطر بيتعبّى لحالو بالفرق ليسكّر القيد؛ إذا بدك تقسم الفرق على أكتر من حساب، حط أول مبلغ واكبس ⚖️ على السطر التاني. فيك تكتب شرح لكل سطر لحالو.": "Choose any account from the chart. Debit = “from” (the expense, the cash box money went into…), credit = “to” (the cash box money left, the supplier…). The last line fills itself with the difference to balance the entry; to split the difference over several accounts, enter the first amount and press ⚖️ on the second line. You can write a separate description for each line.",
   "مؤونات لمواجهة هبوط قيم حسابات الذمم المدينة المختلفة": "Provisions for diminution in value of misc. receivables",
   "سندات توظيف": "Security placements",
   "أسهم صادرة عن الشركة ومعاد شراؤها": "Purchases of the company own shares",
@@ -4248,6 +4253,11 @@ window.ACC_EN = {
 };
 /* Français — même clés arabes que ACC_EN */
 window.ACC_FR = {
+  "شرح هالسطر": "Libellé de la ligne",
+  "حط بهالسطر الفرق يلي بيسكّر القيد": "Mettre l'écart d'équilibre sur cette ligne",
+  "حذف السطر": "Supprimer la ligne",
+  "الشرح": "Libellé",
+  "اختار أي حساب من التصميم المحاسبي. المدين = «من» (المصروف، الصندوق يلي فات عليه…)، الدائن = «إلى» (الصندوق يلي طلع منو، المورد…). آخر سطر بيتعبّى لحالو بالفرق ليسكّر القيد؛ إذا بدك تقسم الفرق على أكتر من حساب، حط أول مبلغ واكبس ⚖️ على السطر التاني. فيك تكتب شرح لكل سطر لحالو.": "Choisissez n'importe quel compte du plan. Débit = « de » (la charge, la caisse qui a reçu…), crédit = « à » (la caisse qui a payé, le fournisseur…). La dernière ligne se remplit automatiquement avec l'écart pour équilibrer l'écriture ; pour répartir l'écart sur plusieurs comptes, saisissez le premier montant et appuyez sur ⚖️ sur la deuxième ligne. Vous pouvez saisir un libellé pour chaque ligne.",
   "مؤونات لمواجهة هبوط قيم حسابات الذمم المدينة المختلفة": "Provisions pour dépréciation des comptes de débiteurs divers",
   "سندات توظيف": "Valeurs mobilières de placement",
   "أسهم صادرة عن الشركة ومعاد شراؤها": "Actions émises par la société et rattachées par elle",

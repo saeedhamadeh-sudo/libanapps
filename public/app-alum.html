@@ -1769,7 +1769,7 @@ function jrApplyClosing(out){
 }
 function journalEntriesBuild(){
   const M = alAccounts().map_, out = [], vatOn = accVatOn(), vr = settingsVatRate()/100, vatPur = vatOn && !!accCfg().vatPurchases;
-  const addL = (key, date, at, kind, doc, desc, nav, lines)=>{ lines = lines.filter(l=>l.a && ((l.dr||0)>0.0000001 || (l.cr||0)>0.0000001)).map(l=>({a:String(l.a), dr:roundAmt(l.dr||0), cr:roundAmt(l.cr||0)}));
+  const addL = (key, date, at, kind, doc, desc, nav, lines)=>{ lines = lines.filter(l=>l.a && ((l.dr||0)>0.0000001 || (l.cr||0)>0.0000001)).map(l=>Object.assign({a:String(l.a), dr:roundAmt(l.dr||0), cr:roundAmt(l.cr||0)}, l.n? {n:String(l.n)} : {}));
     if(lines.length<2) return; out.push({key, date:date||'', at:at||0, kind, doc, desc, nav, lines}); };
   const add = (date, at, kind, doc, desc, nav, dr, cr, v, key)=>{ v = Math.abs(Number(v)||0); if(!(v>0) || !dr || !cr) return; addL(key, date, at, kind, doc, desc, nav, [{a:dr, dr:v},{a:cr, cr:v}]); };
   const op = accCfg().opening;
@@ -2023,14 +2023,14 @@ function glLinkedIds(){ const s = new Set(); (accCfg().assets||[]).forEach(x=>{ 
 async function glSaveVoucher(L, o){
   const id0 = o.editRef? String(o.editRef).slice(2) : null;
   const ok = await accSave(a=>{ const old = id0? (a.gl||[]).find(x=>x.id===id0) : null;
-    const g = {id:id0||uid(), at:old? (old.at||Date.now()) : Date.now(), date:o.date, desc:o.desc||'', lines:L.map(l=>({a:l.a, dr:Number(l.dr)||0, cr:Number(l.cr)||0})), by:(old&&old.by)||(currentUser&&currentUser.username)};
+    const g = {id:id0||uid(), at:old? (old.at||Date.now()) : Date.now(), date:o.date, desc:o.desc||'', lines:L.map(l=>Object.assign({a:l.a, dr:Number(l.dr)||0, cr:Number(l.cr)||0}, l.n? {n:l.n} : {})), by:(old&&old.by)||(currentUser&&currentUser.username)};
     if(id0){ g.ed = currentUser&&currentUser.username; if(old) a.glDel = (a.glDel||[]).concat([Object.assign({}, old, {replacedAt:Date.now(), replacedBy:g.ed})]).slice(-500); }
     a.gl = (a.gl||[]).filter(x=>x.id!==id0).concat([g]); });
   _jrCache = null; return {ok:ok!==false};
 }
 function glRefOfEntry(e){ const k = String(e.key||''); if(k.indexOf('gl:')!==0) return null; const id = k.slice(3); const g = (accCfg().gl||[]).find(x=>x.id===id); if(!g || g.fx || glLinkedIds().has(id)) return null; return 'g:'+id; }
 function glVoucherGet(ref){ const g = (accCfg().gl||[]).find(x=>x.id===String(ref).slice(2)); if(!g) return null;
-  const lines = Array.isArray(g.lines)? g.lines.map(l=>({a:l.a, dr:l.dr||'', cr:l.cr||''})) : [{a:g.dr, dr:g.amt, cr:''}, {a:g.cr, dr:'', cr:g.amt}];
+  const lines = Array.isArray(g.lines)? g.lines.map(l=>({a:l.a, dr:l.dr||'', cr:l.cr||'', n:l.n||''})) : [{a:g.dr, dr:g.amt, cr:''}, {a:g.cr, dr:'', cr:g.amt}];
   return {lines, date:g.date, desc:g.desc||''}; }
 async function glDeleteVoucher(ref){ const id = String(ref).slice(2); const r = await accSave(a=>{ const old = (a.gl||[]).find(x=>x.id===id); if(old) a.glDel = (a.glDel||[]).concat([Object.assign({}, old, {deletedAt:Date.now(), deletedBy:currentUser&&currentUser.username})]).slice(-500); a.gl = (a.gl||[]).filter(x=>x.id!==id); }); _jrCache = null; return r; }
 function pcgTreeView(qs){
@@ -2124,26 +2124,32 @@ function openGlVoucherModal(pre){
     <div class="grid grid-2"><div class="field"><label>التاريخ</label><input type="date" id="gv_date" value="${pre.date||todayISO()}"></div>
       <div class="field"><label>البيان</label><input type="text" id="gv_desc" value="${escapeHtml(pre.desc||'')}" placeholder="مثلاً: إيجار المحل عن شهر 11"></div></div>
     ${curSel? `<div class="field" style="max-width:220px;"><label>العملة</label><select id="gv_cur">${curSel}</select></div>` : ''}
-    <div class="table-scroll"><table id="gv_t" style="font-size:13.5px;"><thead><tr><th style="min-width:260px;">الحساب (من الفئات 1–7)</th><th>مدين (من)</th><th>دائن (إلى)</th><th></th></tr></thead><tbody></tbody>
-      <tfoot><tr style="font-weight:800;"><td>المجموع <span id="gv_diff" style="font-weight:700; margin-inline-start:8px;"></span></td><td class="num" id="gv_td"></td><td class="num" id="gv_tc"></td><td></td></tr></tfoot></table></div>
+    <div class="table-scroll"><table id="gv_t" style="font-size:13.5px;"><thead><tr><th style="min-width:240px;">الحساب (من الفئات 1–7)</th><th>مدين (من)</th><th>دائن (إلى)</th><th style="min-width:150px;">الشرح</th><th></th></tr></thead><tbody></tbody>
+      <tfoot><tr style="font-weight:800;"><td>المجموع <span id="gv_diff" style="font-weight:700; margin-inline-start:8px;"></span></td><td class="num" id="gv_td"></td><td class="num" id="gv_tc"></td><td colspan="2"></td></tr></tfoot></table></div>
     <button class="btn btn-sm" id="gv_add">➕ سطر</button>
-    <div style="font-size:12px; color:var(--ink-soft); margin-top:6px; line-height:1.7;">اختار أي حساب من التصميم المحاسبي. المدين = «من» (المصروف، الصندوق يلي فات عليه…)، الدائن = «إلى» (الصندوق يلي طلع منو، المورد…). القيد لازم يكون متوازن: مجموع المدين = مجموع الدائن. إذا الحساب مش موجود، افتحو من 📚 التصميم المحاسبي.</div>
+    <div style="font-size:12px; color:var(--ink-soft); margin-top:6px; line-height:1.7;">اختار أي حساب من التصميم المحاسبي. المدين = «من» (المصروف، الصندوق يلي فات عليه…)، الدائن = «إلى» (الصندوق يلي طلع منو، المورد…). آخر سطر بيتعبّى لحالو بالفرق ليسكّر القيد؛ إذا بدك تقسم الفرق على أكتر من حساب، حط أول مبلغ واكبس ⚖️ على السطر التاني. فيك تكتب شرح لكل سطر لحالو.</div>
     <div id="gv_err" style="color:var(--debit); font-size:13px; min-height:18px;"></div>
     <div class="row"><button class="btn" id="gv_x">إلغاء</button><button class="btn btn-primary" id="gv_ok">💾 حفظ القيد</button></div></div>`;
   document.body.appendChild(wrap);
   const $ = q=>wrap.querySelector(q), tb = $('#gv_t tbody');
-  const addRow = l=>{ const tr = document.createElement('tr');
+  const addRow = (l, auto)=>{ const tr = document.createElement('tr'); if(auto) tr.dataset.auto = '1';
     tr.innerHTML = `<td><input type="text" class="gv-a" list="gv_accs" value="${escapeHtml(lbl(l.a))}" placeholder="اكتب الرقم أو الاسم" style="width:100%;"></td>
-      <td><input type="number" class="gv-dr num" value="${l.dr||''}" step="any" style="width:120px;"></td><td><input type="number" class="gv-cr num" value="${l.cr||''}" step="any" style="width:120px;"></td>
-      <td><button class="btn btn-sm" title="حذف السطر">✕</button></td>`;
-    tr.querySelector('button').addEventListener('click', ()=>{ if(tb.children.length>2){ tr.remove(); tot(); } });
-    tr.querySelectorAll('input').forEach(i=>i.addEventListener('input', tot)); tb.appendChild(tr); };
+      <td><input type="number" class="gv-dr num" value="${l.dr||''}" step="any" style="width:115px;"></td><td><input type="number" class="gv-cr num" value="${l.cr||''}" step="any" style="width:115px;"></td>
+      <td><input type="text" class="gv-n" value="${escapeHtml(l.n||'')}" placeholder="شرح هالسطر" style="width:100%;"></td>
+      <td style="white-space:nowrap;"><button class="btn btn-sm gv-bal" title="حط بهالسطر الفرق يلي بيسكّر القيد">⚖️</button><button class="btn btn-sm gv-del" title="حذف السطر">✕</button></td>`;
+    tr.querySelector('.gv-del').addEventListener('click', ()=>{ if(tb.children.length>2){ tr.remove(); tot(); } });
+    tr.querySelector('.gv-bal').addEventListener('click', ()=>{ Array.from(tb.children).forEach(x=>{ delete x.dataset.auto; }); tr.dataset.auto = '1'; tot(); });
+    tr.querySelectorAll('.gv-dr, .gv-cr').forEach(i=>i.addEventListener('input', ()=>{ delete tr.dataset.auto; tot(); }));
+    tr.querySelectorAll('.gv-a, .gv-n').forEach(i=>i.addEventListener('input', tot)); tb.appendChild(tr); return tr; };
   const read = ()=> Array.from(tb.children).map(tr=>{ const v = tr.querySelector('.gv-a').value.trim(); const m = v.match(/^(\d+)/);
-    return {raw:v, a:m? m[1] : '', dr:Number(tr.querySelector('.gv-dr').value)||0, cr:Number(tr.querySelector('.gv-cr').value)||0}; });
-  const tot = ()=>{ const L = read(), d = L.reduce((t,l)=>t+l.dr,0), c = L.reduce((t,l)=>t+l.cr,0); $('#gv_td').textContent = fmtNum(d); $('#gv_tc').textContent = fmtNum(c);
+    return {raw:v, a:m? m[1] : '', dr:Number(tr.querySelector('.gv-dr').value)||0, cr:Number(tr.querySelector('.gv-cr').value)||0, n:tr.querySelector('.gv-n').value.trim()}; });
+  const autoFill = ()=>{ const rows = Array.from(tb.children), ar = rows.filter(x=>x.dataset.auto==='1').pop(); if(!ar) return;   // السطر التلقائي بيسكّر القيد لحالو
+    let d = 0, c = 0; rows.forEach(x=>{ if(x===ar) return; d += Number(x.querySelector('.gv-dr').value)||0; c += Number(x.querySelector('.gv-cr').value)||0; });
+    const df = Math.round((d-c)*100)/100; ar.querySelector('.gv-dr').value = df<0? -df : ''; ar.querySelector('.gv-cr').value = df>0? df : ''; };
+  const tot = ()=>{ autoFill(); const L = read(), d = L.reduce((t,l)=>t+l.dr,0), c = L.reduce((t,l)=>t+l.cr,0); $('#gv_td').textContent = fmtNum(d); $('#gv_tc').textContent = fmtNum(c);
     const df = Math.round((d-c)*100)/100; $('#gv_diff').innerHTML = df? `<span style="color:var(--debit);">فرق ${fmtNum(Math.abs(df))}</span>` : (d? '<span style="color:var(--credit);">✓ متوازن</span>' : ''); };
-  lines0.forEach(addRow); tot();
-  $('#gv_add').addEventListener('click', ()=>addRow({a:'', dr:'', cr:''}));
+  lines0.forEach((l,i)=>addRow(l, !pre.editRef && i===lines0.length-1)); tot();
+  $('#gv_add').addEventListener('click', ()=>{ const ar = Array.from(tb.children).find(x=>x.dataset.auto==='1'); const tr = addRow({a:'', dr:'', cr:''}); if(ar) tb.insertBefore(tr, ar); tr.querySelector('.gv-a').focus(); tot(); });
   $('#gv_x').addEventListener('click', ()=>wrap.remove());
   $('#gv_ok').addEventListener('click', async ()=>{
     const err = t=>{ $('#gv_err').textContent = t; };
@@ -2159,7 +2165,7 @@ function openGlVoucherModal(pre){
     const date = $('#gv_date').value || todayISO(); if(lockBlocks(date)) return;
     if(pre.editRef && pre.date && lockBlocks(pre.date)) return;
     const cur = $('#gv_cur')? $('#gv_cur').value : '';
-    const r = await glSaveVoucher(L.map(l=>({a:l.a, dr:l.dr, cr:l.cr})), {date, desc:$('#gv_desc').value.trim(), cur, editRef:pre.editRef||null});
+    const r = await glSaveVoucher(L.map(l=>({a:l.a, dr:l.dr, cr:l.cr, n:l.n||''})), {date, desc:$('#gv_desc').value.trim() || (L.find(l=>l.n)||{}).n || '', cur, editRef:pre.editRef||null});
     if(r && r.error) return err(r.error);
     _jrCache = null; wrap.remove(); toast(r && r.ok===false? '⚠️ صار خطأ بالحفظ' : '✅ انحفظ القيد'); render();
   });
@@ -2240,7 +2246,7 @@ function lebJournalView(qs){
     all.forEach(e=>{ if(kind && e.kind!==kind) return; e.lines.forEach(l=>{ if(!jrAccMatch(l.a, acc)) return; if(e.date<P.from) open += l.dr - l.cr; else if(e.date<=P.to) rows.push({e, l}); }); });
     let bal = open;
     const body = rows.map(({e,l})=>{ bal += l.dr - l.cr; const other = e.lines.find(x=>x!==l);
-      return `<tr ${e.nav? `data-nav="${e.nav}" style="cursor:pointer;"` : ''}><td class="num">${fmtDate(e.date)}</td><td class="num">${e.no}</td><td>${escapeHtml(e.doc)} — ${escapeHtml(e.desc)}<div style="font-size:11px; color:var(--ink-soft);">مقابل: ${escapeHtml(other? offC(other.a)+' '+jrName(other.a) : '')}</div></td><td class="num">${l.dr? fmtJ(l.dr) : ''}</td><td class="num">${l.cr? fmtJ(l.cr) : ''}</td><td class="num">${fmtJ(bal)}</td></tr>`; }).join('');
+      return `<tr ${e.nav? `data-nav="${e.nav}" style="cursor:pointer;"` : ''}><td class="num">${fmtDate(e.date)}</td><td class="num">${e.no}</td><td>${escapeHtml(e.doc)} — ${escapeHtml(l.n || e.desc)}<div style="font-size:11px; color:var(--ink-soft);">مقابل: ${escapeHtml(other? offC(other.a)+' '+jrName(other.a) : '')}</div></td><td class="num">${l.dr? fmtJ(l.dr) : ''}</td><td class="num">${l.cr? fmtJ(l.cr) : ''}</td><td class="num">${fmtJ(bal)}</td></tr>`; }).join('');
     return head + actions('Ledger-'+acc) + `<div class="doc">${docHead('دفتر الأستاذ — '+acc+' '+jrNameD(acc))}${info}
       <div class="table-wrap"><table><thead><tr><th>التاريخ</th><th>رقم القيد</th><th>البيان</th><th>مدين</th><th>دائن</th><th>الرصيد</th></tr></thead><tbody>
       <tr style="background:var(--bg-2);"><td colspan="5">رصيد أول المدة</td><td class="num">${fmtJ(open)}</td></tr>${body}</tbody>
@@ -2248,7 +2254,7 @@ function lebJournalView(qs){
   }
   const lim = 400, shown = list.slice(-lim);
   const body = shown.map(e=>`<tr class="jr-h" ${e.nav? `data-nav="${e.nav}" style="cursor:pointer; background:var(--bg-2);"` : 'style="background:var(--bg-2);"'}><td class="num">${e.no}</td><td class="num">${fmtDate(e.date)}</td><td colspan="4"><b>${escapeHtml(e.doc)}</b> — ${escapeHtml(e.desc)} <span style="font-size:11px; color:var(--ink-soft);">(${JR_KINDS[e.kind]||''})</span>${glEditBtns(e)}</td></tr>`
-    + e.lines.map(l=>`<tr><td></td><td></td><td class="num" style="${l.cr? 'padding-inline-start:28px;' : ''}">${offC(l.a)}</td><td style="${l.cr? 'padding-inline-start:28px;' : ''}"><span>${l.cr? 'إلى' : 'من'}</span> ${escapeHtml(jrName(l.a))}</td><td class="num">${l.dr? fmtJ(l.dr) : ''}</td><td class="num">${l.cr? fmtJ(l.cr) : ''}</td></tr>`).join('')).join('');
+    + e.lines.map(l=>`<tr><td></td><td></td><td class="num" style="${l.cr? 'padding-inline-start:28px;' : ''}">${offC(l.a)}</td><td style="${l.cr? 'padding-inline-start:28px;' : ''}"><span>${l.cr? 'إلى' : 'من'}</span> ${escapeHtml(jrName(l.a))}${l.n? ` <span style="font-size:11.5px; color:var(--ink-soft);">— ${escapeHtml(l.n)}</span>` : ''}</td><td class="num">${l.dr? fmtJ(l.dr) : ''}</td><td class="num">${l.cr? fmtJ(l.cr) : ''}</td></tr>`).join('')).join('');
   return head + actions('Journal') + `<div class="doc">${docHead('دفتر اليومية')}${info}
     ${list.length>lim? `<div class="no-print" style="font-size:12px; color:var(--ink-soft);">عم نعرض آخر ${lim} قيد من ${list.length} — صغّر الفترة لتشوف الكل.</div>` : ''}
     <div class="table-wrap"><table><thead><tr><th>رقم القيد</th><th>التاريخ</th><th>رقم الحساب</th><th>اسم الحساب / البيان</th><th>مدين</th><th>دائن</th></tr></thead>
@@ -2772,7 +2778,7 @@ function exportDocXlsx(name){
   xlDownload(xlWorkbook([{name:'Report', rows:xlRowsFromDoc(doc)}]), (name||'report')+'.xlsx');
 }
 /* ===================== 📘 دليل الاستخدام: ملفات ثابتة (/assets/guide) بتنحمّل بس لما ينفتح التبويب — مش داتا، فما بتكبّر النسخة الاحتياطية ===================== */
-const GUIDE_VER = '2026-11-23e';
+const GUIDE_VER = '2026-11-23f';
 // قائمة ملفات الدليل — مكتوبة حرفيًا لحتى تنزل مع تحديثات النسخة المحلية (offline)
 const GUIDE_FILES = [
   '/assets/guide/guide-ar.js',
