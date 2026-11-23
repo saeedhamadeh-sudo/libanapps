@@ -5945,7 +5945,7 @@ function render(){
   } else if(parts[0]==='ledger-lb' && accRouteOk('ledger-lb')){
     html += crumbs([['الرئيسية','#/'],['القيود',null]]) + journalLbView(new URLSearchParams(location.hash.split('?')[1]||''));
   } else if(parts[0]==='pl' && accRouteOk('pl')){
-    html += crumbs([['الرئيسية','#/'],['كشف الإيرادات والأعباء',null]]) + plView(new URLSearchParams(location.hash.split('?')[1]||''));
+    html += crumbs([['الرئيسية','#/'],['حساب النتيجة',null]]) + lebPLView(new URLSearchParams(location.hash.split('?')[1]||''));   // الكشف القديم صار نفس حساب النتيجة (ما في نسختين)
   } else if(parts[0]==='acc' && accRouteOk('acc')){
     html += crumbs([['الرئيسية','#/'],['المحاسبة',null]]) + accHubView();
   } else if(parts[0]==='leb-bs' && accRouteOk('leb-bs')){
@@ -5991,7 +5991,7 @@ function render(){
   } else if(parts[0]==='leb-journal' && accRouteOk('leb-journal')){
     html += crumbs([['الرئيسية','#/'],['القيود',null]]) + lebJournalView(new URLSearchParams(location.hash.split('?')[1]||''));
   } else if(parts[0]==='leb-pl' && accRouteOk('leb-pl')){
-    html += crumbs([['الرئيسية','#/'],['كشف الإيرادات والأعباء',null]]) + lebPLView(new URLSearchParams(location.hash.split('?')[1]||''));
+    html += crumbs([['الرئيسية','#/'],['حساب النتيجة',null]]) + lebPLView(new URLSearchParams(location.hash.split('?')[1]||''));
   } else if(parts[0]==='journal'){
     const qs = new URLSearchParams(location.hash.split('?')[1]||'');
     html += crumbs([['الرئيسية','#/'],['اليوميات',null]]) + journalView(qs);
@@ -6214,8 +6214,8 @@ function hubView(){
     </div>`},
     {key:'lebPL', perm:'reports', html:`<div class="hub-card" data-nav="#/leb-pl">
       <div class="hub-icon">📊</div>
-      <div class="hub-title">كشف الإيرادات والأعباء</div>
-      <div class="hub-sub">حساب النتيجة: الفئة 6 مقابل الفئة 7</div>
+      <div class="hub-title">حساب النتيجة</div>
+      <div class="hub-sub">الفئة 6 والفئة 7</div>
       <div class="hub-amt" style="color:var(--steel)">ربح أو خسارة الفترة</div>
     </div>`},
     {key:'ledgerLb', perm:'reports', html:`<div class="hub-card" data-nav="#/ledger-lb">
@@ -6223,12 +6223,6 @@ function hubView(){
       <div class="hub-title">القيود</div>
       <div class="hub-sub">دفتر اليومية، ميزان المراجعة، الأستاذ العام</div>
       <div class="hub-amt" style="color:var(--steel)">النظام المحاسبي اللبناني</div>
-    </div>`},
-    {key:'pl', perm:'reports', html:`<div class="hub-card" data-nav="#/pl">
-      <div class="hub-icon">📉</div>
-      <div class="hub-title">كشف الإيرادات والأعباء</div>
-      <div class="hub-sub">حساب النتيجة — ربح أو خسارة</div>
-      <div class="hub-amt" style="color:var(--steel)">الفئة 6 والفئة 7</div>
     </div>`},
     {key:'shiftCloses', perm:'reports', html:`<div class="hub-card" data-nav="#/shift-closes">
       <div class="hub-icon">📜</div>
@@ -6694,7 +6688,8 @@ function workerView(wk){
     <div class="cust-head">
       <div>
         <div class="cust-name">${escapeHtml(wk.name)}</div>
-        <div class="cust-meta">رقم الحساب: <span class="num">${escapeHtml(wk.accountNumber||'—')}</span> &nbsp;•&nbsp; هاتف: <span class="num">${escapeHtml(wk.phone||'—')}</span></div>
+        <div class="cust-meta">رقم الحساب: <span class="num">${escapeHtml(wk.accountNumber||'—')}</span> &nbsp;•&nbsp; بالمحاسبة: <span class="num">${(()=>{ try{ const c = jrAcctMap()['worker:'+wk.id]; return c? offC(c) : '—'; }catch(e){ return '—'; } })()}</span> &nbsp;•&nbsp; هاتف: <span class="num">${escapeHtml(wk.phone||'—')}</span></div>
+        <div class="no-print" style="font-size:12px; color:var(--ink-soft); margin-top:4px; line-height:1.7;">المعاش: «💼 + معاش شهري» بيعمل قيد الاستحقاق (من 6312 الأجور إلى حساب العامل). الدفعات: «+ دفعة» لكل مرة بتدفعلو (من حساب العامل إلى الصندوق) — قد ما بدك دفعات. الباقي إلو بيطلع تحت.</div>
       </div>
       <div class="action-row">
         <button class="btn btn-debit" data-nav="#/workentry/new?worker=${wk.id}">+ يومية جديدة</button>
@@ -10530,7 +10525,10 @@ function openGlVoucherModal(pre){
     tr.querySelector('.gv-del').addEventListener('click', ()=>{ if(tb.children.length>2){ tr.remove(); tot(); } });
     tr.querySelector('.gv-bal').addEventListener('click', ()=>{ Array.from(tb.children).forEach(x=>{ delete x.dataset.auto; }); tr.dataset.auto = '1'; tot(); });
     tr.querySelectorAll('.gv-dr, .gv-cr').forEach(i=>i.addEventListener('input', ()=>{ delete tr.dataset.auto; tot(); }));
-    tr.querySelectorAll('.gv-a, .gv-n').forEach(i=>i.addEventListener('input', tot)); acBind(tr.querySelector('.gv-a')); tb.appendChild(tr); return tr; };
+    tr.querySelectorAll('.gv-a, .gv-n').forEach(i=>i.addEventListener('input', tot)); acBind(tr.querySelector('.gv-a'));
+    tr.querySelector('.gv-n').addEventListener('input', ()=>{ delete tr.dataset.ncopy; nCopy(tr.querySelector('.gv-n').value, tr); });   // الشرح بينتقل لباقي السطور (يلي ما غيّرتها)
+    tb.appendChild(tr); return tr; };
+  const nCopy = (v, from)=>{ Array.from(tb.children).forEach(x=>{ if(x===from) return; const n = x.querySelector('.gv-n'); if(!n.value.trim() || x.dataset.ncopy==='1'){ n.value = v; x.dataset.ncopy = '1'; } }); };
   const read = ()=> Array.from(tb.children).map(tr=>{ const v = tr.querySelector('.gv-a').value.trim(); const m = v.match(/^(\d+)/);
     return {raw:v, a:m? m[1] : '', dr:Number(tr.querySelector('.gv-dr').value)||0, cr:Number(tr.querySelector('.gv-cr').value)||0, n:tr.querySelector('.gv-n').value.trim()}; });
   const autoFill = ()=>{ const rows = Array.from(tb.children), ar = rows.filter(x=>x.dataset.auto==='1').pop(); if(!ar) return;   // السطر التلقائي بيسكّر القيد لحالو
@@ -10539,7 +10537,8 @@ function openGlVoucherModal(pre){
   const tot = ()=>{ autoFill(); const L = read(), d = L.reduce((t,l)=>t+l.dr,0), c = L.reduce((t,l)=>t+l.cr,0); $('#gv_td').textContent = fmtNum(d); $('#gv_tc').textContent = fmtNum(c);
     const df = Math.round((d-c)*100)/100; $('#gv_diff').innerHTML = df? `<span style="color:var(--debit);">فرق ${fmtNum(Math.abs(df))}</span>` : (d? '<span style="color:var(--credit);">✓ متوازن</span>' : ''); };
   lines0.forEach((l,i)=>addRow(l, !pre.editRef && !pre.copyOf && i===lines0.length-1)); tot();
-  $('#gv_add').addEventListener('click', ()=>{ const ar = Array.from(tb.children).find(x=>x.dataset.auto==='1'); const tr = addRow({a:'', dr:'', cr:''}); if(ar) tb.insertBefore(tr, ar); tr.querySelector('.gv-a').focus(); tot(); });
+  $('#gv_add').addEventListener('click', ()=>{ const ar = Array.from(tb.children).find(x=>x.dataset.auto==='1'); const tr = addRow({a:'', dr:'', cr:''}); if(ar) tb.insertBefore(tr, ar); const src = Array.from(tb.children).map(x=>x.querySelector('.gv-n').value.trim()).find(Boolean) || $('#gv_desc').value.trim(); if(src){ tr.querySelector('.gv-n').value = src; tr.dataset.ncopy = '1'; } tr.querySelector('.gv-a').focus(); tot(); });
+  $('#gv_desc').addEventListener('input', ()=>nCopy($('#gv_desc').value, null));
   $('#gv_x').addEventListener('click', ()=>wrap.remove());
   $('#gv_ok').addEventListener('click', async ()=>{
     const err = t=>{ $('#gv_err').textContent = t; };
@@ -11183,31 +11182,22 @@ function lebPLView(qs){
     ${Object.keys(G).sort().map(g=>`<tr style="background:var(--bg-2); font-weight:700;"><td class="num">${g}</td><td colspan="${hasPrev? 3 : 2}">${LEB_PCG_MAP[g]||PL_NAMES[g]||''}</td></tr>`+G[g].map(x=>`<tr ${nav(x.c)}><td class="num">${offC(x.c)}</td><td>${escapeHtml(x.n)}${det && (DT[x.c]||[]).length>1? ` <small style="color:var(--ink-soft);">(${(DT[x.c]||[]).length} قيود)</small>` : ''}</td>${td(x.v)}${tdp(x.v0)}</tr>`+detRows(x.c)).join('')).join('') || `<tr><td colspan="4">—</td></tr>`}
     </tbody><tfoot><tr style="font-weight:800; background:var(--paper)"><td colspan="2">${title}</td>${td(t)}${tdp(t0)}</tr></tfoot></table>`; };
   return `<div class="card no-print">
-    <h2><span class="dot"></span> 📊 كشف الإيرادات والأعباء</h2>
-    <p style="font-size:12.5px; color:var(--ink-soft); line-height:1.7;">حساب النتيجة حسب النظام المحاسبي اللبناني: الأعباء (الفئة 6) مقابل الإيرادات (الفئة 7)، مع مقارنة بنفس الفترة من السنة الماضية. كل حساب بيطلع بسطر واحد فيه مجموع كل القيود عليه بالفترة؛ «📋 مع تفصيل القيود» بيبيّن كل قيد تحت حسابو. اكبس على أي حساب لتشوف دفتر الأستاذ تبعو.</p>
+    <h2><span class="dot"></span> 📊 حساب النتيجة</h2>
+    <p style="font-size:12.5px; color:var(--ink-soft); line-height:1.7;">حساب النتيجة حسب النظام المحاسبي اللبناني: الفئة 6 (الأعباء) تحت بعض ومجموعها، الفئة 7 (الإيرادات) تحت بعض ومجموعها، وبالآخر نتيجة ربح أو خسارة، مع مقارنة بنفس الفترة من السنة الماضية. كل حساب بيطلع بسطر واحد فيه مجموع كل القيود عليه بالفترة؛ «📋 مع تفصيل القيود» بيبيّن كل قيد تحت حسابو. اكبس على أي حساب لتشوف دفتر الأستاذ تبعو.</p>
     ${periodFilterHtml('pl', P.period, P.a, P.b)}${jrCurSel()}
   </div>
   <div class="doc-actions no-print"><button class="btn btn-primary" onclick="printWithFilename('Income-Statement-${P.from}-${P.to}')">🖨 طباعة</button><button class="btn" data-nav="#/leb-journal?m=t&period=${P.period}&a=${encodeURIComponent(P.a)}&b=${encodeURIComponent(P.b)}">⚖️ ميزان المراجعة</button><button class="btn ${det? 'btn-primary' : ''}" data-nav="#/leb-pl?period=${P.period}&a=${encodeURIComponent(P.a)}&b=${encodeURIComponent(P.b)}${det? '' : '&d=1'}">${det? '📊 المجاميع بس' : '📋 مع تفصيل القيود'}</button></div>
   <div class="doc">
-    ${docHead('كشف الإيرادات والأعباء (حساب النتيجة)')}
+    ${docHead('حساب النتيجة')}
     <div class="doc-info"><div class="r"><span>من تاريخ:</span><b class="num">${fmtDate(P.from)}</b></div><div class="r"><span>إلى تاريخ:</span><b class="num">${fmtDate(P.to)}</b></div>${_jrCur==='lbp'? '<div class="r"><span>العملة:</span><b>ليرة لبنانية (بسعر كل مستند)</b></div>' : ''}</div>
-    <div class="stats">
-      <div class="stat"><div class="k">مجموع الإيرادات (7)</div><div class="v">${fmtJ(totP)}</div></div>
-      <div class="stat owe"><div class="k">مجموع الأعباء (6)</div><div class="v">${fmtJ(totC)}</div></div>
-      <div class="stat ${net<0? 'owe' : ''}"><div class="k">${net>=0? 'النتيجة: ربح' : 'النتيجة: خسارة'}</div><div class="v" style="color:${net>=0? 'var(--credit)' : 'var(--debit)'};">${fmtJ(Math.abs(net))}</div></div>
-    </div>
-    <div style="font-weight:800; text-decoration:underline; margin:14px 0 6px;">الإيرادات — الفئة 7</div>${table(products, 'مجموع الإيرادات', totP, totP0)}
-    <div style="font-weight:800; text-decoration:underline; margin:18px 0 6px;">الأعباء — الفئة 6</div>${table(charges, 'مجموع الأعباء', totC, totC0)}
-    <div style="font-weight:800; text-decoration:underline; margin:18px 0 6px;">الأرصدة الوسيطة</div>
-    <table><thead><tr><th>البيان</th><th>هالفترة</th>${hasPrev? '<th>السنة الماضية</th>' : ''}</tr></thead><tbody>
-      <tr><td>مبيعات البضائع (701)</td>${td(sales)}${tdp(sales0)}</tr>
-      <tr><td>ناقص: كلفة البضاعة المباعة (601 + 605)</td>${td(-cogs)}${tdp(-cogs0)}</tr>
-      <tr style="font-weight:800;"><td>الهامش التجاري الإجمالي</td>${td(sales-cogs)}${tdp(sales0-cogs0)}</tr>
-      <tr style="font-weight:800; background:var(--paper)"><td>${net>=0? 'نتيجة الدورة قبل الضريبة: ربح' : 'نتيجة الدورة: خسارة'}</td><td class="num" style="color:${net>=0? 'var(--credit)' : 'var(--debit)'};">${fmtJ(net)}</td>${tdp(net0)}</tr>
-      ${net>0? `<tr><td>تقدير ضريبة الدخل (<span class="no-print"><input type="number" id="pl_tax" value="${taxRate}" step="0.5" class="num" style="width:62px; display:inline-block; padding:2px 4px;"></span><span class="print-only">${taxRate}</span>%)</td><td class="num" style="color:var(--debit);">− ${fmtJ(net*taxRate/100)}</td>${hasPrev? '<td></td>' : ''}</tr>
-      <tr style="font-weight:800;"><td>النتيجة الصافية بعد الضريبة (تقديرية)</td>${td(net - net*taxRate/100)}${hasPrev? '<td></td>' : ''}</tr>` : ''}
+    <div style="font-weight:800; text-decoration:underline; margin:14px 0 6px;">الأعباء — الفئة 6</div>${table(charges, 'مجموع الفئة 6 (الأعباء)', totC, totC0)}
+    <div style="font-weight:800; text-decoration:underline; margin:18px 0 6px;">الإيرادات — الفئة 7</div>${table(products, 'مجموع الفئة 7 (الإيرادات)', totP, totP0)}
+    <table style="margin-top:16px;"><thead><tr><th>البيان</th><th>هالفترة</th>${hasPrev? '<th>نفس الفترة السنة الماضية</th>' : ''}</tr></thead><tbody>
+      <tr><td>مجموع الفئة 6 (الأعباء)</td>${td(totC)}${tdp(totC0)}</tr>
+      <tr><td>مجموع الفئة 7 (الإيرادات)</td>${td(totP)}${tdp(totP0)}</tr>
+      <tr style="font-weight:900; font-size:16px; background:var(--paper);"><td>${net>=0? 'نتيجة ربح' : 'نتيجة خسارة'}</td><td class="num" style="color:${net>=0? 'var(--credit)' : 'var(--debit)'};">${fmtJ(Math.abs(net))}</td>${hasPrev? `<td class="num" style="color:var(--ink-soft);">${net0>=0? 'ربح ' : 'خسارة '}${fmtJ(Math.abs(net0))}</td>` : ''}</tr>
     </tbody></table>
-    <div style="font-size:11.5px; color:var(--ink-soft); margin-top:6px; line-height:1.7;">تغيّر المخزون (605) بينحسب كل شهر: مشتريات الشهر ناقص كلفة البضاعة المباعة، وبيتصحّح بالجرد من صفحة «📦 المخزون والجرد». ضريبة الدخل هون تقدير بس (الشركات 17%؛ المؤسسات الفردية بشطور) — القرار الأخير للمحاسب. القروض والتسديد ما بيدخلوا بالنتيجة.</div>
+    <div style="font-size:11.5px; color:var(--ink-soft); margin-top:6px; line-height:1.7;">إذا مجموع الفئة 7 أكبر من الفئة 6 النتيجة ربح، وإذا أصغر خسارة. القروض وتسديدها، شراء الأصول الثابتة، والدفع للموردين ما بيدخلوا بحساب النتيجة لأنهن مش أعباء — بس الفوائد والمصاريف المصرفية (6731، 6736) والاستهلاكات (6512).</div>
   </div>
   ${appFooter()}`;
 }
@@ -11223,7 +11213,7 @@ function jrBalances(toDate, fromDate){
 }
 function accHubView(){
   const tiles = [
-    ['#/leb-pl','📊','كشف الإيرادات والأعباء','حساب النتيجة: الفئة 6 مقابل 7'],
+    ['#/leb-pl','📊','حساب النتيجة','الفئة 6 والفئة 7 — ربح أو خسارة'],
     ['#/leb-bs','🏛','الميزانية العمومية','الأصول مقابل الخصوم ورأس المال'],
     ['#/leb-journal','📖','القيود','دفتر اليومية، الأستاذ، ميزان المراجعة'],
     ['#/leb-cf','💧','جدول التدفقات النقدية','من وين فاتت المصاري ولوين طلعت'],
@@ -13326,6 +13316,7 @@ function loanRepays(id){ return (DB.loans||[]).filter(x=>!x.deleted && x.kind===
 function loanPaid(id){ return loanRepays(id).reduce((t,r)=>t+(Number(r.amount)||0), 0); }
 function loanRemain(l){ return (Number(l.amount)||0) - loanPaid(l.id); }
 function nextLoanNumber(kind){ let mx = 0; (DB.loans||[]).forEach(x=>{ if((x.kind||'loan')!==kind) return; const n = parseInt(String(x.number||'').replace(/\D/g,''),10); if(n>mx) mx = n; }); return String(mx+1); }
+function loanAcctNo(id){ try{ return offC(jrAcctMap()['loan:'+id] || '16400'); }catch(e){ return ''; } }
 function loansInPeriod(from, to){ const o = {got:0, paid:0}; (DB.loans||[]).forEach(x=>{ if(x.deleted || !x.date || x.date<from || x.date>to) return; if(x.kind==='repay') o.paid += Number(x.amount)||0; else o.got += Number(x.amount)||0; }); return o; }
 function loanSrcLabel(id){ const s = paySrcOf(id); return s? s.label : '<span style="color:var(--debit);">⚠️ ما انحدّد</span>'; }
 function loansBudgetCard(){
@@ -13356,8 +13347,8 @@ function loansView(){
     </div>
   </div>
   <div class="card">
-    ${L.length? `<div class="table-wrap"><table><thead><tr><th>#</th><th>التاريخ</th><th>المُقرض</th><th>المبلغ</th><th>المدفوع</th><th>الباقي</th><th>نزل على</th></tr></thead><tbody>
-      ${L.map(l=>{ const rm = loanRemain(l); return `<tr data-nav="#/loan/${l.id}" style="cursor:pointer;"><td class="num">${escapeHtml(l.number||'')}</td><td class="num">${fmtDate(l.date)}</td><td><b>${escapeHtml(l.lender||'')}</b>${l.note? `<div style="font-size:11.5px; color:var(--ink-soft);">${escapeHtml(l.note)}</div>` : ''}</td>
+    ${L.length? `<div class="table-wrap"><table><thead><tr><th>#</th><th>رقم الحساب</th><th>التاريخ</th><th>المُقرض</th><th>المبلغ</th><th>المدفوع</th><th>الباقي</th><th>نزل على</th></tr></thead><tbody>
+      ${L.map(l=>{ const rm = loanRemain(l); return `<tr data-nav="#/loan/${l.id}" style="cursor:pointer;"><td class="num">${escapeHtml(l.number||'')}</td><td class="num">${loanAcctNo(l.id)}</td><td class="num">${fmtDate(l.date)}</td><td><b>${escapeHtml(l.lender||'')}</b>${l.note? `<div style="font-size:11.5px; color:var(--ink-soft);">${escapeHtml(l.note)}</div>` : ''}</td>
         <td class="num">${fmtMoney(l.amount)}</td><td class="num">${fmtMoney(loanPaid(l.id))}</td><td class="num" style="font-weight:800; color:${rm>0.000001? 'var(--debit)' : 'var(--credit)'};">${rm>0.000001? fmtMoney(rm) : '✅ مسدّد'}</td><td style="font-size:12px;">${loanSrcLabel(l.id)}</td></tr>`; }).join('')}
     </tbody></table></div>` : emptyState(all.length? 'كل القروض مسدّدة ✅' : 'ما في قروض بعد')}
   </div>
@@ -13381,6 +13372,7 @@ function loanView(l){
     <div class="doc-info">
       <div class="r"><span>المُقرض:</span><b>${escapeHtml(l.lender||'')}</b></div>
       <div class="r"><span>رقم القرض:</span><b class="num">${escapeHtml(l.number||'')}</b></div>
+      <div class="r"><span>رقم الحساب:</span><b class="num">${loanAcctNo(l.id)} — ${escapeHtml(jrName(jrAcctMap()['loan:'+l.id]||'16400'))}</b></div>
       <div class="r"><span>التاريخ:</span><b class="num">${fmtDate(l.date)}</b></div>
       <div class="r no-print"><span>نزل على:</span><b>${loanSrcLabel(l.id)}</b></div>
       ${l.note? `<div class="r"><span>ملاحظة:</span><b>${escapeHtml(l.note)}</b></div>` : ''}
@@ -14327,7 +14319,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-11-23 · 18:30 · v137';
+const APP_TRADE_BUILD = '2026-11-23 · 22:10 · v138';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 // ===== ترجيع حركات ناقصة من ملف (إضافة بس — ما منمحي ولا منغيّر شي موجود) =====
 document.addEventListener('change', async e=>{

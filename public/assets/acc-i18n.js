@@ -1,5 +1,18 @@
 /* LibanApps — ترجمة برامج المحاسبة (التجاري والصناعي) للإنكليزي + زر عربي/EN */
 window.ACC_EN = {
+  "حساب النتيجة": "Income statement",
+  "مجموع الفئة 6 (الأعباء)": "Total class 6 (charges)",
+  "مجموع الفئة 7 (الإيرادات)": "Total class 7 (income)",
+  "نتيجة ربح": "Result: profit",
+  "نتيجة خسارة": "Result: loss",
+  "الأعباء — الفئة 6": "Charges — class 6",
+  "الإيرادات — الفئة 7": "Income — class 7",
+  "الفئة 6 والفئة 7 — ربح أو خسارة": "Class 6 and class 7 — profit or loss",
+  "رقم الحساب": "Account no.",
+  "رقم الحساب:": "Account no.:",
+  "بالمحاسبة:": "Ledger account:",
+  "إذا مجموع الفئة 7 أكبر من الفئة 6 النتيجة ربح، وإذا أصغر خسارة. القروض وتسديدها، شراء الأصول الثابتة، والدفع للموردين ما بيدخلوا بحساب النتيجة لأنهن مش أعباء — بس الفوائد والمصاريف المصرفية (6731، 6736) والاستهلاكات (6512).": "If class 7 exceeds class 6 the result is a profit, otherwise a loss. Loans and repayments, fixed-asset purchases and supplier payments are not in the income statement because they are not charges — only interest and bank fees (6731, 6736) and depreciation (6512).",
+  "المعاش: «💼 + معاش شهري» بيعمل قيد الاستحقاق (من 6312 الأجور إلى حساب العامل). الدفعات: «+ دفعة» لكل مرة بتدفعلو (من حساب العامل إلى الصندوق) — قد ما بدك دفعات. الباقي إلو بيطلع تحت.": "Salary: “💼 + Monthly salary” posts the accrual (Dr 6312 wages / Cr the worker account). Payments: “+ Payment” each time you pay (Dr worker / Cr cash) — as many as you like. The balance due shows below.",
   "انسجّلت {n}": "recorded {n}",
   "المحاسبة: دفتر اليومية ودفتر الأستاذ وميزان المراجعة والتصميم المحاسبي": "Accounting: journal, ledger, trial balance and chart of accounts",
   "حساب النتيجة والميزانية العمومية والتدفقات النقدية وأعمار الديون": "Income statement, balance sheet, cash flow and debt aging",
@@ -4293,6 +4306,19 @@ window.ACC_EN = {
 };
 /* Français — même clés arabes que ACC_EN */
 window.ACC_FR = {
+  "حساب النتيجة": "Compte de résultat",
+  "مجموع الفئة 6 (الأعباء)": "Total classe 6 (charges)",
+  "مجموع الفئة 7 (الإيرادات)": "Total classe 7 (produits)",
+  "نتيجة ربح": "Résultat : bénéfice",
+  "نتيجة خسارة": "Résultat : perte",
+  "الأعباء — الفئة 6": "Charges — classe 6",
+  "الإيرادات — الفئة 7": "Produits — classe 7",
+  "الفئة 6 والفئة 7 — ربح أو خسارة": "Classe 6 et classe 7 — bénéfice ou perte",
+  "رقم الحساب": "N° de compte",
+  "رقم الحساب:": "N° de compte :",
+  "بالمحاسبة:": "Compte comptable :",
+  "إذا مجموع الفئة 7 أكبر من الفئة 6 النتيجة ربح، وإذا أصغر خسارة. القروض وتسديدها، شراء الأصول الثابتة، والدفع للموردين ما بيدخلوا بحساب النتيجة لأنهن مش أعباء — بس الفوائد والمصاريف المصرفية (6731، 6736) والاستهلاكات (6512).": "Si la classe 7 dépasse la classe 6, le résultat est un bénéfice, sinon une perte. Les emprunts et remboursements, les achats d’immobilisations et les paiements fournisseurs ne figurent pas au compte de résultat car ce ne sont pas des charges — seulement les intérêts et frais bancaires (6731, 6736) et les amortissements (6512).",
+  "المعاش: «💼 + معاش شهري» بيعمل قيد الاستحقاق (من 6312 الأجور إلى حساب العامل). الدفعات: «+ دفعة» لكل مرة بتدفعلو (من حساب العامل إلى الصندوق) — قد ما بدك دفعات. الباقي إلو بيطلع تحت.": "Salaire : « 💼 + Salaire mensuel » passe l’écriture de charge (D 6312 salaires / C compte du salarié). Paiements : « + Paiement » à chaque versement (D salarié / C caisse) — autant que vous voulez. Le solde dû s’affiche en dessous.",
   "انسجّلت {n}": "saisi le {n}",
   "المحاسبة: دفتر اليومية ودفتر الأستاذ وميزان المراجعة والتصميم المحاسبي": "Comptabilité : journal, grand livre, balance et plan comptable",
   "حساب النتيجة والميزانية العمومية والتدفقات النقدية وأعمار الديون": "Compte de résultat, bilan, flux de trésorerie et balance âgée",
