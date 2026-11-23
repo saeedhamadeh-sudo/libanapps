@@ -10022,13 +10022,16 @@ function safeMoves(){
   (DB.cashMovements||[]).forEach(m=>{ if(m.deleted || m.type!=='gl') return; const i = glInfo(m)||{}; const a = Math.abs(Number(m.amount)||0);
     ['53101','53102'].forEach(code=>{ if(i.dr!==code && i.cr!==code) return; const sg = i.dr===code? 1 : -1; const isL = code==='53101';
       out.push({id:m.id, gl:true, at:m.createdAt, date:m.date, kind:sg>0?'in':'out', lbp:isL? sg*a : 0, usd:isL? 0 : sg*a, label:'قيد: '+(i.desc? i.desc+' — ' : '')+(sg>0? 'من ' : 'إلى ')+coaLabel(sg>0? i.cr : i.dr)}); }); });
-  out.sort((a,b)=>(a.at||0)-(b.at||0));
+  out.sort((a,b)=>{ const da = a.date || isoOfTs(a.at), db = b.date || isoOfTs(b.at); return da<db? -1 : da>db? 1 : (a.at||0)-(b.at||0); });   // حسب تاريخ العملية (مش وقت التسجيل)
   let bl = 0, bu = 0; out.forEach(r=>{ bl += r.lbp; bu += r.usd; r.balLBP = bl; r.balUSD = bu; });
   return out;
 }
 // مين عمل الحركة: آخر « — اسم» بالملاحظة
 function userOfNote(note){ const t = String(note||'').replace(/\s*\[منقولة\]/,'').replace(/\s*✏️\S*\s*$/,'').replace(/\s*⟨\d+⟩\s*$/,'').replace(/\s*⟪main⟫/,''); const m = t.match(/ — ([^—]+?)\s*$/); return m? m[1].trim() : ''; }
 function stripUserOfNote(note){ const by = userOfNote(note); let t = String(note||'').replace(/\s*\[منقولة\]/,'').replace(/\s*✏️\S*\s*$/,'').replace(/\s*⟨\d+⟩\s*$/,''); if(by) t = t.replace(new RegExp(' — '+by.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\s*$'),''); return t.replace(DOC_MIRROR_TAG,'').replace(/^\[حساب\] /,'').trim(); }
+function isoOfTs(t){ const d = new Date(t||0); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function moveWhenHtml(r){ const rec = isoOfTs(r.at), d = r.date || rec, tm = new Date(r.at||0).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
+  return d===rec? fmtDate(d)+', '+tm : `${fmtDate(d)}<div style="font-size:10.5px; color:var(--ink-soft);">انسجّلت ${fmtDate(rec)}</div>`; }
 function safeBalance(){ const m = safeMoves(); const l = m[m.length-1]; return l ? {lbp:l.balLBP, usd:l.balUSD} : {lbp:0, usd:0}; }
 // الخزنة مع مين: المدير دايماً، ومستخدم بيختارو المدير من الإعدادات
 // الخزنة: كل مستخدم إلو صلاحية «رؤية الخزنة» بيشوفها، وبس يلي إلو «السحب من الخزنة» بيقدر يسحب ويدفع منها (المدير دايماً)
@@ -10053,10 +10056,10 @@ function safeViewMain(){
       <button class="btn" data-whish-withdraw="1" style="background:#fdeef3; border-color:#e7a3bb; color:#a3174a; font-weight:800;">📱 سحب من Whish</button>
     </div>` : ''}
     <div class="table-scroll"><table>
-      <thead><tr><th>التاريخ والساعة</th><th>الحركة</th><th>الموظف</th><th>المبلغ</th><th>الرصيد بعدها</th>${canUseSafe()? '<th></th>' : ''}</tr></thead>
+      <thead><tr><th>التاريخ</th><th>الحركة</th><th>الموظف</th><th>المبلغ</th><th>الرصيد بعدها</th>${canUseSafe()? '<th></th>' : ''}</tr></thead>
       <tbody>${moves.length? moves.map(r=>{ const mv = (DB.cashMovements||[]).find(x=>x.id===r.id); const by = r.by || (mv? userOfNote(mv.note) : '');
         return `<tr>
-        <td class="num">${new Date(r.at||0).toLocaleString('en-GB',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})}</td>
+        <td class="num">${moveWhenHtml(r)}</td>
         <td>${escapeHtml(by? String(r.label).replace(' — '+by,'') : r.label)}</td>
         <td>${by? '<b>'+escapeHtml(by)+'</b>' : '—'}</td>
         <td class="num" style="color:${(r.lbp+r.usd)>=0?'var(--credit)':'var(--debit)'};">${(r.lbp+r.usd)>=0?'+':'−'} ${fmtBoth(Math.abs(r.lbp), Math.abs(r.usd))}</td>
@@ -12692,7 +12695,7 @@ function whishStatementRows(){
     rows.push({ mid:m.id, at:m.createdAt||0, date:m.date, kind: sign>0? 'in' : 'out', lbp: m.currency==='USD'? 0 : sign*a, usd: m.currency==='USD'? sign*a : 0,
       label: (toMain? '💵 ' : (isDocMirrorMove(m)? (sign>0? '📥 ' : '📤 ') : '↔ ')) + stripUserOfNote(m.note), by:userOfNote(m.note) });
   });
-  rows.sort((a,b)=>a.at-b.at);
+  rows.sort((a,b)=>{ const da = a.date || isoOfTs(a.at), db = b.date || isoOfTs(b.at); return da<db? -1 : da>db? 1 : (a.at||0)-(b.at||0); });
   let bl = 0, bu = 0; rows.forEach(r=>{ if(r.kind==='in'){ r.lbp = Math.abs(r.lbp); r.usd = Math.abs(r.usd); } bl += r.kind==='in'? r.lbp : r.lbp; bu += r.kind==='in'? r.usd : r.usd; r.balLbp = bl; r.balUsd = bu; });
   return rows;
 }
@@ -12747,7 +12750,7 @@ function whishStatementView(){
     ${periodPickerHtml('#/whish', from, to)}
     ${(from||to)? `<div style="font-size:13px; margin-bottom:6px;">الفترة: <b class="num">${from? fmtDate(from) : 'من الأول'}</b> → <b class="num">${to? fmtDate(to) : 'لهلّق'}</b></div>` : ''}
     ${list.length? `<div class="table-scroll"><table><thead><tr><th>التاريخ</th><th>البيان</th><th>الموظف</th><th>داخل</th><th>طالع</th><th>الرصيد</th>${canUseSafe()? '<th></th>' : ''}</tr></thead><tbody>
-      ${list.map(r=>`<tr><td class="num" style="font-size:12px; white-space:nowrap;">${r.at? fmtDateTime12(r.at) : fmtDate(r.date)}</td><td>${escapeHtml(r.label)}</td><td>${escapeHtml(r.by||'')}</td>
+      ${list.map(r=>`<tr><td class="num" style="font-size:12px; white-space:nowrap;">${r.date && r.at && r.date!==isoOfTs(r.at)? fmtDate(r.date)+'<div style="font-size:10.5px; color:var(--ink-soft);">انسجّلت '+fmtDate(isoOfTs(r.at))+'</div>' : r.at? fmtDateTime12(r.at) : fmtDate(r.date)}</td><td>${escapeHtml(r.label)}</td><td>${escapeHtml(r.by||'')}</td>
         <td class="num" style="color:var(--credit);">${r.kind==='in'? money(r.lbp, r.usd) : ''}</td>
         <td class="num" style="color:var(--debit);">${r.kind==='out'? money(Math.abs(r.lbp), Math.abs(r.usd)) : ''}</td>
         <td class="num" style="font-weight:700;">${money(r.balLbp, r.balUsd)}</td>
@@ -14324,7 +14327,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-11-23 · 18:10 · v136';
+const APP_TRADE_BUILD = '2026-11-23 · 18:30 · v137';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 // ===== ترجيع حركات ناقصة من ملف (إضافة بس — ما منمحي ولا منغيّر شي موجود) =====
 document.addEventListener('change', async e=>{

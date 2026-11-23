@@ -1,5 +1,6 @@
 /* LibanApps — ترجمة برامج المحاسبة (التجاري والصناعي) للإنكليزي + زر عربي/EN */
 window.ACC_EN = {
+  "انسجّلت {n}": "recorded {n}",
   "المحاسبة: دفتر اليومية ودفتر الأستاذ وميزان المراجعة والتصميم المحاسبي": "Accounting: journal, ledger, trial balance and chart of accounts",
   "حساب النتيجة والميزانية العمومية والتدفقات النقدية وأعمار الديون": "Income statement, balance sheet, cash flow and debt aging",
   "TVA ونماذج المالية والضمان والرواتب": "VAT, tax forms, NSSF and payroll",
@@ -4292,6 +4293,7 @@ window.ACC_EN = {
 };
 /* Français — même clés arabes que ACC_EN */
 window.ACC_FR = {
+  "انسجّلت {n}": "saisi le {n}",
   "المحاسبة: دفتر اليومية ودفتر الأستاذ وميزان المراجعة والتصميم المحاسبي": "Comptabilité : journal, grand livre, balance et plan comptable",
   "حساب النتيجة والميزانية العمومية والتدفقات النقدية وأعمار الديون": "Compte de résultat, bilan, flux de trésorerie et balance âgée",
   "TVA ونماذج المالية والضمان والرواتب": "TVA, formulaires fiscaux, CNSS et paie",
