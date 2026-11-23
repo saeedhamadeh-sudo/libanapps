@@ -1862,6 +1862,7 @@ var D={
  rx_price:['سعر الكيلو واط لهذه الفاتورة','kWh price for this invoice','Prix du kWh pour cette facture'],
  rx_note:['هذا المشترك أُخذ عداده في هذه الدورة. ستُسجَّل قراءة خارج الدورة (تصفية حساب) وتصدر فاتورة فورية بالاستهلاك منذ آخر قراءة وبالسعر الذي تحدّده. قراءة الدورة القادمة تبدأ من هذه القراءة.','This subscriber was already read this cycle. An out-of-cycle (settlement) reading will be saved and an invoice issued now for the consumption since the last reading, at the price you set. The next cycle starts from this reading.','Compteur déjà relevé ce cycle : un relevé hors cycle (solde) sera enregistré avec une facture immédiate au prix indiqué.'],
  take_reading_x:['أخذ عداد (الدورة القادمة أو تصفية)','Read meter (next cycle or settlement)','Relevé (cycle suivant ou solde)'],
+ rx_price_opt:['اختياري — اتركه فارغاً إذا لم يُحدَّد سعر الشهر بعد: يُحفظ العداد، وعند تحديد سعر الشهر تُحسب الفاتورة وتُرسل للزبون تلقائياً.','Optional — leave empty if the month price is not set yet: the reading is saved, and when the month price is set the bill is calculated and sent to the customer automatically.','Facultatif — laissez vide si le prix du mois n’est pas fixé : le relevé est enregistré, la facture sera calculée et envoyée automatiquement une fois le prix fixé.'],
  e_price_required:['أدخل سعر الكيلو واط لإصدار الفاتورة','Enter the kWh price to issue the invoice','Saisissez le prix du kWh'],
  k_return:['فاتورة استرجاع','Return invoice','Facture de retour'],
  rt_new:['فاتورة استرجاع','Return invoice','Facture de retour'],
@@ -2415,7 +2416,7 @@ Object.assign(D,{
  void_reading:['إلغاء القراءة','Cancel reading','Annuler le relevé'],
  kf_btn:['عداد مقطوع','Monthly allowance','Forfait mensuel'],
  mp_del:['إلغاء','Remove','Supprimer'],
- mp_del_q:['إلغاء تسعيرة شهر {m}؟\n\nالفواتير التي صدرت لهذا الشهر تبقى بسعرها كما هي. العدادات الجديدة لهذا الشهر ستطلب تسعيرة من جديد، ورسائل قيمة الفاتورة تُقفل حتى تُحدَّد.','Remove the price for {m}?\n\nBills already issued for this month keep their price. New readings for this month will ask for a price again, and bill messages are locked until it is set.','Supprimer le prix de {m} ?\n\nLes factures déjà émises gardent leur prix. Les nouveaux relevés redemanderont un prix.'],
+ mp_del_q:['إلغاء تسعيرة شهر {m}؟\n\nالفواتير التي صدرت لهذا الشهر تبقى بسعرها كما هي. العدادات الجديدة لهذا الشهر تُحفظ عادياً، ورسائل قيمة الفاتورة تُقفل حتى يُحدَّد السعر من جديد.','Remove the price for {m}?\n\nBills already issued for this month keep their price. New readings are still saved, and bill messages are locked until a price is set again.','Supprimer le prix de {m} ?\n\nLes factures déjà émises gardent leur prix. Les nouveaux relevés sont enregistrés ; les messages attendent un nouveau prix.'],
  nav_guide:['دليل الاستخدام','User guide','Guide d’utilisation'],
  g_for:['دليل خاص بك: {r}','Your guide: {r}','Votre guide : {r}'],
  g_search:['ابحث في الدليل…','Search the guide…','Rechercher dans le guide…'],
@@ -3847,7 +3848,7 @@ async function openCustomer(id,barcode,mode){
         '<label class="chk"><input type="radio" name="rxm" value="settle"> '+esc(t('rx_settle'))+'</label>'+
         '<div class="muted" style="font-size:12.5px;margin:-2px 0 0 26px">'+esc(t('rx_note'))+'</div></div>':'')+
       (isAdmin()&&(d.plan||{}).kind!=='fixed'?
-        '<label style="margin-top:8px">⚡ '+esc(t('rx_price'))+' ('+esc(sym(mainCur()))+' / '+esc(t('kwh'))+')</label><input id="rkp" type="text" inputmode="decimal" autocomplete="off" style="max-width:220px">':'')+
+        '<label style="margin-top:8px">⚡ '+esc(t('rx_price'))+' ('+esc(sym(mainCur()))+' / '+esc(t('kwh'))+')</label><input id="rkp" type="text" inputmode="decimal" autocomplete="off" style="max-width:220px"><div class="muted" style="font-size:12.5px;margin-top:4px">'+esc(t('rx_price_opt'))+'</div>':'')+
       '<div id="rest" class="muted" style="margin:8px 0"></div>'+
       '<label class="chk" style="margin:6px 0"><input type="checkbox" id="rremote"> '+esc(t('remote_read'))+'</label><div id="rremn" class="muted hidden" style="font-size:13px">'+esc(t('remote_note'))+'</div>'+
       '<div id="gpsLine" style="margin:6px 0"></div>'+
@@ -3861,7 +3862,7 @@ async function openCustomer(id,barcode,mode){
       loadMonthPrices().then(function(md){ var r=(md.rows||[]).filter(function(y){ return y.period===per; })[0]; kpi.value=r?String(Number(r.price)):''; inp.dispatchEvent(new Event('input')); }); }); });
     if(kpi){ loadMonthPrices().then(function(md){ var per=d.read_now?(rxMode()==='next'?nextPer(d.period||SITE.bill_period):String(TODAY).slice(0,7)):(md.current||d.period); var r=(md.rows||[]).filter(function(x){ return x.period===per; })[0]; if(r&&kpi.value==='') kpi.value=String(Number(r.price)); });
       kpi.addEventListener('input',function(){ kpi.value=kpi.value.replace(/[٠-٩]/g,function(x){return '٠١٢٣٤٥٦٧٨٩'.indexOf(x)}).replace(/[^0-9.]/g,''); inp.dispatchEvent(new Event('input')); }); }
-    function kpOk(){ if(!kpi) return true; var v=kpi.value.trim(); if(v===''||!isFinite(Number(v))){ $('#rmsg',box).textContent=t('e_price_required'); kpi.focus(); return false; } return true; }
+    function kpOk(){ if(!kpi) return true; var v=kpi.value.trim(); if(v!==''&&!isFinite(Number(v))){ $('#rmsg',box).textContent=t('e_bad_amount'); kpi.focus(); return false; } return true; }   // بلا سعر: بينحفظ العداد والفاتورة بتتسعّر لما ينحدد سعر الشهر
     $('#rremote',box).addEventListener('change',function(){ remote=this.checked; $('#rremn',box).classList.toggle('hidden',!remote);
       if(remote){ geo=null; $('#gpsLine',box).innerHTML='<span class="chip gray">📷 '+esc(t('remote_chip'))+'</span>'; } else startGeo();
       if(!photoBlob) $('#rnext',box).innerHTML=esc(remote?t('remote_pick'):t('next_photo')); });
