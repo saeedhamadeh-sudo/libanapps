@@ -25,9 +25,13 @@ async function offlineManifest(env, url) {
   const hex = async (buf) => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', buf)))
     .map(b => b.toString(16).padStart(2, '0')).join('');
   const files = [], seen = new Set();
+  // ملفات الدليل كتيرة (صور) — بصماتها جاهزة بملف واحد، حتى ما نتخطّى حد الطلبات الفرعية للـWorker
+  let pre = {};
+  try { const r = await env.ASSETS.fetch(new URL('/assets/guide/files.json', url.origin)); if (r.ok) pre = (await r.json()) || {}; } catch (e) {}
   const add = async (p) => {
     if (seen.has(p)) return null;
     seen.add(p);
+    if (pre[p] && pre[p].sha256) { files.push({ path: p, sha256: pre[p].sha256, size: pre[p].size }); return null; }
     const r = await env.ASSETS.fetch(new URL('/' + p, url.origin));
     if (!r.ok) return null;
     const buf = await r.arrayBuffer();
