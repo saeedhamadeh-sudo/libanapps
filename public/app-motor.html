@@ -3582,6 +3582,8 @@ var RWIN=null;
 async function loadRWin(){ try{ RWIN=await call('motor_read_windows'); }catch(e){} return RWIN; }
 function nextPer(per){ per=String(per||''); var y=+per.slice(0,4), mo=+per.slice(5,7)+1; if(!y) return per; if(mo>12){ mo=1; y++; } return y+'-'+String(mo).padStart(2,'0'); }
 function rwD(d){ d=String(d||''); return d.slice(8,10)+'/'+d.slice(5,7)+'/'+d.slice(0,4); }
+/* فترة أخذ العداد مفتوحة هلّق؟ (خانة سعر الفاتورة بتبيّن للمدير بس إذا عم ياخد العداد بكير قبل الفترة) */
+function readWinOpen(){ var c=RWIN&&RWIN.current; if(c) return !!c.open; var st=String(TODAY).slice(5,7)==='02'?23:26; return +String(TODAY).slice(8,10)>=st; }
 function windowNote(){
   var c=RWIN&&RWIN.current;
   if(c){ return '<div class="'+(c.open?'okmsg':'lic')+'">📅 '+esc(t('rw_note',{m:monthName(c.period,true),f:rwD(c.from),to:rwD(c.to)}))+' — '+esc(c.open?t('window_open'):t('window_wait',{d:rwD(c.from)}))+
@@ -3847,7 +3849,7 @@ async function openCustomer(id,barcode,mode){
         '<div class="muted" style="font-size:12.5px;margin:-2px 0 6px 26px">'+esc(t('rx_next_h'))+'</div>'+
         '<label class="chk"><input type="radio" name="rxm" value="settle"> '+esc(t('rx_settle'))+'</label>'+
         '<div class="muted" style="font-size:12.5px;margin:-2px 0 0 26px">'+esc(t('rx_note'))+'</div></div>':'')+
-      (isAdmin()&&(d.plan||{}).kind!=='fixed'?
+      (isAdmin()&&(d.plan||{}).kind!=='fixed'&&!readWinOpen()?
         '<label style="margin-top:8px">⚡ '+esc(t('rx_price'))+' ('+esc(sym(mainCur()))+' / '+esc(t('kwh'))+')</label><input id="rkp" type="text" inputmode="decimal" autocomplete="off" style="max-width:220px"><div class="muted" style="font-size:12.5px;margin-top:4px">'+esc(t('rx_price_opt'))+'</div>':'')+
       '<div id="rest" class="muted" style="margin:8px 0"></div>'+
       '<label class="chk" style="margin:6px 0"><input type="checkbox" id="rremote"> '+esc(t('remote_read'))+'</label><div id="rremn" class="muted hidden" style="font-size:13px">'+esc(t('remote_note'))+'</div>'+
