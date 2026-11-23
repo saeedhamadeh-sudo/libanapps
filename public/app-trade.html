@@ -10369,7 +10369,7 @@ function pcgTreeView(qs){
     <div class="action-row" style="margin-bottom:8px;">
       <input type="text" id="pcg_q" placeholder="🔍 رقم الحساب أو الاسم" value="${escapeHtml(q)}" style="flex:1; min-width:180px;">
       <label style="display:flex; align-items:center; gap:6px; font-size:13px;"><input type="checkbox" id="pcg_z" ${hideZero? 'checked' : ''} style="width:auto;"> بس الحسابات يلي فيها حركة</label>
-      ${canEdit? '<button class="btn btn-primary" id="pcg_gl">➕ قيد محاسبي</button>' : ''}
+      ${canEdit? '<button class="btn btn-primary" id="pcg_gl">➕ قيد محاسبي</button>' : ''}${canEdit? (()=>{ const n = glRecDueCount(); return `<button class="btn" id="pcg_rec">🔁 قيود متكرّرة${n? ' ('+n+' ⏰)' : ''}</button>`; })() : ''}
     </div>
   </div>
   <div class="card">${body}</div>${appFooter()}`;
@@ -10379,6 +10379,7 @@ function bindPcgTree(){
   const qi = document.getElementById('pcg_q'); if(qi){ qi.addEventListener('keydown', e=>{ if(e.key==='Enter') go2(); }); qi.addEventListener('change', go2); }
   const zi = document.getElementById('pcg_z'); if(zi) zi.addEventListener('change', go2);
   const g = document.getElementById('pcg_gl'); if(g) g.addEventListener('click', ()=>openGlVoucherModal());
+  const gr = document.getElementById('pcg_rec'); if(gr) gr.addEventListener('click', ()=>openGlRecurringModal());
   document.querySelectorAll('[data-pcg-sub]').forEach(b=>b.addEventListener('click', e=>{ e.stopPropagation(); openPcgSubModal(b.getAttribute('data-pcg-sub')); }));
   document.querySelectorAll('[data-pcg-ren]').forEach(b=>b.addEventListener('click', async e=>{ e.stopPropagation(); const c = b.getAttribute('data-pcg-ren'); const n = prompt('اسم الحساب '+offC(c), jrName(c) || pcgNameOf(c)); if(n==null || !n.trim()) return; await pcgRename(c, n.trim()); _pcgOffT = null; toast('✅ تعدّل الاسم'); render(); }));
   document.querySelectorAll('[data-pcg-del]').forEach(b=>b.addEventListener('click', async e=>{ e.stopPropagation(); const c = b.getAttribute('data-pcg-del'); if(!confirm('حذف الحساب '+c+' — '+pcgNameOf(c)+'؟ (ما فيه ولا حركة)')) return; await pcgDeleteCustom(c); toast('انحذف الحساب'); render(); }));
@@ -10412,6 +10413,36 @@ function openPcgSubModal(parent){
     await pcgAddCustom({code, name, parent:String(parent)}); _pcgOffT = null; wrap.remove(); toast('✅ انفتح الحساب '+code); render();
   });
 }
+/* ---- القيود المتكرّرة: القيد بيتسجّل «كل شهر» أو «كل سنة»، والمحاسب بيكبس ليعيدو بالتاريخ الجديد (مش تلقائي) ---- */
+function glAddPeriod(d, rp){ const p = String(d||todayISO()).split('-').map(Number); let Y = p[0], M = p[1] + (rp==='y'? 12 : 1); while(M>12){ M -= 12; Y++; }
+  const last = new Date(Y, M, 0).getDate(), D = Math.min(p[2]||1, last); return Y+'-'+String(M).padStart(2,'0')+'-'+String(D).padStart(2,'0'); }
+function glRecSeries(){
+  const stop = new Set(pcgStore().stopSr||[]), S = {};
+  glVoucherList().forEach(v=>{ if(!v.rp) return; const k = v.sr || v.ref; if(stop.has(k)) return; const o = S[k]; if(!o || v.date>o.date || (v.date===o.date && (v.at||0)>(o.at||0))) S[k] = Object.assign({}, v, {sr:k}); });
+  return Object.values(S).map(v=>Object.assign(v, {next:glAddPeriod(v.date, v.rp)})).sort((a,b)=>a.next<b.next? -1 : 1);
+}
+function glRecDueCount(){ const t = todayISO(); try{ return glRecSeries().filter(v=>v.next<=t).length; }catch(e){ return 0; } }
+function glRecRepeat(sr, date){ const s = glRecSeries().find(x=>x.sr===sr); if(!s) return toast('ما لقينا القيد');
+  const v = glVoucherGet(s.ref); if(!v) return toast('ما لقينا القيد');
+  openGlVoucherModal({lines:v.lines, desc:v.desc, cur:v.cur, rp:s.rp, sr, date:date || s.next, copyOf:1}); }
+function openGlRecurringModal(){
+  const L = glRecSeries(), t = todayISO();
+  const wrap = document.createElement('div'); wrap.className = 'modal-bg';
+  const row = v=>{ const tot = (v.lines||[]).reduce((x,l)=>x+(Number(l.dr)||0),0), due = v.next<=t;
+    return `<tr><td>${escapeHtml(v.desc||'قيد يدوي')}</td><td>${v.rp==='y'? 'كل سنة' : 'كل شهر'}</td><td class="num">${fmtNum(tot)}</td><td class="num">${fmtDate(v.date)}</td>
+      <td class="num" style="${due? 'color:var(--debit); font-weight:800;' : ''}">${fmtDate(v.next)}${due? ' ⏰' : ''}</td>
+      <td style="white-space:nowrap;"><button class="btn btn-sm btn-primary" data-rc-go="${escapeHtml(v.sr)}">➕ سجّل قيد ${fmtDate(v.next)}</button> <button class="btn btn-sm" data-rc-stop="${escapeHtml(v.sr)}" title="وقّف التكرار">⏹</button></td></tr>`; };
+  wrap.innerHTML = `<div class="modal" style="max-width:900px;"><h3>🔁 القيود المتكرّرة</h3>
+    <p style="font-size:12.5px; color:var(--ink-soft); line-height:1.7; margin-top:0;">كل قيد اخترت إلو «كل شهر» أو «كل سنة» بيطلع هون مع تاريخ المرة الجاية. اكبس «سجّل» بيفتح نفس القيد (نفس الحسابات والمبالغ والشرح) بالتاريخ الجديد، بتراجعو وبتحفظو. البرنامج ما بيسجّل شي لحالو.</p>
+    ${L.length? `<div class="table-scroll"><table style="font-size:13.5px;"><thead><tr><th>القيد</th><th>التكرار</th><th>المبلغ</th><th>آخر مرة</th><th>المرة الجاية</th><th></th></tr></thead><tbody>${L.map(row).join('')}</tbody></table></div>`
+      : '<div style="padding:14px; color:var(--ink-soft);">ما في قيود متكرّرة. لما تعمل قيد يدوي، اختار تحت «🔁 التكرار»: كل شهر أو كل سنة.</div>'}
+    <div class="row" style="margin-top:10px;"><button class="btn" id="rc_x">سكّر</button></div></div>`;
+  document.body.appendChild(wrap);
+  wrap.querySelector('#rc_x').addEventListener('click', ()=>wrap.remove());
+  wrap.querySelectorAll('[data-rc-go]').forEach(b=>b.addEventListener('click', ()=>{ wrap.remove(); glRecRepeat(b.getAttribute('data-rc-go')); }));
+  wrap.querySelectorAll('[data-rc-stop]').forEach(b=>b.addEventListener('click', async ()=>{ if(!confirm('توقيف تكرار هالقيد؟ القيود يلي انعملت بتضل متل ما هيّي.')) return;
+    const k = b.getAttribute('data-rc-stop'); await pcgSaveCoa(r=>{ r.stopSr = (r.stopSr||[]).filter(x=>x!==k).concat([k]); }); wrap.remove(); toast('وقف التكرار'); render(); }));
+}
 /* ---- قيد محاسبي حر: أكتر من سطر، من أي حساب لأي حساب (بالأرقام الرسمية) ---- */
 function openGlVoucherModal(pre){
   if(!canPostGl()){ toast('ما عندك صلاحية القيود المحاسبية'); return; }
@@ -10421,11 +10452,11 @@ function openGlVoucherModal(pre){
   const lbl = c=> c? offC(c)+' — '+pcgTr(jrName(c)||pcgNameOf(offC(c))||'') : '';
   const curSel = glVoucherCurOptions(pre.cur);
   const wrap = document.createElement('div'); wrap.className = 'modal-bg';
-  wrap.innerHTML = `<div class="modal" style="max-width:920px;"><h3>${pre.editRef? '✏️ تعديل قيد' : '🔁 قيد محاسبي'}</h3>
+  wrap.innerHTML = `<div class="modal" style="max-width:920px;"><h3>${pre.editRef? '✏️ تعديل قيد' : pre.copyOf? '⧉ تكرار القيد' : '🔁 قيد محاسبي'}</h3>
     <datalist id="gv_accs" data-noi18n>${accs.map(a=>`<option value="${escapeHtml(a.code+' — '+pcgTr(a.name))}">`).join('')}</datalist>
     <div class="grid grid-2"><div class="field"><label>التاريخ</label><input type="date" id="gv_date" value="${pre.date||todayISO()}"></div>
       <div class="field"><label>البيان</label><input type="text" id="gv_desc" value="${escapeHtml(pre.desc||'')}" placeholder="مثلاً: إيجار المحل عن شهر 11"></div></div>
-    ${curSel? `<div class="field" style="max-width:220px;"><label>العملة</label><select id="gv_cur">${curSel}</select></div>` : ''}
+    <div class="grid grid-2">${curSel? `<div class="field"><label>العملة</label><select id="gv_cur">${curSel}</select></div>` : ''}<div class="field"><label>🔁 التكرار</label><select id="gv_rp"><option value="">مرة وحدة</option><option value="m" ${pre.rp==='m'? 'selected' : ''}>كل شهر (إيجار، رواتب…)</option><option value="y" ${pre.rp==='y'? 'selected' : ''}>كل سنة (إيجار أرض، تأمين…)</option></select></div></div>
     <div class="table-scroll"><table id="gv_t" style="font-size:13.5px;"><thead><tr><th style="min-width:240px;">الحساب (من الفئات 1–7)</th><th>مدين (من)</th><th>دائن (إلى)</th><th style="min-width:150px;">الشرح</th><th></th></tr></thead><tbody></tbody>
       <tfoot><tr style="font-weight:800;"><td>المجموع <span id="gv_diff" style="font-weight:700; margin-inline-start:8px;"></span></td><td class="num" id="gv_td"></td><td class="num" id="gv_tc"></td><td colspan="2"></td></tr></tfoot></table></div>
     <button class="btn btn-sm" id="gv_add">➕ سطر</button>
@@ -10450,7 +10481,7 @@ function openGlVoucherModal(pre){
     const df = Math.round((d-c)*100)/100; ar.querySelector('.gv-dr').value = df<0? -df : ''; ar.querySelector('.gv-cr').value = df>0? df : ''; };
   const tot = ()=>{ autoFill(); const L = read(), d = L.reduce((t,l)=>t+l.dr,0), c = L.reduce((t,l)=>t+l.cr,0); $('#gv_td').textContent = fmtNum(d); $('#gv_tc').textContent = fmtNum(c);
     const df = Math.round((d-c)*100)/100; $('#gv_diff').innerHTML = df? `<span style="color:var(--debit);">فرق ${fmtNum(Math.abs(df))}</span>` : (d? '<span style="color:var(--credit);">✓ متوازن</span>' : ''); };
-  lines0.forEach((l,i)=>addRow(l, !pre.editRef && i===lines0.length-1)); tot();
+  lines0.forEach((l,i)=>addRow(l, !pre.editRef && !pre.copyOf && i===lines0.length-1)); tot();
   $('#gv_add').addEventListener('click', ()=>{ const ar = Array.from(tb.children).find(x=>x.dataset.auto==='1'); const tr = addRow({a:'', dr:'', cr:''}); if(ar) tb.insertBefore(tr, ar); tr.querySelector('.gv-a').focus(); tot(); });
   $('#gv_x').addEventListener('click', ()=>wrap.remove());
   $('#gv_ok').addEventListener('click', async ()=>{
@@ -10467,15 +10498,17 @@ function openGlVoucherModal(pre){
     const date = $('#gv_date').value || todayISO(); if(lockBlocks(date)) return;
     if(pre.editRef && pre.date && lockBlocks(pre.date)) return;
     const cur = $('#gv_cur')? $('#gv_cur').value : '';
-    const r = await glSaveVoucher(L.map(l=>({a:l.a, dr:l.dr, cr:l.cr, n:l.n||''})), {date, desc:$('#gv_desc').value.trim() || (L.find(l=>l.n)||{}).n || '', cur, editRef:pre.editRef||null});
+    const r = await glSaveVoucher(L.map(l=>({a:l.a, dr:l.dr, cr:l.cr, n:l.n||''})), {date, desc:$('#gv_desc').value.trim() || (L.find(l=>l.n)||{}).n || '', cur, editRef:pre.editRef||null, rp:$('#gv_rp').value, sr:$('#gv_rp').value? (pre.sr||'') : ''});
     if(r && r.error) return err(r.error);
     _jrCache = null; wrap.remove(); toast(r && r.ok===false? '⚠️ صار خطأ بالحفظ' : '✅ انحفظ القيد'); render();
   });
 }
 function glEditBtns(e){ if(e.kind!=='gl' || !canPostGl()) return ''; const ref = glRefOfEntry(e); if(!ref) return '';
-  return ` <span class="no-print" style="white-space:nowrap;"><button class="btn btn-sm" data-glv-edit="${escapeHtml(ref)}" title="تعديل القيد">✏️</button><button class="btn btn-sm btn-danger" data-glv-del="${escapeHtml(ref)}" title="حذف القيد">🗑</button></span>`; }
+  return ` <span class="no-print" style="white-space:nowrap;"><button class="btn btn-sm" data-glv-copy="${escapeHtml(ref)}" title="كرّر هالقيد بتاريخ جديد">⧉</button><button class="btn btn-sm" data-glv-edit="${escapeHtml(ref)}" title="تعديل القيد">✏️</button><button class="btn btn-sm btn-danger" data-glv-del="${escapeHtml(ref)}" title="حذف القيد">🗑</button></span>`; }
 document.addEventListener('click', async ev=>{
-  const be = ev.target.closest && ev.target.closest('[data-glv-edit]'), bd = ev.target.closest && ev.target.closest('[data-glv-del]');
+  const be = ev.target.closest && ev.target.closest('[data-glv-edit]'), bd = ev.target.closest && ev.target.closest('[data-glv-del]'), bc = ev.target.closest && ev.target.closest('[data-glv-copy]');
+  if(bc){ ev.preventDefault(); ev.stopPropagation(); const v = glVoucherGet(bc.getAttribute('data-glv-copy')); if(!v) return toast('ما لقينا القيد');
+    return openGlVoucherModal({lines:v.lines, desc:v.desc, cur:v.cur, rp:v.rp, sr:v.rp? (v.sr || String(bc.getAttribute('data-glv-copy')).replace(/^[a-z]:/,'')) : '', date:glAddPeriod(v.date, v.rp||'m'), copyOf:1}); }
   if(!be && !bd) return; ev.preventDefault(); ev.stopPropagation();
   const ref = (be||bd).getAttribute(be? 'data-glv-edit' : 'data-glv-del'); const v = glVoucherGet(ref); if(!v){ toast('ما لقينا القيد'); return; }
   if(lockBlocks(v.date)) return;
@@ -10484,7 +10517,7 @@ document.addEventListener('click', async ev=>{
   const r = await glDeleteVoucher(ref); _jrCache = null; toast(r===false? '⚠️ صار خطأ' : 'انحذف القيد'); render();
 }, true);
 /* ---- تخزين الحسابات يلي بيفتحها المحاسب (التجارة: DB.settings.coa) ---- */
-function pcgStore(){ const r = DB.settings.coa || {}; return { accounts:(r.accounts||[]).filter(a=>a && a.kind==='manual'), names:r.names||{}, offMap:r.offMap||{} }; }
+function pcgStore(){ const r = DB.settings.coa || {}; return { accounts:(r.accounts||[]).filter(a=>a && a.kind==='manual'), names:r.names||{}, offMap:r.offMap||{}, stopSr:r.stopSr||[] }; }
 async function pcgSaveCoa(mut){ const r = Object.assign({groups:[], accounts:[], names:{}}, DB.settings.coa||{}); r.groups = (r.groups||[]).slice(); r.accounts = (r.accounts||[]).slice(); r.names = Object.assign({}, r.names||{}); r.offMap = Object.assign({}, r.offMap||{});
   mut(r); DB.settings.coa = r; _coaCache = null; _jrCache = null; _pcgOffT = null; return await save(KEYS.settings, DB.settings); }
 async function pcgAddCustom(a){ return pcgSaveCoa(r=>{ if(a.code.length<=3) r.groups.push({code:a.code, name:a.name}); r.accounts.push({code:a.code, name:a.name, group:a.code.slice(0,3), kind:'manual', pcg:1, parent:a.parent, by:currentUser&&currentUser.username, at:Date.now()}); }); }
@@ -10505,7 +10538,7 @@ async function glSaveVoucher(L, o){
   if(o.editRef){ const old = glVoucherMoves(o.editRef); if(!old.length) return {error:'ما لقينا القيد القديم'};
     const g0 = glInfo(old[0])||{}; vid = g0.v || vid; at = old[0].createdAt || at;
     old.forEach(m=>{ m.deleted = true; m.deletedAt = Date.now(); m.deletedBy = currentUser&&currentUser.username; m.note = String(m.note||''); }); }
-  P.forEach((p,k)=>DB.cashMovements.push({id:uid(), createdAt:at+k, type:'gl', currency:cur, amount:Math.round(p.v*100)/100, note:GL_TAG+JSON.stringify({dr:p.dr, cr:p.cr, desc:o.desc||'', ...(p.dn? {dn:p.dn} : {}), ...(p.cn? {cn:p.cn} : {}), v:vid, by:currentUser&&currentUser.username, ...(o.editRef? {ed:currentUser&&currentUser.username} : {})}), refSaleId:null, date:o.date, shiftId:null}));
+  P.forEach((p,k)=>DB.cashMovements.push({id:uid(), createdAt:at+k, type:'gl', currency:cur, amount:Math.round(p.v*100)/100, note:GL_TAG+JSON.stringify({dr:p.dr, cr:p.cr, desc:o.desc||'', ...(p.dn? {dn:p.dn} : {}), ...(p.cn? {cn:p.cn} : {}), ...(o.rp? {rp:o.rp} : {}), ...(o.rp? {sr:o.sr||vid} : {}), v:vid, by:currentUser&&currentUser.username, ...(o.editRef? {ed:currentUser&&currentUser.username} : {})}), refSaleId:null, date:o.date, shiftId:null}));
   const ok = await save(KEYS.cashMovements, DB.cashMovements); return {ok};
 }
 function glVoucherMoves(ref){ ref = String(ref||'');
@@ -10519,7 +10552,11 @@ function glRefOfEntry(e){ const k = String(e.key||'');
 function glVoucherGet(ref){ const M = glVoucherMoves(ref); if(!M.length) return null; const g0 = glInfo(M[0])||{}, A = {};
   M.forEach(m=>{ const g = glInfo(m)||{}, v = Math.abs(Number(m.amount)||0), kd = 'd'+g.dr+'|'+(g.dn||''), kc = 'c'+g.cr+'|'+(g.cn||''); A[kd] = (A[kd]||0) + v; A[kc] = (A[kc]||0) + v; });
   const lines = Object.keys(A).map(k=>{ const i = k.indexOf('|'), a = k.slice(1, i), n = k.slice(i+1); return {a, n, dr:k[0]==='d'? Math.round(A[k]*100)/100 : '', cr:k[0]==='c'? Math.round(A[k]*100)/100 : ''}; }).sort((x,y)=>(y.dr? 1 : 0)-(x.dr? 1 : 0));
-  return {lines, date:M[0].date, desc:g0.desc||'', cur:M[0].currency}; }
+  return {lines, date:M[0].date, desc:g0.desc||'', cur:M[0].currency, rp:g0.rp||'', sr:g0.sr||''}; }
+function glVoucherList(){ const G = {};
+  (DB.cashMovements||[]).forEach(m=>{ if(m.deleted || m.type!=='gl') return; const g = glInfo(m)||{}; if(g.fx || glLinkedIds().has(m.id)) return;
+    const k = g.v? 'v:'+g.v : 'm:'+m.id; const o = G[k] || (G[k] = {ref:k, date:m.date, at:m.createdAt||0, desc:g.desc||'', rp:g.rp||'', sr:g.sr||'', lines:[]}); o.lines.push({dr:Math.abs(Number(m.amount)||0)}); });
+  return Object.values(G); }
 async function glDeleteVoucher(ref){ const M = glVoucherMoves(ref); M.forEach(m=>{ m.deleted = true; m.deletedAt = Date.now(); m.deletedBy = currentUser&&currentUser.username; }); return await save(KEYS.cashMovements, DB.cashMovements); }
 function openGlEntryModal(pre){ pre = pre || {}; return openGlVoucherModal({to:pre.to, from:pre.from}); }
 function coaReg(){
@@ -10996,7 +11033,7 @@ function lebJournalView(qs){
       <button class="btn ${mode==='j'? 'btn-primary' : ''}" data-jr-mode="j">📖 دفتر اليومية</button>
       <button class="btn ${mode==='t'? 'btn-primary' : ''}" data-jr-mode="t">⚖️ ميزان المراجعة</button>
       <button class="btn ${mode==='g'? 'btn-primary' : ''}" data-jr-mode="g">📒 دفتر الأستاذ</button>
-      ${canPostGl()? '<button class="btn" id="jrNewGl">➕ قيد يدوي</button>' : ''}
+      ${canPostGl()? '<button class="btn" id="jrNewGl">➕ قيد يدوي</button>' : ''}${canPostGl()? (()=>{ const n = glRecDueCount(); return `<button class="btn" id="jrRecGl">🔁 قيود متكرّرة${n? ' <b style="color:var(--debit);">('+n+' ⏰)</b>' : ''}</button>`; })() : ''}
     </div>
     ${periodFilterHtml('lj', P.period, P.a, P.b)}${jrCurSel()}
     <div class="grid grid-2">
@@ -11051,6 +11088,7 @@ function bindLebJournal(){
   const k = document.getElementById('lj_k'); if(k) k.addEventListener('change', ()=>goQ({k:k.value}));
   const ac = document.getElementById('lj_acc'); if(ac) ac.addEventListener('change', ()=>goQ({acc:ac.value.trim()}));
   const ng = document.getElementById('jrNewGl'); if(ng) ng.addEventListener('click', ()=>openGlEntryModal());
+  const nr = document.getElementById('jrRecGl'); if(nr) nr.addEventListener('click', ()=>openGlRecurringModal());
 }
 /* ===== 📊 كشف الإيرادات والأعباء (حساب النتيجة) — الفئة 6 والفئة 7 ===== */
 function jrShiftYear(d, n){ if(!d) return d; const y = Number(d.slice(0,4))+n; let r = y+d.slice(4); if(r.slice(5)==='02-29') r = y+'-02-28'; return r; }
@@ -11594,7 +11632,7 @@ function exportDocXlsx(name){
   xlDownload(xlWorkbook([{name:'Report', rows:xlRowsFromDoc(doc)}]), (name||'report')+'.xlsx');
 }
 /* ===================== 📘 دليل الاستخدام: ملفات ثابتة (/assets/guide) بتنحمّل بس لما ينفتح التبويب — مش داتا، فما بتكبّر النسخة الاحتياطية ===================== */
-const GUIDE_VER = '2026-11-23f';
+const GUIDE_VER = '2026-11-23g';
 // قائمة ملفات الدليل — مكتوبة حرفيًا لحتى تنزل مع تحديثات النسخة المحلية (offline)
 const GUIDE_FILES = [
   '/assets/guide/guide-ar.js',
@@ -14215,7 +14253,7 @@ function trashView(){
 
 /* ---------- Settings ---------- */
 // رقم إصدار البرنامج: يظهر أعلى صفحة الإعدادات — إذا ما شفته يعني المتصفح/النشر لسا على نسخة قديمة
-const APP_TRADE_BUILD = '2026-11-23 · 15:30 · v130';
+const APP_TRADE_BUILD = '2026-11-23 · 16:15 · v131';
 try{ console.info('[app-trade] build', APP_TRADE_BUILD); }catch(e){}
 // ===== ترجيع حركات ناقصة من ملف (إضافة بس — ما منمحي ولا منغيّر شي موجود) =====
 document.addEventListener('change', async e=>{
