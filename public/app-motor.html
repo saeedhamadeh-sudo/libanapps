@@ -2580,6 +2580,17 @@ function setLang(l){ if(!LI.hasOwnProperty(l)) l='ar'; LANG=l; try{ localStorage
    ========================================================= */
 var CFG=window.LIBANAPPS, sb=null;
 try{ sb=window.supabase.createClient(CFG.SUPABASE_URL,CFG.SUPABASE_ANON_KEY); }catch(e){}
+/* «JWT expired»: جلسة حساب libanapps قديمة بالمتصفح (أو ساعة الكمبيوتر غلط) بتخرّب كل الطلبات حتى صفحة الدخول.
+   منجرّب نجدّد الجلسة، وإذا ما زبط منشيلها ومنعيد الطلب بلاها (دخول الموظفين ما بيحتاجها) */
+function isJwtExp(e){ return !!e&&/jwt expired|invalid jwt|jwt.*(expired|malformed)|PGRST30[13]/i.test(String((e.message||'')+' '+(e.code||''))); }
+function sbWrap(c){ if(!c||c.__w) return c; var raw=c.rpc.bind(c); c.__w=true;
+  c.rpc=async function(fn,a,o){ var r=await raw(fn,a,o); if(!r||!isJwtExp(r.error)) return r;
+    try{ var rf=await sb.auth.refreshSession(); if(rf&&rf.data&&rf.data.session){ var r2=await raw(fn,a,o); if(!isJwtExp(r2.error)) return r2; } }catch(e){}
+    try{ Object.keys(localStorage).forEach(function(k){ if(/^sb-.*-auth-token/.test(k)) localStorage.removeItem(k); }); }catch(e){}
+    try{ sb=sbWrap(window.supabase.createClient(CFG.SUPABASE_URL,CFG.SUPABASE_ANON_KEY,{auth:{persistSession:false,autoRefreshToken:false}})); }catch(e){ return r; }
+    return sb.rpc(fn,a,o); };
+  return c; }
+sb=sbWrap(sb);
 var $=function(s,r){return (r||document).querySelector(s)}, $$=function(s,r){return Array.prototype.slice.call((r||document).querySelectorAll(s))};
 Object.assign(D,{
  rep_bal_start:['رصيد أول الشهر','Opening balance','Solde début'], rep_other:['تسويات / رصيد سابق','Adjustments / previous','Ajustements'],
