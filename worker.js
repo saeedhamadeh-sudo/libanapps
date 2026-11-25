@@ -2082,6 +2082,8 @@ async function motorInvQueue(env, SH, limit) {
 async function motorPayQueueCron(env) {
   if (!env.SUPABASE_SERVICE_KEY) return;
   const SH = { apikey: env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`, 'Content-Type': 'application/json' };
+  // العدادات المعلّقة: بتتفوتر لحالها أول ما يصير 1 من الشهر ويكون سعر الشهر محدّد
+  await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/motor_issue_due_cron`, { method: 'POST', headers: SH, body: '{}' }).catch(() => {});
   const r = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/motor_pay_wa_claim`, { method: 'POST', headers: SH, body: JSON.stringify({ p_limit: 40 }) });
   const list0 = r.ok ? await r.json().catch(() => []) : [];
   const list = Array.isArray(list0) ? list0 : [];
