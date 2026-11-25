@@ -1,5 +1,12 @@
 /* LibanApps — ترجمة برامج المحاسبة (التجاري والصناعي) للإنكليزي + زر عربي/EN */
 window.ACC_EN = {
+  "🏦 القروض بالفترة": "🏦 Loans in the period",
+  "استلام قرض": "Loan received",
+  "تسديد قرض": "Loan repayment",
+  "من وين / لوين": "From / to",
+  "استلام": "Received",
+  "تسديد": "Repaid",
+  "⚠️ في قروض أو سندات تسديد ما محدّد من وين انصرفت أو لوين نزلت، فما بتبيّن بحركة الصندوق فوق. افتح القرض، كبسة على «🔁» وحدّد الصندوق (مثلاً الصندوق الأساسي).": "⚠️ Some loans or repayments have no cash box set, so they don’t show in the cash movements above. Open the loan, click “🔁” and choose the box (e.g. the main cash box).",
   "💵 وين راحت المصاري — حركات الصناديق والمصارف (الفئة 5) بالفترة": "💵 Where the money went — cash and bank movements (class 5) in the period",
   "فات عالصندوق": "In",
   "طلع من الصندوق": "Out",
@@ -4312,6 +4319,13 @@ window.ACC_EN = {
 };
 /* Français — même clés arabes que ACC_EN */
 window.ACC_FR = {
+  "🏦 القروض بالفترة": "🏦 Emprunts de la période",
+  "استلام قرض": "Emprunt reçu",
+  "تسديد قرض": "Remboursement d’emprunt",
+  "من وين / لوين": "De / vers",
+  "استلام": "Reçu",
+  "تسديد": "Remboursé",
+  "⚠️ في قروض أو سندات تسديد ما محدّد من وين انصرفت أو لوين نزلت، فما بتبيّن بحركة الصندوق فوق. افتح القرض، كبسة على «🔁» وحدّد الصندوق (مثلاً الصندوق الأساسي).": "⚠️ Certains emprunts ou remboursements n’ont pas de caisse définie, ils n’apparaissent donc pas dans les mouvements de caisse ci-dessus. Ouvrez l’emprunt, cliquez sur « 🔁 » et choisissez la caisse (ex. la caisse principale).",
   "💵 وين راحت المصاري — حركات الصناديق والمصارف (الفئة 5) بالفترة": "💵 Où est passé l’argent — mouvements de caisse et banque (classe 5) sur la période",
   "فات عالصندوق": "Entrées",
   "طلع من الصندوق": "Sorties",
