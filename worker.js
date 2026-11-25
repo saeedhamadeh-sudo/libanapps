@@ -3613,11 +3613,11 @@ async function ensureAltHostname(env, domain, info) {
 }
 
 // ---------- DNS تلقائي: منعمل الدومين على حساب Cloudflare تبعنا، والزبون بس بيغيّر الـ Nameservers ----------
-//  Secret: CF_ZONES_TOKEN — صلاحيات: Zone:Edit + DNS:Edit على «All zones» بالحساب (CF_ACCOUNT_ID)
+//  Secret: CF_ZONES_TOKEN (أو CF_API_TOKEN نفسو إذا عندو هالصلاحيات) — صلاحيات: Zone:Edit + DNS:Edit على «All zones» بالحساب (CF_ACCOUNT_ID)
 //  بدونو: منرجع للطريقة القديمة (الزبون بيزيد السجلات بإيدو)
 async function cfAcct(env, method, path, body) {
   const r = await fetch('https://api.cloudflare.com/client/v4' + path, {
-    method, headers: { Authorization: `Bearer ${env.CF_ZONES_TOKEN}`, 'Content-Type': 'application/json' },
+    method, headers: { Authorization: `Bearer ${env.CF_ZONES_TOKEN || env.CF_API_TOKEN}`, 'Content-Type': 'application/json' },
     body: body ? JSON.stringify(body) : undefined
   });
   let j = {}; try { j = await r.json(); } catch (e) {}
@@ -3631,7 +3631,7 @@ function apexOf(domain) {
 // بيعمل الـ zone (إذا مش موجود) مع استيراد سجلات الزبون القديمة (إيميل…)، وبيوجّه @ و www على المتاجر
 async function ensureCustomerZone(env, domain, info) {
   const out = { ...(info || {}) };
-  if (!env.CF_ZONES_TOKEN || !env.CF_ACCOUNT_ID || !wwwPair(domain)) return out;   // بس للدومين الأساسي أو www منو
+  if (!(env.CF_ZONES_TOKEN || env.CF_API_TOKEN) || !env.CF_ACCOUNT_ID || !wwwPair(domain)) return out;   // بس للدومين الأساسي أو www منو
   const apex = apexOf(domain), target = out.cname_target || env.STORE_CNAME_TARGET || 'stores.libanapps.com';
   try {
     let zone = (await cfAcct(env, 'GET', `/zones?name=${encodeURIComponent(apex)}&account.id=${env.CF_ACCOUNT_ID}`)).result;
@@ -3667,8 +3667,10 @@ async function ensureCustomerZone(env, domain, info) {
   return out;
 }
 // تحديث حالة الـ zone (pending → active لما الزبون يغيّر الـ Nameservers)
-async function refreshCustomerZone(env, domain, info) {
-  if (!env.CF_ZONES_TOKEN || !info || !info.zone_id) return ensureCustomerZone(env, domain, info);
+async function refreshCustomerZone(env, domain, info, live) {
+  // دومين شغّال من قبل (DNS عند الزبون) — ما منعملّو zone عنّا
+  if (live && !(info && info.zone_id)) return info;
+  if (!(env.CF_ZONES_TOKEN || env.CF_API_TOKEN) || !info || !info.zone_id) return ensureCustomerZone(env, domain, info);
   const out = { ...info };
   const j = await cfAcct(env, 'GET', `/zones/${info.zone_id}`);
   if (!j.success) return ensureCustomerZone(env, domain, { ...info, zone_id: undefined });
@@ -3678,7 +3680,7 @@ async function refreshCustomerZone(env, domain, info) {
 }
 // عند حذف الدومين: إذا الزبون بعد ما غيّر الـ Nameservers منمحي الـ zone؛ إذا شغّال منتركو (فيه إيميلو وسجلاتو)
 async function dropCustomerZone(env, info) {
-  if (!env.CF_ZONES_TOKEN || !info || !info.zone_id) return;
+  if (!(env.CF_ZONES_TOKEN || env.CF_API_TOKEN) || !info || !info.zone_id) return;
   try {
     const j = await cfAcct(env, 'GET', `/zones/${info.zone_id}`);
     if (j.success && j.result.status !== 'active') await cfAcct(env, 'DELETE', `/zones/${info.zone_id}`);
@@ -3757,7 +3759,8 @@ async function storeDomain(request, env) {
     if (!j.success) return json(400, { error: cfError(j) });
     const m = mapCf(j.result);
     // بيكمّل النسخة التانية (www / بدون www) — كمان للمتاجر القديمة يلّي انربطت قبل هالميزة
-    const info = await refreshCustomerZone(env, existing.domain, await ensureAltHostname(env, existing.domain, existing.info || {}));
+    const info0 = await ensureAltHostname(env, existing.domain, existing.info || {});
+    const info = await refreshCustomerZone(env, existing.domain, info0, m.status === 'active' && (!info0.alt_domain || info0.alt_error || info0.alt_status === 'active'));
     const upd = { ...m, info, verified_at: m.status === 'active' ? (existing.verified_at || new Date().toISOString()) : null };
     await sbPatch(env, `store_domains?id=eq.${existing.id}`, upd);
     return json(200, { ok: true, domain: { ...existing, ...upd }, cname_target: target });
@@ -3836,7 +3839,8 @@ async function motorDomain(request, env) {
       const vr = (j.result.ssl && j.result.ssl.validation_errors) || j.result.verification_errors || [];
       info.errors = vr.map(x => (x && x.message) || String(x)).slice(0, 3);
       // بيكمّل النسخة التانية (www / بدون www) — كمان للدومينات يلّي انربطت قبل هالميزة
-      upd.info = await refreshCustomerZone(env, existing.domain, await ensureAltHostname(env, existing.domain, info));
+      const info0 = await ensureAltHostname(env, existing.domain, info);
+      upd.info = await refreshCustomerZone(env, existing.domain, info0, upd.status === 'active' && (!info0.alt_domain || info0.alt_error || info0.alt_status === 'active'));
     }
     // فحص فعلي: هل الدومين عم يوصل لعنّا؟
     let live = false;
@@ -4845,7 +4849,8 @@ async function linkDomain(request, env) {
       const vr = (j.result.ssl && j.result.ssl.validation_errors) || j.result.verification_errors || [];
       info.errors = vr.map(x => (x && x.message) || String(x)).slice(0, 3);
       // بيكمّل النسخة التانية (www / بدون www) — كمان للدومينات يلّي انربطت قبل هالميزة
-      upd.info = await refreshCustomerZone(env, existing.domain, await ensureAltHostname(env, existing.domain, info));
+      const info0 = await ensureAltHostname(env, existing.domain, info);
+      upd.info = await refreshCustomerZone(env, existing.domain, info0, upd.status === 'active' && (!info0.alt_domain || info0.alt_error || info0.alt_status === 'active'));
     }
     // فحص فعلي: هل الدومين عم يوصل لعنّا؟
     let live = false;
