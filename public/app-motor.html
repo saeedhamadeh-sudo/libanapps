@@ -2011,7 +2011,7 @@ var D={
  dom_taken:['هذا الدومين مربوط بحساب آخر.','This domain is linked to another account.','Ce domaine est lié à un autre compte.'],
  dom_reserved:['هذا الدومين محجوز للمنصة.','This domain is reserved.','Ce domaine est réservé.'],
  dom_exists:['يوجد دومين مربوط — ألغِ ربطه أولاً.','A domain is already linked — remove it first.','Un domaine est déjà lié — retirez-le d’abord.'],
- dom_alias:['للدومين بدون www: ALIAS على @ — إذا ما في ALIAS استعمل ANAME أو CNAME على @ (Cloudflare)','Root domain: ALIAS on @ — if ALIAS is missing use ANAME or CNAME on @ (Cloudflare)','Domaine racine : ALIAS sur @ — sinon ANAME ou CNAME sur @ (Cloudflare)'],
+ dom_alias:['الدومين بدون www بيشتغل بس إذا الـ DNS تبع الدومين على Cloudflare (مجاني): CNAME على @ مع Proxy. إذا الـ DNS بمكان تاني (Hostinger، GoDaddy…) اعمل تحويل (Redirect) من الدومين لـ www عند شركة الدومين، أو انقل الـ DNS لـ Cloudflare.','The root (non-www) only works when the domain\'s DNS is on Cloudflare (free): CNAME on @, proxied. Elsewhere (Hostinger, GoDaddy…) set a redirect from the root to www at your registrar, or move DNS to Cloudflare.','La racine (sans www) ne fonctionne que si le DNS est sur Cloudflare (gratuit) : CNAME sur @, proxifié. Ailleurs, créez une redirection de la racine vers www chez votre registrar, ou passez le DNS sur Cloudflare.'],
  dom_none:['لا يوجد دومين مربوط.','No domain linked.','Aucun domaine lié.'],
  dom_cf:['رفضت Cloudflare الطلب','Cloudflare rejected the request','Cloudflare a refusé la demande'],
  dom_save:['تعذّر حفظ الدومين','Could not save the domain','Impossible d’enregistrer le domaine'],
@@ -6490,7 +6490,7 @@ async function domCard(box){
   } else {
     var inf=d.info||{}, altOk=inf.alt_domain&&!inf.alt_error, root=dmRoot(d.domain), hasRoot=false;
     function rel(n){n=String(n||'').replace(/\.$/,''); return n===root?'@':(n.slice(-(root.length+1))==='.'+root?n.slice(0,-(root.length+1)):n);}
-    var recs=[d.domain].concat(altOk?[inf.alt_domain]:[]).map(function(x){ if(x===root) hasRoot=true; return domRec(x===root?'ALIAS':'CNAME',rel(x),tgt); }).join('')+
+    var recs=[d.domain].concat(altOk?[inf.alt_domain]:[]).map(function(x){ if(x===root) hasRoot=true; return domRec('CNAME',rel(x),tgt); }).join('')+
       (inf.txt_name?domRec('TXT',rel(inf.txt_name),inf.txt_value):'')+(altOk&&inf.alt_txt_name?domRec('TXT',rel(inf.alt_txt_name),inf.alt_txt_value):'');
     var ok=d.status==='active', bad=d.status==='failed';
     h+='<div class="row" style="gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><b dir="ltr" style="font-size:17px">'+esc(d.domain)+'</b>'+
