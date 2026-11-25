@@ -2578,12 +2578,28 @@ function renderDomain(info){
   var tbl='<div style="overflow-x:auto"><table dir="ltr" style="width:100%;border-collapse:collapse;font-size:13px;margin-top:8px"><tr><th style="text-align:left;padding:6px">Type</th><th style="text-align:left;padding:6px">Name</th><th style="text-align:left;padding:6px">Value</th></tr>'+
     recs.map(function(r){return '<tr style="border-top:1px solid #ddd"><td style="padding:6px"><b>'+esc(r[0])+'</b></td><td style="padding:6px">'+esc(r[1])+'</td><td style="padding:6px;word-break:break-all">'+esc(r[2])+(r[3]?'<div class="muted" dir="auto" style="font-size:12px">'+esc(r[3])+'</div>':'')+'</td></tr>';}).join('')+'</table></div>';
   var allOk=d.status==='active'&&(!alt||inf.alt_error||inf.alt_status==='active');
+  var hasNs=!!(inf.name_servers&&inf.name_servers.length&&inf.zone_status!=='active');
+  function trS(k){var x=NS_T[k];return L(x[0],x[1]);}
   v.innerHTML='<div class="card"><h3>'+L('الدومين الخاص','Custom domain')+'</h3><div class="kv" style="margin-top:12px"><b>'+L('الدومين','Domain')+'</b><span dir="ltr" style="text-align:start"><b>'+esc(d.domain)+'</b></span><b>'+L('الحالة','Status')+'</b><span>'+chipOf(d.status)+(d.ssl_status?' <span class="muted">SSL: '+esc(d.ssl_status)+'</span>':'')+'</span>'+
     (alt?'<b dir="ltr">'+esc(alt)+'</b><span>'+(inf.alt_error?'<span class="muted">'+(inf.alt_error==='taken'?L('مربوط بمكان تاني','Used elsewhere'):esc(inf.alt_error))+'</span>':chipOf(inf.alt_status))+'</span>':'')+'</div>'+
-    (!allOk?'<h3 style="margin-top:18px;font-size:15px">'+L('الخطوة المطلوبة عند مزوّد الدومين','Required step at your domain provider')+'</h3><ol class="steps"><li>'+L('ادخل على لوحة DNS للدومين.','Open the DNS settings of your domain.')+'</li><li>'+L('امحي أي سجل A أو AAAA قديم على @ و www (متل صفحة الـ parking).','Delete any old A or AAAA records on @ and www (e.g. the parking page).')+'</li><li>'+L('زيد هالسجلات كلها:','Add all of these records:')+'</li></ol>'+tbl+
-      '<p class="muted">'+L('بياخد من دقائق لساعات. اضغط «تحقق الآن».','Takes minutes to hours. Press “Check now”.')+'</p>':
+    (!allOk?nsBlock(inf,trS)+(inf.zone_status==='active'?'':(hasNs?'<details style="margin-top:6px"><summary class="muted" style="cursor:pointer">'+esc(trS('ns_adv'))+'</summary>':'')+'<h3 style="margin-top:18px;font-size:15px">'+L('الخطوة المطلوبة عند مزوّد الدومين','Required step at your domain provider')+'</h3><ol class="steps"><li>'+L('ادخل على لوحة DNS للدومين.','Open the DNS settings of your domain.')+'</li><li>'+L('امحي أي سجل A أو AAAA قديم على @ و www (متل صفحة الـ parking).','Delete any old A or AAAA records on @ and www (e.g. the parking page).')+'</li><li>'+L('زيد هالسجلات كلها:','Add all of these records:')+'</li></ol>'+tbl+
+      '<p class="muted">'+L('بياخد من دقائق لساعات. اضغط «تحقق الآن».','Takes minutes to hours. Press “Check now”.')+'</p>'+(hasNs?'</details>':'')):
       '<p style="margin-top:12px">'+L('متجرك شغّال على ','Your store is live at ')+'<a target="_blank" rel="noopener" href="https://'+esc(d.domain)+'" dir="ltr">https://'+esc(d.domain)+'</a></p>')+
     '<div class="tools" style="margin-top:14px"><button class="btn" id="dmChk">'+L('تحقق الآن','Check now')+'</button><button class="btn dg" id="dmDel">'+L('حذف الدومين','Remove domain')+'</button></div><div class="msg" id="dmMsg"></div></div>';
+}
+var NS_T={
+ns_h:['الطريقة السهلة: غيّر الـ Nameservers','Easy way: change the nameservers','Méthode simple : changez les serveurs de noms'],
+ns_p:['ادخل على الشركة يلّي اشتريت منها الدومين (Hostinger، GoDaddy، Namecheap…)، وبدّل الـ Nameservers بهول الاتنين وامحي القدام. كل شي تاني منظبطو نحنا — وسجلاتك القديمة (متل الإيميل) نقلناها لحالها.','At the company you bought the domain from (Hostinger, GoDaddy, Namecheap…), replace the nameservers with these two and remove the old ones. We handle everything else — your existing records (like email) were copied over automatically.','Chez votre registrar (Hostinger, GoDaddy, Namecheap…), remplacez les serveurs de noms par ces deux-là et supprimez les anciens. Nous gérons le reste — vos enregistrements existants (e-mail…) ont été copiés automatiquement.'],
+ns_wait:['بياخد من دقائق لـ 24 ساعة. بعدها اضغط «تحقق الآن».','Takes from minutes up to 24 hours. Then press “Check now”.','Cela prend de quelques minutes à 24 h. Puis cliquez sur « Vérifier ».'],
+ns_ok:['الـ Nameservers ظبطت ✓ — عم نفعّل الشهادة (SSL). جرّب «تحقق الآن» بعد كم دقيقة.','Nameservers are set ✓ — activating SSL. Press “Check now” in a few minutes.','Serveurs de noms OK ✓ — activation du SSL. Cliquez sur « Vérifier » dans quelques minutes.'],
+ns_adv:['طريقة متقدمة: زيد السجلات بإيدك بدل ما تغيّر الـ Nameservers','Advanced: add the records yourself instead of changing nameservers','Avancé : ajoutez vous-même les enregistrements au lieu de changer les serveurs de noms'],
+};
+function nsBlock(inf,tr){ // tr(key) → نص
+  if(!inf||!inf.name_servers||!inf.name_servers.length) return '';
+  if(inf.zone_status==='active') return '<div style="margin:12px 0;padding:12px;border-radius:10px;background:#16a34a14;font-size:14px">'+esc(tr('ns_ok'))+'</div>';
+  return '<div style="margin:14px 0;padding:14px;border-radius:12px;border:2px solid #2563eb33;background:#2563eb0d"><b style="font-size:15px">'+esc(tr('ns_h'))+'</b><p style="margin:6px 0 10px;font-size:13.5px">'+esc(tr('ns_p'))+'</p>'+
+    inf.name_servers.map(function(n){return '<div dir="ltr" style="font-family:monospace;font-size:15px;font-weight:700;padding:8px 10px;margin:4px 0;background:#fff;border-radius:8px;border:1px solid #ddd;cursor:pointer" title="copy" onclick="try{navigator.clipboard.writeText(this.textContent)}catch(e){}">'+esc(n)+'</div>';}).join('')+
+    '<p class="muted" style="font-size:12.5px;margin:8px 0 0">'+esc(tr('ns_wait'))+'</p></div>';
 }
 // الدومين الأساسي (بدون www أو نطاق فرعي) — نفس منطق wwwPair بالـworker
 function dmRoot(d){d=String(d||'');var p=d.split('.'),n=p.length;

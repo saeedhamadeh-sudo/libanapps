@@ -44,7 +44,16 @@
    - Secret: `CF_API_TOKEN` (صلاحية: SSL and Certificates → Edit، على هذه المنطقة)
    - Secret: `CF_ZONE_ID`
    - (اختياري) Variable: `STORE_CNAME_TARGET` (الافتراضي `stores.libanapps.com`)
+   - (اختياري، مستحسن) Secret: `CF_ZONES_TOKEN` — صلاحيات: **Zone → Zone → Edit** و **Zone → DNS → Edit**، Zone Resources: **All zones from an account**. بيخلّي الربط أوتوماتيك (تحت).
 5. الزبون بيضيف من لوحته «الدومين» ← بيعمل CNAME عند مزوّد دومينه ← «تحقق الآن».
+
+### DNS أوتوماتيك (مع `CF_ZONES_TOKEN`)
+لما الزبون يربط دومين أساسي (`brand.com` أو `www.brand.com`)، الـWorker:
+- بيعمل الدومين كـ zone على حساب Cloudflare (`CF_ACCOUNT_ID`) ببلان Free، وبيستورد سجلاتو القديمة (إيميل…).
+- بيمحي A/AAAA/CNAME القديمة على `@` و `www` وبيحط `CNAME → stores.libanapps.com` (Proxied)، وبيزيد سجلات الـTXT.
+- اللوحة بتعرض للزبون **الـNameservers بس** — بيغيّرهن عند شركة الدومين وكل شي بيشتغل (www وبدون www).
+- «تحقق الآن» بيحدّث حالة الـzone. عند حذف الدومين: الـzone بينمحى إذا بعدو ما تفعّل، وبيضل إذا شغّال (فيه سجلات الزبون).
+- دومين فرعي (`shop.brand.com`) أو إذا فشل عمل الـzone: بيرجع لطريقة السجلات اليدوية.
 
 بدون `CF_API_TOKEN`: الدومين بينسجّل «بانتظار الربط» وبتفعّله يدوياً:
 ```sql

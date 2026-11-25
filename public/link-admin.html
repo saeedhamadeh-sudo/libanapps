@@ -332,6 +332,11 @@ var T={
   dm_tip:['ننصح بدومين فرعي مثل links.mybrand.com. للدومين الرئيسي (mybrand.com) يجب أن يدعم مزوّد DNS ميزة CNAME على الجذر (مثل Cloudflare).','We recommend a subdomain like links.mybrand.com. For a root domain (mybrand.com), your DNS provider must support a CNAME at the root (e.g. Cloudflare).','Nous recommandons un sous-domaine comme links.mybrand.com. Pour un domaine racine (mybrand.com), votre fournisseur DNS doit accepter un CNAME à la racine (ex. Cloudflare).'],
   dm_steps:['أضف هذا السجل في إعدادات DNS لدى الشركة التي اشتريت منها الدومين:','Add this record in the DNS settings at the company where you bought the domain:','Ajoutez cet enregistrement dans les réglages DNS chez votre registraire :'],
   dm_alias:['الدومين بدون www بيشتغل بس إذا الـ DNS تبع الدومين على Cloudflare (مجاني): CNAME على @ مع Proxy. إذا الـ DNS بمكان تاني (Hostinger، GoDaddy…) اعمل تحويل (Redirect) من الدومين لـ www عند شركة الدومين، أو انقل الـ DNS لـ Cloudflare.','The root (non-www) only works when the domain\'s DNS is on Cloudflare (free): CNAME on @, proxied. Elsewhere (Hostinger, GoDaddy…) set a redirect from the root to www at your registrar, or move DNS to Cloudflare.','La racine (sans www) ne fonctionne que si le DNS est sur Cloudflare (gratuit) : CNAME sur @, proxifié. Ailleurs, créez une redirection de la racine vers www chez votre registrar, ou passez le DNS sur Cloudflare.'],
+  ns_h:['الطريقة السهلة: غيّر الـ Nameservers','Easy way: change the nameservers','Méthode simple : changez les serveurs de noms'],
+  ns_p:['ادخل على الشركة يلّي اشتريت منها الدومين (Hostinger، GoDaddy، Namecheap…)، وبدّل الـ Nameservers بهول الاتنين وامحي القدام. كل شي تاني منظبطو نحنا — وسجلاتك القديمة (متل الإيميل) نقلناها لحالها.','At the company you bought the domain from (Hostinger, GoDaddy, Namecheap…), replace the nameservers with these two and remove the old ones. We handle everything else — your existing records (like email) were copied over automatically.','Chez votre registrar (Hostinger, GoDaddy, Namecheap…), remplacez les serveurs de noms par ces deux-là et supprimez les anciens. Nous gérons le reste — vos enregistrements existants (e-mail…) ont été copiés automatiquement.'],
+  ns_wait:['بياخد من دقائق لـ 24 ساعة. بعدها اضغط «تحقق الآن».','Takes from minutes up to 24 hours. Then press “Check now”.','Cela prend de quelques minutes à 24 h. Puis cliquez sur « Vérifier ».'],
+  ns_ok:['الـ Nameservers ظبطت ✓ — عم نفعّل الشهادة (SSL). جرّب «تحقق الآن» بعد كم دقيقة.','Nameservers are set ✓ — activating SSL. Press “Check now” in a few minutes.','Serveurs de noms OK ✓ — activation du SSL. Cliquez sur « Vérifier » dans quelques minutes.'],
+  ns_adv:['طريقة متقدمة: زيد السجلات بإيدك بدل ما تغيّر الـ Nameservers','Advanced: add the records yourself instead of changing nameservers','Avancé : ajoutez vous-même les enregistrements au lieu de changer les serveurs de noms'],
   dm_txt:['ثم أضف سجل التحقق هذا:','Then add this verification record:','Puis ajoutez cet enregistrement de vérification :'],
   dm_type:['النوع','Type','Type'], dm_name:['الاسم','Name','Nom'], dm_val:['القيمة','Value','Valeur'],
   dm_wait:['قد يستغرق التفعيل من بضع دقائق حتى 24 ساعة بعد إضافة السجل.','Activation can take from a few minutes up to 24 hours after adding the record.','L’activation peut prendre de quelques minutes à 24 heures après l’ajout.'],
@@ -762,6 +767,13 @@ async function domApi(action,extra){
   return j;
 }
 function dnsRow(type,name,val){ return '<tr><td>'+esc(type)+'</td><td dir="ltr" style="white-space:normal;overflow-wrap:anywhere">'+esc(name)+'</td><td dir="ltr" style="white-space:normal;overflow-wrap:anywhere"><b>'+esc(val)+'</b></td></tr>'; }
+function nsBlock(inf,tr){ // tr(key) → نص
+  if(!inf||!inf.name_servers||!inf.name_servers.length) return '';
+  if(inf.zone_status==='active') return '<div style="margin:12px 0;padding:12px;border-radius:10px;background:#16a34a14;font-size:14px">'+esc(tr('ns_ok'))+'</div>';
+  return '<div style="margin:14px 0;padding:14px;border-radius:12px;border:2px solid #2563eb33;background:#2563eb0d"><b style="font-size:15px">'+esc(tr('ns_h'))+'</b><p style="margin:6px 0 10px;font-size:13.5px">'+esc(tr('ns_p'))+'</p>'+
+    inf.name_servers.map(function(n){return '<div dir="ltr" style="font-family:monospace;font-size:15px;font-weight:700;padding:8px 10px;margin:4px 0;background:#fff;border-radius:8px;border:1px solid #ddd;cursor:pointer" title="copy" onclick="try{navigator.clipboard.writeText(this.textContent)}catch(e){}">'+esc(n)+'</div>';}).join('')+
+    '<p class="muted" style="font-size:12.5px;margin:8px 0 0">'+esc(tr('ns_wait'))+'</p></div>';
+}
 // الدومين الأساسي (بدون www أو نطاق فرعي) — نفس منطق wwwPair بالـworker
 function dmRoot(d){d=String(d||'');var p=d.split('.'),n=p.length;
   var two=n>=3&&p[n-1].length===2&&['com','net','org','edu','gov','co','ac','biz','info'].indexOf(p[n-2])>=0;
@@ -782,6 +794,8 @@ function paintDomain(){
        '<button class="btn g sm" type="button" id="domChk"><i class="fa-solid fa-rotate"></i>'+esc(t('dm_check'))+'</button></div>';
     var info=DOM.info||{}, altOk=info.alt_domain&&!info.alt_error;
     if(DOM.status!=='active'||(altOk&&info.alt_status!=='active')){
+      var hasNs=!!(info.name_servers&&info.name_servers.length&&info.zone_status!=='active');
+      h+=nsBlock(info,t); var zOk=info.zone_status==='active'; if(zOk) h+='<div style="display:none">'; if(hasNs) h+='<details style="margin-bottom:10px"><summary class="muted" style="cursor:pointer;font-size:13px;margin-bottom:8px">'+esc(t('ns_adv'))+'</summary>';
       var root=dmRoot(DOM.domain), hosts=[DOM.domain].concat(altOk?[info.alt_domain]:[]), hasRoot=false;
       function rel(n){n=String(n||'').replace(/\.$/,''); return n===root?'@':(n.slice(-(root.length+1))==='.'+root?n.slice(0,-(root.length+1)):n);}
       var rows=hosts.map(function(x){ if(x===root) hasRoot=true; return dnsRow('CNAME',rel(x),info.cname_target||DOM_T); }).join('');
@@ -790,6 +804,7 @@ function paintDomain(){
       var txts=(info.txt_name?dnsRow('TXT',rel(info.txt_name),info.txt_value):'')+(altOk&&info.alt_txt_name?dnsRow('TXT',rel(info.alt_txt_name),info.alt_txt_value):'');
       if(txts) h+='<p style="font-weight:700;margin-bottom:8px">'+esc(t('dm_txt'))+'</p><table class="tb" style="table-layout:auto;margin-bottom:10px"><tbody>'+txts+'</tbody></table>';
       h+='<p class="muted" style="font-size:12.5px">'+esc(t(DOM.cf_hostname_id?'dm_wait':'dm_manual'))+'</p>';
+      if(hasNs) h+='</details>'; if(zOk) h+='</div>';
       if(info.errors&&info.errors.length) h+='<div class="msg e" style="margin-top:8px" dir="ltr">'+esc(info.errors.join(' · '))+'</div>';
     }
     h+='<div id="domMsg"></div><button class="btn r sm" type="button" id="domRm" style="margin-top:12px"><i class="fa-solid fa-link-slash"></i>'+esc(t('dm_rm'))+'</button>';

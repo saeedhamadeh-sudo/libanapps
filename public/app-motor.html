@@ -2012,6 +2012,11 @@ var D={
  dom_reserved:['هذا الدومين محجوز للمنصة.','This domain is reserved.','Ce domaine est réservé.'],
  dom_exists:['يوجد دومين مربوط — ألغِ ربطه أولاً.','A domain is already linked — remove it first.','Un domaine est déjà lié — retirez-le d’abord.'],
  dom_alias:['الدومين بدون www بيشتغل بس إذا الـ DNS تبع الدومين على Cloudflare (مجاني): CNAME على @ مع Proxy. إذا الـ DNS بمكان تاني (Hostinger، GoDaddy…) اعمل تحويل (Redirect) من الدومين لـ www عند شركة الدومين، أو انقل الـ DNS لـ Cloudflare.','The root (non-www) only works when the domain\'s DNS is on Cloudflare (free): CNAME on @, proxied. Elsewhere (Hostinger, GoDaddy…) set a redirect from the root to www at your registrar, or move DNS to Cloudflare.','La racine (sans www) ne fonctionne que si le DNS est sur Cloudflare (gratuit) : CNAME sur @, proxifié. Ailleurs, créez une redirection de la racine vers www chez votre registrar, ou passez le DNS sur Cloudflare.'],
+ ns_h:['الطريقة السهلة: غيّر الـ Nameservers','Easy way: change the nameservers','Méthode simple : changez les serveurs de noms'],
+ ns_p:['ادخل على الشركة يلّي اشتريت منها الدومين (Hostinger، GoDaddy، Namecheap…)، وبدّل الـ Nameservers بهول الاتنين وامحي القدام. كل شي تاني منظبطو نحنا — وسجلاتك القديمة (متل الإيميل) نقلناها لحالها.','At the company you bought the domain from (Hostinger, GoDaddy, Namecheap…), replace the nameservers with these two and remove the old ones. We handle everything else — your existing records (like email) were copied over automatically.','Chez votre registrar (Hostinger, GoDaddy, Namecheap…), remplacez les serveurs de noms par ces deux-là et supprimez les anciens. Nous gérons le reste — vos enregistrements existants (e-mail…) ont été copiés automatiquement.'],
+ ns_wait:['بياخد من دقائق لـ 24 ساعة. بعدها اضغط «تحقق الآن».','Takes from minutes up to 24 hours. Then press “Check now”.','Cela prend de quelques minutes à 24 h. Puis cliquez sur « Vérifier ».'],
+ ns_ok:['الـ Nameservers ظبطت ✓ — عم نفعّل الشهادة (SSL). جرّب «تحقق الآن» بعد كم دقيقة.','Nameservers are set ✓ — activating SSL. Press “Check now” in a few minutes.','Serveurs de noms OK ✓ — activation du SSL. Cliquez sur « Vérifier » dans quelques minutes.'],
+ ns_adv:['طريقة متقدمة: زيد السجلات بإيدك بدل ما تغيّر الـ Nameservers','Advanced: add the records yourself instead of changing nameservers','Avancé : ajoutez vous-même les enregistrements au lieu de changer les serveurs de noms'],
  dom_none:['لا يوجد دومين مربوط.','No domain linked.','Aucun domaine lié.'],
  dom_cf:['رفضت Cloudflare الطلب','Cloudflare rejected the request','Cloudflare a refusé la demande'],
  dom_save:['تعذّر حفظ الدومين','Could not save the domain','Impossible d’enregistrer le domaine'],
@@ -6472,6 +6477,13 @@ async function domApi(body){
   if(!r.ok||!j.ok){ var c=String(j.error||('HTTP '+r.status)); var m=/^dom_/.test(c)&&D[c]?t(c):/MOTOR:forbidden/.test(c)?t('e_forbidden'):c; throw new Error(m+(j.detail?' ('+j.detail+')':'')); }
   return j;
 }
+function nsBlock(inf,tr){ // tr(key) → نص
+  if(!inf||!inf.name_servers||!inf.name_servers.length) return '';
+  if(inf.zone_status==='active') return '<div style="margin:12px 0;padding:12px;border-radius:10px;background:#16a34a14;font-size:14px">'+esc(tr('ns_ok'))+'</div>';
+  return '<div style="margin:14px 0;padding:14px;border-radius:12px;border:2px solid #2563eb33;background:#2563eb0d"><b style="font-size:15px">'+esc(tr('ns_h'))+'</b><p style="margin:6px 0 10px;font-size:13.5px">'+esc(tr('ns_p'))+'</p>'+
+    inf.name_servers.map(function(n){return '<div dir="ltr" style="font-family:monospace;font-size:15px;font-weight:700;padding:8px 10px;margin:4px 0;background:#fff;border-radius:8px;border:1px solid #ddd;cursor:pointer" title="copy" onclick="try{navigator.clipboard.writeText(this.textContent)}catch(e){}">'+esc(n)+'</div>';}).join('')+
+    '<p class="muted" style="font-size:12.5px;margin:8px 0 0">'+esc(tr('ns_wait'))+'</p></div>';
+}
 // الدومين الأساسي (بدون www أو نطاق فرعي) — نفس منطق wwwPair بالـworker
 function dmRoot(d){d=String(d||'');var p=d.split('.'),n=p.length;
   var two=n>=3&&p[n-1].length===2&&['com','net','org','edu','gov','co','ac','biz','info'].indexOf(p[n-2])>=0;
@@ -6496,12 +6508,17 @@ async function domCard(box){
     h+='<div class="row" style="gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><b dir="ltr" style="font-size:17px">'+esc(d.domain)+'</b>'+
        '<span class="chip '+(ok?'ok':bad?'warn':'')+'">'+(ok?'✅ '+esc(t('dom_active')):bad?'⚠️ '+esc(t('dom_failed')):'⏳ '+esc(t('dom_pending')))+'</span></div>';
     if(ok) h+='<div class="okmsg" style="display:block">'+esc(t('dom_ok_msg'))+' <a href="https://'+esc(d.domain)+'" target="_blank" rel="noopener" dir="ltr">https://'+esc(d.domain)+'</a></div>';
+    var hasNs=!ok&&!!(inf.name_servers&&inf.name_servers.length&&inf.zone_status!=='active');
+    if(!ok) h+=nsBlock(inf,t);
+    var zOk=!ok&&inf.zone_status==='active'; if(zOk) h+='<div style="display:none">';
+    if(hasNs) h+='<details style="margin-bottom:8px"><summary class="muted" style="cursor:pointer;font-size:13px">'+esc(t('ns_adv'))+'</summary>';
     h+='<h4 style="margin:14px 0 6px">'+esc(t('dom_steps'))+'</h4><ol style="margin:0;padding-inline-start:20px;line-height:1.9">'+
        '<li>'+esc(t('dom_s1'))+'</li><li>'+esc(t('dom_s2'))+'</li></ol>'+
        '<div class="tw" style="margin:8px 0"><table><thead><tr><th>'+esc(t('dom_type'))+'</th><th>'+esc(t('dom_name'))+'</th><th>'+esc(t('dom_value'))+'</th></tr></thead><tbody>'+
        recs+'</tbody></table></div>'+(hasRoot?'<p class="muted" style="font-size:12.5px;margin:0 0 6px">'+esc(t('dom_alias'))+'</p>':'')+
        '<ol start="3" style="margin:0;padding-inline-start:20px;line-height:1.9"><li>'+esc(t('dom_s3'))+'</li><li>'+esc(t('dom_s4'))+'</li></ol>'+
        '<p class="muted" style="font-size:12.5px">'+esc(t('dom_cf_note'))+'</p>'+
+       (hasNs?'</details>':'')+(zOk?'</div>':'')+
        (d.info&&d.info.errors&&d.info.errors.length&&!ok?'<div class="err msg" style="display:block;font-size:13px" dir="ltr">'+esc(d.info.errors.join(' · '))+'</div>':'')+
        '<div class="muted" style="font-size:12.5px;margin:6px 0">'+esc(t('dom_cf_st'))+': <span dir="ltr">'+esc((d.cf_status||'-')+' / SSL '+(d.ssl_status||'-'))+'</span>'+(d.verified_at?' · '+esc(t('dom_since'))+' '+esc(dt(d.verified_at)):'')+'</div>'+
        '<div class="row" style="gap:8px;flex-wrap:wrap;margin-top:8px"><button class="btn ok" id="dmv">🔍 '+esc(t('dom_verify'))+'</button><button class="btn ghost danger" id="dmx">🗑️ '+esc(t('dom_remove'))+'</button></div>';

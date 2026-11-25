@@ -3612,6 +3612,79 @@ async function ensureAltHostname(env, domain, info) {
   return out;
 }
 
+// ---------- DNS تلقائي: منعمل الدومين على حساب Cloudflare تبعنا، والزبون بس بيغيّر الـ Nameservers ----------
+//  Secret: CF_ZONES_TOKEN — صلاحيات: Zone:Edit + DNS:Edit على «All zones» بالحساب (CF_ACCOUNT_ID)
+//  بدونو: منرجع للطريقة القديمة (الزبون بيزيد السجلات بإيدو)
+async function cfAcct(env, method, path, body) {
+  const r = await fetch('https://api.cloudflare.com/client/v4' + path, {
+    method, headers: { Authorization: `Bearer ${env.CF_ZONES_TOKEN}`, 'Content-Type': 'application/json' },
+    body: body ? JSON.stringify(body) : undefined
+  });
+  let j = {}; try { j = await r.json(); } catch (e) {}
+  return j;
+}
+function apexOf(domain) {
+  const p = domain.split('.'), n = p.length;
+  const two = n >= 3 && p[n - 1].length === 2 && ['com', 'net', 'org', 'edu', 'gov', 'co', 'ac', 'biz', 'info'].includes(p[n - 2]);
+  return p.slice(two ? -3 : -2).join('.');
+}
+// بيعمل الـ zone (إذا مش موجود) مع استيراد سجلات الزبون القديمة (إيميل…)، وبيوجّه @ و www على المتاجر
+async function ensureCustomerZone(env, domain, info) {
+  const out = { ...(info || {}) };
+  if (!env.CF_ZONES_TOKEN || !env.CF_ACCOUNT_ID || !wwwPair(domain)) return out;   // بس للدومين الأساسي أو www منو
+  const apex = apexOf(domain), target = out.cname_target || env.STORE_CNAME_TARGET || 'stores.libanapps.com';
+  try {
+    let zone = (await cfAcct(env, 'GET', `/zones?name=${encodeURIComponent(apex)}&account.id=${env.CF_ACCOUNT_ID}`)).result;
+    zone = zone && zone[0];
+    if (!zone) {
+      const j = await cfAcct(env, 'POST', '/zones', { name: apex, account: { id: env.CF_ACCOUNT_ID }, type: 'full', jump_start: true });
+      if (!j.success) { out.zone_error = cfError(j); return out; }
+      zone = j.result;
+    }
+    const zid = zone.id;
+    // @ و www: منشيل A/AAAA/CNAME القديمة ومنحط CNAME (Proxied) على المتاجر — الباقي (MX، TXT…) بيضل متل ما هو
+    for (const name of [apex, 'www.' + apex]) {
+      const ex = (await cfAcct(env, 'GET', `/zones/${zid}/dns_records?name=${encodeURIComponent(name)}&per_page=100`)).result || [];
+      let ok = false;
+      for (const r of ex) {
+        if (r.type === 'CNAME' && r.content === target && r.proxied) { ok = true; continue; }
+        if (['A', 'AAAA', 'CNAME'].includes(r.type)) await cfAcct(env, 'DELETE', `/zones/${zid}/dns_records/${r.id}`);
+      }
+      if (!ok) await cfAcct(env, 'POST', `/zones/${zid}/dns_records`, { type: 'CNAME', name, content: target, proxied: true, ttl: 1 });
+    }
+    // سجلات التحقق تبع الـ Custom Hostnames
+    for (const [n, v] of [[out.txt_name, out.txt_value], [out.alt_txt_name, out.alt_txt_value]]) {
+      if (!n || !v) continue;
+      const ex = (await cfAcct(env, 'GET', `/zones/${zid}/dns_records?type=TXT&name=${encodeURIComponent(n)}`)).result || [];
+      if (!ex.some(r => String(r.content).replace(/"/g, '') === v))
+        await cfAcct(env, 'POST', `/zones/${zid}/dns_records`, { type: 'TXT', name: n, content: v, ttl: 1 });
+    }
+    out.zone_id = zid;
+    out.zone_status = zone.status;
+    out.name_servers = zone.name_servers || [];
+    delete out.zone_error;
+  } catch (e) { out.zone_error = String(e && e.message || e); }
+  return out;
+}
+// تحديث حالة الـ zone (pending → active لما الزبون يغيّر الـ Nameservers)
+async function refreshCustomerZone(env, domain, info) {
+  if (!env.CF_ZONES_TOKEN || !info || !info.zone_id) return ensureCustomerZone(env, domain, info);
+  const out = { ...info };
+  const j = await cfAcct(env, 'GET', `/zones/${info.zone_id}`);
+  if (!j.success) return ensureCustomerZone(env, domain, { ...info, zone_id: undefined });
+  out.zone_status = j.result.status; out.name_servers = j.result.name_servers || out.name_servers;
+  if (out.zone_status !== 'active') await cfAcct(env, 'PUT', `/zones/${info.zone_id}/activation_check`).catch(() => {});
+  return out;
+}
+// عند حذف الدومين: إذا الزبون بعد ما غيّر الـ Nameservers منمحي الـ zone؛ إذا شغّال منتركو (فيه إيميلو وسجلاتو)
+async function dropCustomerZone(env, info) {
+  if (!env.CF_ZONES_TOKEN || !info || !info.zone_id) return;
+  try {
+    const j = await cfAcct(env, 'GET', `/zones/${info.zone_id}`);
+    if (j.success && j.result.status !== 'active') await cfAcct(env, 'DELETE', `/zones/${info.zone_id}`);
+  } catch (e) {}
+}
+
 function mapCf(res) {
   const st = res.status || '', ssl = (res.ssl && res.ssl.status) || '';
   const active = st === 'active' && (!ssl || ssl === 'active');
@@ -3663,6 +3736,7 @@ async function storeDomain(request, env) {
       if (ov && ov.name) { info.txt_name = ov.name; info.txt_value = ov.value; }
       // www وبدون www مع بعض: منربط النسخة التانية تلقائياً
       info = await ensureAltHostname(env, domain, info);
+      info = await ensureCustomerZone(env, domain, info);
     }
     const ins = await fetch(`${env.SUPABASE_URL}/rest/v1/store_domains`, {
       method: 'POST',
@@ -3683,7 +3757,7 @@ async function storeDomain(request, env) {
     if (!j.success) return json(400, { error: cfError(j) });
     const m = mapCf(j.result);
     // بيكمّل النسخة التانية (www / بدون www) — كمان للمتاجر القديمة يلّي انربطت قبل هالميزة
-    const info = await ensureAltHostname(env, existing.domain, existing.info || {});
+    const info = await refreshCustomerZone(env, existing.domain, await ensureAltHostname(env, existing.domain, existing.info || {}));
     const upd = { ...m, info, verified_at: m.status === 'active' ? (existing.verified_at || new Date().toISOString()) : null };
     await sbPatch(env, `store_domains?id=eq.${existing.id}`, upd);
     return json(200, { ok: true, domain: { ...existing, ...upd }, cname_target: target });
@@ -3693,6 +3767,7 @@ async function storeDomain(request, env) {
     if (cfOn && existing.cf_hostname_id) await cfApi(env, 'DELETE', `/custom_hostnames/${existing.cf_hostname_id}`);
     const altId = existing.info && existing.info.alt_hostname_id;
     if (cfOn && altId) await cfApi(env, 'DELETE', `/custom_hostnames/${altId}`);
+    await dropCustomerZone(env, existing.info);
     await fetch(`${env.SUPABASE_URL}/rest/v1/store_domains?id=eq.${existing.id}`, { method: 'DELETE', headers: sbHeaders(env) });
     domCache.delete(existing.domain);
     if (existing.info && existing.info.alt_domain) peekCache.delete(existing.info.alt_domain);
@@ -3735,6 +3810,7 @@ async function motorDomain(request, env) {
       if (ov && ov.name) { info.txt_name = ov.name; info.txt_value = ov.value; }
       // www وبدون www مع بعض: منربط النسخة التانية تلقائياً
       info = await ensureAltHostname(env, domain, info);
+      info = await ensureCustomerZone(env, domain, info);
     }
     const ins = await fetch(`${env.SUPABASE_URL}/rest/v1/motor_domains`, {
       method: 'POST', headers: { ...sbHeaders(env), 'Content-Type': 'application/json', Prefer: 'return=representation' },
@@ -3743,6 +3819,7 @@ async function motorDomain(request, env) {
     if (!ins.ok) {
       if (cfOn && cfId) await cfApi(env, 'DELETE', `/custom_hostnames/${cfId}`);
       if (cfOn && info.alt_hostname_id) await cfApi(env, 'DELETE', `/custom_hostnames/${info.alt_hostname_id}`);
+      await dropCustomerZone(env, info);
       return json(500, { ok: false, error: 'dom_save', detail: (await ins.text()).slice(0, 120) });
     }
     return out((await ins.json())[0]);
@@ -3759,7 +3836,7 @@ async function motorDomain(request, env) {
       const vr = (j.result.ssl && j.result.ssl.validation_errors) || j.result.verification_errors || [];
       info.errors = vr.map(x => (x && x.message) || String(x)).slice(0, 3);
       // بيكمّل النسخة التانية (www / بدون www) — كمان للدومينات يلّي انربطت قبل هالميزة
-      upd.info = await ensureAltHostname(env, existing.domain, info);
+      upd.info = await refreshCustomerZone(env, existing.domain, await ensureAltHostname(env, existing.domain, info));
     }
     // فحص فعلي: هل الدومين عم يوصل لعنّا؟
     let live = false;
@@ -3779,6 +3856,7 @@ async function motorDomain(request, env) {
     if (cfOn && existing.cf_hostname_id) await cfApi(env, 'DELETE', `/custom_hostnames/${existing.cf_hostname_id}`);
     const altId = existing.info && existing.info.alt_hostname_id;
     if (cfOn && altId) await cfApi(env, 'DELETE', `/custom_hostnames/${altId}`);
+    await dropCustomerZone(env, existing.info);
     await fetch(`${env.SUPABASE_URL}/rest/v1/motor_domains?id=eq.${existing.id}`, { method: 'DELETE', headers: sbHeaders(env) });
     motorDomCache.delete(existing.domain);
     if (existing.info && existing.info.alt_domain) motorDomCache.delete(existing.info.alt_domain);
@@ -4740,6 +4818,7 @@ async function linkDomain(request, env) {
       if (ov && ov.name) { info.txt_name = ov.name; info.txt_value = ov.value; }
       // www وبدون www مع بعض: منربط النسخة التانية تلقائياً
       info = await ensureAltHostname(env, domain, info);
+      info = await ensureCustomerZone(env, domain, info);
     }
     const ins = await fetch(`${env.SUPABASE_URL}/rest/v1/link_domains`, {
       method: 'POST', headers: { ...sbHeaders(env), 'Content-Type': 'application/json', Prefer: 'return=representation' },
@@ -4748,6 +4827,7 @@ async function linkDomain(request, env) {
     if (!ins.ok) {
       if (cfOn && cfId) await cfApi(env, 'DELETE', `/custom_hostnames/${cfId}`);
       if (cfOn && info.alt_hostname_id) await cfApi(env, 'DELETE', `/custom_hostnames/${info.alt_hostname_id}`);
+      await dropCustomerZone(env, info);
       return json(500, { ok: false, error: 'dom_save', detail: (await ins.text()).slice(0, 120) });
     }
     forget(domain);
@@ -4765,7 +4845,7 @@ async function linkDomain(request, env) {
       const vr = (j.result.ssl && j.result.ssl.validation_errors) || j.result.verification_errors || [];
       info.errors = vr.map(x => (x && x.message) || String(x)).slice(0, 3);
       // بيكمّل النسخة التانية (www / بدون www) — كمان للدومينات يلّي انربطت قبل هالميزة
-      upd.info = await ensureAltHostname(env, existing.domain, info);
+      upd.info = await refreshCustomerZone(env, existing.domain, await ensureAltHostname(env, existing.domain, info));
     }
     // فحص فعلي: هل الدومين عم يوصل لعنّا؟
     let live = false;
@@ -4785,6 +4865,7 @@ async function linkDomain(request, env) {
     if (cfOn && existing.cf_hostname_id) await cfApi(env, 'DELETE', `/custom_hostnames/${existing.cf_hostname_id}`);
     const altId = existing.info && existing.info.alt_hostname_id;
     if (cfOn && altId) await cfApi(env, 'DELETE', `/custom_hostnames/${altId}`);
+    await dropCustomerZone(env, existing.info);
     await fetch(`${env.SUPABASE_URL}/rest/v1/link_domains?id=eq.${existing.id}`, { method: 'DELETE', headers: sbHeaders(env) });
     forget(existing.domain);
     if (existing.info && existing.info.alt_domain) forget(existing.info.alt_domain);
