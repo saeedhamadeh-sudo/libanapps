@@ -3563,6 +3563,55 @@ function normalizeDomain(v) {
   if (!/^(?=.{4,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,24}$/.test(d)) return '';
   return d;
 }
+// النسخة التانية من الدومين: www.x.com ⇄ x.com (بس للدومين الأساسي أو www منو — مش لـ shop.x.com)
+function wwwPair(domain) {
+  if (domain.startsWith('www.')) return domain.slice(4);
+  const p = domain.split('.');
+  const isApex = p.length === 2 ||
+    (p.length === 3 && p[2].length === 2 && ['com', 'net', 'org', 'edu', 'gov', 'co', 'ac', 'biz', 'info'].includes(p[1]));
+  return isApex ? 'www.' + domain : null;
+}
+// منجيب الـCustom Hostname إذا موجود (حتى لو انضاف يدوي من لوحة Cloudflare)، وإلا منعملو
+async function cfEnsureHostname(env, hostname) {
+  const g = await cfApi(env, 'GET', `/custom_hostnames?hostname=${encodeURIComponent(hostname)}`);
+  let res = g.success && g.result && g.result[0];
+  if (!res) {
+    const j = await cfApi(env, 'POST', '/custom_hostnames',
+      { hostname, ssl: { method: 'http', type: 'dv', settings: { min_tls_version: '1.2' } } });
+    if (!j.success) return { error: cfError(j) };
+    res = j.result;
+  }
+  return { res };
+}
+// هل الدومين مستعمل بمكان تاني (متجر تاني / وصلة / مولّد / نفق)؟
+async function domainTakenElsewhere(env, d, storeId) {
+  const q = `?domain=eq.${encodeURIComponent(d)}&select=*&limit=1`;
+  const [s, l, m, t] = await Promise.all([
+    sbGet(env, 'store_domains' + q).catch(() => []),
+    sbGet(env, 'link_domains' + q).catch(() => []),
+    sbGet(env, 'motor_domains' + q).catch(() => []),
+    sbGet(env, `local_tunnels?hostname=eq.${encodeURIComponent(d)}&select=hostname&limit=1`).catch(() => [])
+  ]);
+  return (s[0] && s[0].store_id !== storeId) || l.length > 0 || m.length > 0 || t.length > 0;
+}
+// بيربط النسخة التانية (www / بدون www) تلقائياً على Cloudflare ويحفظ حالتها بـ info
+async function ensureAltHostname(env, storeId, domain, info) {
+  const alt = wwwPair(domain);
+  if (!alt) return info;
+  const out = { ...(info || {}), alt_domain: alt };
+  try {
+    if (await domainTakenElsewhere(env, alt, storeId)) { out.alt_error = 'taken'; return out; }
+    const r = await cfEnsureHostname(env, alt);
+    if (r.error) { out.alt_error = r.error; return out; }
+    out.alt_hostname_id = r.res.id;
+    out.alt_status = mapCf(r.res).status;
+    const ov = r.res.ownership_verification;
+    if (ov && ov.name) { out.alt_txt_name = ov.name; out.alt_txt_value = ov.value; }
+    delete out.alt_error;
+  } catch (e) { out.alt_error = String(e && e.message || e); }
+  return out;
+}
+
 function mapCf(res) {
   const st = res.status || '', ssl = (res.ssl && res.ssl.status) || '';
   const active = st === 'active' && (!ssl || ssl === 'active');
@@ -3604,15 +3653,16 @@ async function storeDomain(request, env) {
     const dupL = await sbGet(env, `link_domains?domain=eq.${encodeURIComponent(domain)}&select=id&limit=1`).catch(() => []);
     if (dupL.length) return json(400, { error: 'هذا النطاق مرتبط بصفحة «وصلة»' });
 
-    const info = { cname_target: target };
+    let info = { cname_target: target };
     let cfId = null, mapped = { status: 'pending', cf_status: '', ssl_status: '' };
     if (cfOn) {
-      const j = await cfApi(env, 'POST', '/custom_hostnames',
-        { hostname: domain, ssl: { method: 'http', type: 'dv', settings: { min_tls_version: '1.2' } } });
-      if (!j.success) return json(400, { error: cfError(j) });
-      cfId = j.result.id; mapped = mapCf(j.result);
-      const ov = j.result.ownership_verification;
+      const r = await cfEnsureHostname(env, domain);
+      if (r.error) return json(400, { error: r.error });
+      cfId = r.res.id; mapped = mapCf(r.res);
+      const ov = r.res.ownership_verification;
       if (ov && ov.name) { info.txt_name = ov.name; info.txt_value = ov.value; }
+      // www وبدون www مع بعض: منربط النسخة التانية تلقائياً
+      info = await ensureAltHostname(env, store.id, domain, info);
     }
     const ins = await fetch(`${env.SUPABASE_URL}/rest/v1/store_domains`, {
       method: 'POST',
@@ -3632,15 +3682,20 @@ async function storeDomain(request, env) {
     const j = await cfApi(env, 'GET', `/custom_hostnames/${existing.cf_hostname_id}`);
     if (!j.success) return json(400, { error: cfError(j) });
     const m = mapCf(j.result);
-    const upd = { ...m, verified_at: m.status === 'active' ? (existing.verified_at || new Date().toISOString()) : null };
+    // بيكمّل النسخة التانية (www / بدون www) — كمان للمتاجر القديمة يلّي انربطت قبل هالميزة
+    const info = await ensureAltHostname(env, store.id, existing.domain, existing.info || {});
+    const upd = { ...m, info, verified_at: m.status === 'active' ? (existing.verified_at || new Date().toISOString()) : null };
     await sbPatch(env, `store_domains?id=eq.${existing.id}`, upd);
     return json(200, { ok: true, domain: { ...existing, ...upd }, cname_target: target });
   }
 
   if (action === 'remove') {
     if (cfOn && existing.cf_hostname_id) await cfApi(env, 'DELETE', `/custom_hostnames/${existing.cf_hostname_id}`);
+    const altId = existing.info && existing.info.alt_hostname_id;
+    if (cfOn && altId) await cfApi(env, 'DELETE', `/custom_hostnames/${altId}`);
     await fetch(`${env.SUPABASE_URL}/rest/v1/store_domains?id=eq.${existing.id}`, { method: 'DELETE', headers: sbHeaders(env) });
     domCache.delete(existing.domain);
+    if (existing.info && existing.info.alt_domain) peekCache.delete(existing.info.alt_domain);
     return json(200, { ok: true });
   }
   return json(400, { error: 'unknown action' });

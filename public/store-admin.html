@@ -2563,16 +2563,32 @@ function renderDomain(info){
     v.innerHTML='<div class="card"><h3>'+L('اربط دومين خاص بمتجرك','Connect your own domain')+'</h3>'+
       '<p class="sub">'+L('بدل ','Instead of ')+'<b dir="ltr">'+esc(storeUrl().replace(/^https?:\/\//,''))+'</b> '+L('بتستعمل عنوانك، مثل ','use your own address, like ')+'<b dir="ltr">shop.mybrand.com</b>. '+L('لازم تكون مالك الدومين.','You must own the domain.')+'</p>'+
       '<div class="tools"><input type="text" id="dmIn" dir="ltr" placeholder="shop.mybrand.com" style="min-width:260px"><button class="btn" id="dmAdd">'+L('ربط الدومين','Connect domain')+'</button></div><div class="msg" id="dmMsg"></div>'+
-      '<div class="muted" style="font-size:13px">'+L('نصيحة: استعمل نطاق فرعي (shop. أو www.) — الدومين الأساسي بدون www بدو دعم CNAME flattening.','Tip: use a subdomain (shop. or www.) — a bare root domain needs CNAME flattening support.')+'</div></div>';
+      '<div class="muted" style="font-size:13px">'+L('اكتب الدومين متل ما بدك ياه يبيّن (مثلاً www.mybrand.com) — منربط النسختين مع www وبدون www تلقائياً.','Enter the domain as you want it shown (e.g. www.mybrand.com) — we connect both the www and non-www versions automatically.')+'</div></div>';
     return;
   }
-  var chip=d.status==='active'?'<span class="chip ok">'+L('شغّال','Active')+'</span>':d.status==='failed'?'<span class="chip bad">'+L('فشل','Failed')+'</span>':'<span class="chip warn">'+L('بانتظار الربط','Pending')+'</span>';
-  v.innerHTML='<div class="card"><h3>'+L('الدومين الخاص','Custom domain')+'</h3><div class="kv" style="margin-top:12px"><b>'+L('الدومين','Domain')+'</b><span dir="ltr" style="text-align:start"><b>'+esc(d.domain)+'</b></span><b>'+L('الحالة','Status')+'</b><span>'+chip+(d.ssl_status?' <span class="muted">SSL: '+esc(d.ssl_status)+'</span>':'')+'</span></div>'+
-    (d.status!=='active'?'<h3 style="margin-top:18px;font-size:15px">'+L('الخطوة المطلوبة عند مزوّد الدومين','Required step at your domain provider')+'</h3><ol class="steps"><li>'+L('ادخل على لوحة DNS للدومين.','Open the DNS settings of your domain.')+'</li><li>'+L('أضف سجل CNAME بالبيانات:','Add a CNAME record:')+'</li></ol><pre class="dns">Type:   CNAME\nName:   '+esc(d.domain.split('.').length>2?d.domain.split('.')[0]:'@')+'\nTarget: '+esc(target)+'</pre>'+
-      (d.info&&d.info.txt_name?'<p class="muted">'+L('وإذا طلب سجل تحقق إضافي أضف TXT:','If a verification record is required add a TXT:')+'</p><pre class="dns">Name:  '+esc(d.info.txt_name)+'\nValue: '+esc(d.info.txt_value||'')+'</pre>':'')+'<p class="muted">'+L('بياخد من دقائق لساعات. اضغط «تحقق الآن».','Takes minutes to hours. Press “Check now”.')+'</p>':
+  var inf=d.info||{}, alt=inf.alt_domain||'', root=dmRoot(d.domain);
+  function chipOf(s){return s==='active'?'<span class="chip ok">'+L('شغّال','Active')+'</span>':s==='failed'?'<span class="chip bad">'+L('فشل','Failed')+'</span>':'<span class="chip warn">'+L('بانتظار الربط','Pending')+'</span>';}
+  function rel(n){n=String(n||'').replace(/\.$/,''); return n===root?'@':(n.slice(-(root.length+1))==='.'+root?n.slice(0,-(root.length+1)):n);}
+  // كل السجلات المطلوبة بجدول واحد
+  var recs=[], hosts=[d.domain]; if(alt&&!inf.alt_error) hosts.push(alt);
+  hosts.forEach(function(h){var isRoot=h===root;
+    recs.push([isRoot?'ALIAS':'CNAME',rel(h),target,isRoot?L('إذا اللوحة ما فيها ALIAS: CNAME على @ (Cloudflare) أو ANAME','If ALIAS is missing: CNAME on @ (Cloudflare) or ANAME'):'']);});
+  if(inf.txt_name) recs.push(['TXT',rel(inf.txt_name),inf.txt_value||'','']);
+  if(inf.alt_txt_name&&!inf.alt_error) recs.push(['TXT',rel(inf.alt_txt_name),inf.alt_txt_value||'','']);
+  var tbl='<div style="overflow-x:auto"><table dir="ltr" style="width:100%;border-collapse:collapse;font-size:13px;margin-top:8px"><tr><th style="text-align:left;padding:6px">Type</th><th style="text-align:left;padding:6px">Name</th><th style="text-align:left;padding:6px">Value</th></tr>'+
+    recs.map(function(r){return '<tr style="border-top:1px solid #ddd"><td style="padding:6px"><b>'+esc(r[0])+'</b></td><td style="padding:6px">'+esc(r[1])+'</td><td style="padding:6px;word-break:break-all">'+esc(r[2])+(r[3]?'<div class="muted" dir="auto" style="font-size:12px">'+esc(r[3])+'</div>':'')+'</td></tr>';}).join('')+'</table></div>';
+  var allOk=d.status==='active'&&(!alt||inf.alt_error||inf.alt_status==='active');
+  v.innerHTML='<div class="card"><h3>'+L('الدومين الخاص','Custom domain')+'</h3><div class="kv" style="margin-top:12px"><b>'+L('الدومين','Domain')+'</b><span dir="ltr" style="text-align:start"><b>'+esc(d.domain)+'</b></span><b>'+L('الحالة','Status')+'</b><span>'+chipOf(d.status)+(d.ssl_status?' <span class="muted">SSL: '+esc(d.ssl_status)+'</span>':'')+'</span>'+
+    (alt?'<b dir="ltr">'+esc(alt)+'</b><span>'+(inf.alt_error?'<span class="muted">'+(inf.alt_error==='taken'?L('مربوط بمكان تاني','Used elsewhere'):esc(inf.alt_error))+'</span>':chipOf(inf.alt_status))+'</span>':'')+'</div>'+
+    (!allOk?'<h3 style="margin-top:18px;font-size:15px">'+L('الخطوة المطلوبة عند مزوّد الدومين','Required step at your domain provider')+'</h3><ol class="steps"><li>'+L('ادخل على لوحة DNS للدومين.','Open the DNS settings of your domain.')+'</li><li>'+L('امحي أي سجل A أو AAAA قديم على @ و www (متل صفحة الـ parking).','Delete any old A or AAAA records on @ and www (e.g. the parking page).')+'</li><li>'+L('زيد هالسجلات كلها:','Add all of these records:')+'</li></ol>'+tbl+
+      '<p class="muted">'+L('بياخد من دقائق لساعات. اضغط «تحقق الآن».','Takes minutes to hours. Press “Check now”.')+'</p>':
       '<p style="margin-top:12px">'+L('متجرك شغّال على ','Your store is live at ')+'<a target="_blank" rel="noopener" href="https://'+esc(d.domain)+'" dir="ltr">https://'+esc(d.domain)+'</a></p>')+
     '<div class="tools" style="margin-top:14px"><button class="btn" id="dmChk">'+L('تحقق الآن','Check now')+'</button><button class="btn dg" id="dmDel">'+L('حذف الدومين','Remove domain')+'</button></div><div class="msg" id="dmMsg"></div></div>';
 }
+// الدومين الأساسي (بدون www أو نطاق فرعي) — نفس منطق wwwPair بالـworker
+function dmRoot(d){d=String(d||'');var p=d.split('.'),n=p.length;
+  var two=n>=3&&p[n-1].length===2&&['com','net','org','edu','gov','co','ac','biz','info'].indexOf(p[n-2])>=0;
+  return p.slice(two?-3:-2).join('.');}
 LOADERS.sub=async function(){
   var wa=await sb.rpc('public_settings'), wnum=wa.data&&wa.data.whatsapp?String(wa.data.whatsapp).replace(/\D/g,''):'';
   var l=LIC||{}, st=l.ok?(l.trial?[L('تجربة مجانية','Free trial'),'warn']:[L('فعّال','Active'),'ok']):[L('منتهي','Expired'),'bad'];
