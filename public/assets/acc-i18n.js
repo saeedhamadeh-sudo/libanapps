@@ -1,5 +1,11 @@
 /* LibanApps — ترجمة برامج المحاسبة (التجاري والصناعي) للإنكليزي + زر عربي/EN */
 window.ACC_EN = {
+  "💵 وين راحت المصاري — حركات الصناديق والمصارف (الفئة 5) بالفترة": "💵 Where the money went — cash and bank movements (class 5) in the period",
+  "فات عالصندوق": "In",
+  "طلع من الصندوق": "Out",
+  "داخل بحساب النتيجة (مصاريف وإيرادات نقدية — الفئة 6 و7)": "In the income statement (cash expenses and income — classes 6 and 7)",
+  "النقدية آخر الفترة (الصناديق والمصارف)": "Cash at end of period (cash boxes and banks)",
+  "هون بيبيّن كل شي فات أو طلع من الصناديق والمصارف، وشو منو داخل بالنتيجة وشو لأ. القروض وتسديدها، الدفع للموردين والعمال، المقبوض من الزبائن، الأصول، وسحوبات صاحب المؤسسة بيبيّنوا هون مش بالفئة 6 و7 — كبسة على أي حساب بتفتح قيودو.": "Everything that went in or out of cash boxes and banks, and what is or isn’t in the result. Loans and repayments, supplier and worker payments, customer receipts, assets and owner withdrawals show here, not in classes 6 and 7 — click any account to open its entries.",
   "حساب النتيجة": "Income statement",
   "مجموع الفئة 6 (الأعباء)": "Total class 6 (charges)",
   "مجموع الفئة 7 (الإيرادات)": "Total class 7 (income)",
@@ -4306,6 +4312,12 @@ window.ACC_EN = {
 };
 /* Français — même clés arabes que ACC_EN */
 window.ACC_FR = {
+  "💵 وين راحت المصاري — حركات الصناديق والمصارف (الفئة 5) بالفترة": "💵 Où est passé l’argent — mouvements de caisse et banque (classe 5) sur la période",
+  "فات عالصندوق": "Entrées",
+  "طلع من الصندوق": "Sorties",
+  "داخل بحساب النتيجة (مصاريف وإيرادات نقدية — الفئة 6 و7)": "Inclus au résultat (charges et produits payés — classes 6 et 7)",
+  "النقدية آخر الفترة (الصناديق والمصارف)": "Trésorerie fin de période (caisses et banques)",
+  "هون بيبيّن كل شي فات أو طلع من الصناديق والمصارف، وشو منو داخل بالنتيجة وشو لأ. القروض وتسديدها، الدفع للموردين والعمال، المقبوض من الزبائن، الأصول، وسحوبات صاحب المؤسسة بيبيّنوا هون مش بالفئة 6 و7 — كبسة على أي حساب بتفتح قيودو.": "Tout ce qui est entré ou sorti des caisses et banques, et ce qui est ou non au résultat. Emprunts et remboursements, paiements fournisseurs et salariés, encaissements clients, immobilisations et prélèvements de l’exploitant apparaissent ici, pas en classes 6 et 7 — cliquez sur un compte pour ouvrir ses écritures.",
   "حساب النتيجة": "Compte de résultat",
   "مجموع الفئة 6 (الأعباء)": "Total classe 6 (charges)",
   "مجموع الفئة 7 (الإيرادات)": "Total classe 7 (produits)",

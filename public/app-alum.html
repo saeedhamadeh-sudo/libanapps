@@ -2356,6 +2356,35 @@ function bindLebJournal(){
 }
 /* ===== 📊 كشف الإيرادات والأعباء (حساب النتيجة) — الفئة 6 والفئة 7 ===== */
 function jrShiftYear(d, n){ if(!d) return d; const y = Number(d.slice(0,4))+n; let r = y+d.slice(4); if(r.slice(5)==='02-29') r = y+'-02-28'; return r; }
+// 💵 وين راحت المصاري: حركات الصناديق والمصارف (الفئة 5) بالفترة — شو منها بالنتيجة وشو لأ (قروض، موردين، عمال، زبائن، أصول، صاحب المؤسسة)
+function jrPLCashRecon(P){
+  const isCash = a=>a[0]==='5', A = {}; let inPL = 0, outPL = 0, open = 0, close = 0;
+  journalEntriesAll().forEach(e=>{ if(e.date>P.to || e.kind==='closing') return; const cashD = e.lines.filter(l=>isCash(l.a)).reduce((t,l)=>t+l.dr-l.cr,0);
+    if(e.date<P.from){ open += cashD; return; } close += cashD;
+    const others = e.lines.filter(l=>!isCash(l.a)); if(!others.length || Math.abs(cashD)<0.000001) return;
+    const tot = others.reduce((t,l)=>t+Math.abs(l.dr-l.cr),0) || 1;
+    others.forEach(l=>{ const sh = cashD * Math.abs(l.dr-l.cr)/tot, c = l.a[0];
+      if(c==='6' || c==='7'){ if(sh>=0) inPL += sh; else outPL -= sh; return; }
+      const k = l.a; A[k] = A[k] || {a:k, lbl:jrCfLabel(k), i:0, o:0}; if(sh>=0) A[k].i += sh; else A[k].o -= sh; }); });
+  const rows = Object.values(A).filter(x=>x.i>0.005 || x.o>0.005), G = {};
+  rows.forEach(x=>{ (G[x.lbl] = G[x.lbl] || []).push(x); });
+  const nav = c=>`data-nav="#/leb-journal?m=g&acc=${offC(c)}&period=${P.period}&a=${encodeURIComponent(P.a)}&b=${encodeURIComponent(P.b)}" style="cursor:pointer;"`;
+  const f = v=> v>0.005? fmtJ(v) : '';
+  const ti = rows.reduce((t,x)=>t+x.i,0), to = rows.reduce((t,x)=>t+x.o,0);
+  const body = Object.keys(G).sort().map(g=>{ const L = G[g].sort((a,b)=>offCmp(a.a,b.a)), gi = L.reduce((t,x)=>t+x.i,0), go = L.reduce((t,x)=>t+x.o,0);
+    return `<tr style="background:var(--bg-2); font-weight:700;"><td colspan="2">${escapeHtml(g)}</td><td class="num" style="color:var(--credit);">${f(gi)}</td><td class="num" style="color:var(--debit);">${f(go)}</td></tr>`
+      + (L.length>1 || g!==jrName(L[0].a)? L.map(x=>`<tr ${nav(x.a)}><td class="num">${offC(x.a)}</td><td>${escapeHtml(jrName(x.a)||'')}</td><td class="num">${f(x.i)}</td><td class="num">${f(x.o)}</td></tr>`).join('') : ''); }).join('');
+  return `<div style="font-weight:800; text-decoration:underline; margin:22px 0 6px;">💵 وين راحت المصاري — حركات الصناديق والمصارف (الفئة 5) بالفترة</div>
+    <div style="font-size:11.5px; color:var(--ink-soft); margin-bottom:6px; line-height:1.7;">هون بيبيّن كل شي فات أو طلع من الصناديق والمصارف، وشو منو داخل بالنتيجة وشو لأ. القروض وتسديدها، الدفع للموردين والعمال، المقبوض من الزبائن، الأصول، وسحوبات صاحب المؤسسة بيبيّنوا هون مش بالفئة 6 و7 — كبسة على أي حساب بتفتح قيودو.</div>
+    <table><thead><tr><th>الحساب</th><th>البيان</th><th>فات عالصندوق</th><th>طلع من الصندوق</th></tr></thead><tbody>
+      <tr style="background:var(--bg-2); font-weight:700;"><td colspan="2">داخل بحساب النتيجة (مصاريف وإيرادات نقدية — الفئة 6 و7)</td><td class="num" style="color:var(--credit);">${f(inPL)}</td><td class="num" style="color:var(--debit);">${f(outPL)}</td></tr>
+      ${body || ''}
+    </tbody><tfoot>
+      <tr style="font-weight:800;"><td colspan="2">المجموع</td><td class="num">${fmtJ(inPL+ti)}</td><td class="num">${fmtJ(outPL+to)}</td></tr>
+      <tr><td colspan="2">النقدية أول الفترة</td><td class="num" colspan="2">${fmtJ(open)}</td></tr>
+      <tr style="font-weight:800; background:var(--paper);"><td colspan="2">النقدية آخر الفترة (الصناديق والمصارف)</td><td class="num" colspan="2">${fmtJ(open+close)}</td></tr>
+    </tfoot></table>`;
+}
 function jrSum67(from, to){ const S = {}; journalEntriesAll().forEach(e=>{ if(e.date<from || e.date>to || e.kind==='closing') return; e.lines.forEach(l=>{ const c = l.a[0]; if(c!=='6' && c!=='7') return; S[l.a] = (S[l.a]||0) + l.dr - l.cr; }); }); return S; }
 const PL_NAMES = {'60':'المشتريات المستهلكة','61':'الأعباء الخارجية','62':'أعباء خارجية أخرى','63':'الضرائب والرسوم','64':'أعباء المستخدمين','65':'أعباء تشغيلية أخرى','66':'الأعباء المالية','67':'أعباء استثنائية','68':'مخصصات الاستهلاكات والمؤونات','69':'ضريبة الدخل','70':'مبيعات البضائع والإنتاج','71':'تغيّر مخزون الإنتاج','72':'إنتاج مثبّت','74':'إعانات الاستثمار','75':'إيرادات تشغيلية أخرى','76':'الإيرادات المالية','77':'إيرادات استثنائية','78':'استردادات مؤونات'};
 function lebPLView(qs){
@@ -2396,6 +2425,7 @@ function lebPLView(qs){
       <tr style="font-weight:900; font-size:16px; background:var(--paper);"><td>${net>=0? 'نتيجة ربح' : 'نتيجة خسارة'}</td><td class="num" style="color:${net>=0? 'var(--credit)' : 'var(--debit)'};">${fmtJ(Math.abs(net))}</td>${hasPrev? `<td class="num" style="color:var(--ink-soft);">${net0>=0? 'ربح ' : 'خسارة '}${fmtJ(Math.abs(net0))}</td>` : ''}</tr>
     </tbody></table>
     <div style="font-size:11.5px; color:var(--ink-soft); margin-top:6px; line-height:1.7;">إذا مجموع الفئة 7 أكبر من الفئة 6 النتيجة ربح، وإذا أصغر خسارة. القروض وتسديدها، شراء الأصول الثابتة، والدفع للموردين ما بيدخلوا بحساب النتيجة لأنهن مش أعباء — بس الفوائد والمصاريف المصرفية (6731، 6736) والاستهلاكات (6512).</div>
+    ${jrPLCashRecon(P)}
   </div>
   ${appFooter()}`;
 }
