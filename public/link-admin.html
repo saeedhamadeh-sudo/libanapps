@@ -331,6 +331,7 @@ var T={
   dm_in:['اسم الدومين','Domain name','Nom de domaine'], dm_add:['ربط الدومين','Connect domain','Connecter le domaine'],
   dm_tip:['ننصح بدومين فرعي مثل links.mybrand.com. للدومين الرئيسي (mybrand.com) يجب أن يدعم مزوّد DNS ميزة CNAME على الجذر (مثل Cloudflare).','We recommend a subdomain like links.mybrand.com. For a root domain (mybrand.com), your DNS provider must support a CNAME at the root (e.g. Cloudflare).','Nous recommandons un sous-domaine comme links.mybrand.com. Pour un domaine racine (mybrand.com), votre fournisseur DNS doit accepter un CNAME à la racine (ex. Cloudflare).'],
   dm_steps:['أضف هذا السجل في إعدادات DNS لدى الشركة التي اشتريت منها الدومين:','Add this record in the DNS settings at the company where you bought the domain:','Ajoutez cet enregistrement dans les réglages DNS chez votre registraire :'],
+  dm_alias:['للدومين بدون www: ALIAS على @ — إذا ما في ALIAS استعمل ANAME أو CNAME على @ (Cloudflare)','Root domain: ALIAS on @ — if ALIAS is missing use ANAME or CNAME on @ (Cloudflare)','Domaine racine : ALIAS sur @ — sinon ANAME ou CNAME sur @ (Cloudflare)'],
   dm_txt:['ثم أضف سجل التحقق هذا:','Then add this verification record:','Puis ajoutez cet enregistrement de vérification :'],
   dm_type:['النوع','Type','Type'], dm_name:['الاسم','Name','Nom'], dm_val:['القيمة','Value','Valeur'],
   dm_wait:['قد يستغرق التفعيل من بضع دقائق حتى 24 ساعة بعد إضافة السجل.','Activation can take from a few minutes up to 24 hours after adding the record.','L’activation peut prendre de quelques minutes à 24 heures après l’ajout.'],
@@ -761,6 +762,10 @@ async function domApi(action,extra){
   return j;
 }
 function dnsRow(type,name,val){ return '<tr><td>'+esc(type)+'</td><td dir="ltr" style="white-space:normal;overflow-wrap:anywhere">'+esc(name)+'</td><td dir="ltr" style="white-space:normal;overflow-wrap:anywhere"><b>'+esc(val)+'</b></td></tr>'; }
+// الدومين الأساسي (بدون www أو نطاق فرعي) — نفس منطق wwwPair بالـworker
+function dmRoot(d){d=String(d||'');var p=d.split('.'),n=p.length;
+  var two=n>=3&&p[n-1].length===2&&['com','net','org','edu','gov','co','ac','biz','info'].indexOf(p[n-2])>=0;
+  return p.slice(two?-3:-2).join('.');}
 function paintDomain(){
   var c=$('#domCard'); if(!c) return;
   var h='<h3><i class="fa-solid fa-globe"></i>'+esc(t('dm_h'))+'</h3><p class="muted" style="font-size:13px;margin:-6px 0 12px">'+esc(t('dm_p'))+'</p>';
@@ -775,11 +780,15 @@ function paintDomain(){
        '<span class="tag" style="background:'+col+'1a;color:'+col+'">'+esc(t(st))+'</span><span class="sp1"></span>'+
        (DOM.status==='active'?'<a class="btn g sm" target="_blank" rel="noopener" href="https://'+esc(DOM.domain)+'"><i class="fa-solid fa-arrow-up-right-from-square"></i></a>':'')+
        '<button class="btn g sm" type="button" id="domChk"><i class="fa-solid fa-rotate"></i>'+esc(t('dm_check'))+'</button></div>';
-    if(DOM.status!=='active'){
-      var info=DOM.info||{}, host=DOM.domain.split('.').length>2?DOM.domain.split('.')[0]:'@';
-      h+='<p style="font-weight:700;margin-bottom:8px">'+esc(t('dm_steps'))+'</p><table class="tb" style="table-layout:auto;margin-bottom:10px"><thead><tr><th>'+esc(t('dm_type'))+'</th><th>'+esc(t('dm_name'))+'</th><th>'+esc(t('dm_val'))+'</th></tr></thead><tbody>'+
-         dnsRow('CNAME',host,info.cname_target||DOM_T)+'</tbody></table>';
-      if(info.txt_name) h+='<p style="font-weight:700;margin-bottom:8px">'+esc(t('dm_txt'))+'</p><table class="tb" style="table-layout:auto;margin-bottom:10px"><tbody>'+dnsRow('TXT',info.txt_name,info.txt_value)+'</tbody></table>';
+    var info=DOM.info||{}, altOk=info.alt_domain&&!info.alt_error;
+    if(DOM.status!=='active'||(altOk&&info.alt_status!=='active')){
+      var root=dmRoot(DOM.domain), hosts=[DOM.domain].concat(altOk?[info.alt_domain]:[]), hasRoot=false;
+      function rel(n){n=String(n||'').replace(/\.$/,''); return n===root?'@':(n.slice(-(root.length+1))==='.'+root?n.slice(0,-(root.length+1)):n);}
+      var rows=hosts.map(function(x){ if(x===root) hasRoot=true; return dnsRow(x===root?'ALIAS':'CNAME',rel(x),info.cname_target||DOM_T); }).join('');
+      h+='<p style="font-weight:700;margin-bottom:8px">'+esc(t('dm_steps'))+'</p><table class="tb" style="table-layout:auto;margin-bottom:10px"><thead><tr><th>'+esc(t('dm_type'))+'</th><th>'+esc(t('dm_name'))+'</th><th>'+esc(t('dm_val'))+'</th></tr></thead><tbody>'+rows+'</tbody></table>';
+      if(hasRoot) h+='<p class="muted" style="font-size:12.5px;margin:-4px 0 10px">'+esc(t('dm_alias'))+'</p>';
+      var txts=(info.txt_name?dnsRow('TXT',rel(info.txt_name),info.txt_value):'')+(altOk&&info.alt_txt_name?dnsRow('TXT',rel(info.alt_txt_name),info.alt_txt_value):'');
+      if(txts) h+='<p style="font-weight:700;margin-bottom:8px">'+esc(t('dm_txt'))+'</p><table class="tb" style="table-layout:auto;margin-bottom:10px"><tbody>'+txts+'</tbody></table>';
       h+='<p class="muted" style="font-size:12.5px">'+esc(t(DOM.cf_hostname_id?'dm_wait':'dm_manual'))+'</p>';
       if(info.errors&&info.errors.length) h+='<div class="msg e" style="margin-top:8px" dir="ltr">'+esc(info.errors.join(' · '))+'</div>';
     }

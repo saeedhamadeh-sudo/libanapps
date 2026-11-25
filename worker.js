@@ -3584,7 +3584,7 @@ async function cfEnsureHostname(env, hostname) {
   return { res };
 }
 // هل الدومين مستعمل بمكان تاني (متجر تاني / وصلة / مولّد / نفق)؟
-async function domainTakenElsewhere(env, d, storeId) {
+async function domainTakenElsewhere(env, d) {
   const q = `?domain=eq.${encodeURIComponent(d)}&select=*&limit=1`;
   const [s, l, m, t] = await Promise.all([
     sbGet(env, 'store_domains' + q).catch(() => []),
@@ -3592,15 +3592,15 @@ async function domainTakenElsewhere(env, d, storeId) {
     sbGet(env, 'motor_domains' + q).catch(() => []),
     sbGet(env, `local_tunnels?hostname=eq.${encodeURIComponent(d)}&select=hostname&limit=1`).catch(() => [])
   ]);
-  return (s[0] && s[0].store_id !== storeId) || l.length > 0 || m.length > 0 || t.length > 0;
+  return s.length > 0 || l.length > 0 || m.length > 0 || t.length > 0;
 }
 // بيربط النسخة التانية (www / بدون www) تلقائياً على Cloudflare ويحفظ حالتها بـ info
-async function ensureAltHostname(env, storeId, domain, info) {
+async function ensureAltHostname(env, domain, info) {
   const alt = wwwPair(domain);
   if (!alt) return info;
   const out = { ...(info || {}), alt_domain: alt };
   try {
-    if (await domainTakenElsewhere(env, alt, storeId)) { out.alt_error = 'taken'; return out; }
+    if (await domainTakenElsewhere(env, alt)) { out.alt_error = 'taken'; return out; }
     const r = await cfEnsureHostname(env, alt);
     if (r.error) { out.alt_error = r.error; return out; }
     out.alt_hostname_id = r.res.id;
@@ -3662,7 +3662,7 @@ async function storeDomain(request, env) {
       const ov = r.res.ownership_verification;
       if (ov && ov.name) { info.txt_name = ov.name; info.txt_value = ov.value; }
       // www وبدون www مع بعض: منربط النسخة التانية تلقائياً
-      info = await ensureAltHostname(env, store.id, domain, info);
+      info = await ensureAltHostname(env, domain, info);
     }
     const ins = await fetch(`${env.SUPABASE_URL}/rest/v1/store_domains`, {
       method: 'POST',
@@ -3683,7 +3683,7 @@ async function storeDomain(request, env) {
     if (!j.success) return json(400, { error: cfError(j) });
     const m = mapCf(j.result);
     // بيكمّل النسخة التانية (www / بدون www) — كمان للمتاجر القديمة يلّي انربطت قبل هالميزة
-    const info = await ensureAltHostname(env, store.id, existing.domain, existing.info || {});
+    const info = await ensureAltHostname(env, existing.domain, existing.info || {});
     const upd = { ...m, info, verified_at: m.status === 'active' ? (existing.verified_at || new Date().toISOString()) : null };
     await sbPatch(env, `store_domains?id=eq.${existing.id}`, upd);
     return json(200, { ok: true, domain: { ...existing, ...upd }, cname_target: target });
@@ -3725,14 +3725,16 @@ async function motorDomain(request, env) {
     const d2 = await sbGet(env, `store_domains?domain=eq.${encodeURIComponent(domain)}&select=id&limit=1`);
     const d3 = await sbGet(env, `link_domains?domain=eq.${encodeURIComponent(domain)}&select=id&limit=1`).catch(() => []);
     if (d1.length || d2.length || d3.length) return json(400, { ok: false, error: 'dom_taken' });
-    const info = { cname_target: target };
+    let info = { cname_target: target };
     let cfId = null, mapped = { status: 'pending', cf_status: '', ssl_status: '' };
     if (cfOn) {
-      const j = await cfApi(env, 'POST', '/custom_hostnames', { hostname: domain, ssl: { method: 'http', type: 'dv', settings: { min_tls_version: '1.2' } } });
-      if (!j.success) return json(400, { ok: false, error: 'dom_cf', detail: cfError(j) });
-      cfId = j.result.id; mapped = mapCf(j.result);
-      const ov = j.result.ownership_verification;
+      const r = await cfEnsureHostname(env, domain);
+      if (r.error) return json(400, { ok: false, error: 'dom_cf', detail: r.error });
+      cfId = r.res.id; mapped = mapCf(r.res);
+      const ov = r.res.ownership_verification;
       if (ov && ov.name) { info.txt_name = ov.name; info.txt_value = ov.value; }
+      // www وبدون www مع بعض: منربط النسخة التانية تلقائياً
+      info = await ensureAltHostname(env, domain, info);
     }
     const ins = await fetch(`${env.SUPABASE_URL}/rest/v1/motor_domains`, {
       method: 'POST', headers: { ...sbHeaders(env), 'Content-Type': 'application/json', Prefer: 'return=representation' },
@@ -3740,6 +3742,7 @@ async function motorDomain(request, env) {
     });
     if (!ins.ok) {
       if (cfOn && cfId) await cfApi(env, 'DELETE', `/custom_hostnames/${cfId}`);
+      if (cfOn && info.alt_hostname_id) await cfApi(env, 'DELETE', `/custom_hostnames/${info.alt_hostname_id}`);
       return json(500, { ok: false, error: 'dom_save', detail: (await ins.text()).slice(0, 120) });
     }
     return out((await ins.json())[0]);
@@ -3755,7 +3758,8 @@ async function motorDomain(request, env) {
       if (ov && ov.name) { info.txt_name = ov.name; info.txt_value = ov.value; }
       const vr = (j.result.ssl && j.result.ssl.validation_errors) || j.result.verification_errors || [];
       info.errors = vr.map(x => (x && x.message) || String(x)).slice(0, 3);
-      upd.info = info;
+      // بيكمّل النسخة التانية (www / بدون www) — كمان للدومينات يلّي انربطت قبل هالميزة
+      upd.info = await ensureAltHostname(env, existing.domain, info);
     }
     // فحص فعلي: هل الدومين عم يوصل لعنّا؟
     let live = false;
@@ -3773,8 +3777,11 @@ async function motorDomain(request, env) {
   }
   if (action === 'remove') {
     if (cfOn && existing.cf_hostname_id) await cfApi(env, 'DELETE', `/custom_hostnames/${existing.cf_hostname_id}`);
+    const altId = existing.info && existing.info.alt_hostname_id;
+    if (cfOn && altId) await cfApi(env, 'DELETE', `/custom_hostnames/${altId}`);
     await fetch(`${env.SUPABASE_URL}/rest/v1/motor_domains?id=eq.${existing.id}`, { method: 'DELETE', headers: sbHeaders(env) });
     motorDomCache.delete(existing.domain);
+    if (existing.info && existing.info.alt_domain) motorDomCache.delete(existing.info.alt_domain);
     return out(null);
   }
   return json(400, { ok: false, error: 'bad_op' });
@@ -4723,14 +4730,16 @@ async function linkDomain(request, env) {
     const q = `?domain=eq.${encodeURIComponent(domain)}&select=id&limit=1`;
     const [a, b, c] = await Promise.all([sbGet(env, 'link_domains' + q), sbGet(env, 'store_domains' + q), sbGet(env, 'motor_domains' + q)]);
     if (a.length || b.length || c.length) return json(400, { ok: false, error: 'dom_taken' });
-    const info = { cname_target: target };
+    let info = { cname_target: target };
     let cfId = null, mapped = { status: 'pending', cf_status: '', ssl_status: '' };
     if (cfOn) {
-      const j = await cfApi(env, 'POST', '/custom_hostnames', { hostname: domain, ssl: { method: 'http', type: 'dv', settings: { min_tls_version: '1.2' } } });
-      if (!j.success) return json(400, { ok: false, error: 'dom_cf', detail: cfError(j) });
-      cfId = j.result.id; mapped = mapCf(j.result);
-      const ov = j.result.ownership_verification;
+      const r = await cfEnsureHostname(env, domain);
+      if (r.error) return json(400, { ok: false, error: 'dom_cf', detail: r.error });
+      cfId = r.res.id; mapped = mapCf(r.res);
+      const ov = r.res.ownership_verification;
       if (ov && ov.name) { info.txt_name = ov.name; info.txt_value = ov.value; }
+      // www وبدون www مع بعض: منربط النسخة التانية تلقائياً
+      info = await ensureAltHostname(env, domain, info);
     }
     const ins = await fetch(`${env.SUPABASE_URL}/rest/v1/link_domains`, {
       method: 'POST', headers: { ...sbHeaders(env), 'Content-Type': 'application/json', Prefer: 'return=representation' },
@@ -4738,6 +4747,7 @@ async function linkDomain(request, env) {
     });
     if (!ins.ok) {
       if (cfOn && cfId) await cfApi(env, 'DELETE', `/custom_hostnames/${cfId}`);
+      if (cfOn && info.alt_hostname_id) await cfApi(env, 'DELETE', `/custom_hostnames/${info.alt_hostname_id}`);
       return json(500, { ok: false, error: 'dom_save', detail: (await ins.text()).slice(0, 120) });
     }
     forget(domain);
@@ -4754,7 +4764,8 @@ async function linkDomain(request, env) {
       if (ov && ov.name) { info.txt_name = ov.name; info.txt_value = ov.value; }
       const vr = (j.result.ssl && j.result.ssl.validation_errors) || j.result.verification_errors || [];
       info.errors = vr.map(x => (x && x.message) || String(x)).slice(0, 3);
-      upd.info = info;
+      // بيكمّل النسخة التانية (www / بدون www) — كمان للدومينات يلّي انربطت قبل هالميزة
+      upd.info = await ensureAltHostname(env, existing.domain, info);
     }
     // فحص فعلي: هل الدومين عم يوصل لعنّا؟
     let live = false;
@@ -4772,8 +4783,11 @@ async function linkDomain(request, env) {
   }
   if (action === 'remove') {
     if (cfOn && existing.cf_hostname_id) await cfApi(env, 'DELETE', `/custom_hostnames/${existing.cf_hostname_id}`);
+    const altId = existing.info && existing.info.alt_hostname_id;
+    if (cfOn && altId) await cfApi(env, 'DELETE', `/custom_hostnames/${altId}`);
     await fetch(`${env.SUPABASE_URL}/rest/v1/link_domains?id=eq.${existing.id}`, { method: 'DELETE', headers: sbHeaders(env) });
     forget(existing.domain);
+    if (existing.info && existing.info.alt_domain) forget(existing.info.alt_domain);
     return out(null);
   }
   return json(400, { ok: false, error: 'bad_op' });
@@ -5267,6 +5281,12 @@ const LA_WORKER = {
       if (!slug && altSlug) { slug = altSlug; primary = altHost; }
       else if (slug && altSlug === slug && altHost.startsWith('www.')) primary = altHost;
       if (!slug) {
+        // النسخة التانية (www / بدون www) لدومين مولّد أو «وصلة» → 301 للدومين المسجّل
+        const mdAlt = await resolveMotorDomain(env, null, altHost);
+        const ldAlt = !mdAlt && await resolveLinkDomain(env, null, altHost);
+        if ((mdAlt || ldAlt) && (request.method === 'GET' || request.method === 'HEAD')) {
+          return Response.redirect('https://' + altHost + url.pathname + url.search, 301);
+        }
         return new Response('This domain is not connected to any store.', {
           status: 404, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
       }
