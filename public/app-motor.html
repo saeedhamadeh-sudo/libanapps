@@ -2100,6 +2100,7 @@ var D={
  sl_src:['المصدر','Source','Source'], rf_fee:['رسوم إعادة وصل الخط','Reconnection fee','Frais de reconnexion'],
  rf_none:['بدون رسوم (استثناء)','No fee (exception)','Sans frais (exception)'],
  rf_hint:['تُسجَّل فاتورة «إعادة وصل خط» على الزبون — خدمة لا تُنزَّل من المخزون. القيمة تبقى محفوظة للمرات القادمة.','A “Reconnection” bill is added to the customer — a service, not taken from stock. The amount is remembered.','Une facture « Reconnexion » est ajoutée — service, hors stock. Le montant est mémorisé.'],
+ rf_set_hint:['تُضاف تلقائياً كفاتورة «إعادة وصل خط» عند وصل أي زبون مقطوع (يمكن الإعفاء عند الوصل). 0 = بدون رسوم.','Added automatically as a “Reconnection” bill when a cut customer is reconnected (can be waived). 0 = no fee.','Ajoutés automatiquement à la reconnexion (exonération possible). 0 = sans frais.'],
  rf_billed:['فاتورة إعادة وصل {v}','Reconnection bill {v}','Facture reconnexion {v}'],
  stk_neg:['بيع أكثر من الموجود — يجب إدخال الكمية','Sold more than in stock','Vendu plus que le stock'],
  sl_lock_hint:['أصناف المخزون تُباع بسعرها المحدد في المخزون. الخدمات وما ليس في المخزون: اختر «بند حر».','Stock items sell at their stock price. Services and non-stock items: use “Free item”.','Les articles du stock sont vendus à leur prix. Services et hors stock : « Article libre ».'],
@@ -3716,9 +3717,12 @@ document.addEventListener('click',function(e){ var b=e.target.closest('[data-rwm
 var FF={area:'',lim:80};
 function finderView(main,mode){
   searchHooks=[];
+  setTimeout(function(){ var b=$('#rfs',main); if(b) b.addEventListener('click',async function(){ var v=n2(String($('#rfv',main).value).replace(',','.')); if(!(v>=0)) return toast(t('e_bad_amount'),'e');
+    busy(b,true); try{ await call('motor_reconnect_fee_set',{p_fee:v}); SITE.reconnect_fee=v; toast(t('saved'),'s'); }catch(e){ toast(errText(e),'e'); } busy(b,false); }); },0);
   var areas={}; CUST.forEach(function(c){ if(c.area) areas[c.area]=1; });
   if(mode==='read') loadRWin().then(function(){ var n=$('#rwn',main); if(n) n.innerHTML=windowNote(); });
   main.innerHTML=licBanner()+(mode==='read'&&(ME.role==='collector'||isAdmin())?'<div id="rwn">'+windowNote()+'</div>':'')+
+    (mode==='switch'&&isAdmin()?'<div class="card"><div class="row" style="align-items:flex-end;gap:10px;flex-wrap:wrap"><div style="flex:1 1 220px"><label>🔌 '+esc(t('rf_fee'))+' ('+esc(mainCur())+')</label><input id="rfv" class="valinput" inputmode="decimal" value="'+esc(n2(SITE.reconnect_fee))+'"></div><button class="btn" id="rfs">💾 '+esc(t('save'))+'</button></div><div class="muted" style="font-size:12px;margin-top:6px">'+esc(t('rf_set_hint'))+'</div></div>':'')+
     '<div class="card">'+(isAdmin()?'':'<button class="btn lg full '+(mode==='pay'?'ok':mode==='switch'?'acc':'')+'" id="scanBtn" style="margin-bottom:12px">📷 '+esc(t(mode==='pay'?'scan_pay':'scan'))+'</button>')+
     '<div class="row"><input id="fq" type="search" placeholder="'+esc(t('search_ph'))+'" autocomplete="off" style="flex:2 1 220px">'+
     '<select id="farea" style="flex:1 1 140px"><option value="">'+esc(t('area'))+': '+esc(t('all'))+'</option>'+Object.keys(areas).sort().map(function(a){return '<option>'+esc(a)+'</option>'}).join('')+'</select></div>'+
