@@ -5000,7 +5000,7 @@ VIEWS.customers=async function(main){
     '<select id="car"><option value="">'+esc(t('area'))+': '+esc(t('all'))+'</option>'+Object.keys(areas).sort().map(function(a){return '<option>'+esc(a)+'</option>'}).join('')+'</select>'+
     '</div><div class="toolbar">'+
     (adm?'<button class="btn" id="cadd">'+esc(t('new_customer'))+'</button><button class="btn alt" id="cimp">'+esc(t('import_excel'))+'</button>':'')+
-    '<button class="btn warn" id="cdebt">💰 '+esc(t('dr_btn'))+'</button><button class="btn alt" id="cprt">'+esc(t('print'))+' / PDF</button><button class="btn ghost" id="cexp">'+esc(t('export_csv'))+'</button>'+(adm?'<button class="btn ghost" id="clbl">'+esc(t('labels'))+'</button><button class="btn ghost" id="cfill">'+esc(t('fill_barcodes'))+'</button>':'')+
+    '<button class="btn warn" id="cdebt">💰 '+esc(t('dr_btn'))+'</button><button class="btn alt" id="cprt">'+esc(t('print'))+' / PDF</button><button class="btn ghost" id="cexp">'+esc(t('export_csv'))+'</button>'+
     '<span class="sp"></span><span class="muted" id="ccount"></span></div><div class="tw"><table><thead><tr><th>'+esc(t('code'))+'</th><th>'+esc(t('name'))+'</th><th>'+esc(t('barcode'))+'</th><th>'+esc(t('plan'))+'</th><th>'+esc(t('box'))+'</th><th>'+esc(t('area'))+'</th><th>'+esc(t('collector'))+'</th><th>'+esc(t('status'))+'</th><th>'+esc(t('balance'))+'</th><th>'+esc(t('prev_reading'))+'</th><th>'+esc(t('cur_reading'))+' ('+esc(monthName(SITE.bill_period,true))+')</th>'+(adm?'<th></th>':'')+'</tr></thead><tbody id="ctb"></tbody></table></div><div id="cmore" style="text-align:center;margin-top:10px"></div>';
   $('#cst',main).value=CF.st; $('#csort',main).value=CF.sort; $('#cpl',main).value=CF.plan; if($('#ccol',main)) $('#ccol',main).value=CF.col; $('#car',main).value=CF.area;
   function filtered(){
@@ -5040,8 +5040,7 @@ VIEWS.customers=async function(main){
   $('#cprt',main).addEventListener('click',function(){ var L=filtered(), sub=[CF.st?$('#cst',main).selectedOptions[0].text:'',CF.plan?planName(CF.plan):'',CF.area?t('area')+': '+CF.area:'',CF.col&&$('#ccol',main)?$('#ccol',main).selectedOptions[0].text:''].filter(Boolean).join(' · ');
     printCustList(t('nav_customers'),sub,L,false); });
   if(adm){ $('#cadd',main).addEventListener('click',function(){ editCustomer(null); }); $('#cimp',main).addEventListener('click',importDialog);
-    $('#clbl',main).addEventListener('click',function(){ printLabels(filtered().slice(0,500)); });
-    $('#cfill',main).addEventListener('click',async function(){ try{ var r=await call('motor_fill_barcodes'); toast(t('fill_done',{n:r.count}),'s'); await loadCustomers(); go('customers'); }catch(e){ toast(errText(e),'e'); } }); }
+  }
   $('#cdebt',main).addEventListener('click',function(){ debtsReport(); });
   $('#cexp',main).addEventListener('click',function(){
     var rows=[[t('code'),t('name'),t('barcode'),t('meter_no'),t('plan'),t('box'),t('area'),t('location_name'),t('collector'),t('mobile'),t('status'),t('balance'),t('prev_reading'),t('cur_reading')]];
