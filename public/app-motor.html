@@ -3892,12 +3892,11 @@ async function openCustomer(id,barcode,mode){
       (waHere()?'<label style="margin-top:8px">📲 '+esc(t('sw_notify'))+'</label><select id="sws"><option value="">— '+esc(t('sw_no_notify'))+' —</option>'+
         team.map(function(s){ return '<option value="'+esc(s.id)+'"'+(s.id===last?' selected':'')+'>'+esc(s.name)+' · '+esc(s.phone)+'</option>'; }).join('')+'</select>'+
         (team.length?'':'<div class="muted" style="margin-top:4px">'+esc(t('sw_no_team'))+'</div>'):'')+
-      (on&&isAdmin()?'<div class="card" style="margin-top:10px;padding:10px 12px"><label>🔌 '+esc(t('rf_fee'))+' ('+esc(mainCur())+')</label><input id="swfee" class="valinput" inputmode="decimal" value="'+esc(n2(SITE.reconnect_fee))+'">'+
-        '<label class="chk" style="margin-top:8px"><input type="checkbox" id="swnofee"> '+esc(t('rf_none'))+'</label><div class="muted" style="font-size:12px;margin-top:4px">'+esc(t('rf_hint'))+'</div></div>'
-       :(on&&n2(SITE.reconnect_fee)>0?'<div class="lic" style="margin-top:10px">🔌 '+esc(t('rf_fee'))+': <b class="num">'+esc(money(SITE.reconnect_fee))+'</b></div>':''))+
+      (on&&n2(SITE.reconnect_fee)>0?'<div class="lic" style="margin-top:10px">🔌 '+esc(t('rf_fee'))+': <b class="num">'+esc(money(SITE.reconnect_fee))+'</b>'+
+        (isAdmin()?'<label class="chk" style="margin-top:8px"><input type="checkbox" id="swnofee"> '+esc(t('rf_none'))+'</label>':'')+'</div>':'')+
       '<div id="swmsg" class="err msg" style="margin-top:8px"></div>'+
       '<button class="btn full lg '+(on?'acc':'danger')+'" id="swgo" style="margin-top:8px">'+esc(t(on?'connect':'cut'))+'</button></div>';
-    var fi=$('#swfee',box), nf=$('#swnofee',box); if(nf) nf.addEventListener('change',function(){ fi.disabled=this.checked; });
+    var nf=$('#swnofee',box);
     $('#swgo',box).addEventListener('click',async function(){
       if(!(await confirmBox(t(on?'confirm_connect':'confirm_cut',{n:c.name})))) return;
       var sel=$('#sws',box), sf=sel&&sel.value?team.filter(function(s){return s.id===sel.value})[0]:null;
@@ -3905,7 +3904,7 @@ async function openCustomer(id,barcode,mode){
       if(sel) lsSet('motor_sw_staff',sel.value);
       var note=$('#swn',box).value;
       var btn=this; busy(btn,true); var g=await quickGeo();
-      var fargs={}; if(on&&fi){ var fv=n2(String(fi.value).replace(',','.')); if(!(fv>=0)){ $('#swmsg',box).textContent=t('e_bad_amount'); busy(btn,false); return; } fargs.p_fee=fv; fargs.p_no_fee=!!(nf&&nf.checked); SITE.reconnect_fee=fv; }
+      var fargs={}; if(on&&nf&&nf.checked) fargs.p_no_fee=true;   // الاستثناء: للمدير والمدير الأساسي بس — المبلغ من الخانة الثابتة بصفحة فتح/قطع
       try{ var swr=await call('motor_set_active',Object.assign({p_customer:c.id,p_active:on,p_note:note+(sf?(note?' — ':'')+'📲 '+sf.name:''),p_lat:g?g.lat:null,p_lng:g?g.lng:null},fargs));
         toast(t(on?'connect_done':'cut_done')+(swr&&swr.invoice?' — '+t('rf_billed',{v:money(swr.invoice.amount)}):''),'s');
         if(sf&&wcOn()){ wcSend('961',sf.phone,'work_order',{action:t(on?'wc_act_on':'wc_act_cut'),name:c.name,customer_no:String(c.code),box:c.box||'—',area:c.area||'—',note:note||'—'})
