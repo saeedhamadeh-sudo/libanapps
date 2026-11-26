@@ -4933,6 +4933,26 @@ async function serveLinkAdmin(env, url, slug) {
   return new Response(html, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' } });
 }
 
+// «وصلة»: فتح رابط مشاركة خرائط Google القصير (maps.app.goo.gl) لمعرفة المكان — نتبع التحويلات لمواقع Google فقط
+async function linkMaps(request) {
+  if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
+  let b; try { b = await request.json(); } catch { return json(400, { error: 'bad json' }); }
+  let u = String((b && b.url) || '').trim();
+  const okHost = h => /^(maps\.app\.goo\.gl|goo\.gl|g\.co|(www\.|maps\.)?google\.[a-z.]{2,6})$/i.test(h);
+  try { if (!okHost(new URL(u).hostname)) return json(400, { error: 'not a Google Maps link' }); } catch { return json(400, { error: 'bad url' }); }
+  for (let i = 0; i < 4; i++) {
+    let host; try { host = new URL(u).hostname; } catch { break; }
+    if (!okHost(host) || /^(www\.|maps\.)?google\./i.test(host)) break;
+    const ac = new AbortController(), tm = setTimeout(() => ac.abort(), 5000);
+    let r; try { r = await fetch(u, { redirect: 'manual', signal: ac.signal, headers: { 'User-Agent': 'Mozilla/5.0' } }); } catch { clearTimeout(tm); break; }
+    clearTimeout(tm);
+    const loc = r.headers.get('Location');
+    if (!loc || r.status < 300 || r.status > 399) break;
+    u = new URL(loc, u).toString();
+  }
+  return json(200, { url: u.slice(0, 2000) });
+}
+
 // نقرة على زر بصفحة «وصلة» (sendBeacon من الصفحة)
 async function linkHit(request, env) {
   if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
@@ -5023,6 +5043,7 @@ const RL_RULES = [
   [/^\/api\/link\/hit$/, 'lhit', 120],
   [/^\/api\/link\/domain$/, 'ldom', 30],
   [/^\/api\/link\/login$/, 'llog', 12],
+  [/^\/api\/link\/maps$/, 'lmap', 30],
   [/^\/api\/admin\/client-email$/, 'cem', 20],
   [/^\/api\/account\/email$/, 'aem', 10],
 ];
@@ -5115,6 +5136,7 @@ const LA_WORKER = {
         if (url.pathname === '/api/link/hit') return await linkHit(request, env);
         if (url.pathname === '/api/link/domain') return await linkDomain(request, env);
         if (url.pathname === '/api/link/login') return await linkLogin(request, env);
+        if (url.pathname === '/api/link/maps') return await linkMaps(request);
         if (url.pathname === '/api/offline/manifest') return await offlineManifest(env, url);
         // النسخة المحلية: «فعّل الرابط» — بيعمل نفق Cloudflare + رابط subdomain للزبون بكبسة وحدة
         if (url.pathname === '/api/tunnel/provision') {

@@ -49,6 +49,18 @@ h1{font-size:22px;font-weight:800;text-align:center;line-height:1.35;word-break:
 .st-shadow .btn{box-shadow:0 8px 22px rgba(0,0,0,.18)}
 .st-glass .btn{background:rgba(255,255,255,.16);color:var(--tc);border:1px solid rgba(255,255,255,.35);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
 .hdr{text-align:center;font-weight:800;font-size:16px;margin-top:10px;opacity:.9;word-break:break-word}
+.sec{width:100%;margin-top:26px}
+.sec>.sh{display:flex;align-items:center;gap:12px;font-weight:800;font-size:17px;margin-bottom:12px;word-break:break-word}
+.sec>.sh::before,.sec>.sh::after{content:"";flex:1;height:1px;background:currentColor;opacity:.22}
+.sec>.list{margin-top:0}
+.map{width:100%;border-radius:min(var(--rad),22px);overflow:hidden;background:color-mix(in srgb,var(--tc) 8%,transparent);box-shadow:0 6px 20px rgba(0,0,0,.12)}
+.map .cap{background:var(--bc);color:var(--bt);font-weight:700;font-size:14.5px;padding:10px 14px;text-align:center}
+.map iframe{display:block;width:100%;height:260px;border:0}
+.map .go{display:flex;align-items:center;justify-content:center;gap:8px;padding:11px 14px;font-weight:700;font-size:14px;text-decoration:none;color:var(--bt);background:var(--bc)}
+.map .go small{opacity:.8;font-weight:500}
+.st-outline .map .cap,.st-soft .map .cap,.st-glass .map .cap,.st-outline .map .go,.st-soft .map .go,.st-glass .map .go{background:rgba(0,0,0,.4);color:#fff}
+.yt.short{max-width:340px;margin:0 auto}
+.yt.short .fr{padding-top:177.78%}
 .txt{text-align:center;font-size:14.5px;line-height:1.75;white-space:pre-line;opacity:.88;word-break:break-word;padding:0 6px}
 .yt{width:100%;border-radius:min(var(--rad),22px);overflow:hidden;background:#000;box-shadow:0 6px 20px rgba(0,0,0,.15)}
 .yt .cap{background:var(--bc);color:var(--bt);font-weight:700;font-size:14.5px;padding:10px 14px;text-align:center}
@@ -98,7 +110,8 @@ var T={
   made_with:['أنشئ صفحتك مع','Create yours with','Créez la vôtre avec'],
   error:['تعذّر تحميل الصفحة','Could not load the page','Impossible de charger la page'],
   retry:['إعادة المحاولة','Retry','Réessayer'],
-  play:['تشغيل الفيديو','Play video','Lire la vidéo']
+  play:['تشغيل الفيديو','Play video','Lire la vidéo'],
+  open_map:['افتح في خرائط Google','Open in Google Maps','Ouvrir dans Google Maps']
 };
 var LANG='ar';
 function t(k){ var a=T[k]; return a?a[{ar:0,en:1,fr:2}[LANG]||0]:k; }
@@ -129,17 +142,30 @@ var SOC={
 };
 function socialHref(k,u){
   u=String(u||'').trim(); if(!u) return '';
-  if(k==='whatsapp') return /^https?:/i.test(u)?safeUrl(u):'https://wa.me/'+digits(u);
+  if(k==='whatsapp') return /^https?:/i.test(u)?safeUrl(u):'https://wa.me/'+waNum(u);
   if(k==='email') return 'mailto:'+u.replace(/^mailto:/i,'');
   if(k==='phone') return 'tel:'+u.replace(/^tel:/i,'').replace(/[^\d+]/g,'');
   if(k==='location') return /^https?:/i.test(u)?safeUrl(u):'https://maps.google.com/?q='+encodeURIComponent(u);
   if(/^https?:\/\//i.test(u) || /\.[a-z]{2,}(\/|$)/i.test(u)) return safeUrl(u);
   var base=(SOC[k]||[])[1]; return base?base+encodeURIComponent(u.replace(/^@/,'')):safeUrl(u);
 }
+function waNum(u){ var d=digits(u); if(/^00/.test(d)) d=d.slice(2); else if(/^0\d{7}$/.test(d)) d='961'+d.slice(1); else if(/^[378]\d{6,7}$/.test(d)&&d.length<=8) d='961'+d; return d; }
+// خرائط Google: نستخرج المكان من الرابط لنعرض الخريطة داخل الصفحة
+function mapQuery(u){
+  u=String(u||'').trim(); if(!u) return '';
+  if(!/^https?:/i.test(u)) return u;
+  var m=u.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/)||u.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
+  if(m) return m[1]+','+m[2];
+  try{ var x=new URL(u), q=x.searchParams.get('q')||x.searchParams.get('query')||x.searchParams.get('destination')||x.searchParams.get('ll');
+    if(q) return q;
+    var pl=x.pathname.match(/\/place\/([^/]+)/); if(pl) return decodeURIComponent(pl[1].replace(/\+/g,' '));
+  }catch(e){}
+  return '';
+}
 function itemHref(it){
   var u=String(it.url||'').trim();
   switch(it.kind){
-    case 'whatsapp': return /^https?:/i.test(u)?safeUrl(u):'https://wa.me/'+digits(u)+(it.note?'?text='+encodeURIComponent(it.note):'');
+    case 'whatsapp': return /^https?:/i.test(u)?safeUrl(u):'https://wa.me/'+waNum(u)+(it.note?'?text='+encodeURIComponent(it.note):'');
     case 'phone': return 'tel:'+u.replace(/[^\d+]/g,'');
     case 'email': return 'mailto:'+u.replace(/^mailto:/i,'');
     case 'location': return /^https?:/i.test(u)?safeUrl(u):'https://maps.google.com/?q='+encodeURIComponent(u);
@@ -226,15 +252,25 @@ function render(d){
   }).join('');
   if(soc && p.socials_pos!=='bottom') h+='<div class="socials">'+soc+'</div>';
 
-  h+='<div class="list">';
+  h+='<div class="list">'; var secOpen=false;
   items.forEach(function(it){
     var hl=it.highlight?' hl-'+esc(it.highlight):'';
-    if(it.kind==='header'){ if(it.title) h+='<div class="hdr" dir="auto">'+esc(it.title)+'</div>'; return; }
+    // قسم: يجمع كل ما بعده حتى القسم التالي
+    if(it.kind==='header'){ h+='</div>'+(secOpen?'</section>':'')+'<section class="sec">'+(it.title?'<h2 class="sh" dir="auto">'+esc(it.title)+'</h2>':'')+'<div class="list">'; secOpen=true; return; }
     if(it.kind==='text'){ h+='<div class="txt" dir="auto">'+(it.title?'<b>'+esc(it.title)+'</b><br>':'')+esc(it.note)+'</div>'; return; }
     if(it.kind==='youtube'){
       var id=ytId(it.url); if(!id) return;
-      h+='<div class="yt'+hl+'">'+(it.title?'<div class="cap" dir="auto">'+esc(it.title)+'</div>':'')+
-         '<div class="fr"><div class="poster" data-yt="'+esc(id)+'" data-item="'+esc(it.id)+'" role="button" aria-label="'+esc(t('play'))+'" style="background-image:url(\'https://i.ytimg.com/vi/'+esc(id)+'/hqdefault.jpg\')"><i class="fa-brands fa-youtube"></i></div></div></div>';
+      var sh=/\/shorts\//i.test(it.url);
+      h+='<div class="yt'+(sh?' short':'')+hl+'" data-yt="'+esc(it.id)+'">'+(it.title?'<div class="cap" dir="auto">'+esc(it.title)+'</div>':'')+
+         '<div class="fr"><iframe src="https://www.youtube-nocookie.com/embed/'+encodeURIComponent(id)+'?rel=0&playsinline=1" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen referrerpolicy="strict-origin-when-cross-origin" title="'+esc(it.title||'YouTube')+'"></iframe></div></div>';
+      return;
+    }
+    if(it.kind==='location'){
+      var q=mapQuery(it.url), go=itemHref(it);
+      if(!go) return;
+      h+='<div class="map'+hl+'">'+(it.title?'<div class="cap" dir="auto">'+esc(it.title)+'</div>':'')+
+         (q?'<iframe src="https://maps.google.com/maps?q='+encodeURIComponent(q)+'&z=15&output=embed&hl='+LANG+'" loading="lazy" referrerpolicy="no-referrer-when-downgrade" title="'+esc(it.title||t('open_map'))+'"></iframe>':'')+
+         '<a class="go" href="'+esc(go)+'" target="_blank" rel="noopener" data-item="'+esc(it.id)+'"><i class="fa-solid fa-diamond-turn-right"></i><span dir="auto">'+esc(t('open_map'))+(it.note?' <small>· '+esc(it.note)+'</small>':'')+'</span></a></div>';
       return;
     }
     var href=itemHref(it); if(!href) return;
@@ -246,7 +282,8 @@ function render(d){
        '<span class="lbl" dir="auto">'+esc(it.title||it.url)+(it.note && it.kind!=='whatsapp'?'<small>'+esc(it.note)+'</small>':'')+'</span>'+
        '<span class="sp"></span></a>';
   });
-  h+='</div>';
+  h+='</div>'+(secOpen?'</section>':'');
+  h=h.replace(/<div class="list"><\/div>/g,'');
   if(soc && p.socials_pos==='bottom') h+='<div class="socials" style="margin-top:22px">'+soc+'</div>';
   if(p.show_vcard && (p.contact_phone||p.contact_email))
     h+='<div class="list vcard"><a class="btn" href="#" id="vcBtn"><span class="ic"><i class="fa-solid fa-address-card"></i></span><span class="lbl">'+esc(t('save_contact'))+'</span><span class="sp"></span></a></div>';
