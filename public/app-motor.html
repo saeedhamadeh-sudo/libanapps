@@ -2300,6 +2300,8 @@ Object.assign(D,{
  wa_none:['لا يوجد ما يُرسل — كل الفواتير والإيصالات أُرسلت ✓','Nothing to send ✓','Rien à envoyer ✓'],
  wa_hint:['الفواتير التي أصدرها الموظفون والإيصالات تظهر هنا. اضغط «إرسال» فيفتح واتساب على هذا الكمبيوتر بالرسالة جاهزة، وبعد الإرسال تختفي من القائمة.','Invoices and receipts issued by staff appear here. “Send” opens WhatsApp on this computer with the message ready.','Les factures et reçus du personnel apparaissent ici. « Envoyer » ouvre WhatsApp avec le message prêt.'],
  f_inv:['الفواتير','Invoices','Factures'], f_pay:['الإيصالات','Receipts','Reçus'],
+ mob_edit:['تعديل رقم الجوال','Edit mobile number','Modifier le mobile'],
+ e_bad_mobile:['رقم الجوال غير صحيح','Invalid mobile number','Numéro invalide'],
  no_mobile_short:['بلا رقم','No number','Sans numéro'],
  cash_bal:['رصيد الصندوق الآن','Cash box balance','Solde de caisse'],
  cash_in:['➕ إيداع','➕ Deposit','➕ Dépôt'],
@@ -2867,6 +2869,28 @@ function errText(e){
   if(/Failed to fetch|NetworkError|Load failed/i.test(m)) return t('e_network');
   return m||'Error';
 }
+/* خانة الجوال بصفحات الإرسال: المدير بيعدّل الرقم دغري (خاصةً «بلا رقم») */
+function mobCell(c){ var ed=isAdmin()?' <button class="btn ghost sm" data-mob="'+esc(c.id)+'" title="'+esc(t('mob_edit'))+'">✏️</button>':'';
+  return (c.mobile?esc('+'+c.mobile_cc+' '+c.mobile):'<span class="chip off">'+esc(t('no_mobile_short'))+'</span>')+ed; }
+function mobEdit(c,after){
+  var m=modal('📱 '+t('mob_edit')+' — '+c.name,'<div class="row" style="gap:8px;align-items:flex-end"><div style="flex:0 0 130px"><label>'+esc(t('mobile_cc'))+'</label>'+ccSelect(c.mobile_cc||'961','id="mcc"')+'</div>'+
+    '<div style="flex:1"><label>'+esc(t('mobile'))+'</label><input id="mmb" class="valinput" inputmode="tel" dir="ltr" value="'+esc(c.mobile||'')+'" placeholder="70 123 456"></div></div><div id="mmm" class="err msg" style="margin-top:8px"></div>',
+    '<button class="btn ghost" data-x>'+esc(t('cancel'))+'</button><button class="btn" data-s>'+esc(t('save'))+'</button>');
+  setTimeout(function(){ $('#mmb',m.body).focus(); },50);
+  m.foot.addEventListener('click',async function(e){ if(e.target.closest('[data-x]')) return m.close(); var b=e.target.closest('[data-s]'); if(!b) return;
+    busy(b,true);
+    try{ var r=await call('motor_customer_mobile',{p_customer:c.id,p_cc:$('#mcc',m.body).value,p_mobile:$('#mmb',m.body).value});
+      c.mobile=r.mobile; c.mobile_cc=r.mobile_cc;
+      CUST.forEach(function(x){ if(x.id===c.id){ x.mobile=r.mobile; x.mobile_cc=r.mobile_cc; } });
+      if(wcOn()&&r.mobile) wcApi({op:'contact_upsert',cc:r.mobile_cc,mobile:r.mobile,name:r.name,code:r.code}).catch(function(){});
+      toast(t('saved'),'s'); m.close(); after&&after(); }
+    catch(err){ $('#mmm',m.body).textContent=errText(err); busy(b,false); } });
+}
+document.addEventListener('click',function(e){ var b=e.target.closest('[data-mob]'); if(!b) return; e.preventDefault(); e.stopPropagation();
+  var id=b.dataset.mob, c=null; (MOB_ROWS||[]).forEach(function(r){ var x=r.customer||r; if(x&&x.id===id) c=x; });
+  if(!c) c=CUST.filter(function(x){ return x.id===id; })[0]; if(!c) return;
+  mobEdit(c,function(){ (MOB_ROWS||[]).forEach(function(r){ var x=r.customer||r; if(x&&x.id===id){ x.mobile=c.mobile; x.mobile_cc=c.mobile_cc; } }); if(MOB_PAINT) MOB_PAINT(); }); },true);
+var MOB_ROWS=null, MOB_PAINT=null;
 function isAuthErr(e){ return /MOTOR:(auth|license|inactive)\b/.test(String(e&&e.message||e||'')); }
 var INFLIGHT=0;
 window.addEventListener('beforeunload',function(e){ if(INFLIGHT>0){ e.preventDefault(); e.returnValue=t('upload_wait'); return t('upload_wait'); } });
@@ -3232,7 +3256,7 @@ VIEWS.wa=async function(main){
     $('#watb',main).innerHTML=list.map(function(r,i){
       var c=r.customer, amt=r.t==='pay'?money(r.pay.paid_amount,r.pay.paid_currency):money(r.inv.amount);
       return '<tr><td class="num">'+esc(dt(r.at))+'</td><td>'+(r.t==='pay'?'<span class="chip on">'+esc(t('receipt'))+' #'+esc(r.pay.no)+'</span>':'<span class="chip warn">'+esc(t('invoice'))+' #'+esc(r.inv.no)+' · '+esc(monthName(r.inv.period,true))+'</span>')+'</td>'+
-        '<td><b>'+esc(c.name)+'</b> <span class="muted">#'+esc(c.code)+'</span></td><td class="num">'+(c.mobile?esc('+'+c.mobile_cc+' '+c.mobile):'<span class="chip off">'+esc(t('no_mobile_short'))+'</span>')+'</td>'+
+        '<td><b>'+esc(c.name)+'</b> <span class="muted">#'+esc(c.code)+'</span></td><td class="num">'+mobCell(c)+'</td>'+
         '<td class="num">'+esc(amt)+'</td><td>'+esc((r.pay||r.inv).staff_name||'')+'</td>'+
         '<td><button class="btn wa sm" data-ws="'+rows.indexOf(r)+'" '+(c.mobile?'':'disabled')+'>'+esc(t('wa_send'))+'</button> <button class="btn ghost sm" data-wm="'+rows.indexOf(r)+'">'+esc(t('wa_mark'))+'</button></td></tr>'; }).join('')||
       '<tr><td colspan="7"><div class="okmsg">'+esc(t('wa_none'))+'</div></td></tr>';
@@ -3247,7 +3271,7 @@ VIEWS.wa=async function(main){
   $('#wbatch',main).addEventListener('click',function(){
     var list=rows.filter(function(r){ return r.customer.mobile; });
     waBatch($('#wbar',main),list,async function(r){ var okk=await sendBillWa({inv:r.inv,pay:r.pay,c:r.customer},null,true); if(okk){ drop(r); return true; } return {name:r.customer.name,err:t('wa_failed')}; }); });
-  paint(); waPaint();
+  MOB_ROWS=rows; MOB_PAINT=function(){ if(TAB==="wa") paint(); }; paint(); waPaint();
 };
 
 /* ===== سعر الكيلو واط لكل شهر: رسائل قيمة الفاتورة مقفولة لحدّ ما ينحدد سعر الشهر ===== */
@@ -3456,7 +3480,7 @@ function pendingCard(PL){
       '<div class="lic" style="margin-bottom:10px">'+esc(t('rd_pending',{m:monthName(per,true),d:rwD(L[0].bill_from)}))+(L[0].priced?' ✓ '+esc(t('pl_priced')):'')+'</div>'+
       '<div class="tw"><table><thead><tr><th>'+esc(t('date'))+'</th><th>'+esc(t('name'))+'</th><th>'+esc(t('mobile'))+'</th><th>'+esc(t('prev_reading'))+'</th><th>'+esc(t('cur_reading'))+'</th><th>'+esc(t('consumption'))+'</th><th>'+esc(t('by'))+'</th><th></th></tr></thead><tbody>'+
       L.map(function(r){ var c=r.customer; return '<tr><td class="num">'+esc(dt(r.at))+'</td><td><b>'+esc(c.name)+'</b> <span class="muted">#'+esc(c.code)+(c.box?' · '+esc(c.box):'')+'</span></td>'+
-        '<td class="num">'+(c.mobile?esc('+'+c.mobile_cc+' '+c.mobile):'<span class="chip off">'+esc(t('no_mobile_short'))+'</span>')+'</td><td class="num">'+esc(fmtN(r.prev))+'</td><td class="num"><b>'+esc(fmtN(r.value))+'</b></td><td class="num">'+esc(fmtN(r.kwh))+' '+esc(t('kwh'))+'</td><td>'+esc(r.by||'')+'</td>'+
+        '<td class="num">'+mobCell(c)+'</td><td class="num">'+esc(fmtN(r.prev))+'</td><td class="num"><b>'+esc(fmtN(r.value))+'</b></td><td class="num">'+esc(fmtN(r.kwh))+' '+esc(t('kwh'))+'</td><td>'+esc(r.by||'')+'</td>'+
         '<td><span class="chip warn">⏳ '+esc(t('inv_wait'))+'</span></td></tr>'; }).join('')+'</tbody></table></div></div>'; }).join('');
 }
 VIEWS.bills=async function(main){
@@ -3479,7 +3503,7 @@ VIEWS.bills=async function(main){
     $('#bc',main).textContent=fmtN(list.length,0)+' '+t('wa_pending');
     $('#btb',main).innerHTML=list.map(function(r){ var c=r.customer, i=rows.indexOf(r), d=r.due||{};
       return '<tr><td class="num">'+esc(dt(r.at))+'</td><td><b>'+esc(c.name)+'</b> <span class="muted">#'+esc(c.code)+(c.box?' · '+esc(c.box):'')+'</span></td>'+
-        '<td class="num">'+(c.mobile?esc('+'+c.mobile_cc+' '+c.mobile):'<span class="chip off">'+esc(t('no_mobile_short'))+'</span>')+'</td>'+
+        '<td class="num">'+mobCell(c)+'</td>'+
         '<td class="num">'+(r.inv.kwh!=null?esc(fmtN(r.inv.kwh))+' '+esc(t('kwh')):'—')+'</td><td class="num">'+esc(money(r.inv.amount))+'</td>'+
         '<td class="num"><b>'+esc(fmtN((d.count||0)+(d.older?1:0),0))+'</b> <span class="muted">'+esc((d.periods||[]).map(function(p){return monthName(p,false)}).join('، '))+'</span></td>'+
         '<td>'+balHtml(d.balance)+'</td><td>'+esc(r.inv.staff_name||'')+'</td>'+
@@ -3509,7 +3533,7 @@ VIEWS.bills=async function(main){
       try{ await call('motor_wa_mark',{p_kind:'inv',p_id:r.id}); }catch(err){} drop(r); return; }
     if(mk){ var r2=rows[+mk.dataset.bm]; try{ await call('motor_wa_mark',{p_kind:'inv',p_id:r2.id}); drop(r2); }catch(err){ toast(errText(err),'e'); } }
   });
-  paint();
+  MOB_ROWS=rows.concat(PL); MOB_PAINT=function(){ if(TAB==="bills") VIEWS.bills(main); }; paint();
 };
 
 /* =========================================================
