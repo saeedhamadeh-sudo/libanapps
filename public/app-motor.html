@@ -2097,7 +2097,12 @@ var D={
  hm_g_money:['الصندوق والمالية','Cash & finance','Caisse et finances'], hm_g_stock:['المخزون والموردون','Stock & suppliers','Stock et fournisseurs'],
  hm_g_reports:['التقارير','Reports','Rapports'], hm_g_admin:['الإدارة','Administration','Administration'],
  sl_new:['+ فاتورة مبيعات جديدة','+ New sales invoice','+ Nouvelle facture de vente'], sl_cust:['الزبون','Customer','Client'], sl_items:['البنود','Items','Articles'],
- sl_src:['المصدر','Source','Source'], sl_lock_hint:['البيع من المخزون فقط وبالأسعار المحددة في المخزون.','Sales from stock only, at the stock prices.','Vente depuis le stock uniquement, aux prix du stock.'],
+ sl_src:['المصدر','Source','Source'], rf_fee:['رسوم إعادة وصل الخط','Reconnection fee','Frais de reconnexion'],
+ rf_none:['بدون رسوم (استثناء)','No fee (exception)','Sans frais (exception)'],
+ rf_hint:['تُسجَّل فاتورة «إعادة وصل خط» على الزبون — خدمة لا تُنزَّل من المخزون. القيمة تبقى محفوظة للمرات القادمة.','A “Reconnection” bill is added to the customer — a service, not taken from stock. The amount is remembered.','Une facture « Reconnexion » est ajoutée — service, hors stock. Le montant est mémorisé.'],
+ rf_billed:['فاتورة إعادة وصل {v}','Reconnection bill {v}','Facture reconnexion {v}'],
+ stk_neg:['بيع أكثر من الموجود — يجب إدخال الكمية','Sold more than in stock','Vendu plus que le stock'],
+ sl_lock_hint:['أصناف المخزون تُباع بسعرها المحدد في المخزون. الخدمات وما ليس في المخزون: اختر «بند حر».','Stock items sell at their stock price. Services and non-stock items: use “Free item”.','Les articles du stock sont vendus à leur prix. Services et hors stock : « Article libre ».'],
  e_stock_only:['اختر صنفاً من المخزون','Pick an item from stock','Choisissez un article du stock'],
  sl_free:['بند حر','Free item','Article libre'], sl_item:['البند','Item','Article'], sl_qty:['الكمية','Qty','Qté'], sl_price:['السعر','Price','Prix'],
  sl_line:['المجموع','Total','Total'], sl_add:['+ إضافة بند','+ Add item','+ Ajouter'], sl_total:['مجموع الفاتورة','Invoice total','Total facture'],
@@ -3883,8 +3888,12 @@ async function openCustomer(id,barcode,mode){
       (waHere()?'<label style="margin-top:8px">📲 '+esc(t('sw_notify'))+'</label><select id="sws"><option value="">— '+esc(t('sw_no_notify'))+' —</option>'+
         team.map(function(s){ return '<option value="'+esc(s.id)+'"'+(s.id===last?' selected':'')+'>'+esc(s.name)+' · '+esc(s.phone)+'</option>'; }).join('')+'</select>'+
         (team.length?'':'<div class="muted" style="margin-top:4px">'+esc(t('sw_no_team'))+'</div>'):'')+
+      (on&&isAdmin()?'<div class="card" style="margin-top:10px;padding:10px 12px"><label>🔌 '+esc(t('rf_fee'))+' ('+esc(mainCur())+')</label><input id="swfee" class="valinput" inputmode="decimal" value="'+esc(n2(SITE.reconnect_fee))+'">'+
+        '<label class="chk" style="margin-top:8px"><input type="checkbox" id="swnofee"> '+esc(t('rf_none'))+'</label><div class="muted" style="font-size:12px;margin-top:4px">'+esc(t('rf_hint'))+'</div></div>'
+       :(on&&n2(SITE.reconnect_fee)>0?'<div class="lic" style="margin-top:10px">🔌 '+esc(t('rf_fee'))+': <b class="num">'+esc(money(SITE.reconnect_fee))+'</b></div>':''))+
       '<div id="swmsg" class="err msg" style="margin-top:8px"></div>'+
       '<button class="btn full lg '+(on?'acc':'danger')+'" id="swgo" style="margin-top:8px">'+esc(t(on?'connect':'cut'))+'</button></div>';
+    var fi=$('#swfee',box), nf=$('#swnofee',box); if(nf) nf.addEventListener('change',function(){ fi.disabled=this.checked; });
     $('#swgo',box).addEventListener('click',async function(){
       if(!(await confirmBox(t(on?'confirm_connect':'confirm_cut',{n:c.name})))) return;
       var sel=$('#sws',box), sf=sel&&sel.value?team.filter(function(s){return s.id===sel.value})[0]:null;
@@ -3892,8 +3901,9 @@ async function openCustomer(id,barcode,mode){
       if(sel) lsSet('motor_sw_staff',sel.value);
       var note=$('#swn',box).value;
       var btn=this; busy(btn,true); var g=await quickGeo();
-      try{ await call('motor_set_active',{p_customer:c.id,p_active:on,p_note:note+(sf?(note?' — ':'')+'📲 '+sf.name:''),p_lat:g?g.lat:null,p_lng:g?g.lng:null});
-        toast(t(on?'connect_done':'cut_done'),'s');
+      var fargs={}; if(on&&fi){ var fv=n2(String(fi.value).replace(',','.')); if(!(fv>=0)){ $('#swmsg',box).textContent=t('e_bad_amount'); busy(btn,false); return; } fargs.p_fee=fv; fargs.p_no_fee=!!(nf&&nf.checked); SITE.reconnect_fee=fv; }
+      try{ var swr=await call('motor_set_active',Object.assign({p_customer:c.id,p_active:on,p_note:note+(sf?(note?' — ':'')+'📲 '+sf.name:''),p_lat:g?g.lat:null,p_lng:g?g.lng:null},fargs));
+        toast(t(on?'connect_done':'cut_done')+(swr&&swr.invoice?' — '+t('rf_billed',{v:money(swr.invoice.amount)}):''),'s');
         if(sf&&wcOn()){ wcSend('961',sf.phone,'work_order',{action:t(on?'wc_act_on':'wc_act_cut'),name:c.name,customer_no:String(c.code),box:c.box||'—',area:c.area||'—',note:note||'—'})
             .then(function(){ toast('✅ '+t('wa_sent'),'s'); }).catch(function(e){ toast(waErr(e),'e'); }); }
         else if(sf){ var loc=(c.lat!=null&&c.lng!=null)?'\n📍 https://maps.google.com/?q='+c.lat+','+c.lng:'';
@@ -6309,9 +6319,9 @@ async function saleForm(preCust,isRet,edit){
   function paint(){
     tb.innerHTML=rows.map(function(r,i){ var st=r.src?stock.filter(function(x){ return x.id===r.src; })[0]:null;
       return '<tr><td><select data-f="src" data-i="'+i+'">'+(stock.length?'<optgroup label="📦 '+esc(t('sl_from_stock'))+'">'+stock.map(function(x){ return '<option value="'+esc(x.id)+'"'+(x.id===r.src?' selected':'')+'>'+esc(x.name)+' ('+esc(fmtN(x.qty))+')</option>'; }).join('')+'</optgroup>':'')+
-        (LOCK?'':'<optgroup label="✏️ '+esc(t('sl_free'))+'"><option value=""'+(r.src?'':' selected')+'>'+esc(t('sl_free'))+'</option></optgroup>')+'</select>'+(st?'<div class="muted" style="font-size:11px'+(!isRet&&n2(r.qty)>n2(st.qty)?';color:var(--bad)':'')+'">'+esc(t('sl_in_stock',{n:fmtN(st.qty)}))+'</div>':'')+'</td>'+
-        '<td><input data-f="name" data-i="'+i+'" value="'+esc(r.name)+'"'+(LOCK?' readonly':'')+'></td><td><input data-f="qty" data-i="'+i+'" type="number" step="0.01" min="0" value="'+esc(r.qty)+'" style="max-width:90px"></td>'+
-        '<td><input data-f="price" data-i="'+i+'" type="number" step="0.01" min="0" value="'+esc(r.price)+'" style="max-width:110px"'+(LOCK?' readonly tabindex="-1"':'')+'></td><td class="num" data-lt="'+i+'">'+esc(money(n2(r.qty)*n2(r.price)))+'</td>'+
+        '<optgroup label="✏️ '+esc(t('sl_free'))+'"><option value=""'+(r.src?'':' selected')+'>'+esc(t('sl_free'))+'</option></optgroup></select>'+(st?'<div class="muted" style="font-size:11px'+(!isRet&&n2(r.qty)>n2(st.qty)?';color:var(--bad)':'')+'">'+esc(t('sl_in_stock',{n:fmtN(st.qty)}))+'</div>':'')+'</td>'+
+        '<td><input data-f="name" data-i="'+i+'" value="'+esc(r.name)+'"'+(LOCK&&r.src?' readonly':'')+'></td><td><input data-f="qty" data-i="'+i+'" type="number" step="0.01" min="0" value="'+esc(r.qty)+'" style="max-width:90px"></td>'+
+        '<td><input data-f="price" data-i="'+i+'" type="number" step="0.01" min="0" value="'+esc(r.price)+'" style="max-width:110px"'+(LOCK&&r.src?' readonly tabindex="-1"':'')+'></td><td class="num" data-lt="'+i+'">'+esc(money(n2(r.qty)*n2(r.price)))+'</td>'+
         '<td><button class="btn ghost sm" data-del="'+i+'"'+(rows.length<2?' disabled':'')+'>✕</button></td></tr>'; }).join('');
     $('#sft',m.body).textContent=money(total()); if(!$('#sfp',m.body).checked||!$('#sfpa',m.body).dataset.touched) $('#sfpa',m.body).value=total(); }
   function pickCust(){ var v=$('#sfc',m.body).value.trim(), mm=v.match(/^#(\d+)/); cust=null;
@@ -6960,7 +6970,7 @@ VIEWS.stock=async function(main){
   function rows(){ var k=normS(q); return L.filter(function(x){ return !k||normS(x.name).indexOf(k)>=0||normS(x.category).indexOf(k)>=0; }); }
   function paint(){ var R=rows(), tv=0, tq=0; R.forEach(function(x){ tv+=n2(x.qty)*n2(x.unit_price); tq+=n2(x.qty); });
     $('#kst',main).innerHTML='<div class="stats">'+stat(t('stock_items'),fmtN(R.length))+stat(t('qty'),fmtN(tq))+stat(t('total_value'),money(tv))+'</div>';
-    $('#ktb',main).innerHTML=R.map(function(x){ return '<tr><td><b>'+esc(x.name)+'</b></td><td>'+esc(x.category)+'</td><td class="num"><b>'+esc(fmtN(x.qty))+'</b></td><td class="num">'+esc(money(x.unit_price))+'</td><td class="num">'+esc(money(n2(x.qty)*n2(x.unit_price)))+'</td><td>'+esc(x.notes)+'</td><td class="num muted">'+esc(dt(x.updated_at))+(x.updated_by?' · '+esc(x.updated_by):'')+'</td><td style="white-space:nowrap"><button class="btn danger sm" data-ko="'+esc(x.id)+'"'+(n2(x.qty)>0?'':' disabled')+'>➖ '+esc(t('stk_out'))+'</button> <button class="btn ghost sm" data-km="'+esc(x.id)+'">📜</button> <button class="btn ghost sm" data-ke="'+esc(x.id)+'">'+esc(t('edit'))+'</button></td></tr>'; }).join('')||'<tr><td colspan="8" class="muted">'+esc(t('no_results'))+'</td></tr>'; }
+    $('#ktb',main).innerHTML=R.map(function(x){ return '<tr><td><b>'+esc(x.name)+'</b></td><td>'+esc(x.category)+'</td><td class="num"><b'+(n2(x.qty)<0?' style="color:var(--bad)" title="'+esc(t('stk_neg'))+'"':'')+'>'+esc(fmtN(x.qty))+'</b></td><td class="num">'+esc(money(x.unit_price))+'</td><td class="num">'+esc(money(n2(x.qty)*n2(x.unit_price)))+'</td><td>'+esc(x.notes)+'</td><td class="num muted">'+esc(dt(x.updated_at))+(x.updated_by?' · '+esc(x.updated_by):'')+'</td><td style="white-space:nowrap"><button class="btn danger sm" data-ko="'+esc(x.id)+'"'+(n2(x.qty)>0?'':' disabled')+'>➖ '+esc(t('stk_out'))+'</button> <button class="btn ghost sm" data-km="'+esc(x.id)+'">📜</button> <button class="btn ghost sm" data-ke="'+esc(x.id)+'">'+esc(t('edit'))+'</button></td></tr>'; }).join('')||'<tr><td colspan="8" class="muted">'+esc(t('no_results'))+'</td></tr>'; }
   $('#kq',main).addEventListener('input',function(){ q=this.value; paint(); });
   $('#kadd',main).addEventListener('click',function(){ stockForm(null); });
   var byId=function(id){ return L.filter(function(x){return x.id===id})[0]; };
