@@ -1862,6 +1862,9 @@ var D={
  rx_price:['سعر الكيلو واط لهذه الفاتورة','kWh price for this invoice','Prix du kWh pour cette facture'],
  rx_note:['هذا المشترك أُخذ عداده في هذه الدورة. ستُسجَّل قراءة خارج الدورة (تصفية حساب) وتصدر فاتورة فورية بالاستهلاك منذ آخر قراءة وبالسعر الذي تحدّده. قراءة الدورة القادمة تبدأ من هذه القراءة.','This subscriber was already read this cycle. An out-of-cycle (settlement) reading will be saved and an invoice issued now for the consumption since the last reading, at the price you set. The next cycle starts from this reading.','Compteur déjà relevé ce cycle : un relevé hors cycle (solde) sera enregistré avec une facture immédiate au prix indiqué.'],
  take_reading_x:['أخذ عداد (الدورة القادمة أو تصفية)','Read meter (next cycle or settlement)','Relevé (cycle suivant ou solde)'],
+ inv_wait:['قيد الانتظار للإرسال','Waiting to be sent','En attente d’envoi'],
+ pl_title:['عدادات قيد الانتظار للإرسال','Readings waiting to be sent','Relevés en attente d’envoi'],
+ pl_priced:['السعر محدّد','Price set','Prix fixé'],
  rd_saved:['تم حفظ العداد ✓','Reading saved ✓','Relevé enregistré ✓'],
  rc_btn:['أخذ عداد وإنهاء الحساب','Final reading & close account','Relevé final et clôture'],
  rc_note:['إنهاء حساب: أدخل العداد وسعر الكيلو واط — تصدر الفاتورة فوراً ويُرسل إشعار للزبون.','Close account: enter the reading and kWh price — the bill is issued now and the customer is notified.','Clôture : saisissez le relevé et le prix du kWh — la facture est émise et envoyée tout de suite.'],
@@ -3437,6 +3440,17 @@ VIEWS.unpaid=async function(main){
   }
   paint();
 };
+/* العدادات المحفوظة بلا فاتورة بعد: بتصدر فواتيرها وبتنبعت بـ1 الشهر بعد تحديد السعر */
+function pendingCard(PL){
+  var by={}; PL.forEach(function(r){ (by[r.period]=by[r.period]||[]).push(r); });
+  return Object.keys(by).sort().map(function(per){ var L=by[per];
+    return '<div class="card" style="margin-top:14px"><h3 style="margin-top:0">⏳ '+esc(t('pl_title'))+' — '+esc(monthName(per,true))+' <span class="chip warn num">'+esc(fmtN(L.length,0))+'</span></h3>'+
+      '<div class="lic" style="margin-bottom:10px">'+esc(t('rd_pending',{m:monthName(per,true),d:rwD(L[0].bill_from)}))+(L[0].priced?' ✓ '+esc(t('pl_priced')):'')+'</div>'+
+      '<div class="tw"><table><thead><tr><th>'+esc(t('date'))+'</th><th>'+esc(t('name'))+'</th><th>'+esc(t('mobile'))+'</th><th>'+esc(t('prev_reading'))+'</th><th>'+esc(t('cur_reading'))+'</th><th>'+esc(t('consumption'))+'</th><th>'+esc(t('by'))+'</th><th></th></tr></thead><tbody>'+
+      L.map(function(r){ var c=r.customer; return '<tr><td class="num">'+esc(dt(r.at))+'</td><td><b>'+esc(c.name)+'</b> <span class="muted">#'+esc(c.code)+(c.box?' · '+esc(c.box):'')+'</span></td>'+
+        '<td class="num">'+(c.mobile?esc('+'+c.mobile_cc+' '+c.mobile):'<span class="chip off">'+esc(t('no_mobile_short'))+'</span>')+'</td><td class="num">'+esc(fmtN(r.prev))+'</td><td class="num"><b>'+esc(fmtN(r.value))+'</b></td><td class="num">'+esc(fmtN(r.kwh))+' '+esc(t('kwh'))+'</td><td>'+esc(r.by||'')+'</td>'+
+        '<td><span class="chip warn">⏳ '+esc(t('inv_wait'))+'</span></td></tr>'; }).join('')+'</tbody></table></div></div>'; }).join('');
+}
 VIEWS.bills=async function(main){
   if(waKey()&&!WAC_T){ waRefresh(); waStartPoll(); }
   var all=await call('motor_wa_outbox',{p_days:60}), rows=all.filter(function(r){ return r.t==='inv'; });
@@ -3445,12 +3459,13 @@ VIEWS.bills=async function(main){
   rows.forEach(function(r){ if(r.inv){ r.inv._ok=!!(r.inv.price_fixed||priced[r.inv.period]); r.inv._wait=!billTimeOk(r.inv); } });
   rows=rows.filter(function(r){ return !(r.inv&&r.inv._wait); });   // فواتير قبل 1 الشهر ما بتنبعت
   var unpriced=[]; rows.forEach(function(r){ var pr=r.inv&&r.inv.period; if(pr&&!r.inv._ok&&unpriced.indexOf(pr)<0) unpriced.push(pr); });
-  var q='';
+  var q='', PL=[]; try{ PL=await call('motor_pending_list')||[]; }catch(e){}
   main.innerHTML='<div class="card"><p class="muted" style="margin:0">'+esc(t('bills_hint'))+'</p></div>'+
     unpriced.map(function(pr){ return '<div class="lic" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px">⚠️ <span style="flex:1">'+esc(t('mp_need',{m:monthName(pr,true)}))+'</span>'+
       (isAdmin()?'<button class="btn sm" data-mpset="'+esc(pr)+'">⚡ '+esc(t('mp_set_btn'))+'</button>':'')+'</div>'; }).join('')+
     '<div class="toolbar"><input type="search" id="bq" placeholder="'+esc(t('search_ph'))+'"><span data-wachip>'+waChip()+'</span><button class="btn wa" id="bbatch" data-waon>📤 '+esc(t('wa_batch50'))+'</button><button class="btn alt" id="bsent">📜 '+esc(t('ws_btn'))+'</button><span class="sp"></span><b id="bc"></b></div>'+waBatchBar('bbar')+
-    '<div class="tw"><table><thead><tr><th>'+esc(t('date'))+'</th><th>'+esc(t('name'))+'</th><th>'+esc(t('mobile'))+'</th><th>'+esc(t('consumption'))+'</th><th>'+esc(t('inv_amount'))+'</th><th>'+esc(t('due_count'))+'</th><th>'+esc(t('balance'))+'</th><th>'+esc(t('by'))+'</th><th></th></tr></thead><tbody id="btb"></tbody></table></div>';
+    '<div class="tw"><table><thead><tr><th>'+esc(t('date'))+'</th><th>'+esc(t('name'))+'</th><th>'+esc(t('mobile'))+'</th><th>'+esc(t('consumption'))+'</th><th>'+esc(t('inv_amount'))+'</th><th>'+esc(t('due_count'))+'</th><th>'+esc(t('balance'))+'</th><th>'+esc(t('by'))+'</th><th></th></tr></thead><tbody id="btb"></tbody></table></div>'+
+    (PL.length?pendingCard(PL):'');
   function paint(){
     var k=normS(q), list=rows.filter(function(r){ return !k||normS(r.customer.name).indexOf(k)>=0||String(r.customer.code)===k||normS(r.customer.box)===k; });
     $('#bc',main).textContent=fmtN(list.length,0)+' '+t('wa_pending');
@@ -3750,7 +3765,7 @@ async function openCustomer(id,barcode,mode){
     var notes=(d.notes||[]), sw=(d.switches||[]);
     $('#cmMain',m.body).innerHTML=
       '<div class="row"><span class="chip '+(c.is_active?'on':'off')+'">'+esc(c.is_active?t('active'):t('inactive'))+'</span>'+(c.archived?' <span class="chip gray">'+esc(t('archived'))+'</span>':'')+
-      (d.read_now?' <span class="chip on">✓ '+esc(t('read_done'))+' '+esc(d.period)+': '+esc(fmtN(d.read_now.value))+'</span>':' <span class="chip gray">'+esc(t('not_read'))+' '+esc(d.period)+'</span>')+'</div>'+
+      (d.read_now?' <span class="chip on">✓ '+esc(t('read_done'))+' '+esc(d.period)+': '+esc(fmtN(d.read_now.value))+'</span>'+(d.read_now.inv_pending?' <span class="chip warn" title="'+esc(t('rd_pending',{m:monthName(d.period,true),d:rwD(billFromD(d.period))}))+'">⏳ '+esc(t('inv_wait'))+'</span>':''):' <span class="chip gray">'+esc(t('not_read'))+' '+esc(d.period)+'</span>')+'</div>'+
       '<div class="bigbal"><span class="muted">'+esc(t('balance'))+'</span><b>'+balHtml(c.balance)+'</b>'+(second(c.balance)?'<span class="muted num">≈ '+esc(second(c.balance))+'</span>':'')+'</div>'+
       '<div class="kv">'+info.map(function(x){return '<div>'+esc(x[0])+'<b dir="auto">'+esc(x[1])+'</b></div>'}).join('')+'</div>'+
       '<div class="row" style="margin-top:10px">'+
@@ -5228,7 +5243,7 @@ VIEWS.month=async function(main){
     $('#mtb',main).innerHTML=list.map(function(r){
       var far=SITE.max_distance_m>0&&r.dist_m!=null&&r.dist_m>SITE.max_distance_m;
       return '<tr><td class="num">'+esc(dt(r.at))+'</td><td class="num">'+esc(r.code)+'</td><td><a href="#" data-cust="'+esc(r.customer_id)+'"><b>'+esc(r.name)+'</b></a></td><td>'+esc(r.box)+'</td>'+
-        '<td class="num">'+esc(fmtN(r.prev_value))+'</td><td class="num"><b>'+esc(fmtN(r.value))+'</b></td><td class="num">'+esc(fmtN(r.kwh))+'</td><td class="num">'+esc(money(r.amount))+'</td>'+
+        '<td class="num">'+esc(fmtN(r.prev_value))+'</td><td class="num"><b>'+esc(fmtN(r.value))+'</b></td><td class="num">'+esc(fmtN(r.kwh))+'</td><td class="num">'+(r.pending?'<span class="chip warn" title="'+esc(t('rd_pending',{m:monthName(d.period,true),d:rwD(billFromD(d.period))}))+'">⏳ '+esc(t('inv_wait'))+'</span>':esc(money(r.amount)))+'</td>'+
         '<td>'+(r.photo?'<img class="thumb" loading="lazy" src="'+esc(r.photo)+'?w=160" data-big="'+esc(r.photo)+'" alt="">':'—')+'</td>'+
         '<td>'+(r.remote?'<span class="chip gray">📷 '+esc(t('remote_chip'))+'</span>':r.lat!=null?'<a target="_blank" rel="noopener" href="https://maps.google.com/?q='+esc(r.lat)+','+esc(r.lng)+'">📍</a>'+(r.dist_m!=null?' <span class="chip '+(far?'off':'gray')+'">'+esc(fmtN(r.dist_m,0))+' m</span>':''):'—')+'</td><td>'+esc(r.staff)+'</td>'+
         (adm?'<td><button class="btn ghost sm" data-er="'+esc(r.id)+'">🔢 '+esc(t('edit'))+'</button>'+' <button class="btn ghost sm" data-vr="'+esc(r.id)+'|'+esc(r.name)+'">'+esc(t('void_reading'))+'</button>'+'</td>':'')+'</tr>'; }).join('')||'<tr><td colspan="11" class="muted">'+esc(t('no_results'))+'</td></tr>';
