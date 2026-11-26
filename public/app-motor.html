@@ -1821,6 +1821,7 @@ var D={
  capture:['📸 التقاط','📸 Capture','📸 Capturer'],
  camera_title:['صورة العداد','Meter photo','Photo du compteur'],
  camera_fail:['تعذّر فتح الكاميرا — اختر صورة بالكاميرا من الزر أدناه','Camera unavailable — use the button below','Caméra indisponible — utilisez le bouton ci-dessous'],
+ nat_cam:['التصوير بكاميرا التلفون — تقدر تصوّر بكبسة رفع أو خفض الصوت','Use the phone camera — shoot with the volume up/down button','Appareil photo du téléphone — déclenchez avec le bouton de volume'],
  pick_photo:['📷 فتح كاميرا الجهاز','📷 Open device camera','📷 Ouvrir l’appareil photo'],
  gps_wait:['📍 جارٍ تحديد الموقع…','📍 Getting location…','📍 Localisation…'],
  gps_ok:['📍 الموقع محدّد (±{a} م)','📍 Location OK (±{a} m)','📍 Position OK (±{a} m)'],
@@ -3902,6 +3903,7 @@ async function openCustomer(id,barcode,mode){
       '<div id="gpsLine" style="margin:6px 0"></div>'+
       '<div id="rph"></div><div id="rmsg" class="err msg"></div>'+
       '<button class="btn full" id="rnext" style="margin-top:8px">'+esc(t('next_photo'))+'</button>'+
+      '<label class="row" style="gap:8px;margin-top:8px;font-size:13.5px;cursor:pointer;align-items:center"><input type="checkbox" id="rnat"'+(nativeCamOn()?' checked':'')+' style="width:auto"> 📱 '+esc(t('nat_cam'))+'</label>'+
       (isAdmin()?'<button class="btn ghost full" id="rnophoto" style="margin-top:8px">'+esc(t('save_no_photo'))+'</button>':'')+'</div>';
     startGeo();
     var remote=false, kpi=$('#rkp',box);
@@ -3914,6 +3916,7 @@ async function openCustomer(id,barcode,mode){
     $('#rremote',box).addEventListener('change',function(){ remote=this.checked; $('#rremn',box).classList.toggle('hidden',!remote);
       if(remote){ geo=null; $('#gpsLine',box).innerHTML='<span class="chip gray">📷 '+esc(t('remote_chip'))+'</span>'; } else startGeo();
       if(!photoBlob) $('#rnext',box).innerHTML=esc(remote?t('remote_pick'):t('next_photo')); });
+    $('#rnat',box).addEventListener('change',function(){ nativeCamSet(this.checked); });
     var np=$('#rnophoto',box); if(np) np.addEventListener('click',function(){ var v=inp.value.trim(); if(v===''||!isFinite(Number(v))){ $('#rmsg',box).textContent=t('e_bad_value'); return; } if(!kpOk()) return; photoBlob=null; saveReading(Number(v),true,$('#rremote',box).checked); });
     var inp=$('#rv',box); setTimeout(function(){ inp.focus(); },60);
     inp.addEventListener('input',function(){ inp.value=inp.value.replace(/[٠-٩]/g,function(x){return '٠١٢٣٤٥٦٧٨٩'.indexOf(x)}).replace(/[^0-9.]/g,'');
@@ -4480,14 +4483,28 @@ function pickGallery(){ return new Promise(function(resolve){
   f.addEventListener('change',async function(){ var x=f.files&&f.files[0]; if(!x) return fin(null); try{ fin(await shrink(x)); }catch(e){ toast(errText(e),'e'); fin(null); } });
   window.addEventListener('focus',function(){ setTimeout(function(){ if(!(f.files&&f.files.length)) fin(null); },1500); },{once:true});
   f.click(); }); }
-function takePhoto(){ return new Promise(function(resolve){
+/* كاميرا التلفون نفسها: كبسة الصوت بتصوّر فيها (متصفح Chrome ما بيوصّل كبسات الصوت للصفحة) — الخيار محفوظ على هالجهاز */
+function nativeCamOn(){ try{ return localStorage.getItem('motor_native_cam')==='1'; }catch(e){ return false; } }
+function nativeCamSet(v){ try{ localStorage.setItem('motor_native_cam',v?'1':'0'); }catch(e){} }
+function nativeCam(){ return new Promise(function(resolve){
+  var f=document.createElement('input'); f.type='file'; f.accept='image/*'; f.setAttribute('capture','environment'); f.style.display='none'; document.body.appendChild(f);
+  var done=false; function fin(b){ if(done) return; done=true; f.remove(); resolve(b); }
+  f.addEventListener('change',async function(){ var x=f.files&&f.files[0]; if(!x) return fin(null); try{ fin(await shrink(x)); }catch(e){ toast(errText(e),'e'); fin(null); } });
+  f.addEventListener('cancel',function(){ fin(null); });
+  window.addEventListener('focus',function(){ setTimeout(function(){ if(!(f.files&&f.files.length)) fin(null); },2500); },{once:true});
+  f.click(); }); }
+function isVolKey(e){ var k=e.key||'', c=e.keyCode||0; return /^(AudioVolume(Up|Down)|Volume(Up|Down))$/.test(k)||c===24||c===25||c===174||c===175||c===182||c===183; }
+function takePhoto(){ if(nativeCamOn()) return nativeCam(); return new Promise(function(resolve){
   var m=modal(t('camera_title'),'<div class="cam"><video id="pv" playsinline muted autoplay></video></div><div id="pmsg2" class="muted" style="margin:8px 0"></div>'+
     '<div class="row"><button class="btn lg" id="pcap" style="flex:1">'+esc(t('capture'))+'</button></div>'+
     '<div style="margin-top:10px"><label class="btn alt full" style="cursor:pointer">'+esc(t('pick_photo'))+'<input id="pfile" type="file" accept="image/*" capture="environment" class="hidden"></label></div>',false);
   var stream=null, done=false, video=$('#pv',m.body);
   function stopCam(){ if(stream) stream.getTracks().forEach(function(x){x.stop()}); stream=null; }
-  function finish(b){ if(done) return; done=true; stopCam(); m.onclose=null; m.close(); resolve(b); }
-  m.onclose=function(){ stopCam(); if(!done){ done=true; resolve(null); } };
+  function onKey(e){ if(!isVolKey(e)) return; e.preventDefault(); e.stopPropagation(); if(e.type==='keydown'&&!e.repeat) $('#pcap',m.body).click(); }
+  document.addEventListener('keydown',onKey,true); document.addEventListener('keyup',onKey,true);
+  function unKey(){ document.removeEventListener('keydown',onKey,true); document.removeEventListener('keyup',onKey,true); }
+  function finish(b){ if(done) return; done=true; unKey(); stopCam(); m.onclose=null; m.close(); resolve(b); }
+  m.onclose=function(){ unKey(); stopCam(); if(!done){ done=true; resolve(null); } };
   $('#pfile',m.body).addEventListener('change',async function(){ var f=this.files&&this.files[0]; if(!f) return; try{ finish(await shrink(f)); }catch(e){ $('#pmsg2',m.body).textContent=errText(e); } });
   $('#pcap',m.body).addEventListener('click',async function(){
     if(!stream||!video.videoWidth){ $('#pfile',m.body).click(); return; }
