@@ -2097,7 +2097,9 @@ var D={
  hm_g_money:['الصندوق والمالية','Cash & finance','Caisse et finances'], hm_g_stock:['المخزون والموردون','Stock & suppliers','Stock et fournisseurs'],
  hm_g_reports:['التقارير','Reports','Rapports'], hm_g_admin:['الإدارة','Administration','Administration'],
  sl_new:['+ فاتورة مبيعات جديدة','+ New sales invoice','+ Nouvelle facture de vente'], sl_cust:['الزبون','Customer','Client'], sl_items:['البنود','Items','Articles'],
- sl_src:['المصدر','Source','Source'], sl_free:['بند حر','Free item','Article libre'], sl_item:['البند','Item','Article'], sl_qty:['الكمية','Qty','Qté'], sl_price:['السعر','Price','Prix'],
+ sl_src:['المصدر','Source','Source'], sl_lock_hint:['البيع من المخزون فقط وبالأسعار التي حدّدها المدير الأساسي.','Sales from stock only, at the prices set by the main manager.','Vente depuis le stock uniquement, aux prix fixés par le gérant principal.'],
+ e_stock_only:['اختر صنفاً من المخزون','Pick an item from stock','Choisissez un article du stock'],
+ sl_free:['بند حر','Free item','Article libre'], sl_item:['البند','Item','Article'], sl_qty:['الكمية','Qty','Qté'], sl_price:['السعر','Price','Prix'],
  sl_line:['المجموع','Total','Total'], sl_add:['+ إضافة بند','+ Add item','+ Ajouter'], sl_total:['مجموع الفاتورة','Invoice total','Total facture'],
  sl_pay_now:['💵 إيصال قبض مع الفاتورة','💵 Receipt with this invoice','💵 Reçu avec la facture'], sl_receipt:['إيصال قبض','Receipt','Reçu'], sl_paid:['المبلغ المقبوض','Amount received','Montant reçu'],
  sl_saved:['تم حفظ الفاتورة وإضافتها إلى كشف حساب الزبون','Invoice saved and added to the customer’s statement','Facture enregistrée sur le relevé du client'],
@@ -3038,8 +3040,8 @@ var TABS=[
   {id:'disc',k:'nav_disc',i:'🏷️',admin:true},
   {id:'maint',k:'nav_maint',i:'🔧',admin:true},
   {id:'baddebt',k:'nav_baddebt',i:'📉',p:'collect'},
-  {id:'stock',k:'nav_stock',i:'📦',admin:true},
-  {id:'suppliers',k:'nav_suppliers',i:'🚚',admin:true},
+  {id:'stock',k:'nav_stock',i:'📦',admin:true,main:true},
+  {id:'suppliers',k:'nav_suppliers',i:'🚚',admin:true,main:true},
   {id:'insurance',k:'nav_insurance',i:'🛡️',admin:true},
   {id:'cstmt',k:'nav_cstmt',i:'🧾'},
   {id:'adash',k:'nav_adash',i:'🧑‍💻',admin:true,main:true},
@@ -6280,14 +6282,16 @@ VIEWS.sales=async function(main){
 };
 async function saleForm(preCust,isRet,edit){
   var stock=[]; try{ stock=await call('motor_stock_list'); }catch(e){}
+  var LOCK=!(ME&&ME.is_main);   // المدير غير الأساسي: أصناف المخزون بس وبأسعارها
   function blank(){ return stock.length?{src:stock[0].id,name:stock[0].name,qty:1,price:n2(stock[0].unit_price)}:{src:'',name:'',qty:1,price:0}; }
   var rows=[blank()], cust=preCust||null, sales=[], refSale=null;
   if(edit){ isRet=edit.kind==='return'; cust=CUST.filter(function(c){ return c.id===edit.customer.id; })[0]||edit.customer;
     rows=(edit.items||[]).map(function(it){ return {src:it.stock_id||'',name:it.name,qty:n2(it.qty),price:n2(it.price)}; }); if(!rows.length) rows=[blank()]; }
+  if(LOCK&&!isRet) rows.forEach(function(r){ var st=stock.filter(function(x){ return x.id===r.src; })[0]; if(st) r.price=n2(st.unit_price); });
   var m=modal(edit?'✏️ '+t('ed_sale',{n:edit.no}):isRet?'↩️ '+t('rt_new'):t('sl_new').replace(/^\+\s*/,''),
     (edit?'<div class="lic" style="margin-bottom:10px">'+esc(t('ed_sale_hint'))+'</div>':'')+
     (isRet&&!edit?'<div class="lic" style="margin-bottom:10px">'+esc(t('rt_hint'))+'</div>':'')+
-    (!stock.length?'<div class="lic" style="margin-bottom:10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap"><span style="flex:1">📦 '+esc(t('sl_no_stock'))+'</span><button class="btn sm" id="sfgst">'+esc(t('sl_go_stock'))+'</button></div>':'')+
+    (!stock.length?'<div class="lic" style="margin-bottom:10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap"><span style="flex:1">📦 '+esc(t('sl_no_stock'))+'</span>'+(LOCK?'':'<button class="btn sm" id="sfgst">'+esc(t('sl_go_stock'))+'</button>')+'</div>':'')+(LOCK&&stock.length?'<div class="lic" style="margin-bottom:10px">🔒 '+esc(t('sl_lock_hint'))+'</div>':'')+
     '<label>'+esc(t('sl_cust'))+'</label><input id="sfc" list="sfcl" autocomplete="off" placeholder="'+esc(t('search_ph'))+'" value="'+(cust?esc('#'+cust.code+' '+cust.name):'')+'">'+
     '<datalist id="sfcl">'+CUST.map(function(c){ return '<option value="#'+c.code+' '+esc(c.name)+'">'; }).join('')+'</datalist><div id="sfcb" class="muted" style="margin:4px 0 10px"></div>'+
     (isRet&&!edit?'<label>'+esc(t('rt_from'))+'</label><select id="sfref"><option value="">'+esc(t('rt_no_ref'))+'</option></select><div style="height:10px"></div>':'')+
@@ -6305,9 +6309,9 @@ async function saleForm(preCust,isRet,edit){
   function paint(){
     tb.innerHTML=rows.map(function(r,i){ var st=r.src?stock.filter(function(x){ return x.id===r.src; })[0]:null;
       return '<tr><td><select data-f="src" data-i="'+i+'">'+(stock.length?'<optgroup label="📦 '+esc(t('sl_from_stock'))+'">'+stock.map(function(x){ return '<option value="'+esc(x.id)+'"'+(x.id===r.src?' selected':'')+'>'+esc(x.name)+' ('+esc(fmtN(x.qty))+')</option>'; }).join('')+'</optgroup>':'')+
-        '<optgroup label="✏️ '+esc(t('sl_free'))+'"><option value=""'+(r.src?'':' selected')+'>'+esc(t('sl_free'))+'</option></optgroup></select>'+(st?'<div class="muted" style="font-size:11px'+(!isRet&&n2(r.qty)>n2(st.qty)?';color:var(--bad)':'')+'">'+esc(t('sl_in_stock',{n:fmtN(st.qty)}))+'</div>':'')+'</td>'+
-        '<td><input data-f="name" data-i="'+i+'" value="'+esc(r.name)+'"></td><td><input data-f="qty" data-i="'+i+'" type="number" step="0.01" min="0" value="'+esc(r.qty)+'" style="max-width:90px"></td>'+
-        '<td><input data-f="price" data-i="'+i+'" type="number" step="0.01" min="0" value="'+esc(r.price)+'" style="max-width:110px"></td><td class="num" data-lt="'+i+'">'+esc(money(n2(r.qty)*n2(r.price)))+'</td>'+
+        (LOCK?'':'<optgroup label="✏️ '+esc(t('sl_free'))+'"><option value=""'+(r.src?'':' selected')+'>'+esc(t('sl_free'))+'</option></optgroup>')+'</select>'+(st?'<div class="muted" style="font-size:11px'+(!isRet&&n2(r.qty)>n2(st.qty)?';color:var(--bad)':'')+'">'+esc(t('sl_in_stock',{n:fmtN(st.qty)}))+'</div>':'')+'</td>'+
+        '<td><input data-f="name" data-i="'+i+'" value="'+esc(r.name)+'"'+(LOCK?' readonly':'')+'></td><td><input data-f="qty" data-i="'+i+'" type="number" step="0.01" min="0" value="'+esc(r.qty)+'" style="max-width:90px"></td>'+
+        '<td><input data-f="price" data-i="'+i+'" type="number" step="0.01" min="0" value="'+esc(r.price)+'" style="max-width:110px"'+(LOCK?' readonly tabindex="-1"':'')+'></td><td class="num" data-lt="'+i+'">'+esc(money(n2(r.qty)*n2(r.price)))+'</td>'+
         '<td><button class="btn ghost sm" data-del="'+i+'"'+(rows.length<2?' disabled':'')+'>✕</button></td></tr>'; }).join('');
     $('#sft',m.body).textContent=money(total()); if(!$('#sfp',m.body).checked||!$('#sfpa',m.body).dataset.touched) $('#sfpa',m.body).value=total(); }
   function pickCust(){ var v=$('#sfc',m.body).value.trim(), mm=v.match(/^#(\d+)/); cust=null;
@@ -6318,7 +6322,7 @@ async function saleForm(preCust,isRet,edit){
     rows[i][f]=f==='name'?el.value:el.value; $('[data-lt="'+i+'"]',tb).textContent=money(n2(rows[i].qty)*n2(rows[i].price)); $('#sft',m.body).textContent=money(total());
     if(!$('#sfpa',m.body).dataset.touched) $('#sfpa',m.body).value=total(); });
   tb.addEventListener('change',function(e){ var el=e.target; if(el.dataset.f!=='src') return; var i=+el.dataset.i, st=stock.filter(function(x){ return x.id===el.value; })[0];
-    rows[i].src=el.value; if(st){ rows[i].name=st.name; if(!n2(rows[i].price)) rows[i].price=n2(st.unit_price); } paint(); });
+    rows[i].src=el.value; if(st){ rows[i].name=st.name; if(LOCK||!n2(rows[i].price)) rows[i].price=n2(st.unit_price); } paint(); });
   tb.addEventListener('click',function(e){ var d=e.target.closest('[data-del]'); if(!d||d.disabled) return; rows.splice(+d.dataset.del,1); paint(); });
   var gst=$('#sfgst',m.body); if(gst) gst.addEventListener('click',function(){ m.close(); go('stock'); });
   if(edit){ $('#sfc',m.body).disabled=true; $('#sfn',m.body).value=String(edit.note||'').replace(/^استرجاع: [^—]*(— )?/,'').replace(/^من فاتورة #\d+( — )?/,'').replace(/ \(عُدّلت[^)]*\)/g,''); }
