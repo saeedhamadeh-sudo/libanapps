@@ -141,6 +141,7 @@ var L={
  e_no_pay:['الدفع الإلكتروني غير مفعّل حالياً','Online payment is not available','Paiement en ligne indisponible'],
  e_pay_rejected:['رفضت بوابة الدفع العملية','The payment gateway rejected the request','Paiement refusé'],
  e_buy_failed:['تعذّر إنشاء عملية الشراء','Could not create the purchase','Achat impossible'],
+ chat_del:['حذف المحادثة','Delete chat','Supprimer la discussion'], chat_del_q:['حذف محادثة «{n}» وكل رسائلها من البرنامج؟\nلن تُحذف من واتساب نفسه، وإذا راسلكم مجدداً تظهر الرسائل الجديدة فقط.','Delete the chat with “{n}” and all its messages from the app?\nIt is not deleted from WhatsApp itself; new messages will appear if they write again.','Supprimer la discussion avec « {n} » de l’app ?\nElle n’est pas supprimée de WhatsApp.'], chat_deleted:['تم حذف المحادثة','Chat deleted','Discussion supprimée'],
  open_wa:['فتح في واتساب','Open in WhatsApp','Ouvrir dans WhatsApp'], apk:['تحميل تطبيق الأندرويد','Download Android app','Télécharger l’app Android']
 };
 var LANG='ar'; try{ LANG=localStorage.getItem('wachat_lang')||'ar'; }catch(e){}
@@ -289,9 +290,13 @@ function layout(){
   $('#bout').onclick=function(){ rpc('wa_logout',{p_token:TOK}).catch(function(){}); saveTok(''); boot(); };
   window.onpopstate=function(){ if(CUR){ CUR=null; $('#app').classList.remove('chatting'); paintList(); } };
 }
+function dropChat(ph){ CHATS=CHATS.filter(function(x){ return x.phone!==ph; });
+  if(CUR&&CUR.phone===ph){ CUR=null; MSGS=[]; $('#app').classList.remove('chatting'); var M=$('#main'); if(M) M.innerHTML='<div class="empty" style="margin:auto">💬</div>'; }
+  paintList(); badge(); }
 async function loadChats(first){
   try{ var r=await rpc('wa_chats',{p_token:TOK,p_since:SINCE}); }catch(e){ return; }
   var news=[];
+  (r.deleted||[]).forEach(function(ph){ if(!(r.rows||[]).some(function(c){ return c.phone===ph; })) dropChat(ph); });
   (r.rows||[]).forEach(function(c){ var i=CHATS.findIndex(function(x){ return x.phone===c.phone; });
     if(!first&&c.last_dir==='in'&&c.unread>0&&(i<0||CHATS[i].unread<c.unread||CHATS[i].last_at!==c.last_at)&&!(CUR&&CUR.phone===c.phone&&!document.hidden)) news.push(c);
     if(i>=0) CHATS.splice(i,1); CHATS.unshift(c); });
@@ -329,11 +334,13 @@ async function openChat(phone){
   var M=$('#main');
   M.innerHTML='<div class="top"><button class="ib back" id="bback">'+(LANG==='ar'?'→':'←')+'</button><div class="av" style="width:40px;height:40px;flex-basis:40px;font-size:15px;background:'+avColor(phone)+'">'+esc(initials(c.name||phone.slice(-2)))+'</div>'+
     '<div class="ttl"><span id="hn">'+esc(c.name||fmtPhone(phone))+'</span><div class="muted" style="font-size:12px;font-weight:400;direction:ltr;text-align:start">'+esc(fmtPhone(phone))+'</div></div>'+
-    '<a class="ib" href="https://wa.me/'+esc(phone)+'" target="_blank" rel="noopener" title="'+esc(t('open_wa'))+'">↗</a></div>'+
+    '<a class="ib" href="https://wa.me/'+esc(phone)+'" target="_blank" rel="noopener" title="'+esc(t('open_wa'))+'">↗</a>'+(ME&&ME.role==='main'?'<button class="ib" id="bdel" title="'+esc(t('chat_del'))+'">🗑</button>':'')+'</div>'+
     '<div class="msgs" id="msgs"></div><div id="win"></div>'+
     '<div class="comp" id="comp"><button class="att" id="batt" title="'+esc(t('attach'))+'">📎</button><input type="file" id="fatt" class="hide" accept="image/*,video/mp4,video/3gpp,audio/*,application/pdf">'+
     '<textarea id="tx" rows="1" placeholder="'+esc(t('type_msg'))+'"></textarea><div class="rec hide" id="rec"><span class="dot"></span><span id="rect">0:00</span><button class="x" id="recx" title="'+esc(t('cancel'))+'">🗑</button></div>'+
     '<button class="send mic" id="bs" title="Send">🎤</button></div>';
+  if($('#bdel')) $('#bdel').onclick=async function(){ if(!confirm(t('chat_del_q',{n:CUR.name||fmtPhone(phone)}))) return;
+    try{ await rpc('wa_chat_delete',{p_token:TOK,p_phone:phone}); dropChat(phone); toast(t('chat_deleted')); }catch(e){ toast(errText(e)); } };
   $('#bback').onclick=function(){ if(history.state&&history.state.chat) history.back(); else { CUR=null; $('#app').classList.remove('chatting'); paintList(); } };
   var tx=$('#tx');
   function sbtn(){ var b=$('#bs'); if(REC){ b.className='send recon'; b.innerHTML=sendIcon(); return; } var has=!!tx.value.trim(); b.className='send'+(has?'':' mic'); b.innerHTML=has?sendIcon():'🎤'; }
