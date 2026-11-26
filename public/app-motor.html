@@ -1721,7 +1721,7 @@ var D={
  st_hand:['النقد الذي بحوزتي','Cash in my hand','Espèces en main'],
  scan:['مسح باركود العداد','Scan meter barcode','Scanner le code-barres'],
  scan_pay:['مسح الباركود للقبض','Scan to collect','Scanner pour encaisser'],
- search_ph:['ابحث بالاسم أو الهاتف أو الباركود أو رقم العداد أو العلبة','Search name, phone, barcode, meter or box','Rechercher nom, téléphone, code, compteur ou boîte'],
+ search_ph:['ابحث بالاسم أو الهاتف أو البناية أو الباركود أو رقم العداد أو العلبة','Search name, phone, building, barcode, meter or box','Rechercher nom, téléphone, immeuble, code, compteur ou boîte'],
  window_none:['لم يحدّد المدير فترة أخذ العدادات لك بعد','The admin has not set your reading period yet','L’admin n’a pas encore fixé votre période de relevé'],
  window_is:['فترة أخذ العدادات: من {f} إلى {t}','Reading period: {f} → {t}','Période de relevé : {f} → {t}'],
  window_closed:['خارج فترة أخذ العدادات','Outside the reading period','Hors période de relevé'],
@@ -1744,7 +1744,7 @@ var D={
  box:['العلبة','Box','Boîte'],
  generator:['المولّد / الكابل','Generator / cable','Générateur / câble'],
  breaker_no:['رقم القاطع (الدجنتير)','Breaker no.','N° disjoncteur'],
- building:['المبنى','Building','Immeuble'],
+ building:['البناية','Building','Immeuble'],
  floor:['الطابق','Floor','Étage'],
  side:['الجهة','Side','Côté'],
  location_name:['اسم الموقع','Location name','Nom du site'],
@@ -3134,7 +3134,7 @@ async function cancelCustomer(c,after){
 }
 function searchCust(q,lim){
   var raw=q; q=normS(q); if(!q) return [];
-  return CUST.filter(function(c){ return phoneHit(c,raw) || normS(c.name).indexOf(q)>=0 || normS(c.alt_name).indexOf(q)>=0 || normS(c.barcode)===q || normS(c.barcode).indexOf(q)>=0
+  return CUST.filter(function(c){ return phoneHit(c,raw) || normS(c.name).indexOf(q)>=0 || normS(c.alt_name).indexOf(q)>=0||normS(c.building).indexOf(q)>=0||normS(c.address).indexOf(q)>=0||normS(c.location_name).indexOf(q)>=0 || normS(c.barcode)===q || normS(c.barcode).indexOf(q)>=0
     || normS(c.meter_no).indexOf(q)>=0 || normS(c.box)===q || String(c.code)===q || normS(c.mobile).indexOf(q)>=0; }).slice(0,lim||40);
 }
 function custItem(c,mode){
@@ -5009,7 +5009,7 @@ VIEWS.customers=async function(main){
       if(c.bad_debt) return false;   // زبائن الديون المعدومة إلهن صفحتن
       if(CF.st==='on'&&!(c.is_active&&!c.archived)) return false; if(CF.st==='off'&&c.is_active) return false; if(CF.st==='arch'&&!c.archived) return false; if(CF.st==='debt'&&!(n2(c.balance)>0)) return false; if(CF.st==='ondebt'&&!(c.is_active&&!c.archived&&n2(c.balance)>0.005)) return false; if(CF.st==='offdebt'&&!(!c.is_active&&n2(c.balance)>0.005)) return false;
       if(CF.plan&&c.plan_id!==CF.plan) return false; if(CF.col&&c.collector_id!==CF.col) return false; if(CF.area&&c.area!==CF.area) return false;
-      if(q&&!(phoneHit(c,CF.q)||normS(c.name).indexOf(q)>=0||normS(c.barcode).indexOf(q)>=0||normS(c.meter_no).indexOf(q)>=0||normS(c.box)===q||String(c.code)===q||normS(c.mobile).indexOf(q)>=0||normS(c.alt_name).indexOf(q)>=0)) return false;
+      if(q&&!(phoneHit(c,CF.q)||normS(c.name).indexOf(q)>=0||normS(c.barcode).indexOf(q)>=0||normS(c.meter_no).indexOf(q)>=0||normS(c.box)===q||String(c.code)===q||normS(c.mobile).indexOf(q)>=0||normS(c.alt_name).indexOf(q)>=0||normS(c.building).indexOf(q)>=0||normS(c.address).indexOf(q)>=0||normS(c.location_name).indexOf(q)>=0)) return false;
       return true; }).sort(custSorter(CF.sort));
   }
   function paint(){
