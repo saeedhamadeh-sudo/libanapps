@@ -2100,6 +2100,10 @@ var D={
  sl_src:['المصدر','Source','Source'], rf_fee:['رسوم إعادة وصل الخط','Reconnection fee','Frais de reconnexion'],
  rf_none:['بدون رسوم (استثناء)','No fee (exception)','Sans frais (exception)'],
  rf_hint:['تُسجَّل فاتورة «إعادة وصل خط» على الزبون — خدمة لا تُنزَّل من المخزون. القيمة تبقى محفوظة للمرات القادمة.','A “Reconnection” bill is added to the customer — a service, not taken from stock. The amount is remembered.','Une facture « Reconnexion » est ajoutée — service, hors stock. Le montant est mémorisé.'],
+ ctd_real:['المجموع الفعلي من الإيصالات','Actual total from receipts','Total réel des reçus'],
+ ctd_val:['الرقم المعروض لليوم','Figure to show today','Montant affiché aujourd’hui'],
+ ctd_hint:['هذا رقم للعرض فقط لهذا اليوم — لا يغيّر الإيصالات ولا الصناديق ولا كشوفات الحساب. يرجع تلقائياً للمجموع الفعلي من الغد.','Display only, for today — receipts, boxes and statements are not changed. Back to the actual total tomorrow.','Affichage seulement pour aujourd’hui — reçus et caisses inchangés. Retour au total réel demain.'],
+ ctd_reset:['إرجاع للمجموع الفعلي','Back to actual','Revenir au réel'],
  rf_set_hint:['تُضاف تلقائياً كفاتورة «إعادة وصل خط» عند وصل أي زبون مقطوع (يمكن الإعفاء عند الوصل). 0 = بدون رسوم.','Added automatically as a “Reconnection” bill when a cut customer is reconnected (can be waived). 0 = no fee.','Ajoutés automatiquement à la reconnexion (exonération possible). 0 = sans frais.'],
  rf_billed:['فاتورة إعادة وصل {v}','Reconnection bill {v}','Facture reconnexion {v}'],
  stk_neg:['بيع أكثر من الموجود — يجب إدخال الكمية','Sold more than in stock','Vendu plus que le stock'],
@@ -3230,7 +3234,7 @@ VIEWS.dash=async function(main){
       (mine?'':ME.is_main?edStat(stat(t('st_whish_box'), money(d.whish_box),'whish'),'whish'):stat(t('st_whish_box'), money(d.whish_box),'whish'))+
       (mine?'':stat(t('st_wa'), fmtN(d.wa_pending,0),n2(d.wa_inv)>0?'bills':'wa'))+
       (mine?'':stat(t('nav_trash'), fmtN(d.trash_count,0),'trash'))+
-      stat(t('st_cash_today'), money(d.cash_today),mine?'cstmt':'cash')+
+      (ME.is_main?edStat(stat(t('st_cash_today')+(d.cash_today_fixed?' ✍️':''), money(d.cash_today),'cash'),'ctd'):stat(t('st_cash_today'), money(d.cash_today),mine?'cstmt':'cash'))+
       stat(t('st_whish_today'), money(d.whish_today),mine?'cstmt':'whish')+
       stat(t('st_month'), money(d.collected_month),mine?'cstmt':'report')+
       (d.my_cash_in_hand!=null?stat(t('st_hand'), money(d.my_cash_in_hand)):'')+
@@ -3238,6 +3242,7 @@ VIEWS.dash=async function(main){
     '<div class="la-foot" dir="ltr" style="text-align:center;color:#94a3b8;font-size:12px;line-height:1.7;margin:28px 0 8px">Copyright © LibanApps<br>Saeed Hmadeh — <a href="tel:+9613044010" style="color:inherit">+961 3 044 010</a></div>';
   if($('#dwa',main)){ waBind($('#dwa',main)); if(waKey()){ waRefresh(); waStartPoll(); } }
   $$('[data-sbe]',main).forEach(function(b){ b.addEventListener('click',function(e){ e.stopPropagation(); var k=b.dataset.sbe;
+    if(k==='ctd') return cashTodayEdit(d,function(){ go('dash'); });
     setBalance(k,null,k==='cash'?t('st_cash_box'):'Whish',k==='cash'?n2(d.cash_box):n2(d.whish_box),function(){ go('dash'); }); }); });
   $$('[data-go]',main).forEach(function(b){ b.addEventListener('click',function(){ var p=b.dataset.go.split('|'); if(p[0]==='customers'){ CF.st=p[1]||''; CF.q=''; CF.lim=200; } go(p[0]); }); });
   var rs=$('#drs',main); if(rs) rs.addEventListener('click',async function(){ var v=$('#drate',main).value.trim(); if(!(n2(v)>0)) return toast(t('e_bad_amount'),'e');
@@ -3660,6 +3665,18 @@ function pingNow(){ if(!navigator.geolocation||!TOKEN) return;
 document.addEventListener('visibilitychange',function(){ if(!document.hidden&&ME) syncNow(); });
 
 /* زر ✏️ صغير جوّا مربّع اللوحة (المدير الأساسي: تعديل رصيد الصندوق/Whish) */
+/* «نقدي اليوم»: رقم بيكتبو المدير الأساسي بإيدو لليوم — للعرض بس، ما بيغيّر إيصالات ولا صناديق */
+function cashTodayEdit(d,after){
+  var m=modal('✏️ '+t('st_cash_today'),'<div class="muted">'+esc(t('ctd_real'))+': <b class="num">'+esc(money(d.cash_today_real!=null?d.cash_today_real:d.cash_today))+'</b></div>'+
+    '<label style="margin-top:10px">'+esc(t('ctd_val'))+'</label><input id="ctv" class="valinput" inputmode="decimal" value="'+esc(n2(d.cash_today).toFixed(2))+'">'+
+    '<div class="lic" style="margin-top:8px">'+esc(t('ctd_hint'))+'</div><div id="ctm" class="err msg" style="margin-top:8px"></div>',
+    (d.cash_today_fixed?'<button class="btn ghost" data-r>↺ '+esc(t('ctd_reset'))+'</button>':'')+'<button class="btn ghost" data-x>'+esc(t('cancel'))+'</button><button class="btn" data-s>'+esc(t('save'))+'</button>');
+  setTimeout(function(){ var i=$('#ctv',m.body); i.focus(); i.select(); },50);
+  m.foot.addEventListener('click',async function(e){ if(e.target.closest('[data-x]')) return m.close();
+    var b=e.target.closest('[data-s],[data-r]'); if(!b) return; var v=null;
+    if(b.hasAttribute('data-s')){ v=n2(String($('#ctv',m.body).value).replace(',','.')); if(!(v>=0)){ $('#ctm',m.body).textContent=t('e_bad_amount'); return; } }
+    busy(b,true); try{ await call('motor_cash_today_set',{p_amount:v}); toast(t('saved'),'s'); m.close(); after&&after(); }catch(err){ $('#ctm',m.body).textContent=errText(err); busy(b,false); } });
+}
 function edStat(html,k){ return html.replace('<span>','<span><button class="btn ghost sm" data-sbe="'+k+'" title="'+esc(t('sb_btn'))+'" style="padding:0 6px;margin-inline-end:4px">✏️</button>'); }
 function stat(l,v,g){ return '<div class="stat"'+(g?' data-go="'+esc(g)+'"':'')+'><span>'+esc(l)+'</span><b class="num">'+esc(v)+'</b></div>'; }
 var RWIN=null;
@@ -5585,12 +5602,13 @@ VIEWS.adash=async function(main){
       (n2(d.bad_debt_total)?tile('📉 '+t('nav_baddebt')+' ('+fmtN(d.bad_debt_count,0)+')', money(d.bad_debt_total)):'')+
       tile(t('box_of',{n:nm}), money(cs.balance_now),'box')+
       tile(t('st_whish_box'), money(d.whish_box),'whish')+
-      tile(t('st_cash_today'), money(d.cash_today))+
+      tile(t('st_cash_today')+(d.cash_today_fixed?' ✍️':''), money(d.cash_today),'ctd')+
       tile(t('st_whish_today'), money(d.whish_today))+
       tile(t('st_month'), money(d.collected_month))+
     '</div>';
   if($('#ads',main)) $('#ads',main).addEventListener('change',function(){ AD.staff=this.value; go('adash'); });
   $$('[data-ade]',main).forEach(function(b){ b.addEventListener('click',function(){
+    if(b.dataset.ade==='ctd') return cashTodayEdit(d,function(){ go('adash'); });
     if(b.dataset.ade==='box') setBalance('collector',AD.staff,t('box_of',{n:nm}),n2(cs.balance_now),function(){ go('adash'); });
     else setBalance('whish',null,'Whish',n2(d.whish_box),function(){ go('adash'); }); }); });
 };
