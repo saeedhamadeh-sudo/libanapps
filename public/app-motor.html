@@ -2715,6 +2715,13 @@ Object.assign(D,{
  ins_imp_go:['استيراد {n} حركة','Import {n} entries','Importer {n} lignes'], ins_imp_q:['استيراد {n} حركة تأمين؟','Import {n} deposit entries?','Importer {n} lignes ?'], ins_imp_done:['✓ تم استيراد {n} حركة','✓ {n} entries imported','✓ {n} lignes importées'],
  sc_recv_coll:['استلام من الجابي (إقفال صندوقه إلى صندوقي)','Receive from collector (close his box into mine)','Recevoir du collecteur'], sc_close:['إقفال صندوقي وطباعة التقرير','Close my box & print report','Clôturer ma caisse'], sc_close_other:['إقفال صندوق الموظف وطباعة التقرير','Close this staff box & print','Clôturer la caisse de l’employé'],
  sc_q:['إقفال صندوق {n}؟ كل النقد الموجود معه يُسجَّل تسليماً للمكتب ويصبح صندوقه صفراً، ويُطبع التقرير.','Close {n}’s box? All cash in hand is handed to the office, the box goes to zero, and the report prints.','Clôturer la caisse de {n} ? Tout l’argent est remis au bureau et la caisse revient à zéro.'],
+ rc_t:['استلام من {n}','Receive from {n}','Recevoir de {n}'],
+ rc_box:['المبلغ في صندوقه','Cash in his box','Caisse actuelle'],
+ rc_amt:['المبلغ المُستلَم','Amount received','Montant reçu'],
+ rc_kept:['يبقى في صندوقه','Stays in his box','Reste dans sa caisse'],
+ rc_hint:['يمكن ترك جزء من المبلغ مع الجابي (فراطة للرد على الزبائن) — يبقى في صندوقه ويُحسب عليه.','You can leave part of the cash with the collector (change for customers) — it stays in his box.','Vous pouvez laisser une partie au collecteur (monnaie) — elle reste dans sa caisse.'],
+ rc_ok:['استلام','Receive','Recevoir'],
+ rc_bad:['أدخل مبلغاً بين 0 و{v}','Enter an amount between 0 and {v}','Montant entre 0 et {v}'],
  sc_done:['✓ تم الإقفال — المُسلَّم {v}','✓ Closed — handed {v}','✓ Clôturé — remis {v}'], sc_report:['تقرير إقفال صندوق','Box closing report','Rapport de clôture'],
  sc_count:['عدد الإيصالات','Receipts','Reçus'], sc_cash:['مقبوض نقداً','Cash collected','Espèces'], sc_whish:['مقبوض Whish','Whish collected','Whish'],
  sc_handed_before:['سُلِّم خلال الفترة','Handed during period','Remis pendant la période'], sc_handed:['المبلغ المُسلَّم للمكتب','Handed to office','Remis au bureau'], sc_after:['رصيد الصندوق بعد الإقفال','Box after closing','Caisse après clôture'],
@@ -4798,14 +4805,32 @@ function closeTicket(r){
   if(n2(r.received)) T.push({kv:[t('st_recv_tot'),money(r.received)]});
   if(n2(r.spent)) T.push({kv:[t('box_spent'),money(r.spent)]});
   if(n2(r.handed_before)) T.push({kv:[t('sc_handed_before'),money(r.handed_before)]});
-  T.push({hr:1},{kv:[r.receiver?t('sc_handed_to',{n:r.receiver}):t('sc_handed'),money(r.handed)],b:1,s:26},{kv:[t('sc_after'),money(0)],b:1},{hr:1},
+  T.push({hr:1},(r.box!=null&&n2(r.kept)?{kv:[t('rc_box'),money(r.box)]}:null),{kv:[r.receiver?t('sc_handed_to',{n:r.receiver}):t('sc_handed'),money(r.handed)],b:1,s:26},{kv:[t('sc_after'),money(n2(r.kept))],b:1},{hr:1},
     {t:t('sc_sign_staff'),s:20},{t:' ',s:12},{t:t('sc_sign_office'),s:20},{t:' ',s:20});
   return T;
 }
-async function staffClose(staffId,name,after){
-  if(!(await confirmBox(t('sc_q',{n:name})))) return;
-  try{ var r=await call('motor_staff_close',{p_staff:staffId||null}); toast(t('sc_done',{v:money(r.handed)}),'s'); printDoc(closeTicket(r)); after&&after(); }
-  catch(e){ toast(errText(e),'e'); }
+async function staffClose(staffId,name,after,boxNow,recv){
+  if(!recv){   // إقفال صندوقي: كل المبلغ
+    if(!(await confirmBox(t('sc_q',{n:name})))) return;
+    try{ var r=await call('motor_staff_close',{p_staff:staffId||null}); toast(t('sc_done',{v:money(r.handed)}),'s'); printDoc(closeTicket(r)); after&&after(); }
+    catch(e){ toast(errText(e),'e'); }
+    return;
+  }
+  // استلام من الجابي: المدير بيحدد المبلغ المُستلَم، والباقي بيضل بصندوق الجابي
+  var bx=Math.round(n2(boxNow)*100)/100;
+  var m=modal('📥 '+t('rc_t',{n:name}),'<div class="muted">'+esc(t('rc_box'))+': <b class="num">'+esc(money(bx))+'</b></div>'+
+    '<label style="margin-top:10px">'+esc(t('rc_amt'))+'</label><input id="rca" class="valinput" inputmode="decimal" value="'+esc(bx.toFixed(2))+'">'+
+    '<div id="rck" class="muted" style="margin-top:6px"></div><div class="lic" style="margin-top:8px">'+esc(t('rc_hint'))+'</div><div id="rcm" class="err msg" style="margin-top:8px"></div>',
+    '<button class="btn ghost" data-x>'+esc(t('cancel'))+'</button><button class="btn ok" data-s>📥 '+esc(t('rc_ok'))+'</button>');
+  var inp=$('#rca',m.body);
+  function val(){ return Math.round(n2(String(inp.value).replace(',','.'))*100)/100; }
+  function show(){ var v=val(); $('#rck',m.body).innerHTML=esc(t('rc_kept'))+': <b class="num">'+esc(money(Math.max(bx-v,0)))+'</b>'; }
+  inp.addEventListener('input',show); show(); setTimeout(function(){ inp.focus(); inp.select(); },50);
+  m.foot.addEventListener('click',async function(e){ if(e.target.closest('[data-x]')) return m.close(); var b=e.target.closest('[data-s]'); if(!b) return;
+    var v=val(); if(!(v>0)||v>bx){ $('#rcm',m.body).textContent=t('rc_bad',{v:money(bx)}); return; }
+    busy(b,true);
+    try{ var r=await call('motor_staff_close',{p_staff:staffId||null,p_amount:v}); m.close(); toast(t('sc_done',{v:money(r.handed)}),'s'); printDoc(closeTicket(r)); after&&after(); }
+    catch(err){ $('#rcm',m.body).textContent=errText(err); busy(b,false); } });
 }
 async function staffClosesList(box,staffId){
   if(!box) return; var L=[]; try{ L=await call('motor_staff_closes',{p_staff:staffId||null}); }catch(e){ return; }
@@ -5569,7 +5594,7 @@ VIEWS.cstmt=async function(main){
       '<div class="row" style="margin-top:10px"><button class="btn alt sm" id="xp">'+esc(t('print'))+'</button>'+(adm?'<button class="btn warn sm" id="xsb">✏️ '+esc(t('sb_btn'))+'</button>':'')+'<span class="sp"></span>'+
         (sub&&SF.staff!==ME.staff_id?'<button class="btn ok" id="xclose">📥 '+esc(t('sc_recv_coll'))+'</button></div>':'<button class="btn danger" id="xclose">🔒 '+esc(t(adm&&SF.staff!==ME.staff_id?'sc_close_other':'sc_close'))+'</button></div>')+
       '<div id="xcl" style="margin-top:12px"></div>';
-    $('#xclose',box).addEventListener('click',function(){ staffClose(SF.staff,d.staff.name,load); });
+    $('#xclose',box).addEventListener('click',function(){ staffClose(SF.staff,d.staff.name,load,n2(d.balance_now),!!(SF.staff&&SF.staff!==ME.staff_id)); });
     if($('#xsb',box)) $('#xsb',box).addEventListener('click',function(){ setBalance('collector',SF.staff,d.staff.name,n2(d.balance_now),load); });
     staffClosesList($('#xcl',box),SF.staff);
     $$('[data-xpr]',box).forEach(function(b){ b.addEventListener('click',async function(){ var q=b.dataset.xpr.split('|'); b.disabled=true;
