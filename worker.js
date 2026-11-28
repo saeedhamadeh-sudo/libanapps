@@ -4730,7 +4730,8 @@ async function serveLink(request, env, url, slug, ctx, onDomain) {
     html = html.replace('<html lang="ar" dir="rtl">', `<html lang="${lang}" dir="${lang === 'ar' ? 'rtl' : 'ltr'}">`);
     // عدّ الزيارة (مش للبوتات ولا معاينات الروابط)
     const ua = request.headers.get('User-Agent') || '';
-    if (request.method === 'GET' && ua && !LINK_BOT_RE.test(ua)) {
+    // _x=1 = نفس الزيارة انفتحت من تيك توك بالمتصفح، ما منعدّها مرّتين
+    if (request.method === 'GET' && ua && !LINK_BOT_RE.test(ua) && !url.searchParams.has('_x')) {
       let src = '';
       try { const rf = new URL(request.headers.get('Referer') || ''); if (rf.hostname !== url.hostname) src = rf.hostname; } catch (e) {}
       ctx.waitUntil(linkTrack(env, { p_slug: slug, p_item: null, p_country: (request.cf && request.cf.country) || '', p_device: linkDevice(ua), p_src: src }));

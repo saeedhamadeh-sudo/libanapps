@@ -182,6 +182,25 @@ function iconFor(it){
 }
 function ytId(u){ var m=String(u||'').match(/(?:youtu\.be\/|v=|\/embed\/|\/shorts\/|\/live\/)([A-Za-z0-9_-]{11})/); return m?m[1]:''; }
 
+// متصفحات التطبيقات (تيك توك، إنستغرام، فيسبوك، سناب...): يوتيوب بيمنع الفيديو المضمّن جوّاها
+var UA=navigator.userAgent||'';
+var INAPP=/musical_ly|Bytedance|TikTok|trill_|Instagram|FBAN|FBAV|FB_IAB|FBIOS|Snapchat|\bLine\/|LinkedInApp|Pinterest/i.test(UA);
+var IS_ANDROID=/Android/i.test(UA), IS_IOS=/iPhone|iPad|iPod/i.test(UA);
+function extUrl(){ try{ var u=new URL(location.href); u.searchParams.set('_x','1'); u.searchParams.delete('preview'); return u.toString(); }catch(e){ return location.href; } }
+// يفتح نفس الصفحة بالمتصفح الحقيقي (Chrome / Safari) بدل متصفح التطبيق
+function openExternal(){
+  var u=extUrl();
+  if(IS_ANDROID){ location.href='intent://'+u.replace(/^https?:\/\//,'')+'#Intent;scheme=https;package=com.android.chrome;end'; return true; }
+  if(IS_IOS){ location.href='x-safari-'+u; return true; }
+  return false;
+}
+// فتح الفيديو بتطبيق يوتيوب (أو موقع يوتيوب للموبايل إذا التطبيق مش موجود)
+function ytAppUrl(id){
+  var web='https://m.youtube.com/watch?v='+encodeURIComponent(id);
+  if(IS_ANDROID) return 'intent://www.youtube.com/watch?v='+encodeURIComponent(id)+'#Intent;scheme=https;package=com.google.android.youtube;S.browser_fallback_url='+encodeURIComponent(web)+';end';
+  return web;
+}
+
 var PAGE=null, SLUG='';
 function pageUrl(){ return /^\/(l|portal-link)\//.test(location.pathname)?location.origin+'/l/'+SLUG:location.origin+'/'; }
 function hit(itemId){
@@ -261,8 +280,13 @@ function render(d){
     if(it.kind==='youtube'){
       var id=ytId(it.url); if(!id) return;
       var sh=/\/shorts\//i.test(it.url);
-      h+='<div class="yt'+(sh?' short':'')+hl+'" data-yt="'+esc(it.id)+'">'+(it.title?'<div class="cap" dir="auto">'+esc(it.title)+'</div>':'')+
-         '<div class="fr"><iframe src="https://www.youtube-nocookie.com/embed/'+encodeURIComponent(id)+'?rel=0&playsinline=1" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen referrerpolicy="strict-origin-when-cross-origin" title="'+esc(it.title||'YouTube')+'"></iframe></div></div>';
+      h+='<div class="yt'+(sh?' short':'')+hl+'" data-yt="'+esc(it.id)+'">'+(it.title?'<div class="cap" dir="auto">'+esc(it.title)+'</div>':'');
+      if(INAPP && !PREVIEW){
+        // جوّا تيك توك وأمثاله: صورة الفيديو + زر تشغيل بيفتحه بيوتيوب مباشرة
+        h+='<div class="fr"><a class="poster" href="'+esc(ytAppUrl(id))+'" data-item="'+esc(it.id)+'" data-ytid="'+esc(id)+'" aria-label="'+esc(t('play'))+'" style="background-image:url(\'https://i.ytimg.com/vi/'+encodeURIComponent(id)+'/hqdefault.jpg\')"><i class="fa-brands fa-youtube"></i></a></div></div>';
+        return;
+      }
+      h+='<div class="fr"><iframe src="https://www.youtube-nocookie.com/embed/'+encodeURIComponent(id)+'?rel=0&playsinline=1" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen referrerpolicy="strict-origin-when-cross-origin" title="'+esc(it.title||'YouTube')+'"></iframe></div></div>';
       return;
     }
     if(it.kind==='location'){
@@ -308,11 +332,7 @@ function vcard(){
 
 document.addEventListener('click',function(e){
   var a=e.target.closest('[data-item]');
-  if(a && a.classList.contains('poster')){
-    var id=a.getAttribute('data-yt');
-    a.outerHTML='<iframe src="https://www.youtube-nocookie.com/embed/'+encodeURIComponent(id)+'?autoplay=1&rel=0" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen title="YouTube"></iframe>';
-    hit(a.getAttribute('data-item')); return;
-  }
+  if(a && a.classList.contains('poster')){ hit(a.getAttribute('data-item')); return; }   // الرابط بيفتح يوتيوب لحاله
   if(a){ hit(a.getAttribute('data-item')); if(PREVIEW){ e.preventDefault(); } return; }
   if(e.target.closest('#vcBtn')){ e.preventDefault(); if(!PREVIEW) vcard(); return; }
   if(e.target.closest('#shareBtn')){
@@ -347,13 +367,20 @@ async function boot(){
   var el=document.getElementById('lp-data'), d=null;
   if(el){ try{ d=JSON.parse(el.textContent); }catch(e){ d=null; } }
   if(!d){
-    try{ d=await fetchPublic(); if(d && d.ok) hit(null); }
+    try{ d=await fetchPublic(); if(d && d.ok && !/[?&]_x=1/.test(location.search)) hit(null); }
     catch(e){
       document.getElementById('root').innerHTML='<div class="wrap"><div class="gone"><div class="em">⚠️</div><h2>'+esc(t('error'))+'</h2><p><button onclick="location.reload()" style="margin-top:12px;padding:10px 18px;border-radius:999px;border:0;background:#111;color:#fff;font:inherit;cursor:pointer">'+esc(t('retry'))+'</button></p></div></div>';
       return;
     }
   }
   render(d);
+  // شيل علامة _x من الرابط بعد ما انفتحت بالمتصفح
+  if(/[?&]_x=1/.test(location.search)){ try{ var cu=new URL(location.href); cu.searchParams.delete('_x'); history.replaceState(null,'',cu.pathname+cu.search+cu.hash); }catch(e){} }
+  // جوّا تيك توك وأمثاله وفي فيديو بالصفحة: افتحها تلقائياً بالمتصفح الحقيقي (مرّة وحدة بس)
+  else if(INAPP && d && d.ok && (d.items||[]).some(function(it){ return it.kind==='youtube' && ytId(it.url); })){
+    var tried=false; try{ tried=sessionStorage.getItem('lp_ext')==='1'; sessionStorage.setItem('lp_ext','1'); }catch(e){}
+    if(!tried) setTimeout(openExternal,400);
+  }
 }
 window.__lpRender=render;
 boot();
