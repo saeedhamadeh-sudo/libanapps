@@ -1257,6 +1257,20 @@ function fitDocsToPage(){
   });
 }
 window.addEventListener('beforeprint', fitDocsToPage);
+/* عرض السعر المخصص: بيكبر أو بيصغر لحتى يعبّي صفحة A4 وحدة بالكامل (بين 80% و160%) — إذا طويل كتير بيكمّل على كذا صفحة بحجمه الطبيعي */
+function fitCustomQuotes(){
+  const isLandscape = !!document.getElementById('print-orientation-style');
+  const PW = (isLandscape ? 297-20 : 210-20) * 3.7795, PH = (isLandscape ? 210-20 : 297-20) * 3.7795 - 6;
+  document.querySelectorAll('.custom-quote-doc').forEach(doc=>{
+    const st = doc.style; st.padding = '0'; st.border = 'none'; st.boxShadow = 'none'; st.maxWidth = 'none';
+    const hAt = z=>{ st.zoom = z; st.width = (PW / z) + 'px'; return doc.getBoundingClientRect().height; };
+    let best = 0;
+    if(hAt(0.8) <= PH){ let lo = 0.8, hi = 1.6; if(hAt(hi) <= PH) best = hi; else { for(let i=0; i<12; i++){ const m = (lo+hi)/2; if(hAt(m) <= PH) lo = m; else hi = m; } best = lo; } }
+    if(best){ hAt(best * 0.995); } else { st.zoom = ''; st.width = ''; }
+  });
+}
+window.addEventListener('beforeprint', fitCustomQuotes);
+window.addEventListener('afterprint', ()=>{ document.querySelectorAll('.custom-quote-doc').forEach(d=>{ ['zoom','width','padding','border','boxShadow','maxWidth'].forEach(k=>{ d.style[k] = ''; }); }); });
 window.addEventListener('afterprint', ()=>{
   document.querySelectorAll('.doc').forEach(doc=>{ doc.style.transform=''; doc.style.width=''; });
 });
