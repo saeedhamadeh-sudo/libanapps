@@ -215,6 +215,11 @@
     .doc table th, .doc table td{padding:8px 14px;}
     /* كشف الحساب: حجم طبيعي ويكمّل على أكتر من صفحة بدل ما ينضغط */
     .statement-doc{overflow:visible !important;}
+    /* عرض السعر المخصص (منسوخ من الوورد): بحجمه الطبيعي وبيكمّل على كذا صفحة بدل ما ينضغط */
+    .custom-quote-doc{overflow:visible !important; max-width:100% !important;}
+    .custom-quote-doc .cq-body table{max-width:100% !important;}
+    .custom-quote-doc .cq-body tr, .custom-quote-doc .cq-body p{break-inside:avoid; page-break-inside:avoid;}
+    .custom-quote-doc .cq-body p[style*="page-break-after:avoid"]{break-after:avoid;}
     .statement-doc .table-scroll{overflow:visible;}
     .statement-doc thead{display:table-header-group;}
     .statement-doc tfoot{display:table-row-group;}
@@ -6826,7 +6831,7 @@ function customQuotePrintView(doc){
     <button class="btn btn-danger" data-del-doc="${doc.id}" data-doc-kind="customquote">🗑 حذف</button>
     <button class="btn btn-primary" onclick="printWithFilename('CustomQuote-${safeText(doc.number)}')">🖨 طباعة</button>
   </div>
-  <div class="doc">
+  <div class="doc no-autofit custom-quote-doc">
     ${docHead('Quotation')}
     <div class="doc-info" dir="${doc.direction==='ltr'?'ltr':'rtl'}" style="${doc.direction==='ltr'?'text-align:left;':''}">
       <div class="r" ${doc.direction==='ltr'?'style="justify-content:flex-start;"':''}><span>Customer Name:</span><b>${escapeHtml(doc.customerName)}</b></div>
@@ -6834,7 +6839,7 @@ function customQuotePrintView(doc){
       <div class="r" ${doc.direction==='ltr'?'style="justify-content:flex-start;"':''}><span>Location:</span><b>${escapeHtml(doc.location)}</b></div>
       <div class="r" ${doc.direction==='ltr'?'style="justify-content:flex-start;"':''}><span>Date:</span><b class="num">${fmtDate(doc.date)}</b></div>
     </div>
-    <div dir="${doc.direction}" style="margin-top:18px; line-height:1.9; font-size:14.5px; text-align:${doc.direction==='ltr'?'left':'right'};">${customQuoteContentHtml(doc.content)}</div>
+    <div class="cq-body" dir="${doc.direction}" style="margin-top:18px; line-height:1.9; font-size:14.5px; text-align:${doc.direction==='ltr'?'left':'right'};">${customQuoteContentHtml(doc.content)}</div>
     <div class="sig">${doc.direction==='ltr'?'Signature':'التوقيع'}</div>
   </div>`;
 }
