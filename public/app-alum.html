@@ -1257,20 +1257,25 @@ function fitDocsToPage(){
   });
 }
 window.addEventListener('beforeprint', fitDocsToPage);
-/* عرض السعر المخصص: بيكبر أو بيصغر لحتى يعبّي صفحة A4 وحدة بالكامل (بين 80% و125%) — إذا طويل كتير بيكمّل على كذا صفحة بحجمه الطبيعي */
+/* عرض السعر المخصص: بيكبر أو بيصغر لحتى يعبّي صفحة A4 وحدة بالكامل (بين 70% و125%) — إذا طويل كتير بيكمّل على كذا صفحة بحجمه الطبيعي */
 function fitCustomQuotes(){
   const isLandscape = !!document.getElementById('print-orientation-style');
-  const PW = (isLandscape ? 297-20 : 210-20) * 3.7795, PH = ((isLandscape ? 210-20 : 297-20) * 3.7795) * 0.9;   // 90% من الصفحة — هامش أمان لحتى ما يطلع كبير أو يفيض على صفحة تانية
+  const PW = (isLandscape ? 297-20 : 210-20) * 3.7795, PH = ((isLandscape ? 210-20 : 297-20) * 3.7795) * 0.9;   // 90% من الصفحة — هامش أمان
   document.querySelectorAll('.custom-quote-doc').forEach(doc=>{
-    const st = doc.style; st.padding = '0'; st.border = 'none'; st.boxShadow = 'none'; st.maxWidth = 'none';
-    const hAt = z=>{ st.zoom = z; st.width = (PW / z) + 'px'; return doc.getBoundingClientRect().height; };
+    doc.style.zoom = '';
+    // منقيس على نسخة مخفية بعرض الصفحة (بلا zoom) — هيك القياس ما بيتأثر بطريقة المتصفح بالـ zoom
+    const c = doc.cloneNode(true);
+    Object.assign(c.style, { position:'absolute', left:'-20000px', top:'0', padding:'0', border:'none', boxShadow:'none', maxWidth:'none', margin:'0', visibility:'hidden' });
+    doc.parentNode.appendChild(c);
+    const hAt = z=>{ c.style.width = (PW / z) + 'px'; return c.offsetHeight * z; };
     let best = 0;
-    if(hAt(0.8) <= PH){ let lo = 0.8, hi = 1.25; if(hAt(hi) <= PH) best = hi; else { for(let i=0; i<12; i++){ const m = (lo+hi)/2; if(hAt(m) <= PH) lo = m; else hi = m; } best = lo; } }
-    if(best){ hAt(best * 0.995); } else { st.zoom = ''; st.width = ''; }
+    if(hAt(0.7) <= PH){ let lo = 0.7, hi = 1.25; if(hAt(hi) <= PH) best = hi; else { for(let k=0; k<12; k++){ const m = (lo+hi)/2; if(hAt(m) <= PH) lo = m; else hi = m; } best = lo; } }
+    c.remove();
+    if(best) doc.style.zoom = String(Math.round(best*1000)/1000);
   });
 }
 window.addEventListener('beforeprint', fitCustomQuotes);
-window.addEventListener('afterprint', ()=>{ document.querySelectorAll('.custom-quote-doc').forEach(d=>{ ['zoom','width','padding','border','boxShadow','maxWidth'].forEach(k=>{ d.style[k] = ''; }); }); });
+window.addEventListener('afterprint', ()=>{ document.querySelectorAll('.custom-quote-doc').forEach(d=>{ d.style.zoom = ''; }); });
 window.addEventListener('afterprint', ()=>{
   document.querySelectorAll('.doc').forEach(doc=>{ doc.style.transform=''; doc.style.width=''; });
 });
